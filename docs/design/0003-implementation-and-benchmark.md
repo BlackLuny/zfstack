@@ -1,0 +1,104 @@
+# zfstack 实现说明与真机对比 v0.1
+
+> 对应：[`0001-architecture.md`](0001-architecture.md) v0.3、[`0002-s0-benchmark-and-falsification.md`](0002-s0-benchmark-and-falsification.md) v0.2。
+> 本文记录**已经实现了什么、与设计的差异、测试覆盖、以及在真机（本仓库的 zfbench 台架）上和 smoltcp（BlackLuny fork）及内核 TCP 的对比结果**。
+
+## 修订记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v0.1 | 2026-09-24 | 首版：核心栈 + 仿真器 + zfbench 台架 + 第一轮真机矩阵 |
+
+---
+
+## 1. 结论先行
+
+<!-- RESULTS-SUMMARY -->
+
+## 2. 实现范围（对照 0001）
+
+代码约 7.5k 行（`src/`，含测试），另有台架约 3.2k 行（`bench/`）。
+
+| 设计章节 | 状态 | 实现位置 / 说明 |
+|---|---|---|
+| §3.2 sans-IO 核心 | ✅ | 核心不读时钟、不做 I/O；`now` 由调用方传入（`time.rs`） |
+| §3.1 Shard / iface / PeerId，连接键 (IfaceId, 4-tuple) | ✅ | `shard.rs`；表用 std `RandomState`（带进程随机密钥的 SipHash-1-3，§10.1） |
+| §4.1 核心 API | ✅ | `ingress / run / egress_released / next_deadline / poll_event / read / read_chunk / write / shutdown_write / close / abort / info / set_iface_mtu / remove_iface`；`write_chunk` 未做（chunk 快路径本期不做，§5） |
+| §4.2 OutPacket = header + payload 切片 | ✅ | `OutPacket { header, payload: [&[u8]; 2] }`，TX 环形块保证一个段最多跨两块 |
+| §4.3 出口合同 | ✅ | `plan → build → commit` 三段：sink 返回 `Full` 时不生成发送记录、不推进 `snd_nxt`、不动 RTO；测试 `egress_full_does_not_count_as_sent` |
+| §4.4 tokio 适配 | ✅ | feature `tokio`：`tokio_adapter.rs`，按字节有界队列 + 低水位部分写入 + 检查→注册→再检查；端到端测试 `echo_roundtrip_through_async_handles` |
+| §5 拷贝次数 | ✅（AsyncRead/Write 路径） | 上行：入包 `Bytes` 切片直接挂进 RX 队列（0 拷贝入栈），`read` 1 次拷贝；下行：`write` 拷进 TX 块 1 次，出包拼接 1 次 |
+| §6.1 乱序队列按需分配 | ✅ | `Option<Box<OooQueue>>` |
+| §6.2 物理字节记账 | ⚠️ 简化 | 按 payload 字节记账（每段一次），未做 truesize 与 collapse |
+| §6.3 三级额度、分配前预留 | ✅ | `budget.rs`：全局原子计数 + shard 以 64 KiB 批量预留；per-peer 字节与连接数；per-conn 由 sndbuf/rcvbuf 约束 |
+| §6.4 超售 + 进展保留 | ✅ | 预留失败丢未确认数据；按序段可用 2×MSS 进展保留 |
+| §6.5 TX 拆分 | ✅ | 在途上限 `max_snd_inflight`（默认 16 MiB）+ 预读 `max(64 KiB, pacing_rate × 20 ms)` |
+| §6.6 接收自调 | ✅ | Linux `tcp_rcv_space_adjust` 式；接收 RTT 用 TSecr（毫秒粒度） |
+| §6.7 压力档 | ⚠️ 部分 | Pressure 档不收新乱序段、右边沿不再右移；reneging 最后手段未做 |
+| §7.1/7.2 EDT pacing、信用上限跟随实测唤醒间隔 | ✅ | 信用 = clamp(唤醒间隔 P99, 2 ms, 10 ms)；pacing 粒度 = 一个量子 clamp(rate×1ms, 2MSS, 64KiB)（与 Linux TSO autosizing 一致），积累满一个量子才唤醒 |
+| §7.4 两级定时器、无惰性条目 | ✅（实现方式不同） | 定时器与 pacing 都用**带位置索引的 4 叉堆**（原地改 key），每连接只占一个槽；未用 timer wheel |
+| §7.5 驱动 A / B | A ✅ / B ❌ | tokio 适配即驱动 A；驱动 B（同线程加密 + sendmmsg）属 S5 zfc 接入，未做 |
+| §8.1 调度状态与事件激活 | ✅ | ready / pacing 堆 / iface 冻结 / 定时器；只有 `wants_tx()` 为真才入 ready |
+| §8.2 两级 DRR | ✅ | **每个 iface 一套** peer→conn DRR；测试 G-fair（1 条 vs 16 条连接，份额比 0.7–1.3） |
+| §8.3 出口隔离 | ✅ | sink `Full` 时该 iface 的 DRR 原地冻结（即阻塞集），`egress_released` 后从断点继续；无忙循环（测试断言） |
+| §8.4 轮次预算 | ✅ | `round_bytes_cap` 256 KiB，超出置 `RunOutcome.more` |
+| §9.1 CC 框架 + delivery rate 采样 | ✅ | `cc/mod.rs`；采样按 draft-cheng，含 `tx_in_flight`/`lost`（BBRv3 需要） |
+| §9.2 BBRv3 / CUBIC / Brutal | ✅ | `cc/bbr.rs` 按 draft-ietf-ccwg-bbr（Startup/Drain/ProbeBW 四相/ProbeRTT、inflight_longterm/shortterm、bw_shortterm）；**尚无参考实现对照向量**；`cc/cubic.rs` RFC 9438 + HyStart++；`cc/brutal.rs` |
+| §9.3 发送记录 | ✅ | `scoreboard.rs`：按序号有序的紧凑记录（VecDeque），pipe = out − sacked − lost + retrans_out 增量维护 |
+| §9.3 RACK 时间序链表 | ⚠️ 简化 | 按序号扫描到 RACK.end 为止（新数据按序发送，时间序≈序号序）；丢包多时扫描成本随窗口增长，已加 `rack_scanned` 计数 |
+| §9.4 按发送决策分状态约束 | ✅ | 新数据：pipe+len ≤ cwnd 且不超对端窗口；恢复期：PRR（RFC 6937 + SSRB）；TLP 每 PTO 一段；RTO 后不 go-back-N |
+| §9.5 RTO / F-RTO / D-SACK | ✅/⚠️ | RFC 6298（min 200 ms、退避、上限 60 s）；伪 RTO 用时间戳 Eifel 检测并撤销（替代 F-RTO）；D-SACK 用于 RACK reo_wnd 自适应，快速恢复的撤销未做；**重复 RTO 时清除 SACK 记分板（RFC 2018 §8）** |
+| §10.1 半连接 | ✅ | SYN → admission → 半连接（仅元数据）→ SYN-ACK 重传 3 次 |
+| §10.2 拒绝与 SYN cookie | ✅ | 策略拒绝回 RST；半连接满用 cookie（MSS 8 档、WS/SACK 编码在 TSval 低 6 位、60 s 轮换保留上一代）；cookie 最终 ACK 重新检查准入与资源 |
+| §10.3 关闭语义 | ✅ | FIN 按序紧跟最后数据；close 有未读→RST；孤儿超时；keepalive 25 s×3；user timeout 120 s；TIME_WAIT 60 s、同时关闭、表满回收最老 |
+| §10.4 MTU 变化 | ✅ | `set_iface_mtu`：MSS 只降；重传按新 MSS 重新切分记录（payload 在 TX 块里任意切片） |
+| RFC 7323 WS/TS/PAWS、RFC 5961 | ✅ | 挑战 ACK 限速；TS 时钟 1 ms/tick，每连接随机偏移 |
+| RFC 6528 ISN | ✅ | 4 µs 时钟 + 带密钥哈希 |
+| §12 可观测性 | ⚠️ 部分 | `ConnInfo`（srtt/cwnd/pipe/pacing/各队列/恢复计数/受限计时 rwnd·cwnd·pacing·egress/CC 内部状态）；shard 计数；未做全链路时间线 |
+| §14.1 确定性仿真 | ✅ | `sim.rs`：带宽/时延/drop-tail/随机与突发丢包/乱序/重复/执行间隔 G；同种子可复现 |
+| §14.2 一致性脚本 DSL | ❌ | 用仿真场景测试替代（见 §3） |
+| §14.3 Linux 互通 | ✅ | zfbench 真机台架：对端就是 Linux 内核 TCP（见 §4） |
+| §14.4 不变量 | ✅（部分） | 每步检查：记分板计数、窗口右边沿不回退、ready 去重、容器大小 ≤ 槽位；结束检查预算归零 |
+| §14.5 fuzz | ⚠️ 轻量 | 随机/变异（含重算校验和）报文注入测试；未接 cargo-fuzz，未跑 72 h |
+
+## 3. 测试
+
+`cargo test --release --features tokio`：31 个测试全部通过（另有 2 个 `#[ignore]` 的诊断用例）。
+
+| 类别 | 用例 |
+|---|---|
+| 单元 | 报文编解码与校验和（含奇数切片）、序号回绕、TX 环、乱序合并与 SACK 块、索引堆、记分板计数、CUBIC、BBRv3 Startup 退出 |
+| 仿真场景 | 干净下载（20 MiB@100 Mbps < 2.6 s）；0.1–5% 随机丢包；突发丢包+乱序+重复；200 Mbps/80 ms/0.25 BDP 浅队列；上传；双向；零窗口 + persist；sink Full 不计发送且无忙循环；SYN cookie；传输中 MTU 下降；未读关闭发 RST；200 连接全部释放且预算归零；G-fair；执行间隔 5 ms 下 pacing 保持速率；确定性回放；BBR/Brutal；BBR 浅队列与 1% 随机丢包 |
+| 鲁棒性 | 变异/随机报文注入（含 RST 与不含 RST 两组，共 7 个种子）：无 panic、无数据损坏；被伪造 ACK 卡死的连接必须由 user timeout 拆除并释放全部资源 |
+| 异步适配 | tokio 句柄端到端回显 2 MiB |
+
+测试过程中发现并修复的实际问题（均有回归测试）：
+1. 应用每次 read/write 都把连接放进 ready，导致空转（加 `wants_tx()` 门控）。
+2. sink `Full` 时先前的阻塞集实现会让「刚把 sink 填满的 peer」总是先被服务 → 另一个 peer 饿死（改为每 iface 的 DRR 原地冻结）。
+3. user timeout 从不触发（每次 RTO 都重置了计时基准）。
+4. 重复 RTO 后清除 SACK 时，被「再次 SACK」的旧记录产生数秒的伪 RTT 样本，pacing 速率塌缩。
+5. BBRv3 字节制 cwnd 比 inflight_longterm 小几个字节，导致 ProbeBW_UP 永远不增长（加 1 MSS 容差）。
+
+## 4. 真机测试方法
+
+台架是 `bench/`（zfbench），在一台 4 vCPU 的 Linux 6.18 VM 上运行，**对端是真实的 Linux 内核 TCP**：
+
+```
+内核 TCP 客户端 ──TUN zfbA (MTU 1420)── 用户态链路模拟器（上/下行各一线程）── 被测栈线程（+ 同线程的应用服务端）
+```
+
+- 被测栈：`zfstack-cubic`、`zfstack-bbr`（本仓库 HEAD）、`smoltcp-cubic`、`smoltcp-bbr`（BlackLuny/smoltcp `8014f8b`，即生产 fork；8 个待命 listener、4 MiB 缓冲、nagle 关、BBR 保持 fork 的 pacing 默认值）、`kernel-cubic`（第二个 TUN + netns 里的内核 TCP 服务端，走同一个模拟器，作为「内核基线」）。
+- 链路模拟：按 0002 §2.1 修正后的语义——传播时延与瓶颈队列分离，只有瓶颈 drop-tail 队列（`Lq = k × R × RTT`）会因排队丢包，随机丢包单独施加在数据方向。**本 VM 内核没有 netem**，所以用用户态模拟器；投递时刻误差均值约 20–35 µs。
+- 应用：下行（服务端持续写固定模式流，客户端校验每个字节）、上行（客户端写，服务端校验并回报字节数）、mixed（一条下行大流 + 每 100 ms 一次 1 KiB 往返，测 P50/P99）、connect（2000 次建连，并发 64）。
+- CPU：只统计被测栈线程的 CPU 秒 / 有效 GB（有效 = 应用收到的字节）。内核基线没有可比的线程 CPU。
+- 每格 3 次重复、每次 15 s（丢弃前 3 s），报告中位数 [最小–最大]。
+
+与 0002 的差异（诚实说明）：没有 WireGuard 加解密与 UDP 层；单机 4 vCPU 上客户端、模拟器、被测栈共享 CPU；瓶颈速率 200 Mbps；只跑了 RTT 12/80 ms。结论适用于「协议栈本身」的比较，不能直接替代 0002 的 WAN 真机 A/B。
+
+## 5. 结果
+
+<!-- RESULTS-TABLES -->
+
+## 6. 已知问题与后续
+
+<!-- FOLLOWUPS -->

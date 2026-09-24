@@ -28,8 +28,7 @@ has no netem on this VM, so a userspace link emulator stands in for it.
 ## Build
 
 ```sh
-cargo build --release -p zfbench                     # kernel + smoltcp modes
-cargo build --release -p zfbench --features zfstack  # also --stack zfstack (the adapter is a stub for now)
+cargo build --release -p zfbench   # kernel, smoltcp and zfstack modes (feature `zfstack` is on by default)
 ```
 
 smoltcp comes from the git dependency
@@ -57,7 +56,7 @@ Main flags (see `--help`):
 
 | flag | default | meaning |
 |---|---|---|
-| `--stack` | smoltcp-cubic | `kernel`, `smoltcp-cubic`, `smoltcp-bbr`, `smoltcp-reno`, `zfstack` |
+| `--stack` | smoltcp-cubic | `kernel`, `smoltcp-cubic`, `smoltcp-bbr`, `smoltcp-reno`, `zfstack-cubic`, `zfstack-bbr`, `zfstack-nopace` |
 | `--test` | down | `down`, `up`, `mixed`, `connect` |
 | `--rate-mbps` / `--rate-up-mbps` | 200 / same | bottleneck rate, counted in IP bytes; 0 = unlimited |
 | `--rtt-ms` | 12 | base RTT; each direction gets RTT/2 of propagation delay |
@@ -145,11 +144,13 @@ would use it:
 The app runs in the same thread through the transport-agnostic
 `app::AppConn` state machine.
 
-**zfstack**: implement `src/adapters/zfstack.rs` (behind the `zfstack`
-feature). Feed packets to the stack in `ingress`. In `poll`, accept
-connections on 10.201.0.2:5201 and drive one `AppConn` per connection with
-`on_recv`, `on_peer_eof`, `wants_send`/`produce` and `close_action`. Return
-the stack's earliest timer from `next_deadline`.
+**zfstack** (`src/adapters/zfstack.rs`): one `Shard` with one iface (MTU 1420);
+every packet is attributed to one WG peer. The app is driven from shard events
+only (Accepted / Readable / Writable / Closed), so idle connections cost nothing
+per poll. `zfstack-cubic` and `zfstack-bbr` pace (EDT, §7 of the design);
+`zfstack-nopace` is CUBIC without pacing. `--sock-buf-kb` sets the receive
+buffer ceiling and the in-flight cap. Stats include per-phase time
+(ingress / run / app), recovery counters and limit timers.
 
 ## Output JSON (main fields)
 
@@ -208,7 +209,7 @@ In the matrix, the cell's random loss is applied to the **data** direction:
 
 Stack specs: `kernel` uses the system default CC (**this VM defaults to
 bbr**). `kernel-<cc>` sets `TCP_CONGESTION` on the kernel server, for example
-`kernel-cubic`. The others are `smoltcp-cubic|bbr|reno` and `zfstack`.
+`kernel-cubic`. The others are `smoltcp-cubic|bbr|reno` and `zfstack-cubic|bbr|nopace`.
 
 ## Caveats (read before trusting numbers)
 
