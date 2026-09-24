@@ -1,0 +1,78 @@
+{
+  "args": {
+    "name": "wan-20260924-2018",
+    "bin": "/root/zfstack-bench/target/release/zfbench",
+    "stacks": [
+      "kernel-cubic",
+      "smoltcp-cubic",
+      "zfstack-cubic",
+      "zfstack-bbr"
+    ],
+    "baseline": "smoltcp-cubic",
+    "tests": [
+      "down",
+      "up",
+      "mixed",
+      "connect"
+    ],
+    "rate": 200.0,
+    "rtts": [
+      1.0,
+      12.0,
+      80.0
+    ],
+    "losses": [
+      0.0,
+      0.01
+    ],
+    "queues": [
+      2.0,
+      0.25
+    ],
+    "flows": [
+      1,
+      8
+    ],
+    "mixed_rtts": [
+      12.0,
+      80.0
+    ],
+    "mixed_queues": [
+      2.0,
+      0.25
+    ],
+    "connect_rtt": 12.0,
+    "conns": 2000,
+    "concurrency": 64,
+    "secs": 30,
+    "warmup": 3,
+    "reps": 3,
+    "seed": 1,
+    "client_cc": "cubic",
+    "quick": false,
+    "resume": false,
+    "outdir": null,
+    "report_only": null,
+    "dry_run": false,
+    "wg_server": "192.99.148.123",
+    "client_wg": "auto",
+    "extra": []
+  },
+  "stacks": [
+    "kernel-cubic",
+    "smoltcp-cubic",
+    "zfstack-cubic",
+    "zfstack-bbr"
+  ],
+  "env": {
+    "uname": "Linux pa.blestic.com 6.1.0-29-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.123-1 (2025-01-02) x86_64 GNU/Linux",
+    "nproc": 4,
+    "zfstack_commit": "",
+    "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
+    "net.ipv4.tcp_rmem": "4096 87380 26214400",
+    "net.ipv4.tcp_wmem": "4096 16384 26214400",
+    "net.ipv4.tcp_congestion_control": "bbr"
+  },
+  "started": "2026-09-24T20:18:52",
+  "finished": "2026-09-24T20:51:28"
+}
