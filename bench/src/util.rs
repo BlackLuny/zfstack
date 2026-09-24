@@ -149,3 +149,15 @@ pub fn set_tcp_cc(fd: std::os::fd::RawFd, name: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+/// Commit of the zfstack tree this binary was built from: `git rev-parse`, or
+/// the `.zfstack_commit` file that `wan_ab.sh` writes next to an rsynced tree
+/// without `.git` (or without git installed).
+pub fn zfstack_commit() -> String {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+    let g = crate::tun::sh_output(&format!("git -C {root} rev-parse --short HEAD")).trim().to_string();
+    if !g.is_empty() {
+        return g;
+    }
+    std::fs::read_to_string(format!("{root}/.zfstack_commit")).map(|s| s.trim().to_string()).unwrap_or_default()
+}

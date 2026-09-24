@@ -517,7 +517,6 @@ fn run(a: &Args) -> std::io::Result<i32> {
             0.0
         }
     };
-    let git = |dir: &str| tun::sh_output(&format!("git -C {dir} rev-parse --short HEAD")).trim().to_string();
     let result = json!({
         "tool": "zfbench",
         "version": env!("CARGO_PKG_VERSION"),
@@ -552,7 +551,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "env": {
             "kernel": tun::sh_output("uname -r").trim(),
             "nproc": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0),
-            "zfstack_commit": git(concat!(env!("CARGO_MANIFEST_DIR"), "/..")),
+            "zfstack_commit": util::zfstack_commit(),
             "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
             "tcp_rmem": sysctl("net.ipv4.tcp_rmem"),
             "tcp_wmem": sysctl("net.ipv4.tcp_wmem"),
