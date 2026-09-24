@@ -64,15 +64,7 @@ fn is_timeout(e: &io::Error) -> bool {
 fn tcp_info(s: &TcpStream) -> Option<libc::tcp_info> {
     let mut ti: libc::tcp_info = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::tcp_info>() as libc::socklen_t;
-    let rc = unsafe {
-        libc::getsockopt(
-            s.as_raw_fd(),
-            libc::IPPROTO_TCP,
-            libc::TCP_INFO,
-            &mut ti as *mut _ as *mut _,
-            &mut len,
-        )
-    };
+    let rc = unsafe { libc::getsockopt(s.as_raw_fd(), libc::IPPROTO_TCP, libc::TCP_INFO, &mut ti as *mut _ as *mut _, &mut len) };
     (rc == 0).then_some(ti)
 }
 
@@ -190,14 +182,7 @@ type SideTask = Box<dyn FnOnce(Instant, Arc<AtomicBool>) -> (serde_json::Value, 
 
 /// Run N bulk flows (down or up) with per-second sampling. `side` runs in its
 /// own thread from t0 (used by `mixed`) and returns extra results.
-fn run_bulk(
-    o: &TestOpts,
-    up: bool,
-    flows: usize,
-    counters: &Arc<ServerCounters>,
-    mark: Mark,
-    side: Option<SideTask>,
-) -> TestOutcome {
+fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>, mark: Mark, side: Option<SideTask>) -> TestOutcome {
     let stop = Arc::new(AtomicBool::new(false));
     let mut errors = Vec::new();
     // Connect all flows first.
@@ -375,9 +360,7 @@ pub fn test_mixed(o: &TestOpts, c: &Arc<ServerCounters>, mark: Mark) -> TestOutc
     let mut out = run_bulk(o, false, 1, c, mark, Some(side));
     let idle_sum = util::lat_summary(&idle);
     if let Some(side) = out.results.get("side").cloned() {
-        let d = |k: &str| -> Option<f64> {
-            Some(side["rr_loaded"][k].as_f64()? - idle_sum[k].as_f64()?)
-        };
+        let d = |k: &str| -> Option<f64> { Some(side["rr_loaded"][k].as_f64()? - idle_sum[k].as_f64()?) };
         out.results["rr_idle"] = idle_sum.clone();
         out.results["rr_loaded"] = side["rr_loaded"].clone();
         out.results["rr_delta_p50_ms"] = json!(d("p50_ms"));
@@ -403,8 +386,7 @@ pub fn test_connect(o: &TestOpts, _c: &Arc<ServerCounters>, mark: Mark) -> TestO
     let t0 = Instant::now();
     let hs: Vec<_> = (0..o.concurrency.min(k))
         .map(|_| {
-            let (next, lat, conn_lat, fails, other) =
-                (next.clone(), lat.clone(), conn_lat.clone(), fails.clone(), other_samples.clone());
+            let (next, lat, conn_lat, fails, other) = (next.clone(), lat.clone(), conn_lat.clone(), fails.clone(), other_samples.clone());
             std::thread::spawn(move || {
                 let mut buf = [0u8; 64];
                 while next.fetch_add(1, Relaxed) < k {
@@ -433,9 +415,7 @@ pub fn test_connect(o: &TestOpts, _c: &Arc<ServerCounters>, mark: Mark) -> TestO
                             let kind = match e.kind() {
                                 io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timeout",
                                 io::ErrorKind::ConnectionRefused => "refused",
-                                io::ErrorKind::ConnectionReset
-                                | io::ErrorKind::ConnectionAborted
-                                | io::ErrorKind::BrokenPipe => "reset",
+                                io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted | io::ErrorKind::BrokenPipe => "reset",
                                 _ => "other",
                             };
                             *fails.lock().unwrap().entry(kind.into()).or_default() += 1;

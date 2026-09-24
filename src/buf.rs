@@ -383,7 +383,12 @@ mod tests {
         let mut k = 0u8;
         for i in 0..5000usize {
             let n = if i % 100 == 99 { 1400 } else { 1 + i % 7 };
-            let v: Vec<u8> = (0..n).map(|_| { k = k.wrapping_add(1); k }).collect();
+            let v: Vec<u8> = (0..n)
+                .map(|_| {
+                    k = k.wrapping_add(1);
+                    k
+                })
+                .collect();
             expect.extend_from_slice(&v);
             q.push(Bytes::from(v));
         }
