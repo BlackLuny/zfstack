@@ -16,7 +16,7 @@
 use crate::shard::{EgressSinks, IfaceConfig, OutPacket, SendResult, Shard};
 use crate::{CloseReason, ConnId, Event, IfaceId, PeerId, ReadResult, StackConfig, WriteResult};
 use bytes::{Bytes, BytesMut};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -64,6 +64,8 @@ struct Queues {
     /// Set by the driver when the connection is gone.
     error: Option<CloseReason>,
     closed_by_app: bool,
+    /// The driver armed the orphan deadline for this dropped stream.
+    orphan_timer: bool,
     read_waker: Option<Waker>,
     write_waker: Option<Waker>,
     /// Writer parked below the low watermark.
@@ -284,6 +286,7 @@ pub fn spawn<E: Egress>(
         accept_tx: acc_tx,
         ctl: Arc::new(Ctl { dirty: Mutex::new(Vec::new()), notify: Notify::new() }),
         streams: HashMap::new(),
+        orphans: BTreeSet::new(),
         stream_cfg,
         epoch: tokio::time::Instant::now(),
         buf: vec![0u8; 64 * 1024],
@@ -300,6 +303,10 @@ struct Driver<E: Egress> {
     accept_tx: mpsc::UnboundedSender<TcpStream>,
     ctl: Arc<Ctl>,
     streams: HashMap<ConnId, Arc<Shared>>,
+    /// Dropped streams whose tx queue has not drained into the shard yet, by
+    /// deadline (the shard's orphan timeout only starts once `close` is called).
+    /// Entries of streams released meanwhile are skipped when they come due.
+    orphans: BTreeSet<(crate::Instant, ConnId)>,
     stream_cfg: StreamConfig,
     epoch: tokio::time::Instant,
     buf: Vec<u8>,
@@ -316,7 +323,12 @@ impl<E: Egress> Driver<E> {
 
     async fn run(mut self) {
         loop {
-            let deadline = self.shard.next_deadline().map(|d| self.to_tokio(d));
+            let orphan = self.orphans.first().map(|x| x.0);
+            let deadline = match (self.shard.next_deadline(), orphan) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            }
+            .map(|d| self.to_tokio(d));
             let ctl = self.ctl.clone();
             tokio::select! {
                 biased;
@@ -363,6 +375,7 @@ impl<E: Egress> Driver<E> {
 
     /// Move data between stream queues and the shard, run the shard, dispatch events.
     fn service(&mut self) {
+        self.expire_orphans();
         for _ in 0..16 {
             let dirty: Vec<ConnId> = std::mem::take(&mut *self.ctl.dirty.lock().unwrap());
             for id in dirty {
@@ -413,12 +426,35 @@ impl<E: Egress> Driver<E> {
         }
     }
 
+    /// Abort dropped streams that could not hand their remaining bytes to the shard
+    /// within the orphan timeout (e.g. the peer keeps a zero window forever).
+    fn expire_orphans(&mut self) {
+        let now = self.now();
+        while let Some(&(t, id)) = self.orphans.first() {
+            if t > now {
+                break;
+            }
+            self.orphans.pop_first();
+            if let Some(sh) = self.streams.remove(&id) {
+                sh.q.lock().unwrap().tx.clear();
+                self.shard.abort(id);
+            }
+        }
+    }
+
     fn release_if_done(&mut self, id: ConnId) {
         let state = self.streams.get(&id).map(|sh| {
-            let q = sh.q.lock().unwrap();
-            (q.closed_by_app && (q.error.is_some() || q.tx.is_empty()), q.rx_len > 0)
+            let mut q = sh.q.lock().unwrap();
+            let done = q.closed_by_app && (q.error.is_some() || q.tx.is_empty());
+            let start_orphan = q.closed_by_app && !done && !q.orphan_timer;
+            q.orphan_timer |= start_orphan;
+            (done, q.rx_len > 0, start_orphan)
         });
-        if let Some((true, unread)) = state {
+        if let Some((false, _, true)) = state {
+            let t = self.now() + self.shard.config().orphan_timeout;
+            self.orphans.insert((t, id));
+        }
+        if let Some((true, unread, _)) = state {
             if unread {
                 // Dropped with unread data: the bytes are lost, tell the peer (§10.3).
                 self.shard.abort(id);
@@ -593,5 +629,71 @@ mod tests {
             }
         }
         assert_eq!(recvd, TOTAL);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_stream_facing_zero_window_is_aborted() {
+        // The server app writes more than fits and drops the stream; the client never
+        // reads, so its window stays at zero and the adapter's tx queue never drains.
+        // The orphan timeout must still end the connection (RST to the client).
+        let (to_client_tx, mut to_client_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let egress = move |_i: IfaceId, _p: PeerId, pkt: &OutPacket<'_>| {
+            let _ = to_client_tx.send(pkt.to_vec());
+            SendResult::Accepted
+        };
+        let mut cfg = StackConfig::default();
+        cfg.orphan_timeout = std::time::Duration::from_millis(500);
+        let (h, mut acc, ids) = spawn(cfg, StreamConfig::default(), vec![IfaceConfig::default()], egress);
+        tokio::spawn(async move {
+            let mut s = acc.accept().await.unwrap();
+            let data = vec![7u8; 32 << 20];
+            // More than the shard's send buffer takes, so the adapter's queue backs up.
+            let r = tokio::time::timeout(std::time::Duration::from_millis(300), s.write_all(&data)).await;
+            assert!(r.is_err(), "write should still be blocked by the zero window");
+            drop(s);
+        });
+
+        let epoch = tokio::time::Instant::now();
+        let now = || crate::Instant::from_nanos(epoch.elapsed().as_nanos() as u64 + 1);
+        let mut c = Shard::with_budget(StackConfig::default(), crate::budget::GlobalBudget::new(1 << 30));
+        let ci = c.add_iface(IfaceConfig::default());
+        let id = c.connect(now(), ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut max_rx = 0;
+        let reason = loop {
+            assert!(tokio::time::Instant::now() < deadline, "orphan never torn down");
+            max_rx = max_rx.max(c.info(id).map_or(0, |i| i.rx_queued));
+            let mut out: Vec<(PeerId, Bytes)> = Vec::new();
+            let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
+                out.push((PeerId(9), Bytes::from(p.to_vec())));
+                SendResult::Accepted
+            };
+            c.run(now(), &mut sink);
+            if !out.is_empty() {
+                assert!(h.ingress(ids[0], out).await);
+            }
+            let mut closed = None;
+            while let Some(ev) = c.poll_event() {
+                if let Event::Closed(i, r) = ev {
+                    if i == id {
+                        closed = Some(r);
+                    }
+                }
+            }
+            if let Some(r) = closed {
+                break r;
+            }
+            let wait = c.next_deadline().map_or(std::time::Duration::from_millis(20), |d| {
+                std::time::Duration::from_nanos(d.as_nanos().saturating_sub(now().as_nanos())).min(std::time::Duration::from_millis(20))
+            });
+            if let Ok(Some(p)) = tokio::time::timeout(wait, to_client_rx.recv()).await {
+                c.ingress(now(), ci, PeerId(0), Bytes::from(p));
+                while let Ok(p) = to_client_rx.try_recv() {
+                    c.ingress(now(), ci, PeerId(0), Bytes::from(p));
+                }
+            }
+        };
+        assert_eq!(reason, CloseReason::Reset);
+        assert!(max_rx >= 64 * 1024, "client window never filled ({max_rx})");
     }
 }

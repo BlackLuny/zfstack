@@ -215,6 +215,14 @@ pub struct Conn {
     rst_pending: bool,
     syn_pending: bool,
     pub(crate) bad_ack_rst: bool,
+    /// Consecutive stall epochs with desync evidence (see `note_desync`).
+    desync_count: u32,
+    /// Timer-driven transmissions without progress (RTO, zero-window probe,
+    /// keepalive): the stimuli desync evidence is counted against.
+    stall_epoch: u64,
+    /// `stall_epoch` and peer TSval of the last counted desync evidence.
+    desync_epoch: u64,
+    desync_tsval: u32,
     ws_ok: bool,
     rack_timeout: Option<Instant>,
     rto_tsval_pending: bool,
@@ -307,6 +315,8 @@ const MAX_DELACK_SEGS: u64 = 2;
 const DEFAULT_MSS_V4: u32 = 536;
 const DEFAULT_MSS_V6: u32 = 1220;
 const TS_VALID_FOR: Duration = Duration::from_secs(24 * 24 * 3600);
+/// Desync detection: evidence in this many consecutive stall epochs resets the connection.
+const DESYNC_EPOCHS: u32 = 3;
 const LIM_NONE: u8 = 0;
 const LIM_RWND: u8 = 1;
 const LIM_CWND: u8 = 2;
@@ -376,6 +386,10 @@ impl Conn {
             rst_pending: false,
             syn_pending: false,
             bad_ack_rst: false,
+            desync_count: 0,
+            stall_epoch: 0,
+            desync_epoch: 0,
+            desync_tsval: 0,
             ws_ok: false,
             rack_timeout: None,
             rto_tsval_pending: false,
@@ -602,6 +616,18 @@ impl Conn {
         let gain = if self.cc.cwnd() < self.cc.ssthresh() / 2 { 2.0 } else { 1.2 };
         let rate = cwnd as f64 / srtt.as_secs_f64() * gain;
         Some(rate.max(1.0) as u64)
+    }
+
+    /// Rate the output path paces at, or None when this connection is not paced now
+    /// (see `StackConfig::pacing_min_cwnd_segs`).
+    pub fn egress_pacing_rate(&self, cfg: &StackConfig) -> Option<u64> {
+        if !cfg.pacing {
+            return None;
+        }
+        if self.cc.pacing_rate().is_none() && self.cc.cwnd() < cfg.pacing_min_cwnd_segs as u64 * self.mss as u64 {
+            return None;
+        }
+        self.pacing_rate()
     }
 
     /// Send buffer limit: in-flight window plus a time-bounded prefetch (§6.5).
@@ -926,6 +952,51 @@ impl Conn {
         self.notify_writable(ctx.events, ctx.cfg);
     }
 
+    /// Desync detection. A synchronized peer's cumulative ACK and TSval never go
+    /// backwards (both are monotonic in its send order), so these segments cannot
+    /// come from a peer that agrees with us:
+    /// - an ACK outside [SND.UNA, SND.MAX] with TSval > TS.Recent (sent after every
+    ///   segment we accepted, yet acking below what they acked or beyond what we sent);
+    /// - a PAWS failure acking beyond SND.UNA (newer than every accepted segment,
+    ///   yet with an older TSval).
+    ///
+    /// Reordered or duplicated old segments satisfy neither. Such `proof` means a
+    /// forged in-window ACK or timestamp was accepted, and nothing repairs that: data
+    /// a forged ACK released is gone and the peer's segments keep being discarded.
+    ///
+    /// Evidence is counted at most once per stall epoch (each RTO, zero-window probe
+    /// or keepalive we send without progress), and only from a segment whose TSval is
+    /// newer than the previous evidence's, i.e. a new segment the peer sent in reply,
+    /// not a reordered or duplicated old one. Evidence in `DESYNC_EPOCHS` consecutive
+    /// epochs with no good segment in between resets the connection instead of
+    /// waiting for the user timeout. Needs timestamps; without them the user timeout
+    /// remains the backstop. Anyone able to forge such segments could already reset
+    /// the connection (RFC 5961 exact-sequence RST), so this adds no attack surface.
+    fn note_desync(&mut self, h: &TcpHeader, proof: bool, ctx: &mut Ctx) -> bool {
+        let Some((tsval, _)) = h.opts.ts else { return false };
+        if !proof || !self.ts_ok || self.stall_epoch <= self.desync_epoch {
+            return false;
+        }
+        if self.desync_count > 0 && (tsval.wrapping_sub(self.desync_tsval) as i32) <= 0 {
+            return false;
+        }
+        self.desync_count += 1;
+        self.desync_epoch = self.stall_epoch;
+        self.desync_tsval = tsval;
+        if self.desync_count >= DESYNC_EPOCHS {
+            self.rst_pending = true;
+            self.set_closed(CloseReason::Desync, ctx);
+            return true;
+        }
+        false
+    }
+
+    /// A segment consistent with our state arrived: any desync evidence was stale.
+    fn desync_clear(&mut self) {
+        self.desync_count = 0;
+        self.desync_epoch = self.stall_epoch;
+    }
+
     fn challenge_ack(&mut self, now: Instant) {
         // RFC 5961 §7: rate-limit challenge ACKs.
         if now.saturating_since(self.challenge_ack_ts) >= Duration::from_secs(1) {
@@ -960,6 +1031,11 @@ impl Conn {
                 {
                     self.stats.paws_drops += 1;
                     self.ack_need = AckNeed::Now;
+                    if !syn_rcvd && h.has(ACK) {
+                        let a = self.tx_sp.off(h.ack, self.snd_una);
+                        let proof = a > self.snd_una as i64 && a <= self.snd_max as i64;
+                        self.note_desync(h, proof, ctx);
+                    }
                     return;
                 }
             }
@@ -1026,14 +1102,19 @@ impl Conn {
         let ack_off = self.tx_sp.off(h.ack, self.snd_una);
         // Validate the ACK field before trusting anything else in the segment
         // (TS.Recent must not be updated from a segment we then drop).
+        // Sent after every segment we accepted (desync proof for a bad ACK below).
+        let fresh = self.ts_ok && h.opts.ts.is_some_and(|(v, _)| (v.wrapping_sub(self.ts_recent) as i32) > 0);
         if !syn_rcvd {
+            // Both are impossible from a synchronized peer's fresh segment.
             if ack_off > self.snd_max as i64 {
                 self.ack_need = AckNeed::Now;
+                self.note_desync(h, fresh, ctx);
                 return;
             }
             if ack_off < self.snd_una as i64 - self.max_snd_wnd.max(65535) as i64 {
                 // Too old (RFC 5961 §5).
                 self.challenge_ack(now);
+                self.note_desync(h, fresh, ctx);
                 return;
             }
         }
@@ -1052,6 +1133,16 @@ impl Conn {
                         self.rcv_rtt = if self.rcv_rtt.is_zero() { s } else { (self.rcv_rtt * 7 + s) / 8 }.min(s.max(self.rcv_rtt));
                     }
                 }
+            }
+        }
+
+        if !syn_rcvd {
+            if ack_off < self.snd_una as i64 {
+                if self.note_desync(h, fresh, ctx) {
+                    return;
+                }
+            } else {
+                self.desync_clear();
             }
         }
 
@@ -1990,6 +2081,7 @@ impl Conn {
             PlanKind::Probe => {
                 self.probe_pending = false;
                 self.stats.zero_window_probes += 1;
+                self.stall_epoch += 1;
             }
             PlanKind::Rst => {
                 self.rst_pending = false;
@@ -2043,9 +2135,7 @@ impl Conn {
         if idle {
             self.rto_base = now;
             self.progress_ts = now;
-            if matches!(self.timer, None | Some((TimerKind::Persist, _))) || true {
-                self.rearm_rtx_timer(now);
-            }
+            self.rearm_rtx_timer(now);
         } else if self.timer.is_none() {
             self.rearm_rtx_timer(now);
         } else if matches!(self.timer, Some((TimerKind::Tlp, _))) {
@@ -2178,6 +2268,7 @@ impl Conn {
                         return true;
                     }
                     self.keepalive_sent += 1;
+                    self.stall_epoch += 1;
                     self.probe_pending = true;
                     self.keepalive_at = Some(now + ctx.cfg.keepalive_interval);
                     wake = true;
@@ -2247,6 +2338,7 @@ impl Conn {
             return false;
         }
         self.stats.rto_count += 1;
+        self.stall_epoch += 1;
         // First RTO keeps SACK information; a repeated RTO for the same data suggests
         // reneging (or forged SACKs), so forget it (RFC 2018 §8).
         let newly = if self.rto_backoff >= 1 { self.sb.renege_all() } else { self.sb.mark_all_lost() };
