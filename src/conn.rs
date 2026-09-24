@@ -124,6 +124,16 @@ struct Tlp {
     /// snd_una when the last probe was sent: at most one probe per snd_una (RFC 8985 §7.2).
     probed_una: Option<u64>,
     is_retrans: bool,
+    /// Peer's ACK delay for a lone segment, measured as RTT sample − min RTT
+    /// when the whole flight was one segment: a decaying max (jumps up at once,
+    /// decays by 1/8 per sample). Replaces the fixed worst-case delayed-ACK
+    /// allowance (WCDelAckT) in the single-segment PTO once known.
+    lone_ack_delay: Option<Duration>,
+    /// Probe of a lone segment that was a retransmission: (end offset, original
+    /// send time, probe send time). An ACK for it arriving sooner than min RTT
+    /// after the probe acknowledges the original, so the probe was spurious and
+    /// the ACK delay was underestimated; Karn's rule would otherwise hide that.
+    lone_probe: Option<(u64, Instant, Instant)>,
 }
 
 /// Delivery-rate estimation state (draft-cheng-iccrg-delivery-rate-estimation).
@@ -312,6 +322,8 @@ pub enum ReadResult {
 }
 
 const MAX_DELACK_SEGS: u64 = 2;
+/// Worst-case delayed-ACK time of a peer (RFC 8985 §7.2 WCDelAckT).
+const WC_DEL_ACK: Duration = Duration::from_millis(200);
 const DEFAULT_MSS_V4: u32 = 536;
 const DEFAULT_MSS_V6: u32 = 1220;
 const TS_VALID_FOR: Duration = Duration::from_secs(24 * 24 * 3600);
@@ -1471,10 +1483,31 @@ impl Conn {
             self.rack.reordering_seen = true;
         }
 
+        // A lone-segment probe acknowledged faster than any round trip: the ACK is
+        // for the original, which was only delayed. Learn the real delay from it.
+        if let Some((end, orig, probe)) = self.tlp.lone_probe {
+            if ack >= end {
+                self.tlp.lone_probe = None;
+                if self.rtt.has_sample && now.saturating_since(probe) < self.rtt.min_rtt {
+                    let d = now.saturating_since(orig).saturating_sub(self.rtt.min_rtt).min(WC_DEL_ACK);
+                    self.tlp.lone_ack_delay = Some(self.tlp.lone_ack_delay.map_or(d, |e| e.max(d)));
+                }
+            }
+        }
+
         // RTT sample (Karn: never from retransmitted records).
         if let Some((_, rtt)) = newest_rtt {
             self.rtt.sample(now, rtt);
             rs.rtt = Some(rtt);
+            // A lone segment acked on its own: its extra delay over min RTT is the
+            // peer's delayed-ACK timer (RFC 8985 §7.2 WCDelAckT, measured).
+            if self.snd_max - prior_una <= self.mss as u64 && self.snd_una == self.snd_max {
+                let d = rtt.saturating_sub(self.rtt.min_rtt).min(WC_DEL_ACK);
+                self.tlp.lone_ack_delay = Some(match self.tlp.lone_ack_delay {
+                    Some(e) if e > d => e - (e - d) / 8,
+                    _ => d,
+                });
+            }
         }
 
         // RACK loss detection (RFC 8985 §6.2).
@@ -2066,6 +2099,8 @@ impl Conn {
                     self.commit_new(p, now);
                     self.tlp.is_retrans = false;
                 } else {
+                    let orig = self.sb.recs[p.rec_idx].xmit;
+                    self.tlp.lone_probe = (self.snd_max - self.snd_una <= self.mss as u64).then_some((self.snd_max, orig, now));
                     self.commit_rtx(p, now);
                     self.tlp.is_retrans = true;
                 }
@@ -2181,7 +2216,15 @@ impl Conn {
         let srtt = self.rtt.srtt_or(Duration::from_millis(100));
         let mut pto = (srtt * 2).max(Duration::from_millis(10));
         if self.snd_max - self.snd_una <= self.mss as u64 {
-            pto = pto.max(srtt * 3 / 2 + Duration::from_millis(200));
+            // One segment in flight: its ACK may be held by the peer's delayed-ACK
+            // timer. RFC 8985 §7.2 allows for the worst case (200 ms), which makes a
+            // lost lone segment (the typical reply of a request/response exchange)
+            // wait for the 200 ms RTO. Once the peer's actual delay is measured, allow
+            // that plus a margin instead; never more than the worst case.
+            pto = match self.tlp.lone_ack_delay {
+                Some(d) => pto.max(srtt + (d * 5 / 4 + Duration::from_millis(2)).min(WC_DEL_ACK)),
+                None => pto.max(srtt * 3 / 2 + WC_DEL_ACK),
+            };
         }
         pto
     }
@@ -2347,7 +2390,8 @@ impl Conn {
         self.rto_backoff += 1;
         self.rto_tsval_pending = true;
         self.rto_tsval = None;
-        self.tlp = Tlp::default();
+        // The peer's measured ACK delay survives the reset of the probe state.
+        self.tlp = Tlp { lone_ack_delay: self.tlp.lone_ack_delay, ..Tlp::default() };
         self.rack_timeout = None;
         self.timer = Some((TimerKind::Rto, self.rto_deadline()));
         // Keep rto_base: the deadline doubles relative to the last progress.
