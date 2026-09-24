@@ -136,8 +136,7 @@ impl SmolStack {
     pub fn new(opts: SmolOpts, counters: Arc<ServerCounters>) -> Self {
         let start = Instant::now();
         let mut dev = ChanDevice { rx: VecDeque::new(), tx: Vec::new(), mtu: tun::MTU };
-        let mut iface =
-            Interface::new(Config::new(HardwareAddress::Ip), &mut dev, SInstant::from_micros(0));
+        let mut iface = Interface::new(Config::new(HardwareAddress::Ip), &mut dev, SInstant::from_micros(0));
         let srv: Ipv4Address = tun::SERVER_ADDR.parse().unwrap();
         let cli: Ipv4Address = tun::CLIENT_ADDR.parse().unwrap();
         iface.update_ip_addrs(|a| {
@@ -171,10 +170,7 @@ impl SmolStack {
     }
 
     fn add_listener(&mut self) {
-        let mut s = tcp::Socket::new(
-            tcp::SocketBuffer::new(vec![0u8; self.opts.rx_buf]),
-            tcp::SocketBuffer::new(vec![0u8; self.opts.tx_buf]),
-        );
+        let mut s = tcp::Socket::new(tcp::SocketBuffer::new(vec![0u8; self.opts.rx_buf]), tcp::SocketBuffer::new(vec![0u8; self.opts.tx_buf]));
         s.set_congestion_control(self.opts.cc);
         s.set_nagle_enabled(false);
         if let Some(us) = self.opts.pacing_backlog_us {
@@ -224,10 +220,7 @@ impl SmolStack {
                     break;
                 }
             }
-            if !c.eof_seen
-                && matches!(st, State::CloseWait | State::LastAck | State::Closing | State::TimeWait)
-                && !s.can_recv()
-            {
+            if !c.eof_seen && matches!(st, State::CloseWait | State::LastAck | State::Closing | State::TimeWait) && !s.can_recv() {
                 c.eof_seen = true;
                 app.on_peer_eof();
             }
@@ -304,9 +297,7 @@ impl UserStack for SmolStack {
 
     fn next_deadline(&mut self, now: Instant) -> Option<Instant> {
         let ts = self.ts(now);
-        self.iface
-            .poll_delay(ts, &self.sockets)
-            .map(|d| now + std::time::Duration::from_micros(d.total_micros()))
+        self.iface.poll_delay(ts, &self.sockets).map(|d| now + std::time::Duration::from_micros(d.total_micros()))
     }
 
     fn stats(&self) -> serde_json::Value {

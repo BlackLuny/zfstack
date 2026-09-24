@@ -26,9 +26,7 @@ struct IfReq {
 /// Create (attach to) a non-persistent TUN device in the calling thread's netns.
 /// The device disappears when the fd is closed. The fd is non-blocking.
 pub fn open_tun(name: &str) -> io::Result<RawFd> {
-    let fd = unsafe {
-        libc::open(c"/dev/net/tun".as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC)
-    };
+    let fd = unsafe { libc::open(c"/dev/net/tun".as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -47,10 +45,7 @@ pub fn sh(cmd: &str) -> io::Result<()> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     let out = Command::new(parts[0]).args(&parts[1..]).output()?;
     if !out.status.success() {
-        return Err(io::Error::other(format!(
-            "`{cmd}` failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
+        return Err(io::Error::other(format!("`{cmd}` failed: {}", String::from_utf8_lossy(&out.stderr).trim())));
     }
     Ok(())
 }
@@ -58,20 +53,12 @@ pub fn sh(cmd: &str) -> io::Result<()> {
 /// Like `sh`, ignoring failures (for cleanup).
 pub fn sh_quiet(cmd: &str) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    let _ = Command::new(parts[0])
-        .args(&parts[1..])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
+    let _ = Command::new(parts[0]).args(&parts[1..]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
 }
 
 pub fn sh_output(cmd: &str) -> String {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    Command::new(parts[0])
-        .args(&parts[1..])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default()
+    Command::new(parts[0]).args(&parts[1..]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
 }
 
 /// Remove leftovers from a previous (crashed) run.
@@ -148,8 +135,5 @@ pub fn qdisc_drops(netns: Option<&str>, dev: &str) -> u64 {
 
 /// /sys/class/net/<dev>/statistics/<name> (root netns only).
 pub fn dev_stat(dev: &str, name: &str) -> u64 {
-    std::fs::read_to_string(format!("/sys/class/net/{dev}/statistics/{name}"))
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
+    std::fs::read_to_string(format!("/sys/class/net/{dev}/statistics/{name}")).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0)
 }

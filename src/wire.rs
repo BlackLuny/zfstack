@@ -100,12 +100,7 @@ pub fn parse_ip(pkt: &[u8]) -> Result<IpInfo, DropReason> {
             s.copy_from_slice(&pkt[8..24]);
             let mut d = [0u8; 16];
             d.copy_from_slice(&pkt[24..40]);
-            Ok(IpInfo {
-                src: Ipv6Addr::from(s).into(),
-                dst: Ipv6Addr::from(d).into(),
-                l4_off: off,
-                l4_len: end - off,
-            })
+            Ok(IpInfo { src: Ipv6Addr::from(s).into(), dst: Ipv6Addr::from(d).into(), l4_off: off, l4_len: end - off })
         }
         _ => Err(DropReason::BadVersion),
     }
@@ -194,12 +189,7 @@ pub fn parse_tcp(pkt: &[u8], ip: &IpInfo) -> Result<TcpHeader, DropReason> {
                             }
                         }
                     }
-                    (8, 10) => {
-                        opts.ts = Some((
-                            u32::from_be_bytes([v[0], v[1], v[2], v[3]]),
-                            u32::from_be_bytes([v[4], v[5], v[6], v[7]]),
-                        ))
-                    }
+                    (8, 10) => opts.ts = Some((u32::from_be_bytes([v[0], v[1], v[2], v[3]]), u32::from_be_bytes([v[4], v[5], v[6], v[7]]))),
                     _ => {}
                 }
                 o = &o[len..];
@@ -460,13 +450,7 @@ mod tests {
     use super::*;
 
     fn roundtrip(src: IpAddr, dst: IpAddr) {
-        let mut opts = EmitOptions {
-            mss: Some(1400),
-            wscale: Some(7),
-            sack_perm: true,
-            ts: Some((123, 456)),
-            ..Default::default()
-        };
+        let mut opts = EmitOptions { mss: Some(1400), wscale: Some(7), sack_perm: true, ts: Some((123, 456)), ..Default::default() };
         opts.sack[0] = (Seq(10), Seq(20));
         opts.sack_n = 1;
         let a: &[u8] = b"hello";

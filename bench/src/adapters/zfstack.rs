@@ -9,10 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bytes::Bytes;
-use zfstack::{
-    CcAlgo, CloseReason, ConnId, Event, IfaceConfig, IfaceId, OutPacket, PeerId, ReadResult, SendResult, Shard, StackConfig,
-    WriteResult,
-};
+use zfstack::{CcAlgo, CloseReason, ConnId, Event, IfaceConfig, IfaceId, OutPacket, PeerId, ReadResult, SendResult, Shard, StackConfig, WriteResult};
 
 use crate::app::{AppConn, CloseAction, ServerCounters};
 use crate::stack::UserStack;
@@ -258,10 +255,7 @@ impl ZfStack {
             any = true;
             match ev {
                 Event::Accepted(id) => {
-                    self.conns.insert(
-                        id,
-                        C { app: AppConn::new(self.counters.clone()), eof: false, pending: Vec::new(), pending_off: 0 },
-                    );
+                    self.conns.insert(id, C { app: AppConn::new(self.counters.clone()), eof: false, pending: Vec::new(), pending_off: 0 });
                     self.active.insert(id);
                     self.max_conns = self.max_conns.max(self.conns.len());
                 }

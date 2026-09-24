@@ -181,16 +181,8 @@ pub fn run_direction(p: DirParams, source: Source, sink: Sink, stop: Arc<AtomicB
     let cpu0 = util::thread_cpu_now();
     let ns_per_byte = if p.rate_bps > 0 { 8e9 / p.rate_bps as f64 } else { 0.0 };
     let now = Instant::now();
-    let mut emu = Emu {
-        rng: util::Rng::new(p.seed),
-        p,
-        bn: VecDeque::new(),
-        bn_bytes: 0,
-        last_dep: now,
-        ns_per_byte,
-        line: VecDeque::new(),
-        c: DirCounters::default(),
-    };
+    let mut emu =
+        Emu { rng: util::Rng::new(p.seed), p, bn: VecDeque::new(), bn_bytes: 0, last_dep: now, ns_per_byte, line: VecDeque::new(), c: DirCounters::default() };
     let mut rbuf = vec![0u8; 65536];
     let mut out: Batch = Vec::with_capacity(256);
     loop {

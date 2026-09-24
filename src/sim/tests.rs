@@ -60,14 +60,8 @@ fn download_with_random_loss() {
 #[test]
 fn download_with_burst_loss_reorder_dup() {
     for seed in 10..16 {
-        let down = LinkParams {
-            loss: 0.01,
-            burst_continue: 0.5,
-            reorder: 0.02,
-            reorder_delay: Duration::from_millis(3),
-            duplicate: 0.01,
-            ..Default::default()
-        };
+        let down =
+            LinkParams { loss: 0.01, burst_continue: 0.5, reorder: 0.02, reorder_delay: Duration::from_millis(3), duplicate: 0.01, ..Default::default() };
         let up = LinkParams { loss: 0.005, reorder: 0.01, duplicate: 0.01, ..Default::default() };
         let mut s = sim(seed, down, up);
         let (_, c) = download(&mut s, 4 << 20, secs(120));
@@ -309,13 +303,7 @@ fn bbr_and_brutal_complete() {
 
 fn goodput_run(cc: CcAlgo, rate: u64, rtt_ms: u64, queue_bdp: f64, loss: f64, bytes: u64, gap: Duration) -> (f64, crate::ConnInfo) {
     let bdp = (rate / 8) as f64 * rtt_ms as f64 / 1000.0;
-    let p = LinkParams {
-        rate_bps: rate,
-        delay: Duration::from_millis(rtt_ms / 2),
-        queue_bytes: (bdp * queue_bdp) as usize,
-        loss,
-        ..Default::default()
-    };
+    let p = LinkParams { rate_bps: rate, delay: Duration::from_millis(rtt_ms / 2), queue_bytes: (bdp * queue_bdp) as usize, loss, ..Default::default() };
     let mut cfg = StackConfig::default();
     cfg.cc = cc;
     let mut s = Sim::new(777, cfg, StackConfig::default(), p.clone(), LinkParams { loss: 0.0, ..p });
@@ -365,7 +353,17 @@ fn bbr_trace() {
         let got = s.b.conns[&id].received;
         let Some(&srv) = s.a.accepted.first() else { continue };
         let info = s.a.shard.info(srv).unwrap();
-        eprintln!("{:>4}ms {:>6.1}Mbps drops={} rtx={} rto={} tlp={} fr={} {}", i * 100, (got - last) as f64 * 8.0 / 0.1 / 1e6, s.ab.stats.queue_drops, info.stats.bytes_retrans, info.stats.rto_count, info.stats.tlp_count, info.stats.fast_recoveries, info.cc_debug);
+        eprintln!(
+            "{:>4}ms {:>6.1}Mbps drops={} rtx={} rto={} tlp={} fr={} {}",
+            i * 100,
+            (got - last) as f64 * 8.0 / 0.1 / 1e6,
+            s.ab.stats.queue_drops,
+            info.stats.bytes_retrans,
+            info.stats.rto_count,
+            info.stats.tlp_count,
+            info.stats.fast_recoveries,
+            info.cc_debug
+        );
         last = got;
     }
 }
@@ -375,7 +373,10 @@ fn bbr_trace() {
 fn bbr_probe_steady_state() {
     for (q, bytes) in [(0.25, 240u64 << 20), (2.0, 240 << 20)] {
         let (mbps, info) = goodput_run(CcAlgo::Bbr, 200_000_000, 80, q, 0.0, bytes, Duration::ZERO);
-        eprintln!("q={q}: {mbps:.1} Mbit/s cwnd={} pacing={:?} srtt={:?} minrtt={:?} rtx={}", info.cwnd, info.pacing_rate, info.srtt, info.min_rtt, info.stats.bytes_retrans);
+        eprintln!(
+            "q={q}: {mbps:.1} Mbit/s cwnd={} pacing={:?} srtt={:?} minrtt={:?} rtx={}",
+            info.cwnd, info.pacing_rate, info.srtt, info.min_rtt, info.stats.bytes_retrans
+        );
     }
     for (q, bytes) in [(0.25, 240u64 << 20), (2.0, 240 << 20)] {
         let (mbps, info) = goodput_run(CcAlgo::Cubic, 200_000_000, 80, q, 0.0, bytes, Duration::ZERO);
@@ -460,7 +461,11 @@ fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) {
     let c = &s.b.conns[&id];
     eprintln!(
         "fuzz end (seed {sim_seed}/{fuzz_seed}): client received={} eof={} closed={:?} corrupt={}; server app={:?}",
-        c.received, c.eof, c.closed, c.corrupt, s.a.conns.get(&srv).map(|x| (x.closed, x.eof))
+        c.received,
+        c.eof,
+        c.closed,
+        c.corrupt,
+        s.a.conns.get(&srv).map(|x| (x.closed, x.eof))
     );
     assert!(!c.corrupt, "stream corrupted");
     if c.eof {
@@ -645,21 +650,9 @@ fn reordered_and_duplicated_acks_are_not_desync() {
     // Burst loss forces RTOs (the stall epochs evidence is counted against).
     for seed in 20..28 {
         let burst = if seed >= 24 { 0.7 } else { 0.0 };
-        let down = LinkParams {
-            loss: 0.02,
-            burst_continue: burst,
-            reorder: 0.05,
-            reorder_delay: Duration::from_millis(30),
-            duplicate: 0.05,
-            ..Default::default()
-        };
-        let up = LinkParams {
-            loss: 0.01,
-            reorder: 0.3,
-            reorder_delay: Duration::from_millis(1500),
-            duplicate: 0.2,
-            ..Default::default()
-        };
+        let down =
+            LinkParams { loss: 0.02, burst_continue: burst, reorder: 0.05, reorder_delay: Duration::from_millis(30), duplicate: 0.05, ..Default::default() };
+        let up = LinkParams { loss: 0.01, reorder: 0.3, reorder_delay: Duration::from_millis(1500), duplicate: 0.2, ..Default::default() };
         let mut s = sim(seed, down, up);
         let (_, c) = download(&mut s, 4 << 20, secs(120));
         assert_download_ok(&c, 4 << 20);
