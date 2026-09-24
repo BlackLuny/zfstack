@@ -149,25 +149,21 @@ impl Scoreboard {
     }
 
     /// Mark records fully inside `[l, r)` as sacked. Calls `f` for each newly sacked record.
-    /// Returns the number of bytes newly sacked.
+    /// Returns the number of bytes newly sacked. Records are never split on SACK
+    /// edges: legitimate blocks align with segment boundaries, and splitting on
+    /// arbitrary edges would let a peer fragment the scoreboard (like Linux, which
+    /// only splits at MSS multiples).
     pub fn sack(&mut self, l: u64, r: u64, mut f: impl FnMut(&Rec)) -> u64 {
-        let mut i = self.recs.partition_point(|x| x.end <= l);
+        let mut i = self.recs.partition_point(|x| x.start < l);
         let mut n = 0;
         while i < self.recs.len() {
             let rec = self.recs[i];
-            if rec.start >= r {
+            // A FIN occupies one sequence number after the data; accept blocks that
+            // cover all of the record's data even if they stop before the FIN.
+            let data_end = rec.end - rec.has(F_FIN) as u64;
+            if data_end > r || rec.start >= r {
                 break;
             }
-            if rec.start < l {
-                // Partially covered at the left edge: split so the covered part can be marked.
-                self.split(i, l);
-                i += 1;
-                continue;
-            }
-            if rec.end > r {
-                self.split(i, r);
-            }
-            let rec = self.recs[i];
             if !rec.has(F_SACKED) {
                 self.unaccount(&rec);
                 let mut m = rec;
@@ -355,8 +351,9 @@ mod tests {
         sb.check();
         assert_eq!(sb.pipe(out), 600);
         assert_eq!(sb.next_lost(), Some(1));
-        // Partial sack splitting.
-        sb.sack(750, 851, |_| {});
+        // Partial SACK blocks only mark fully covered records.
+        assert_eq!(sb.sack(750, 851, |_| {}), 0);
+        assert_eq!(sb.sack(701, 851, |_| {}), 100);
         sb.check();
         let mut delivered = 0;
         sb.ack_to(151, |r| delivered += r.len());

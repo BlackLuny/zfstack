@@ -166,12 +166,27 @@ struct Iface {
 #[derive(Default)]
 struct Sched {
     in_ready: bool,
+    /// Counted in `half_open` / the TIME_WAIT table (reconciled in `sync_counts`).
+    half_open: bool,
+    time_wait: bool,
 }
 
 struct Slot {
     gen: u32,
     conn: Option<Box<Conn>>,
     sched: Sched,
+}
+
+/// Pacing granularity: one quantum clamp(rate × 1 ms, 2 MSS, max_quantum) worth of time.
+fn pacing_ahead(rate: u64, mss: usize, max_quantum: usize) -> Duration {
+    let pq = ((rate / 1000) as usize).clamp(2 * mss, max_quantum);
+    Duration::from_nanos((pq as u128 * 1_000_000_000 / rate.max(1) as u128).min(u64::MAX as u128) as u64)
+}
+
+enum CookieResult {
+    Established(u32),
+    NoResources,
+    Invalid,
 }
 
 struct Stateless {
@@ -265,6 +280,10 @@ impl Shard {
     }
     pub fn set_admission(&mut self, p: Box<dyn AdmissionPolicy>) {
         self.admission = p;
+    }
+    /// Half-open (SYN-RECEIVED) connections and TIME_WAIT entries.
+    pub fn half_open_and_time_wait(&self) -> (usize, usize) {
+        (self.half_open, self.time_wait_n)
     }
     pub fn conn_count(&self) -> usize {
         self.table.len()
@@ -364,9 +383,15 @@ impl Shard {
             return;
         }
         if h.has(ACK) && !h.has(SYN) {
-            if let Some(idx) = self.try_cookie(now, iface, peer, remote, local, &h) {
-                self.input_existing(now, idx, &h, payload);
-                return;
+            match self.try_cookie(now, iface, peer, remote, local, &h) {
+                CookieResult::Established(idx) => {
+                    self.input_existing(now, idx, &h, payload);
+                    return;
+                }
+                // Valid cookie but no resources: drop the ACK silently so the client
+                // retransmits and the connection can be established later (§10.2).
+                CookieResult::NoResources => return,
+                CookieResult::Invalid => {}
             }
         }
         self.reply_rst(iface, peer, remote, local, &h, payload.len());
@@ -375,8 +400,6 @@ impl Shard {
     fn input_existing(&mut self, now: Instant, idx: u32, h: &TcpHeader, payload: Bytes) {
         let slot = &mut self.slots[idx as usize];
         let conn = slot.conn.as_mut().unwrap();
-        let was_syn_rcvd = conn.state == State::SynReceived;
-        let was_tw = conn.state == State::TimeWait;
         {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.input(now, h, payload, &mut ctx);
@@ -386,14 +409,26 @@ impl Shard {
             let (iface, peer, remote, local) = (conn.iface, conn.peer, conn.remote, conn.local);
             self.push_stateless_rst(iface, peer, local, remote, h.ack, None);
         }
-        let conn = self.slots[idx as usize].conn.as_ref().unwrap();
-        if was_syn_rcvd && conn.state != State::SynReceived {
+        self.after_conn_change(idx);
+    }
+
+    /// Reconcile the half-open and TIME_WAIT counters with the connection state.
+    /// Every state change passes through here (or `free_slot`), whatever caused it.
+    fn sync_counts(&mut self, idx: u32) {
+        let slot = &mut self.slots[idx as usize];
+        let Some(conn) = slot.conn.as_ref() else { return };
+        let st = conn.state;
+        if slot.sched.half_open && st != State::SynReceived {
+            slot.sched.half_open = false;
             self.half_open = self.half_open.saturating_sub(1);
         }
-        if !was_tw && conn.state == State::TimeWait {
+        if slot.sched.time_wait && st != State::TimeWait {
+            slot.sched.time_wait = false;
+            self.time_wait_n = self.time_wait_n.saturating_sub(1);
+        } else if !slot.sched.time_wait && st == State::TimeWait {
+            slot.sched.time_wait = true;
             self.note_time_wait(idx);
         }
-        self.after_conn_change(idx);
     }
 
     fn note_time_wait(&mut self, idx: u32) {
@@ -403,15 +438,12 @@ impl Shard {
         while self.time_wait_n > self.cfg.max_time_wait {
             let Some((i, g)) = self.time_wait.pop_front() else { break };
             let s = &self.slots[i as usize];
-            if s.gen == g && s.conn.as_ref().is_some_and(|c| c.state == State::TimeWait) {
+            if i != idx && s.gen == g && s.sched.time_wait {
                 self.stats.time_wait_recycled += 1;
-                self.time_wait_n -= 1;
                 let c = self.slots[i as usize].conn.as_mut().unwrap();
                 c.app_closed = true;
                 c.state = State::Closed;
                 self.free_slot(i);
-            } else {
-                self.time_wait_n = self.time_wait_n.saturating_sub(0);
             }
         }
         // Compact stale entries occasionally.
@@ -419,14 +451,14 @@ impl Shard {
             let slots = &self.slots;
             self.time_wait.retain(|&(i, g)| {
                 let s = &slots[i as usize];
-                s.gen == g && s.conn.as_ref().is_some_and(|c| c.state == State::TimeWait)
+                s.gen == g && s.sched.time_wait
             });
-            self.time_wait_n = self.time_wait.len();
         }
     }
 
     /// Reschedule timers / tx after any change to a connection; reap if done.
     fn after_conn_change(&mut self, idx: u32) {
+        self.sync_counts(idx);
         let slot = &mut self.slots[idx as usize];
         let Some(conn) = slot.conn.as_ref() else { return };
         if conn.reapable() && !conn.has_rst_pending() {
@@ -442,10 +474,18 @@ impl Shard {
 
     fn schedule(&mut self, idx: u32) {
         let slot = &mut self.slots[idx as usize];
-        if slot.sched.in_ready || self.pacing.contains(idx) {
+        if slot.sched.in_ready {
             return;
         }
         let Some(conn) = slot.conn.as_ref() else { return };
+        if self.pacing.contains(idx) {
+            // Paced data waits, but ACKs / RSTs / probes must not: serve now; `serve`
+            // puts the connection back into the pacing heap for its data.
+            if !conn.wants_unpaced_tx() {
+                return;
+            }
+            self.pacing.remove(idx);
+        }
         if !conn.wants_tx() {
             return;
         }
@@ -463,8 +503,11 @@ impl Shard {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.destroy(&mut ctx);
         }
-        if conn.state == State::SynReceived {
+        if slot.sched.half_open {
             self.half_open = self.half_open.saturating_sub(1);
+        }
+        if slot.sched.time_wait {
+            self.time_wait_n = self.time_wait_n.saturating_sub(1);
         }
         self.table.remove(&(conn.iface, conn.remote, conn.local));
         self.budget.peer_conn_del(conn.peer);
@@ -540,6 +583,7 @@ impl Shard {
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.table.insert((iface, remote, local), idx);
         self.half_open += 1;
+        self.slots[idx as usize].sched.half_open = true;
         self.stats.conns_created += 1;
         self.after_conn_change(idx);
     }
@@ -617,20 +661,31 @@ impl Shard {
         self.push_stateless(iface, peer, pkt);
     }
 
-    fn try_cookie(&mut self, now: Instant, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, h: &TcpHeader) -> Option<u32> {
+    fn try_cookie(&mut self, now: Instant, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, h: &TcpHeader) -> CookieResult {
+        match self.try_cookie_inner(now, iface, peer, remote, local, h) {
+            Ok(idx) => CookieResult::Established(idx),
+            Err(true) => CookieResult::NoResources,
+            Err(false) => CookieResult::Invalid,
+        }
+    }
+
+    /// Err(true) = valid cookie but resources exhausted; Err(false) = not a valid cookie.
+    fn try_cookie_inner(&mut self, now: Instant, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, h: &TcpHeader) -> Result<u32, bool> {
         if self.stats.syn_cookies_sent == 0 {
-            return None;
+            return Err(false);
         }
         self.rotate_cookie_keys(now);
         let cookie = h.ack.0.wrapping_sub(1);
         let peer_isn = h.seq.add(u32::MAX); // seq - 1
         let cg = (cookie >> 27) & 0x1f;
-        let gen = [self.cookie_gen, self.cookie_gen.wrapping_sub(1)].into_iter().find(|g| (*g as u32 & 0x1f) == cg)?;
+        let Some(gen) = [self.cookie_gen, self.cookie_gen.wrapping_sub(1)].into_iter().find(|g| (*g as u32 & 0x1f) == cg) else {
+            return Err(false);
+        };
         if gen + 1 < self.cookie_gen {
-            return None;
+            return Err(false);
         }
         if self.cookie_hash(gen, remote, local, peer_isn) & 0x00ff_ffff != cookie & 0x00ff_ffff {
-            return None;
+            return Err(false);
         }
         let mss = MSS_TABLE[((cookie >> 24) & 7) as usize];
         let (mut wscale, mut sack, mut ts) = (None, false, None);
@@ -647,11 +702,11 @@ impl Shard {
         // Re-check admission and resources (§10.2): a failure drops this ACK.
         if self.budget.level() >= Pressure::High || !self.budget.peer_conn_add(peer) {
             self.stats.syn_cookies_rejected_resources += 1;
-            return None;
+            return Err(true);
         }
         if self.admission.on_syn(iface, peer, remote, local) != Admission::Accept {
             self.budget.peer_conn_del(peer);
-            return None;
+            return Err(false);
         }
         self.stats.syn_cookies_ok += 1;
         let mtu = self.iface_mtu(iface);
@@ -665,7 +720,7 @@ impl Shard {
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.table.insert((iface, remote, local), idx);
         self.stats.conns_created += 1;
-        Some(idx)
+        Ok(idx)
     }
 
     fn reply_rst(&mut self, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, h: &TcpHeader, payload_len: usize) {
@@ -739,13 +794,9 @@ impl Shard {
         while let Some(idx) = self.timers.pop_due(now) {
             let slot = &mut self.slots[idx as usize];
             let Some(conn) = slot.conn.as_mut() else { continue };
-            let was_tw = conn.state == State::TimeWait;
             {
                 let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
                 conn.on_timer(now, &mut ctx);
-            }
-            if was_tw && conn.state != State::TimeWait {
-                self.time_wait_n = self.time_wait_n.saturating_sub(1);
             }
             self.after_conn_change(idx);
         }
@@ -836,6 +887,7 @@ impl Shard {
     }
 
     fn after_conn_change_no_sched(&mut self, idx: u32) {
+        self.sync_counts(idx);
         let slot = &mut self.slots[idx as usize];
         let Some(conn) = slot.conn.as_ref() else { return };
         if conn.reapable() && !conn.has_rst_pending() {
@@ -871,14 +923,19 @@ impl Shard {
         let credit = self.wake.credit;
         let mut sent = 0usize;
         loop {
-            let Some(plan): Option<Plan> = conn.plan(now, level) else { return (sent, false) };
+            let Some(mut plan): Option<Plan> = conn.plan(now, level) else { return (sent, false) };
+            if plan.paced() && rate.is_some() && conn.next_send_time > now + pacing_ahead(rate.unwrap(), mss, self.cfg.max_quantum) {
+                // Data must wait for pacing, but a pending ACK / probe goes now.
+                if let Some(c) = conn.plan_control(level) {
+                    plan = c;
+                }
+            }
             if plan.paced() {
                 if let Some(r) = rate {
                     // Pacing granularity = one scheduling quantum, clamp(rate × 1 ms, 2 MSS,
                     // 64 KiB) (§7.1; Linux TSO autosizing uses the same ~1 ms): a segment
                     // may leave up to one quantum's worth of time ahead of its EDT slot.
-                    let pq = ((r / 1000) as usize).clamp(2 * mss, self.cfg.max_quantum);
-                    let ahead = Duration::from_nanos((pq as u128 * 1_000_000_000 / r.max(1) as u128).min(u64::MAX as u128) as u64);
+                    let ahead = pacing_ahead(r, mss, self.cfg.max_quantum);
                     if conn.next_send_time > now + ahead {
                         conn.note_pacing_limited(now);
                         // Wake when a full quantum of credit has accumulated.

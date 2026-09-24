@@ -169,10 +169,14 @@ impl RxQueue {
     }
 }
 
-/// Out-of-order segments keyed by 64-bit stream offset. Ranges never overlap.
+
+/// Out-of-order segments keyed by 64-bit stream offset. Segments never overlap.
+/// `ranges` holds the merged intervals so SACK generation and block lookup are
+/// O(log n) regardless of how the data was fragmented.
 #[derive(Default)]
 pub struct OooQueue {
     segs: BTreeMap<u64, Bytes>,
+    ranges: BTreeMap<u64, u64>,
     bytes: usize,
     /// Most recently changed range (reported first in SACK, RFC 2018 §4).
     pub last: Option<(u64, u64)>,
@@ -186,28 +190,36 @@ impl OooQueue {
         self.segs.is_empty()
     }
     pub fn ranges(&self) -> usize {
+        self.ranges.len()
+    }
+    pub fn segments(&self) -> usize {
         self.segs.len()
+    }
+    /// Whether storing another segment would exceed `limit` descriptors (§6.7).
+    pub fn is_full(&self, limit: usize) -> bool {
+        self.segs.len() >= limit
     }
 
     /// Insert `[off, off+data.len())`, keeping only bytes not already present.
     /// Returns number of new bytes stored.
     pub fn insert(&mut self, off: u64, data: Bytes) -> usize {
         let end = off + data.len() as u64;
-        let mut added = 0;
-        let mut cur = off;
-        // Walk existing ranges overlapping [off, end) and fill gaps.
+        if data.is_empty() {
+            return 0;
+        }
+        // Gaps of [off, end) not covered by existing ranges.
         let mut gaps: Vec<(u64, u64)> = Vec::new();
-        if let Some((&s, b)) = self.segs.range(..=off).next_back() {
-            let e = s + b.len() as u64;
+        let mut cur = off;
+        if let Some((_, &e)) = self.ranges.range(..=off).next_back() {
             if e > cur {
                 cur = e.min(end);
             }
         }
-        for (&s, b) in self.segs.range(off..end) {
+        for (&s, &e) in self.ranges.range(off..end) {
             if s > cur {
                 gaps.push((cur, s));
             }
-            cur = cur.max(s + b.len() as u64);
+            cur = cur.max(e);
             if cur >= end {
                 break;
             }
@@ -215,55 +227,41 @@ impl OooQueue {
         if cur < end {
             gaps.push((cur, end));
         }
+        let mut added = 0;
         for (s, e) in gaps {
             let piece = data.slice((s - off) as usize..(e - off) as usize);
             added += piece.len();
             self.segs.insert(s, piece);
         }
-        self.bytes += added;
-        if added > 0 {
-            let (bs, be) = self.block_containing(off.max(self.first_start().unwrap_or(off)));
-            self.last = Some((bs, be));
+        if added == 0 {
+            return 0;
         }
-        let _ = end;
+        self.bytes += added;
+        // Merge [off, end) into the interval map.
+        let mut ns = off;
+        let mut ne = end;
+        if let Some((&s, &e)) = self.ranges.range(..=off).next_back() {
+            if e >= off {
+                ns = s;
+                ne = ne.max(e);
+                self.ranges.remove(&s);
+            }
+        }
+        let overl: Vec<(u64, u64)> = self.ranges.range(ns..=ne).map(|(&s, &e)| (s, e)).collect();
+        for (s, e) in overl {
+            ne = ne.max(e);
+            self.ranges.remove(&s);
+        }
+        self.ranges.insert(ns, ne);
+        self.last = Some((ns, ne));
         added
     }
 
-    fn first_start(&self) -> Option<u64> {
-        self.segs.keys().next().copied()
-    }
-
-    /// The maximal contiguous block containing offset `at` (must be present).
-    fn block_containing(&self, at: u64) -> (u64, u64) {
-        let mut start = at;
-        let mut end = at;
-        // Extend backwards.
-        let mut iter = self.segs.range(..=at).rev();
-        if let Some((&s, b)) = iter.next() {
-            start = s;
-            end = s + b.len() as u64;
-            for (&ps, pb) in iter {
-                if ps + pb.len() as u64 == start {
-                    start = ps;
-                } else {
-                    break;
-                }
-            }
-        }
-        for (&s, b) in self.segs.range(end..) {
-            if s == end {
-                end = s + b.len() as u64;
-            } else {
-                break;
-            }
-        }
-        (start, end)
-    }
-
     /// Remove and return data contiguous from `off` (the new rcv_nxt).
-    /// Data before `off` is discarded.
-    pub fn pop_contiguous(&mut self, off: u64, out: &mut RxQueue) -> u64 {
+    /// Returns (new rcv_nxt, bytes discarded because they were below `off`).
+    pub fn pop_contiguous(&mut self, off: u64, out: &mut RxQueue) -> (u64, u64) {
         let mut next = off;
+        let mut discarded = 0u64;
         while let Some((&s, _)) = self.segs.iter().next() {
             if s > next {
                 break;
@@ -272,8 +270,22 @@ impl OooQueue {
             self.bytes -= b.len();
             let e = s + b.len() as u64;
             if e > next {
+                discarded += next - s;
                 out.push(b.slice((next - s) as usize..));
                 next = e;
+            } else {
+                discarded += b.len() as u64;
+            }
+        }
+        // Trim the interval map.
+        while let Some((&s, &e)) = self.ranges.iter().next() {
+            if s >= next {
+                break;
+            }
+            self.ranges.remove(&s);
+            if e > next {
+                self.ranges.insert(next, e);
+                break;
             }
         }
         if let Some((ls, le)) = self.last {
@@ -283,10 +295,10 @@ impl OooQueue {
                 self.last = Some((next, le));
             }
         }
-        next
+        (next, discarded)
     }
 
-    /// Contiguous blocks (merged), most recent first, at most `max`.
+    /// Merged blocks, most recent first, at most `max`.
     pub fn sack_blocks(&self, max: usize, out: &mut Vec<(u64, u64)>) {
         out.clear();
         if max == 0 {
@@ -295,26 +307,12 @@ impl OooQueue {
         if let Some(l) = self.last {
             out.push(l);
         }
-        let mut cur: Option<(u64, u64)> = None;
-        for (&s, b) in &self.segs {
-            let e = s + b.len() as u64;
-            match cur {
-                Some((cs, ce)) if ce == s => cur = Some((cs, e)),
-                Some(c) => {
-                    if Some(c) != self.last {
-                        out.push(c);
-                    }
-                    cur = Some((s, e));
-                }
-                None => cur = Some((s, e)),
-            }
+        for (&s, &e) in &self.ranges {
             if out.len() >= max {
                 break;
             }
-        }
-        if let Some(c) = cur {
-            if out.len() < max && Some(c) != self.last {
-                out.push(c);
+            if Some((s, e)) != self.last {
+                out.push((s, e));
             }
         }
         out.truncate(max);
@@ -324,6 +322,7 @@ impl OooQueue {
     pub fn clear(&mut self) -> usize {
         let b = self.bytes;
         self.segs.clear();
+        self.ranges.clear();
         self.bytes = 0;
         self.last = None;
         b
@@ -331,7 +330,7 @@ impl OooQueue {
 
     /// Highest offset held.
     pub fn end(&self) -> Option<u64> {
-        self.segs.iter().next_back().map(|(&s, b)| s + b.len() as u64)
+        self.ranges.iter().next_back().map(|(_, &e)| e)
     }
 }
 
@@ -374,15 +373,15 @@ mod tests {
         q.sack_blocks(3, &mut v);
         assert_eq!(v, vec![(200, 205), (100, 130)]);
         let mut rx = RxQueue::default();
-        let next = q.pop_contiguous(100, &mut rx);
-        assert_eq!(next, 130);
+        let (next, disc) = q.pop_contiguous(100, &mut rx);
+        assert_eq!((next, disc), (130, 0));
         assert_eq!(rx.len(), 30);
         q.sack_blocks(3, &mut v);
         assert_eq!(v, vec![(200, 205)]);
         // Overlap before rcv_nxt is discarded.
         q.insert(198, b(4));
-        let next = q.pop_contiguous(199, &mut rx);
-        assert_eq!(next, 205);
+        let (next, disc) = q.pop_contiguous(199, &mut rx);
+        assert_eq!((next, disc), (205, 1));
         assert_eq!(rx.len(), 30 + 6);
     }
 }

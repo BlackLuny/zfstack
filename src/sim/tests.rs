@@ -226,6 +226,11 @@ fn many_connections_and_full_release() {
     s.run_until(s.now + secs(30));
     for id in &ids {
         let c = &s.b.conns[id];
+        if c.received != 50_000 {
+            eprintln!("stuck client {:?}: {:?} info={:?}", id, c, s.b.shard.info(*id));
+            let srv = s.a.accepted.iter().find(|x| s.a.shard.info(**x).is_some_and(|i| i.remote == s.b.shard.info(*id).map(|j| j.local).unwrap_or(i.remote)));
+            eprintln!("server: {:?}", srv.and_then(|x| s.a.shard.info(*x)));
+        }
         assert_download_ok(c, 50_000);
     }
     for id in &s.a.accepted {
@@ -490,4 +495,48 @@ fn fix_checksums(pkt: &mut [u8]) {
     seg[17] = 0;
     let c = checksum_fold(sum_bytes(pseudo_sum(src.into(), dst.into(), seg.len() as u32), seg));
     seg[16..18].copy_from_slice(&c.to_be_bytes());
+}
+
+#[test]
+fn synack_timeouts_release_half_open_slots() {
+    // SYN-ACKs are all lost: half-open connections time out and must stop counting
+    // towards the SYN backlog (otherwise the shard stays on SYN cookies forever).
+    let mut cfg_a = StackConfig::default();
+    cfg_a.syn_backlog = 8;
+    let mut s = Sim::new(201, cfg_a, StackConfig::default(), LinkParams { loss: 1.0, ..Default::default() }, LinkParams::default());
+    for i in 0..5 {
+        s.connect(46000 + i, AppConn::default());
+    }
+    s.run_until(s.now + Duration::from_millis(100));
+    assert_eq!(s.a.shard.half_open_and_time_wait().0, 5);
+    // Client SYN retransmissions keep re-triggering SYN-ACKs; allow them to finish.
+    s.run_until(s.now + secs(60));
+    assert_eq!(s.a.shard.half_open_and_time_wait().0, 0, "half-open counter leaked");
+    assert_eq!(s.a.shard.conn_count(), 0);
+}
+
+#[test]
+fn unread_data_survives_orderly_close() {
+    // The server replies and closes without reading the request; the close completes
+    // (TIME_WAIT, then its expiry) and the unread request bytes must still be readable.
+    let mut s = sim(202, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 10, fin_after_send: true, read_paused_until: Instant::MAX, ..Default::default() };
+    let id = s.connect(46100, AppConn { to_send: 40_000, fin_after_send: true, ..Default::default() });
+    s.run_until(s.now + secs(3));
+    let srv = s.a.accepted[0];
+    let info = s.a.shard.info(srv).unwrap();
+    assert!(matches!(info.state, crate::State::TimeWait | crate::State::Closed), "state {:?}", info.state);
+    assert_eq!(info.rx_queued, 40_000);
+    s.run_until(s.now + secs(70));
+    let info = s.a.shard.info(srv).unwrap();
+    assert_eq!(info.state, crate::State::Closed);
+    assert_eq!(info.rx_queued, 40_000, "unread data dropped at close");
+    s.a.conns.get_mut(&srv).unwrap().read_paused_until = Instant::ZERO;
+    s.run_until(s.now + Duration::from_millis(10));
+    let c = &s.a.conns[&srv];
+    assert!(!c.corrupt);
+    assert_eq!(c.received, 40_000);
+    assert!(c.eof);
+    assert!(s.b.conns[&id].eof);
+    assert_eq!(s.a.shard.conn_count(), 0, "released after the app read and closed");
 }

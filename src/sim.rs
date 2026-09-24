@@ -283,7 +283,8 @@ impl Side {
         if c.released {
             return;
         }
-        if c.closed.is_some() {
+        // Abnormal close: release immediately. Orderly close: drain reads first.
+        if c.closed.is_some_and(|r| r != crate::CloseReason::Normal) || (c.closed.is_some() && c.eof) {
             c.released = true;
             self.shard.close(now, id);
             return;
@@ -307,9 +308,20 @@ impl Side {
                     ReadResult::WouldBlock => break,
                     ReadResult::Closed(r) => {
                         c.closed = Some(r);
+                        c.released = true;
+                        self.shard.close(now, id);
                         return;
                     }
                 }
+            }
+        }
+        if c.closed.is_some() {
+            if c.eof || now < c.read_paused_until {
+                if c.eof {
+                    c.released = true;
+                    self.shard.close(now, id);
+                }
+                return;
             }
         }
         // Write.
@@ -438,6 +450,11 @@ impl Sim {
             }
             let Some(t) = self.next_time() else {
                 self.now = until;
+                // Nothing scheduled: still let the apps react once (e.g. resumed reads).
+                self.step();
+                if self.next_time().is_some_and(|t| t <= until) {
+                    continue;
+                }
                 break;
             };
             if t > until {

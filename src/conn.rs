@@ -121,6 +121,8 @@ struct Tlp {
     pending: bool,
     /// snd_max at the time the probe was sent (end of the probe), if outstanding.
     end: Option<u64>,
+    /// snd_una when the last probe was sent: at most one probe per snd_una (RFC 8985 §7.2).
+    probed_una: Option<u64>,
     is_retrans: bool,
 }
 
@@ -659,7 +661,13 @@ impl Conn {
         self.delack_at = None;
         self.keepalive_at = None;
         self.life_at = None;
-        self.release_buffers(ctx);
+        if reason == CloseReason::Normal {
+            // Orderly close: received data stays readable until the app reads or
+            // closes the handle (like Linux keeps the receive queue after tcp_done).
+            self.release_send_side(ctx);
+        } else {
+            self.release_buffers(ctx);
+        }
         if self.accepted && !self.closed_notified && !self.app_closed {
             self.closed_notified = true;
             ctx.events.push_back(Event::Closed(self.id, reason));
@@ -675,6 +683,13 @@ impl Conn {
         let _ = (unread, ooo);
         ctx.budget.release(self.peer, self.rcv_charged + self.tx_charged);
         self.rcv_charged = 0;
+        self.tx_charged = 0;
+    }
+
+    fn release_send_side(&mut self, ctx: &mut Ctx) {
+        self.tx.release_all(ctx.pool);
+        self.sb.clear();
+        ctx.budget.release(self.peer, self.tx_charged);
         self.tx_charged = 0;
     }
 
@@ -929,6 +944,7 @@ impl Conn {
         let mut seg_len = payload.len() as i64 + h.has(SYN) as i64 + h.has(FIN) as i64;
         let rcv_nxt = self.rcv_nxt as i64;
         let wnd = self.rcv_adv.saturating_sub(self.rcv_nxt) as i64;
+        let mut fin_dropped = false;
 
         // Duplicate SYN in SYN-RECEIVED: retransmit the SYN-ACK.
         if syn_rcvd && h.has(SYN) && !h.has(ACK) && seg_off == 0 {
@@ -960,8 +976,10 @@ impl Conn {
         } else if wnd == 0 {
             // Zero window: still process the ACK of an in-sequence segment.
             if seg_off == rcv_nxt {
+                // The data is dropped, so a FIN riding on it must be ignored too.
                 payload = Bytes::new();
-                seg_len = h.has(FIN) as i64;
+                seg_len = 0;
+                fin_dropped = true;
                 true
             } else {
                 false
@@ -1005,6 +1023,21 @@ impl Conn {
         self.keepalive_sent = 0;
         self.arm_keepalive(now, ctx.cfg);
 
+        let ack_off = self.tx_sp.off(h.ack, self.snd_una);
+        // Validate the ACK field before trusting anything else in the segment
+        // (TS.Recent must not be updated from a segment we then drop).
+        if !syn_rcvd {
+            if ack_off > self.snd_max as i64 {
+                self.ack_need = AckNeed::Now;
+                return;
+            }
+            if ack_off < self.snd_una as i64 - self.max_snd_wnd.max(65535) as i64 {
+                // Too old (RFC 5961 §5).
+                self.challenge_ack(now);
+                return;
+            }
+        }
+
         // Timestamps: TS.Recent update and receiver RTT sample.
         if self.ts_ok {
             if let Some((tsval, tsecr)) = h.opts.ts {
@@ -1021,8 +1054,6 @@ impl Conn {
                 }
             }
         }
-
-        let ack_off = self.tx_sp.off(h.ack, self.snd_una);
 
         if syn_rcvd {
             if ack_off != 1 || self.snd_max < 1 {
@@ -1063,6 +1094,13 @@ impl Conn {
             return;
         }
 
+        // Data arriving after the app closed the handle cannot be delivered: RST
+        // (as Linux does for orphaned sockets).
+        if !payload.is_empty() && self.app_closed && self.state.can_recv_data() {
+            self.rst_pending = true;
+            self.set_closed(CloseReason::Aborted, ctx);
+            return;
+        }
         // Data.
         if !payload.is_empty() && self.state.can_recv_data() {
             self.process_data(now, seg_off, payload, h.has(PSH), ctx);
@@ -1072,7 +1110,7 @@ impl Conn {
         }
 
         // FIN.
-        if h.has(FIN) {
+        if h.has(FIN) && !fin_dropped {
             let fin_at = (seg_off + seg_len - 1) as u64;
             if self.fin_rcvd.is_none() && fin_at >= self.rcv_nxt {
                 self.fin_rcvd = Some(fin_at);
@@ -1166,7 +1204,12 @@ impl Conn {
             let had_ooo = self.ooo.as_ref().is_some_and(|o| !o.is_empty());
             if had_ooo {
                 let o = self.ooo.as_mut().unwrap();
-                self.rcv_nxt = o.pop_contiguous(self.rcv_nxt, &mut self.rx);
+                let (next, discarded) = o.pop_contiguous(self.rcv_nxt, &mut self.rx);
+                self.rcv_nxt = next;
+                // Out-of-order bytes overlapped by the in-order segment were charged twice.
+                let rel = discarded.min(self.rcv_charged);
+                self.rcv_charged -= rel;
+                ctx.budget.release(self.peer, rel);
                 if o.is_empty() {
                     self.ooo = None;
                 }
@@ -1189,6 +1232,17 @@ impl Conn {
             self.rcv_space_adjust(now, ctx);
         } else {
             self.stats.ooo_segs += 1;
+            // Descriptor bound: an average of ≥ 512 bytes per stored segment over the
+            // receive buffer (full-size segments always fit; 1-byte floods do not).
+            let seg_limit = ((self.rcv_target / 512) as usize).max(64);
+            if self.ooo.as_ref().is_some_and(|o| o.is_full(seg_limit)) {
+                // Bound per-connection descriptor state (§6.7): drop, do not ACK-stall.
+                self.rcv_charged -= len;
+                ctx.budget.release(self.peer, len);
+                self.stats.dropped_no_mem += 1;
+                self.ack_need = AckNeed::Now;
+                return;
+            }
             let o = self.ooo.get_or_insert_with(Default::default);
             let added = o.insert(off as u64, payload);
             if (added as u64) < len {
@@ -1693,6 +1747,20 @@ impl Conn {
         p
     }
 
+    /// A pure control segment (probe or ACK), used when data is pacing-blocked.
+    pub(crate) fn plan_control(&mut self, level: Pressure) -> Option<Plan> {
+        let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, window: 0, rec_idx: usize::MAX };
+        let mut p = if self.probe_pending {
+            base(PlanKind::Probe, ACK, self.snd_una.wrapping_sub(1))
+        } else if self.ack_need == AckNeed::Now && self.state.synchronized() {
+            base(PlanKind::Ack, ACK, self.snd_nxt)
+        } else {
+            return None;
+        };
+        p.window = self.window_field(level);
+        Some(p)
+    }
+
     fn plan_data(&mut self, now: Instant) -> Option<Plan> {
         if !self.state.can_send_data() {
             return None;
@@ -1836,6 +1904,8 @@ impl Conn {
                     let mut blocks = std::mem::take(&mut self.sack_scratch);
                     ooo.sack_blocks(max - n, &mut blocks);
                     for &(l, r) in &blocks {
+                        // An out-of-order FIN is part of the block it ends (as Linux does).
+                        let r = if self.fin_rcvd == Some(r) { r + 1 } else { r };
                         o.sack[n] = (self.rx_sp.seq(l), self.rx_sp.seq(r));
                         n += 1;
                     }
@@ -1914,6 +1984,7 @@ impl Conn {
                     self.tlp.is_retrans = true;
                 }
                 self.tlp.end = Some(self.snd_max);
+                self.tlp.probed_una = Some(self.snd_una);
                 self.rearm_rtx_timer(now);
             }
             PlanKind::Probe => {
@@ -2052,6 +2123,7 @@ impl Conn {
                 && self.rto_recovery.is_none()
                 && self.tlp.end.is_none()
                 && !self.tlp.pending
+                && self.tlp.probed_una != Some(self.snd_una)
                 && self.rto_backoff == 0
                 && self.rtt.has_sample;
             if tlp_ok {
@@ -2135,6 +2207,9 @@ impl Conn {
                     }
                     TimerKind::Tlp => {
                         self.tlp.pending = true;
+                        // RFC 8985 §7.3: the RTO is re-armed from the probe time, so the
+                        // probe gets a full RTO before loss recovery by timeout.
+                        self.rto_base = now;
                         self.timer = Some((TimerKind::Rto, self.rto_deadline()));
                         wake = true;
                     }
@@ -2176,7 +2251,10 @@ impl Conn {
         // reneging (or forged SACKs), so forget it (RFC 2018 §8).
         let newly = if self.rto_backoff >= 1 { self.sb.renege_all() } else { self.sb.mark_all_lost() };
         self.dl.lost_total += newly;
-        self.cc.on_rto(now, self.mss);
+        // Repeated timeouts for the same data do not reduce ssthresh again (RFC 5681).
+        if self.rto_backoff == 0 {
+            self.cc.on_rto(now, self.mss);
+        }
         self.recovery = None;
         self.rto_recovery = Some(self.snd_max);
         self.rto_backoff += 1;
@@ -2273,6 +2351,11 @@ impl Conn {
 
     pub(crate) fn has_rst_pending(&self) -> bool {
         self.rst_pending
+    }
+
+    /// Control segments that are never paced (ACK, RST, SYN/SYN-ACK, probes).
+    pub(crate) fn wants_unpaced_tx(&self) -> bool {
+        self.rst_pending || self.syn_pending || self.ack_need == AckNeed::Now || self.probe_pending
     }
 
     /// Whether `plan` could produce a segment (used to avoid needless scheduling).
