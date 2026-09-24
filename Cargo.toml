@@ -1,0 +1,13 @@
+[package]
+name = "zfstack"
+version = "0.0.1"
+edition = "2021"
+publish = false
+description = "Userspace TCP stack specialised for proxy/forwarding dataplanes (passive-open, IP-packet in/out, stream out)."
+
+[dependencies]
+
+[features]
+default = []
+# Async adapter (AsyncRead/AsyncWrite stream handles + driver). Core stays runtime-agnostic.
+tokio = []
