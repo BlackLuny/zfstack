@@ -1,4 +1,4 @@
-# zfstack 实现说明与真机对比 v0.1
+# zfstack 实现说明与真机对比 v0.2
 
 > 对应：[`0001-architecture.md`](0001-architecture.md) v0.3、[`0002-s0-benchmark-and-falsification.md`](0002-s0-benchmark-and-falsification.md) v0.2。
 > 本文记录**已经实现了什么、与设计的差异、测试覆盖、以及在真机（本仓库的 zfbench 台架）上和 smoltcp（BlackLuny fork）及内核 TCP 的对比结果**。
@@ -8,6 +8,7 @@
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1 | 2026-09-24 | 首版：核心栈 + 仿真器 + zfbench 台架 + 第一轮真机矩阵 |
+| v0.2 | 2026-09-24 | 修复 §6 的三项：低速 pacing CPU、伪造 ACK/时间戳失步、tokio orphan 与接收内存钉住；回归矩阵见 §5.7 |
 
 ---
 
@@ -73,14 +74,15 @@
 
 ## 3. 测试
 
-`cargo test --release --features tokio`：33 个测试全部通过（另有 2 个 `#[ignore]` 的诊断用例）。
+`cargo test --release --features tokio`：39 个测试全部通过（另有 2 个 `#[ignore]` 的诊断用例）。
 
 | 类别 | 用例 |
 |---|---|
 | 单元 | 报文编解码与校验和（含奇数切片）、序号回绕、TX 环、乱序合并与 SACK 块、索引堆、记分板计数、CUBIC、BBRv3 Startup 退出 |
 | 仿真场景 | 干净下载（20 MiB@100 Mbps < 2.6 s）；0.1–5% 随机丢包；突发丢包+乱序+重复；200 Mbps/80 ms/0.25 BDP 浅队列；上传；双向；零窗口 + persist；sink Full 不计发送且无忙循环；SYN cookie；传输中 MTU 下降；未读关闭发 RST；200 连接全部释放且预算归零；G-fair；执行间隔 5 ms 下 pacing 保持速率；确定性回放；BBR/Brutal；BBR 浅队列与 1% 随机丢包 |
-| 鲁棒性 | 变异/随机报文注入（含 RST 与不含 RST 两组，共 7 个种子）：无 panic、无数据损坏；被伪造 ACK 卡死的连接必须由 user timeout 拆除并释放全部资源 |
-| 异步适配 | tokio 句柄端到端回显 2 MiB |
+| 鲁棒性 | 变异/随机报文注入（含 RST 与不含 RST 两组，共 7 个种子）：无 panic、无数据损坏；被伪造 ACK/时间戳失步的连接必须被拆除并释放全部资源。定向用例：伪造 ACK、伪造 TSval 均在 1.4 s 内以 `Desync` 重置；突发丢包 + 1.5 s ACK 乱序 + 重复（8 个种子、337 次 RTO）无误判 |
+| 内存 | 1–7 字节小段与大段交错写入接收队列：顺序正确，不再每段保留一个钉住报文的切片 |
+| 异步适配 | tokio 句柄端到端回显 2 MiB；drop 句柄时对端零窗口，连接在 orphan 超时后被中止 |
 
 测试过程中发现并修复的实际问题（均有回归测试）：
 1. 应用每次 read/write 都把连接放进 ready，导致空转（加 `wants_tx()` 门控）。
@@ -167,15 +169,31 @@
 下行链路投递时刻误差均值 30.6 µs，最坏单次 48 ms（VM 调度抖动，出现次数极少，不影响中位数）；模拟器之外（TUN qdisc / softnet）丢包 0。
 
 
+### 5.7 v0.2 回归（§6 第 1、4、5 项修复后）
+
+`bench/results/2026-09-24-followup1-down/`、`-up/`：smoltcp-cubic / zfstack-cubic / zfstack-bbr，下行 16 格 + 上行 2 格，每格 3 次，162 次运行全部通过，无零吞吐秒。
+
+| 下行 CPU s/GB | smoltcp-cubic | zfstack-cubic v0.1（full2） | zfstack-cubic v0.2 |
+|---|---|---|---|
+| 80 ms/1%/2 BDP/1 流 | 11.8（full2: 9.91） | 17.4 | **13.0** |
+| 80 ms/1%/2 BDP/8 流 | 9.46（full2: 8.78） | 13.2 | **9.84** |
+| 80 ms/1%/0.25 BDP/1 流 | 10.9（full2: 9.79） | 17.1 | **13.4** |
+| 12 ms/1%/2 BDP/8 流 | 8.09（full2: 8.06） | 8.81 | **7.26** |
+
+- 低速有丢包时 zfstack-cubic / smoltcp-cubic 的 CPU 比从 1.3–1.8× 降到 0.84–1.23×；吞吐各格与 v0.1 持平（浅队列 12 ms 单流 173 vs 113、80 ms 单流 181 vs 10.4 Mbps）。
+- 上行（zfstack 当接收方，受接收队列改动影响）：193 Mbps，CPU 比 1.10（v0.1 为 1.09），满 MSS 段不拷贝，无回退。
+- zfstack-bbr 80 ms/1%/单流 54.7 [17–107] Mbps（v0.1 77.7 [16.5–79.5]）：BBR 不受本轮改动影响，两轮的三次重复区间都很宽，属于该格的离散度。
+
 ## 6. 已知问题与后续
 
 按优先级：
 
-1. **低速率 pacing 的 CPU 成本**：1–12 Mbps 且有丢包时 zfstack-cubic 每 GB CPU 是 smoltcp 的 1.3–1.8×。原因是 pacing 量子 `clamp(rate×1ms, 2 MSS, 64 KiB)` 在低速时退化为 2 MSS，每个量子一次唤醒。可选：低速时放宽到 ≥ 1 ms 的时间量子而非字节量子，或 CUBIC 在 cwnd 远小于 BDP 时关闭 pacing。绝对值很小（1.8 Mbps × 17 s/GB ≈ 0.4% 单核），优先级中。
+1. ✅（v0.2）**低速率 pacing 的 CPU 成本**：实测根因不是 pacing 定时器本身，而是小窗口被 pacing 打散后 ACK 也被打散，唤醒次数多约 40%。窗口型 CC（CUBIC）在 cwnd < `pacing_min_cwnd_segs`（默认 32 段）时不做 pacing，由 ACK 时钟定速（Linux 的 CUBIC 在无 fq 时完全不 pacing）；BBR/Brutal 始终 pacing。结果见 §5.7。
 2. **zfstack-cubic 深队列排队延迟**：CUBIC 本性，默认 CC 若对交互延迟敏感应切到 BBR（本轮数据支持 BBRv3 作为默认候选：延迟最低、丢包下吞吐高一个数量级、12 ms 无丢包仍有 187–193 Mbps）。在默认切换前需要 0002 的 WAN A/B。
 3. **zfstack-bbr 无丢包单流约 186 Mbps（上限 193）**：ProbeBW 的 DOWN/CRUISE 阶段和 ProbeRTT 带来约 3.5% 的损失，符合 BBRv3 预期；BBRv3 没有可对照的参考向量（未做逐 ACK 对拍 Linux 的 tcp_bbr v3），目前只靠行为测试。
-4. **伪造 ACK 卡死**：接受范围内但伪造的 ACK 能让连接停滞，目前只能由 120 s user timeout 拆除（有回归测试保证资源释放）；可考虑 RFC 5961 更严格的 ACK 限速或 per-peer 伪造计数。
-5. **tokio 适配层**：应用 drop 句柄后若对端窗口为零，连接作为 orphan 需等到 user timeout；缓冲按 payload 计而非 truesize（`Bytes` 分配开销未计入预算）。
+4. ✅（v0.2）**伪造 ACK / 时间戳失步**：失步检测只认同步对端不可能发出的报文——ACK 越出 [SND.UNA, SND.MAX] 且 TSval > TS.Recent，或 PAWS 失败却确认了 SND.UNA 之后的数据；每个无进展周期（RTO / 零窗口探测 / keepalive）最多计一次且 TSval 必须递增，连续 3 个周期即发 RST、`CloseReason::Desync`。乱序/重复的旧报文两个条件都不满足。未协商时间戳的连接不检测，仍由 user timeout 兜底。
+5. ✅（v0.2）**tokio orphan 与接收内存钉住**：drop 句柄时若适配层 tx 队列因零窗口排不空，以前永远不会调用 `close`、orphan 超时也不启动（对端响应探测，user timeout 同样不触发）→ 永久泄漏；现在驱动自己按 `orphan_timeout` 到期中止。接收队列里 < 1 KiB 的段拷贝进共享 8 KiB 缓冲，不再各自钉住整个入站报文（以前应用不读时 64 KiB 窗口的 1 字节小段可钉住约 6.4 万个报文缓冲）。剩余误差：≥ 1 KiB 的段仍零拷贝，钉住量 ≈ 报文大小/载荷（按 MTU 分配时 < 1.5×）；乱序队列按段数上限（平均 ≥ 512 B/段）约束在 ~3× 以内。若 WG 侧把一批报文切片自同一个大缓冲，应在 `ingress` 前拷贝或接受更大的钉住量。
+8. **仿真器不完全确定**：fuzz 用例同一种子在不同运行间结局不同（很可能是 sim 里 `HashMap` 的随机迭代顺序），削弱了「确定性回放」；待改为有序容器。
 6. **尚未实现 / 未完成**：0001 的 Driver B（io_uring/AF_XDP 批量驱动）、一致性 DSL、cargo-fuzz 接入与 72 h fuzz、WireGuard 集成与 0002 §3 的 WAN 真机 A/B（本台架是单机 + 用户态链路模拟器，200 Mbps 上限）。
 7. **台架局限**：4 vCPU 共享于客户端/模拟器/被测栈；无 netem；只测了 RTT 12/80 ms、200 Mbps。更高带宽（≥1 Gbps）下的 CPU 结论需要在物理机上复测。
 
