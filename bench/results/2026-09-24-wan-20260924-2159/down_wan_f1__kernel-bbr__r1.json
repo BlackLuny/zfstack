@@ -1,0 +1,192 @@
+{
+  "config": {
+    "client_cc": "cubic",
+    "client_wg": "kernel",
+    "concurrency": 64,
+    "conns": 2000,
+    "flows": 1,
+    "kernel_cc": "bbr",
+    "link_mode": "wg",
+    "listen_pool": 8,
+    "loss": 0.0,
+    "loss_up": 0.0,
+    "mtu": 1420,
+    "queue_bdp": 0.0,
+    "rate_mbps": 0.0,
+    "rr_size": 1024,
+    "rtt_ms": 12.2,
+    "secs": 30,
+    "server_wg": "kernel",
+    "smol_pacing_backlog_us": null,
+    "smol_timestamps": false,
+    "sock_buf_kb": 4096,
+    "stack": "kernel",
+    "test": "down",
+    "warmup": 3,
+    "wg_server": "192.99.148.123"
+  },
+  "cpu": {
+    "client_bridge_window_sec": null,
+    "client_process_window_sec": 3.168334299,
+    "client_system_window": {
+      "busy_sec": 23.060000000000002,
+      "idle_sec": 78.78,
+      "irq_sec": 0.0,
+      "softirq_sec": 9.27,
+      "steal_sec": 0.11,
+      "system_sec": 11.96,
+      "user_sec": 1.83
+    },
+    "cpu_sec_per_effective_GB": null,
+    "server_process_window_sec": 0.6348522910000156,
+    "server_system_busy_sec_per_effective_GB": 18.4393236046137,
+    "server_system_window": {
+      "busy_sec": 28.39,
+      "idle_sec": 182.51,
+      "irq_sec": 0.0,
+      "softirq_sec": 5.9,
+      "steal_sec": 0.0,
+      "system_sec": 13.33,
+      "user_sec": 9.16
+    },
+    "server_wg_bridge_window_sec": null,
+    "stack_thread_util": null,
+    "stack_thread_window_sec": null,
+    "test_wall_sec": 30.025078818,
+    "window_effective_bytes": 1539644328,
+    "window_nominal_sec": 27.0,
+    "window_wall_sec": 26.999997971
+  },
+  "env": {
+    "client": {
+      "kernel": "6.1.0-29-amd64",
+      "nproc": 4,
+      "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
+      "tcp_congestion_control": "bbr",
+      "zfstack_commit": "be334ee"
+    },
+    "server": {
+      "kernel": "6.1.0-41-amd64",
+      "nproc": 8,
+      "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
+      "tcp_congestion_control": "bbr",
+      "zfstack_commit": "be334ee"
+    }
+  },
+  "errors": [],
+  "label": "down_wan_f1__kernel-bbr__r1",
+  "link": {
+    "client_bridge": null,
+    "mode": "wg",
+    "rtt_probe_ms": [
+      24.876519,
+      12.21613,
+      12.255894999999999,
+      12.236321,
+      12.213828,
+      12.274161000000001
+    ],
+    "server_wg": {
+      "bridge": null,
+      "mode": "kernel"
+    }
+  },
+  "ok": true,
+  "results": {
+    "agg_mbps_per_sec": [
+      505.22976,
+      459.111744,
+      452.249856,
+      456.74784,
+      453.727296,
+      457.776576,
+      462.427776,
+      453.103488,
+      455.784768,
+      456.222528,
+      432.036288,
+      474.159744,
+      458.312832,
+      459.527616,
+      451.363392,
+      456.408576,
+      460.950336,
+      447.379776,
+      462.799872,
+      456.463296,
+      460.808064,
+      447.040512,
+      453.6288,
+      456.069312,
+      461.574144,
+      456.244416,
+      456.233472,
+      453.103488,
+      458.44416,
+      458.816256
+    ],
+    "direction": "down",
+    "flows": 1,
+    "goodput_mbps_mean": 456.190912,
+    "goodput_mbps_window": 456.190912,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          505.22976,
+          459.111744,
+          452.249856,
+          456.74784,
+          453.727296,
+          457.776576,
+          462.427776,
+          453.103488,
+          455.784768,
+          456.222528,
+          432.036288,
+          474.159744,
+          458.312832,
+          459.527616,
+          451.363392,
+          456.408576,
+          460.950336,
+          447.379776,
+          462.799872,
+          456.463296,
+          460.808064,
+          447.040512,
+          453.6288,
+          456.069312,
+          461.574144,
+          456.244416,
+          456.233472,
+          453.103488,
+          458.44416,
+          458.816256
+        ],
+        "receiver_bytes": 1717426872,
+        "total_bytes": 1717426872,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "server_app": {
+    "bad_headers": 0,
+    "conns_accepted": 7,
+    "conns_finished": 7,
+    "pattern_errors": 0,
+    "rx_bytes": 0,
+    "tx_bytes": 1734868992
+  },
+  "stack_thread": {
+    "kernel_server_threads_active_at_exit": 0,
+    "kernel_server_threads_total_sec": 0.674096
+  },
+  "timestamp_unix": 1790259308,
+  "tool": "zfbench",
+  "version": "0.1.0"
+}
