@@ -1,0 +1,31 @@
+[package]
+name = "zfbench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "S0 benchmark harness: kernel TCP client <-> userspace link emulator <-> {kernel, smoltcp, zfstack} server"
+
+[[bin]]
+name = "zfbench"
+path = "src/main.rs"
+
+[dependencies]
+smoltcp = { git = "https://github.com/BlackLuny/smoltcp", rev = "8014f8b21e12faf89b3b453ceea32027344721af", default-features = false, features = [
+    "std",
+    "medium-ip",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-tcp-cubic",
+    "socket-tcp-bbr",
+    "socket-tcp-reno",
+] }
+zfstack = { path = "..", optional = true }
+crossbeam-channel = "0.5"
+libc = "0.2"
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[features]
+default = []
+zfstack = ["dep:zfstack"]
+
