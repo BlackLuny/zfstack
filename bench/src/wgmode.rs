@@ -52,7 +52,7 @@ fn env_json() -> Value {
     json!({
         "kernel": tun::sh_output("uname -r").trim(),
         "nproc": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0),
-        "zfstack_commit": tun::sh_output(&format!("git -C {}/.. rev-parse --short HEAD", env!("CARGO_MANIFEST_DIR"))).trim(),
+        "zfstack_commit": util::zfstack_commit(),
         "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
         "tcp_congestion_control": sysctl("net.ipv4.tcp_congestion_control"),
     })
