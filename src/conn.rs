@@ -604,6 +604,18 @@ impl Conn {
         Some(rate.max(1.0) as u64)
     }
 
+    /// Rate the output path paces at, or None when this connection is not paced now
+    /// (see `StackConfig::pacing_min_cwnd_segs`).
+    pub fn egress_pacing_rate(&self, cfg: &StackConfig) -> Option<u64> {
+        if !cfg.pacing {
+            return None;
+        }
+        if self.cc.pacing_rate().is_none() && self.cc.cwnd() < cfg.pacing_min_cwnd_segs as u64 * self.mss as u64 {
+            return None;
+        }
+        self.pacing_rate()
+    }
+
     /// Send buffer limit: in-flight window plus a time-bounded prefetch (§6.5).
     fn sndbuf_limit(&self, cfg: &StackConfig) -> u64 {
         let inflight = self.snd_nxt.saturating_sub(self.snd_una);
