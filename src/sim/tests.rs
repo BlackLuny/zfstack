@@ -540,3 +540,14 @@ fn unread_data_survives_orderly_close() {
     assert!(s.b.conns[&id].eof);
     assert_eq!(s.a.shard.conn_count(), 0, "released after the app read and closed");
 }
+
+#[test]
+fn small_cwnd_cubic_is_not_paced() {
+    // A window-based CC below `pacing_min_cwnd_segs` is ACK-clocked, not paced (each paced
+    // segment would cost a wakeup); a rate-based CC is paced regardless of its window.
+    // 1 Mbit/s × 80 ms keeps the window far below 32 segments even with slow-start overshoot.
+    let (_, info) = goodput_run(CcAlgo::Cubic, 1_000_000, 80, 1.0, 0.0, 256 << 10, Duration::ZERO);
+    assert_eq!(info.stats.limited_pacing_ns, 0, "small-window CUBIC was paced");
+    let (_, info) = goodput_run(CcAlgo::Bbr, 1_000_000, 80, 1.0, 0.0, 256 << 10, Duration::ZERO);
+    assert!(info.stats.limited_pacing_ns > 0, "BBR must stay paced");
+}

@@ -23,6 +23,11 @@ pub struct StackConfig {
     pub init_rto: Duration,
     pub delayed_ack: Duration,
     pub pacing: bool,
+    /// Window-based CCs (CUBIC) are not paced while cwnd is below this many segments:
+    /// a window that small is already spread by the ACK clock, and pacing it only adds
+    /// a wakeup per segment (Linux does not pace CUBIC at all without fq).
+    /// Rate-based CCs (BBR, Brutal) are always paced.
+    pub pacing_min_cwnd_segs: u32,
     /// Pacing credit bounds (§7.2): T_credit = clamp(measured wake P99, min, max).
     pub pacing_credit_min: Duration,
     pub pacing_credit_max: Duration,
@@ -64,6 +69,7 @@ impl Default for StackConfig {
             init_rto: Duration::from_secs(1),
             delayed_ack: Duration::from_millis(40),
             pacing: true,
+            pacing_min_cwnd_segs: 32,
             pacing_credit_min: Duration::from_millis(2),
             pacing_credit_max: Duration::from_millis(10),
             round_bytes_cap: 256 * 1024,
