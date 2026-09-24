@@ -219,6 +219,9 @@ enum Cmd {
 #[derive(Clone)]
 pub struct StackHandle {
     tx: mpsc::Sender<Cmd>,
+    /// Control messages must never be dropped (a lost `EgressReleased` would freeze
+    /// the iface forever), so they use their own unbounded channel.
+    ctl_tx: mpsc::UnboundedSender<Cmd>,
 }
 
 impl StackHandle {
@@ -232,10 +235,10 @@ impl StackHandle {
     }
     /// The egress path for `iface` drained (state ③, §4.3).
     pub fn egress_released(&self, iface: IfaceId) {
-        let _ = self.tx.try_send(Cmd::EgressReleased(iface));
+        let _ = self.ctl_tx.send(Cmd::EgressReleased(iface));
     }
     pub fn set_iface_mtu(&self, iface: IfaceId, mtu: u16) {
-        let _ = self.tx.try_send(Cmd::SetMtu(iface, mtu));
+        let _ = self.ctl_tx.send(Cmd::SetMtu(iface, mtu));
     }
 }
 
@@ -271,11 +274,13 @@ pub fn spawn<E: Egress>(
     let mut shard = Shard::new(cfg);
     let ids: Vec<IfaceId> = ifaces.into_iter().map(|c| shard.add_iface(c)).collect();
     let (tx, rx) = mpsc::channel(1024);
+    let (ctl_tx, ctl_rx) = mpsc::unbounded_channel();
     let (acc_tx, acc_rx) = mpsc::unbounded_channel();
     let driver = Driver {
         shard,
         egress,
         cmd_rx: rx,
+        ctl_rx,
         accept_tx: acc_tx,
         ctl: Arc::new(Ctl { dirty: Mutex::new(Vec::new()), notify: Notify::new() }),
         streams: HashMap::new(),
@@ -284,13 +289,14 @@ pub fn spawn<E: Egress>(
         buf: vec![0u8; 64 * 1024],
     };
     tokio::spawn(driver.run());
-    (StackHandle { tx }, Acceptor { rx: acc_rx }, ids)
+    (StackHandle { tx, ctl_tx }, Acceptor { rx: acc_rx }, ids)
 }
 
 struct Driver<E: Egress> {
     shard: Shard,
     egress: E,
     cmd_rx: mpsc::Receiver<Cmd>,
+    ctl_rx: mpsc::UnboundedReceiver<Cmd>,
     accept_tx: mpsc::UnboundedSender<TcpStream>,
     ctl: Arc<Ctl>,
     streams: HashMap<ConnId, Arc<Shared>>,
@@ -314,11 +320,19 @@ impl<E: Egress> Driver<E> {
             let ctl = self.ctl.clone();
             tokio::select! {
                 biased;
+                cmd = self.ctl_rx.recv() => {
+                    if let Some(cmd) = cmd {
+                        self.handle_cmd(cmd);
+                    }
+                }
                 cmd = self.cmd_rx.recv() => {
                     let Some(cmd) = cmd else { break };
                     self.handle_cmd(cmd);
                     // Drain whatever else is queued without blocking.
                     while let Ok(cmd) = self.cmd_rx.try_recv() {
+                        self.handle_cmd(cmd);
+                    }
+                    while let Ok(cmd) = self.ctl_rx.try_recv() {
                         self.handle_cmd(cmd);
                     }
                 }
