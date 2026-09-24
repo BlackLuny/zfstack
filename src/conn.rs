@@ -198,6 +198,8 @@ pub struct Conn {
     rto_recovery: Option<u64>,
     rto_backoff: u32,
     rto_base: Instant,
+    /// Last forward progress of the send side (user timeout, RFC 5482).
+    progress_ts: Instant,
     /// TS value sent with the first RTO retransmission (Eifel spurious detection).
     rto_tsval: Option<u32>,
     rack: Rack,
@@ -359,6 +361,7 @@ impl Conn {
             rto_recovery: None,
             rto_backoff: 0,
             rto_base: now,
+            progress_ts: now,
             rto_tsval: None,
             rack: Rack { reo_wnd_mult: 1, ..Default::default() },
             tlp: Tlp::default(),
@@ -1274,6 +1277,7 @@ impl Conn {
             }
             self.rto_backoff = 0;
             self.rto_base = now;
+            self.progress_ts = now;
             self.keepalive_sent = 0;
         }
 
@@ -1967,6 +1971,7 @@ impl Conn {
         }
         if idle {
             self.rto_base = now;
+            self.progress_ts = now;
             if matches!(self.timer, None | Some((TimerKind::Persist, _))) || true {
                 self.rearm_rtx_timer(now);
             }
@@ -2161,15 +2166,15 @@ impl Conn {
             self.rearm_rtx_timer(now);
             return true;
         }
-        if now.saturating_since(self.rto_base) >= ctx.cfg.user_timeout
-            || (self.rto_backoff >= 15)
-        {
+        if now.saturating_since(self.progress_ts) >= ctx.cfg.user_timeout || self.rto_backoff >= 15 {
             self.rst_pending = true;
             self.set_closed(CloseReason::Timeout, ctx);
             return false;
         }
         self.stats.rto_count += 1;
-        let newly = self.sb.mark_all_lost();
+        // First RTO keeps SACK information; a repeated RTO for the same data suggests
+        // reneging (or forged SACKs), so forget it (RFC 2018 §8).
+        let newly = if self.rto_backoff >= 1 { self.sb.renege_all() } else { self.sb.mark_all_lost() };
         self.dl.lost_total += newly;
         self.cc.on_rto(now, self.mss);
         self.recovery = None;

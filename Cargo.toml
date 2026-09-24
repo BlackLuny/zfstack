@@ -7,11 +7,15 @@ description = "Userspace TCP stack specialised for proxy/forwarding dataplanes (
 
 [dependencies]
 bytes = "1"
+tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "macros", "io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "io-util", "rt-multi-thread"] }
 
 [features]
 default = []
 # Async adapter (AsyncRead/AsyncWrite stream handles + driver). Core stays runtime-agnostic.
-tokio = []
+tokio = ["dep:tokio"]
 # Active open + deterministic simulator (tests / benchmarks only, §0).
 test-peer = []
 

@@ -160,6 +160,9 @@ fn egress_full_does_not_count_as_sent() {
     s.a.egress_budget = None;
     s.a.shard.egress_released(s.a.iface);
     s.run_until(s.now + secs(20));
+    if s.b.conns[&id].received != 4 << 20 {
+        eprintln!("after release: {:?}", s.a.shard.info(srv));
+    }
     assert_download_ok(&s.b.conns[&id], 4 << 20);
 }
 
@@ -373,4 +376,118 @@ fn bbr_probe_steady_state() {
         let (mbps, info) = goodput_run(CcAlgo::Cubic, 200_000_000, 80, q, 0.0, bytes, Duration::ZERO);
         eprintln!("cubic q={q}: {mbps:.1} Mbit/s cwnd={} rtx={}", info.cwnd, info.stats.bytes_retrans);
     }
+}
+
+#[test]
+fn fuzz_mutated_and_random_packets() {
+    fuzz_run(4242, 99, true);
+}
+
+#[test]
+fn fuzz_without_rst() {
+    for seed in 0..6 {
+        fuzz_run(5000 + seed, 700 + seed, false);
+    }
+}
+
+fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) {
+    // Capture real segments of a transfer, then replay mutated copies and random
+    // garbage into a live server while the transfer continues. No panics, invariants
+    // hold, and the transfer still completes.
+    let mut s = sim(sim_seed, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 4 << 20, fin_after_send: true, ..Default::default() };
+    let id = s.connect(45000, AppConn::default());
+    let mut rng = Rng::new(fuzz_seed);
+    let mut corpus: Vec<Vec<u8>> = Vec::new();
+    for round in 0..200 {
+        s.run_until(s.now + Duration::from_millis(5));
+        // Snapshot some in-flight client->server packets.
+        for (_, (_, p)) in s.ba.inflight.iter().take(4) {
+            if corpus.len() < 256 {
+                corpus.push(p.to_vec());
+            }
+        }
+        for _ in 0..20 {
+            let mut pkt = if !corpus.is_empty() && rng.chance(0.8) {
+                corpus[rng.below(corpus.len() as u64) as usize].clone()
+            } else {
+                let n = rng.below(120) as usize;
+                (0..n).map(|_| rng.next_u64() as u8).collect()
+            };
+            // Mutate: flip bytes, truncate, or extend.
+            match rng.below(4) {
+                0 if !pkt.is_empty() => {
+                    for _ in 0..1 + rng.below(4) {
+                        let i = rng.below(pkt.len() as u64) as usize;
+                        pkt[i] ^= 1 << rng.below(8);
+                    }
+                }
+                1 => pkt.truncate(rng.below(pkt.len() as u64 + 1) as usize),
+                2 => pkt.extend((0..rng.below(64)).map(|_| rng.next_u64() as u8)),
+                _ => {}
+            }
+            if !allow_rst && pkt.len() >= 34 && pkt[0] >> 4 == 4 {
+                let ihl = ((pkt[0] & 0xf) as usize) * 4;
+                if pkt.len() > ihl + 13 {
+                    pkt[ihl + 13] &= !crate::wire::RST;
+                }
+            }
+            if rng.chance(0.5) || !allow_rst {
+                fix_checksums(&mut pkt);
+            }
+            let now = s.now;
+            s.a.shard.ingress(now, s.a.iface, PeerId(1), Bytes::from(pkt));
+        }
+        s.a.shard.check_invariants();
+        let _ = round;
+    }
+    s.run_until(s.now + secs(30));
+    let srv = s.a.accepted[0];
+    if !s.b.conns[&id].eof {
+        // A forged-but-plausible ACK (valid checksum, ack <= snd_nxt, accepted per
+        // RFC 5961) can make the sender discard data the receiver never got. Only the
+        // holder of the connection's packets can do this (WG authenticates peers);
+        // the connection must then be torn down by the user timeout and release
+        // everything, never hang forever.
+        s.run_until(s.now + secs(150));
+    }
+    let c = &s.b.conns[&id];
+    eprintln!(
+        "fuzz end: client received={} eof={} closed={:?} corrupt={}; server app={:?}",
+        c.received, c.eof, c.closed, c.corrupt, s.a.conns.get(&srv).map(|x| (x.closed, x.eof))
+    );
+    assert!(!c.corrupt, "stream corrupted");
+    if c.eof {
+        assert_download_ok(c, 4 << 20);
+    } else {
+        assert!(c.closed.is_some(), "connection hung without being torn down");
+        s.run_until(s.now + secs(70));
+        assert_eq!(s.a.shard.conn_count(), 0, "server connection not released");
+        assert_eq!(s.a.shard.budget().used, 0, "budget not released");
+    }
+    let _ = allow_rst;
+}
+
+/// Recompute IPv4 header and TCP checksums so mutated packets reach the state machine.
+fn fix_checksums(pkt: &mut [u8]) {
+    use crate::wire::{checksum_fold, pseudo_sum, sum_bytes};
+    if pkt.len() < 40 || pkt[0] >> 4 != 4 {
+        return;
+    }
+    let ihl = ((pkt[0] & 0xf) as usize) * 4;
+    let total = u16::from_be_bytes([pkt[2], pkt[3]]) as usize;
+    if ihl < 20 || total > pkt.len() || total < ihl + 20 {
+        return;
+    }
+    pkt[10] = 0;
+    pkt[11] = 0;
+    let c = checksum_fold(sum_bytes(0, &pkt[..ihl]));
+    pkt[10..12].copy_from_slice(&c.to_be_bytes());
+    let src = std::net::Ipv4Addr::new(pkt[12], pkt[13], pkt[14], pkt[15]);
+    let dst = std::net::Ipv4Addr::new(pkt[16], pkt[17], pkt[18], pkt[19]);
+    let seg = &mut pkt[ihl..total];
+    seg[16] = 0;
+    seg[17] = 0;
+    let c = checksum_fold(sum_bytes(pseudo_sum(src.into(), dst.into(), seg.len() as u32), seg));
+    seg[16..18].copy_from_slice(&c.to_be_bytes());
 }
