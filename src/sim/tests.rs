@@ -449,16 +449,17 @@ fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) {
     s.run_until(s.now + secs(30));
     let srv = s.a.accepted[0];
     if !s.b.conns[&id].eof {
-        // A forged-but-plausible ACK (valid checksum, ack <= snd_nxt, accepted per
-        // RFC 5961) can make the sender discard data the receiver never got. Only the
-        // holder of the connection's packets can do this (WG authenticates peers);
-        // the connection must then be torn down by the user timeout and release
-        // everything, never hang forever.
+        // A forged-but-plausible ACK or timestamp (valid checksum, in window) can
+        // desynchronize the ends. With timestamps this is detected within a few RTOs
+        // and reset (CloseReason::Desync); without them only the user timeout ends
+        // it. Either way the connection must be torn down and release everything,
+        // never hang forever. (Only the holder of the connection's packets can do
+        // this; WG authenticates peers.)
         s.run_until(s.now + secs(150));
     }
     let c = &s.b.conns[&id];
     eprintln!(
-        "fuzz end: client received={} eof={} closed={:?} corrupt={}; server app={:?}",
+        "fuzz end (seed {sim_seed}/{fuzz_seed}): client received={} eof={} closed={:?} corrupt={}; server app={:?}",
         c.received, c.eof, c.closed, c.corrupt, s.a.conns.get(&srv).map(|x| (x.closed, x.eof))
     );
     assert!(!c.corrupt, "stream corrupted");
@@ -550,4 +551,123 @@ fn small_cwnd_cubic_is_not_paced() {
     assert_eq!(info.stats.limited_pacing_ns, 0, "small-window CUBIC was paced");
     let (_, info) = goodput_run(CcAlgo::Bbr, 1_000_000, 80, 1.0, 0.0, 256 << 10, Duration::ZERO);
     assert!(info.stats.limited_pacing_ns > 0, "BBR must stay paced");
+}
+
+/// TCP header offset of an IPv4 packet.
+fn tcp_off(pkt: &[u8]) -> usize {
+    ((pkt[0] & 0xf) as usize) * 4
+}
+
+/// Offset of the TSval field of the timestamp option, if present.
+fn ts_opt_off(pkt: &[u8]) -> Option<usize> {
+    let t = tcp_off(pkt);
+    let end = t + ((pkt[t + 12] >> 4) as usize) * 4;
+    let mut i = t + 20;
+    while i < end {
+        match pkt[i] {
+            0 => return None,
+            1 => i += 1,
+            8 => return Some(i + 2),
+            _ => i += pkt[i + 1].max(2) as usize,
+        }
+    }
+    None
+}
+
+/// Start a download, then inject one forged client->server segment built by `forge`
+/// from the newest real one. Returns (server close reason, time from injection to close).
+fn forged_segment_run(forge: impl FnOnce(&mut Sim, &mut Vec<u8>)) -> (Option<CloseReason>, Duration) {
+    let mut s = sim(900, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 64 << 20, fin_after_send: true, ..Default::default() };
+    let id = s.connect(46000, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(300));
+    let mut pkt = s.ba.inflight.values().last().expect("no client segment in flight").1.to_vec();
+    assert!(ts_opt_off(&pkt).is_some(), "timestamps not negotiated");
+    forge(&mut s, &mut pkt);
+    fix_checksums(&mut pkt);
+    let t0 = s.now;
+    s.a.shard.ingress(t0, s.a.iface, PeerId(1), Bytes::from(pkt));
+    let srv = s.a.accepted[0];
+    while s.now < t0 + secs(30) && s.a.conns.get(&srv).and_then(|c| c.closed).is_none() {
+        s.run_until(s.now + Duration::from_millis(10));
+    }
+    let reason = s.a.conns.get(&srv).and_then(|c| c.closed);
+    let took = s.now - t0;
+    assert!(!s.b.conns[&id].corrupt);
+    s.run_until(s.now + secs(70));
+    assert_eq!(s.a.shard.conn_count(), 0, "server connection not released");
+    assert_eq!(s.a.shard.budget().used, 0, "budget not released");
+    (reason, took)
+}
+
+#[test]
+fn forged_ack_desync_is_reset_quickly() {
+    // Ack everything in flight to the client, then lose it: the sender has released
+    // data the receiver never got. Previously only the 120 s user timeout ended this.
+    let (reason, took) = forged_segment_run(|s, pkt| {
+        let mut end = 0u32;
+        let mut base = None;
+        for (_, p) in s.ab.inflight.values() {
+            let t = tcp_off(p);
+            let seq = u32::from_be_bytes(p[t + 4..t + 8].try_into().unwrap());
+            let len = (u16::from_be_bytes([p[2], p[3]]) as usize - t - ((p[t + 12] >> 4) as usize) * 4) as u32;
+            let e = seq.wrapping_add(len);
+            let b = *base.get_or_insert(seq);
+            if e.wrapping_sub(b) > end.wrapping_sub(b) {
+                end = e;
+            }
+        }
+        assert!(base.is_some(), "no server data in flight");
+        s.ab.inflight.clear();
+        let t = tcp_off(pkt);
+        pkt[t + 8..t + 12].copy_from_slice(&end.to_be_bytes());
+    });
+    assert_eq!(reason, Some(CloseReason::Desync));
+    assert!(took < secs(10), "took {took:?}");
+}
+
+#[test]
+fn forged_timestamp_desync_is_reset_quickly() {
+    // A TSval far ahead moves TS.Recent, after which PAWS drops every real segment.
+    let (reason, took) = forged_segment_run(|_, pkt| {
+        let o = ts_opt_off(pkt).unwrap();
+        let v = u32::from_be_bytes(pkt[o..o + 4].try_into().unwrap()).wrapping_add(1 << 30);
+        pkt[o..o + 4].copy_from_slice(&v.to_be_bytes());
+    });
+    assert_eq!(reason, Some(CloseReason::Desync));
+    assert!(took < secs(10), "took {took:?}");
+}
+
+#[test]
+fn reordered_and_duplicated_acks_are_not_desync() {
+    // Stale ACKs (heavy reordering, long delays, duplicates) must never look like desync.
+    let mut rtos = 0;
+    // Burst loss forces RTOs (the stall epochs evidence is counted against).
+    for seed in 20..28 {
+        let burst = if seed >= 24 { 0.7 } else { 0.0 };
+        let down = LinkParams {
+            loss: 0.02,
+            burst_continue: burst,
+            reorder: 0.05,
+            reorder_delay: Duration::from_millis(30),
+            duplicate: 0.05,
+            ..Default::default()
+        };
+        let up = LinkParams {
+            loss: 0.01,
+            reorder: 0.3,
+            reorder_delay: Duration::from_millis(1500),
+            duplicate: 0.2,
+            ..Default::default()
+        };
+        let mut s = sim(seed, down, up);
+        let (_, c) = download(&mut s, 4 << 20, secs(120));
+        assert_download_ok(&c, 4 << 20);
+        // Let delayed duplicates arrive while the connection winds down.
+        s.run_until(s.now + secs(5));
+        let srv = s.a.accepted[0];
+        assert_ne!(s.a.conns.get(&srv).and_then(|c| c.closed), Some(CloseReason::Desync));
+        rtos += s.a.shard.info(srv).map_or(0, |i| i.stats.rto_count);
+    }
+    assert!(rtos > 50, "scenario too gentle: {rtos} RTOs");
 }
