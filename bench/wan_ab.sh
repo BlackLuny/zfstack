@@ -45,14 +45,28 @@ CLI_PUB=$(ssh_c "curl -s -4 https://ifconfig.me || hostname -I | awk '{print \$1
 SRV_PUB=${SRV#*@}
 echo "== server $SRV_PUB (local $SRV_IP), client public IP $CLI_PUB" >&2
 
-ssh_s "pkill -x zfbench || true; cd $REMOTE_DIR && ZFBENCH_TOKEN=$TOKEN setsid nohup target/release/zfbench --serve-wg --allow $CLI_PUB > /root/zfbench-serve.log 2>&1 < /dev/null &"
-trap 'ssh_s "pkill -x zfbench; '"$REMOTE_DIR"'/target/release/zfbench --cleanup" || true' EXIT
+# Start the server as a transient systemd unit: a backgrounded process under
+# `ssh host "... &"` can keep the SSH session open and hang this script.
+echo "== starting server on $SRV_PUB" >&2
+ssh_s "systemctl stop zfbench-serve 2>/dev/null; systemctl reset-failed zfbench-serve 2>/dev/null; pkill -x zfbench;
+    systemd-run --quiet --unit zfbench-serve --setenv=ZFBENCH_TOKEN=$TOKEN \
+        $REMOTE_DIR/target/release/zfbench --serve-wg --allow $CLI_PUB" </dev/null
+trap 'ssh_s "systemctl stop zfbench-serve; '"$REMOTE_DIR"'/target/release/zfbench --cleanup" </dev/null || true' EXIT
 sleep 1
+if ! ssh_s "ss -ltn | grep -q ':5202 '" </dev/null; then
+    echo "server is not listening on 5202:" >&2
+    ssh_s "journalctl -u zfbench-serve --no-pager -n 30" </dev/null >&2
+    exit 1
+fi
+if ! ssh_c "timeout 5 bash -c '</dev/tcp/$SRV_PUB/5202'" </dev/null; then
+    echo "client cannot reach $SRV_PUB:5202 (TCP). Open TCP 5202 and UDP 51820 on the server to $CLI_PUB." >&2
+    exit 1
+fi
 
 echo "== matrix $NAME" >&2
-ssh_c "cd $REMOTE_DIR && ZFBENCH_TOKEN=$TOKEN python3 bench/run_matrix.py --wg-server $SRV_PUB --name $NAME ${MATRIX_ARGS[*]}" || echo "matrix exited non-zero" >&2
+ssh_c "cd $REMOTE_DIR && ZFBENCH_TOKEN=$TOKEN python3 -u bench/run_matrix.py --wg-server $SRV_PUB --name $NAME ${MATRIX_ARGS[*]}" || echo "matrix exited non-zero" >&2
 
 mkdir -p "$ROOT/bench/results"
 rsync -az -e "ssh -p $CLI_PORT" "$CLI:$REMOTE_DIR/bench/results/*-$NAME" "$ROOT/bench/results/"
-scp -P "$SRV_PORT" "$SRV:/root/zfbench-serve.log" "$ROOT/bench/results/"*"-$NAME/serve.log" 2>/dev/null || true
+ssh_s "journalctl -u zfbench-serve --no-pager" </dev/null > "$(ls -d "$ROOT/bench/results/"*"-$NAME" | head -1)/serve.log" 2>/dev/null || true
 echo "== results in bench/results/*-$NAME" >&2
