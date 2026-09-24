@@ -65,6 +65,7 @@ pub fn sh_output(cmd: &str) -> String {
 pub fn cleanup() {
     sh_quiet(&format!("ip netns del {NETNS}"));
     sh_quiet(&format!("ip link del {TUN_A}"));
+    crate::wg::cleanup();
 }
 
 /// Move the calling thread into the named netns.
@@ -83,7 +84,7 @@ pub fn enter_netns(name: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn configure_dev(prefix: &str, dev: &str, addr: &str) -> io::Result<()> {
+pub fn configure_dev(prefix: &str, dev: &str, addr: &str) -> io::Result<()> {
     sh(&format!("{prefix}ip addr add {addr}/24 dev {dev}"))?;
     sh(&format!("{prefix}ip link set {dev} mtu {MTU} txqueuelen 10000 up"))?;
     // Replace the default (fq_codel) qdisc: we don't want an AQM in front of

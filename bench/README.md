@@ -211,6 +211,86 @@ Stack specs: `kernel` uses the system default CC (**this VM defaults to
 bbr**). `kernel-<cc>` sets `TCP_CONGESTION` on the kernel server, for example
 `kernel-cubic`. The others are `smoltcp-cubic|bbr|reno` and `zfstack-cubic|bbr|nopace`.
 
+## WG link mode: two machines, real network (`src/wg.rs`, `src/wgmode.rs`)
+
+The emulator mode above has no WireGuard and no real path. The WG link mode
+replaces the emulator with a WireGuard tunnel over whatever network joins two
+machines. It is meant for the WAN A/B of 0002 §2.3 and does not need zfc:
+the tunnel uses boringtun's `Tunn`, the same type zfc's WG path uses (0001
+§7.5), inside zfbench.
+
+```
+ client machine                                    server machine: zfbench --serve-wg
+┌───────────────────────────────┐   UDP 51820    ┌───────────────────────────────────────────┐
+│ kernel TCP client (N flows)   │ ◀────────────▶ │ userspace stacks: one thread does          │
+│  └ zfbwg 10.201.0.1/24        │  (real path)   │   recvmmsg → boringtun decrypt → ingress    │
+│    kernel WG, or boringtun    │                │   → poll → boringtun encrypt → sendmmsg     │
+│    on a TUN (userspace)       │   TCP 5202     │ kernel baseline: zfbwgS 10.201.0.2/24       │
+│ orchestrator ─────────────────┼─── control ───▶│   (kernel WG or boringtun bridge) + kernel  │
+└───────────────────────────────┘                │   TcpListener                               │
+                                                 └───────────────────────────────────────────┘
+```
+
+Server (one session at a time, runs until killed; every session gets fresh
+WireGuard keys, a fresh stack and a fresh UDP socket):
+
+```sh
+export ZFBENCH_TOKEN=$(head -c 16 /dev/urandom | xxd -p)   # the same value on both machines
+sudo -E target/release/zfbench --serve-wg --allow <client-ip>
+#   --ctl-listen 0.0.0.0:5202 --wg-listen 0.0.0.0:51820 --server-wg auto|kernel|userspace
+```
+
+Client, one run or a whole matrix:
+
+```sh
+sudo -E target/release/zfbench --wg-server <server-ip> --stack zfstack-bbr --test down --flows 8 --secs 30
+sudo -E bench/run_matrix.py --wg-server <server-ip> --name wan-218 \
+     --stacks kernel-cubic,smoltcp-cubic,zfstack-cubic,zfstack-bbr --tests down,up,mixed,connect --reps 5
+```
+
+- **What travels over the control channel.** It is newline-delimited JSON
+  on plain TCP outside the tunnel. `start` carries the stack options (the
+  same `--stack`, `--sock-buf-kb`, `--kernel-cc` and smoltcp flags as the
+  emulator mode) and the client's public key, and the reply carries the
+  server's. `snap` returns the server's thread and machine CPU and the upload
+  byte counters. The client calls it at the window marks and once a second in
+  `up` tests, where the server is the receiver. `stop` returns the
+  server-side result. Every request must carry the token, and `--allow`
+  limits the client addresses. The server runs as root and creates
+  interfaces, so open 5202 only to the client.
+- **The emulator flags do not apply.** Rate, RTT, loss and queue are ignored.
+  `config.rtt_ms` is the tunnel RTT, measured by TCP connect probes before
+  the test: the minimum of probes 2–6, because the first probe includes the
+  WireGuard handshake. `config.rate_mbps`, `loss` and `queue_bdp` are 0. On
+  a lab link, shape the path with `tc` on the machines themselves.
+- **WireGuard on each side.** `--client-wg` and `--server-wg` take `auto`
+  (kernel WG if `ip link add type wireguard` and `wg` work, userspace
+  otherwise), `kernel` or `userspace`. `--server-wg` only affects the kernel
+  baseline, because the userspace stacks always run WireGuard on their own
+  stack thread. The implementation used is recorded in `config.client_wg`
+  and `config.server_wg`. For the 0002 setup (client on kernel WG) use a
+  client with kernel WireGuard. On the 4-vCPU dev VM a userspace client used
+  one full core at about 1.3 Gbps (decrypt and TUN write), so above roughly
+  1 Gbps it becomes the bottleneck.
+- **CPU accounting.**
+  - `cpu.cpu_sec_per_effective_GB` for the userspace stacks is the server
+    thread that does UDP, WireGuard, TCP and the app. That is closer to a
+    production worker than the emulator mode, where there is no crypto.
+    `link.server_wg.peer.{decap,encap}_sec` is the boringtun share.
+  - The kernel baseline has no such thread: its TCP runs in softirq, and so
+    does its WG when `server_wg` is `kernel`. Compare it through
+    `cpu.server_system_busy_sec_per_effective_GB`, which is `/proc/stat`
+    busy time on the server machine with the caveats below.
+  - The client side is reported separately (`client_*`).
+- **The crypto placement differs from zfc today.** Encrypting on the stack
+  thread and sending with one `sendmmsg` per poll is the shape 0001 §7.5
+  asks of Driver B. zfc currently hands packets back to a Tokio task to
+  encrypt and send. That extra hop, and the pacing lateness it causes, is
+  not modelled here yet.
+- **Leftovers.** The client's `zfbwg`, and the server's `zfbwgS` in the
+  kernel baseline, are removed at the end of a run and by `--cleanup`. A
+  TUN-backed interface vanishes when its process dies.
+
 ## Caveats (read before trusting numbers)
 
 - **Timing precision.** Deliveries are about 15–25 µs late on average under
@@ -244,7 +324,8 @@ bbr**). `kernel-<cc>` sets `TCP_CONGESTION` on the kernel server, for example
   bug. If production starts with small buffers and grows them
   (`set_recv_capacity_ceiling` / `set_*_capacity`), this adapter does not
   model that yet.
-- **Compared with the 0002 testbed.** There is no WireGuard layer. The rate
+- **Compared with the 0002 testbed (emulator mode).** There is no WireGuard
+  layer; see the WG link mode for that. The rate
   counts inner IP bytes: MTU 1420, so the payload ceiling is about 194 Mbps
   without TCP timestamps and about 192.7 Mbps with them (the kernel uses
   them; smoltcp does not by default). There are no veths or qdiscs in the

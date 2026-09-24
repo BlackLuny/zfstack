@@ -10,8 +10,15 @@ Stack specs:
   kernel-<cc>       kernel server with TCP_CONGESTION=<cc> (e.g. kernel-cubic)
   smoltcp-cubic | smoltcp-bbr | smoltcp-reno | zfstack-cubic | zfstack-bbr | zfstack-nopace
 
+WG link mode (--wg-server HOST): the runs go through WireGuard to a
+`zfbench --serve-wg` server on another machine instead of the link emulator.
+The rate/RTT/loss/queue axes do not apply (the network is what it is); cells
+vary only test and flow count. The control token is read from ZFBENCH_TOKEN.
+
 Examples:
   sudo ./run_matrix.py --name s0-e1                  # default matrix
+  sudo ZFBENCH_TOKEN=... ./run_matrix.py --wg-server 203.0.113.7 --name wan-218 \
+        --stacks kernel-cubic,smoltcp-cubic,zfstack-cubic,zfstack-bbr --reps 5
   sudo ./run_matrix.py --quick --name smoke          # 10 s runs, 1 rep, small matrix
   sudo ./run_matrix.py --tests down --rtts 80 --losses 0 --queues 0.25 --flows 1 \
         --stacks kernel-cubic,smoltcp-bbr --reps 5 --name shallow80
@@ -45,6 +52,7 @@ def cleanup(binpath):
     # belt and braces, in case the binary itself is broken
     subprocess.run(["ip", "netns", "del", "zfbns"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(["ip", "link", "del", "zfbA"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["ip", "link", "del", "zfbwg"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def fmt_num(x):
@@ -74,6 +82,13 @@ def stack_args(spec, args):
 def build_runs(a):
     """List of (cell dict, stack spec)."""
     cells = []
+    if a.wg_server:
+        for test in a.tests:
+            if test not in ("down", "up", "mixed", "connect"):
+                sys.exit(f"unknown test {test}")
+            for fl in (a.flows if test in ("down", "up") else [1]):
+                cells.append(dict(test=test, rtt=0.0, loss=0.0, queue=0.0, flows=fl))
+        return cells
     for test in a.tests:
         if test in ("down", "up"):
             for rtt, loss, q, fl in itertools.product(a.rtts, a.losses, a.queues, a.flows):
@@ -89,6 +104,8 @@ def build_runs(a):
 
 
 def cell_key(c):
+    if c["rtt"] == 0 and c["queue"] == 0:  # WG link mode
+        return f"{c['test']}_wan_f{c['flows']}"
     return f"{c['test']}_rtt{c['rtt']:g}_loss{c['loss']:g}_q{c['queue']:g}_f{c['flows']}"
 
 
@@ -98,15 +115,14 @@ def run_one(a, outdir, cell, spec, rep):
     jpath = outdir / f"{key}.json"
     if jpath.exists() and a.resume:
         return "skipped"
-    cmd = [str(a.bin), "--test", cell["test"], "--rate-mbps", str(a.rate),
-           "--rtt-ms", str(cell["rtt"]),
-           # random loss goes on the data direction: server->client for down/mixed,
-           # client->server for up
-           "--loss-up" if cell["test"] == "up" else "--loss", str(cell["loss"]),
-           "--queue-bdp", str(cell["queue"]), "--flows", str(cell["flows"]),
-           "--secs", str(a.secs), "--warmup", str(a.warmup),
-           "--conns", str(a.conns), "--concurrency", str(a.concurrency),
-           "--seed", str(a.seed + rep), "--label", key, "--json", str(jpath)]
+    if a.wg_server:
+        cmd = [str(a.bin), "--test", cell["test"], "--flows", str(cell["flows"]),
+               "--secs", str(a.secs), "--warmup", str(a.warmup),
+               "--conns", str(a.conns), "--concurrency", str(a.concurrency),
+               "--seed", str(a.seed + rep), "--label", key, "--json", str(jpath),
+               "--wg-server", a.wg_server, "--client-wg", a.client_wg]
+    else:
+        cmd = emulator_cmd(a, cell, rep, key, jpath)
     if a.client_cc:
         cmd += ["--client-cc", a.client_cc]
     cmd += stack_args(spec, a)
@@ -117,6 +133,7 @@ def run_one(a, outdir, cell, spec, rep):
     with open(outdir / f"{key}.log", "w") as log:
         log.write(" ".join(cmd) + "\n")
         log.flush()
+        # the WG control token reaches the child through the inherited ZFBENCH_TOKEN
         child = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
         try:
             rc = child.wait(timeout=timeout)
@@ -133,6 +150,18 @@ def run_one(a, outdir, cell, spec, rep):
         # record the crash/timeout so the report can show it
         jpath.with_suffix(".failed").write_text(f"{status}\n")
     return f"{status} ({time.time() - t0:.0f}s)"
+
+
+def emulator_cmd(a, cell, rep, key, jpath):
+    return [str(a.bin), "--test", cell["test"], "--rate-mbps", str(a.rate),
+           "--rtt-ms", str(cell["rtt"]),
+           # random loss goes on the data direction: server->client for down/mixed,
+           # client->server for up
+           "--loss-up" if cell["test"] == "up" else "--loss", str(cell["loss"]),
+           "--queue-bdp", str(cell["queue"]), "--flows", str(cell["flows"]),
+           "--secs", str(a.secs), "--warmup", str(a.warmup),
+           "--conns", str(a.conns), "--concurrency", str(a.concurrency),
+           "--seed", str(a.seed + rep), "--label", key, "--json", str(jpath)]
 
 
 # ---------------------------------------------------------------- report
@@ -212,6 +241,15 @@ METRICS = {
         ("P99 ms", lambda d: d["results"].get("latency_total", {}).get("p99_ms")),
     ],
 }
+# WG link mode: no emulator counters; add the server's whole-machine CPU
+# (kernel TCP and kernel WireGuard only show up there).
+WG_BULK = [
+    ("goodput Mbps", lambda d: d["results"].get("goodput_mbps_mean")),
+    ("zero-tput s", lambda d: d["results"].get("zero_throughput_secs")),
+    ("stack+WG thread CPU s/GB", lambda d: d["cpu"].get("cpu_sec_per_effective_GB")),
+    ("server machine CPU s/GB", lambda d: d["cpu"].get("server_system_busy_sec_per_effective_GB")),
+]
+METRICS_WG = dict(METRICS, down=WG_BULK, up=WG_BULK)
 # metric used for the ratio column (higher = better for goodput/success, lower for latency)
 RATIO_METRIC = {"down": 0, "up": 0, "mixed": 1, "connect": 0}
 
@@ -250,10 +288,21 @@ def make_report(outdir, baseline):
     L.append("Cells show **median [min–max]** over repetitions. ⚠n = n runs crashed/timed out or "
              "failed a correctness check (see the .log / JSON `errors`). "
              f"Ratio columns = median(stack) / median({baseline}).\n")
-    L.append("Goodput = bytes delivered to the receiving application, mean of the per-second "
-             "samples after warmup. Rates are IP-level on the emulated bottleneck (MTU 1420, "
-             "so the TCP payload ceiling at 200 Mbps is ~192-194 Mbps).\n")
-
+    wg_mode = any(d["config"].get("link_mode") == "wg" for _, _, d in res)
+    metrics = METRICS_WG if wg_mode else METRICS
+    if not wg_mode:
+        L.append("Goodput = bytes delivered to the receiving application, mean of the per-second "
+                 "samples after warmup. Rates are IP-level on the emulated bottleneck (MTU 1420, "
+                 "so the TCP payload ceiling at 200 Mbps is ~192-194 Mbps).\n")
+    else:
+        L.append("Goodput = bytes delivered to the receiving application, mean of the per-second "
+                 "samples after warmup (inner MTU 1420).\n")
+        L.append("WG link mode: real network through WireGuard, no emulator. The RTT column is the "
+                 "tunnel RTT from TCP connect probes at the start of each run (the row shows the first "
+                 "run's value; the Tunnel section has the spread). "
+                 "`stack+WG thread` = the server thread doing UDP, WireGuard and TCP for the userspace "
+                 "stacks (empty for kernel); `server machine` = /proc/stat busy time on the server, "
+                 "the only fair CPU figure for the kernel baseline.\n")
     tests = []
     for key in by:
         t = key.split("_")[0]
@@ -267,11 +316,13 @@ def make_report(outdir, baseline):
 
         def sort_key(k):
             c = next(iter(by[k].values()))[0]["config"]
+            if wg_mode:
+                return (c["flows"],)
             return (c["rtt_ms"], max(c["loss"], c.get("loss_up", 0)), -c["queue_bdp"], c["flows"])
         keys.sort(key=sort_key)
-        for mi, (mname, mf) in enumerate(METRICS[t]):
+        for mi, (mname, mf) in enumerate(metrics[t]):
             L.append(f"### {t}: {mname}\n")
-            hdr = ["RTT ms", "loss", "queue k", "flows"] + stacks
+            hdr = (["RTT ms", "flows"] if wg_mode else ["RTT ms", "loss", "queue k", "flows"]) + stacks
             ratio_stacks = [s for s in stacks if s != baseline] if baseline in stacks else []
             if mi == RATIO_METRIC[t]:
                 hdr += [f"{s}/{baseline}" for s in ratio_stacks]
@@ -280,7 +331,10 @@ def make_report(outdir, baseline):
             for k in keys:
                 any_d = next(iter(by[k].values()))[0]
                 c = any_d["config"]
-                row = [f"{c['rtt_ms']:g}", f"{max(c['loss'], c.get('loss_up', 0)) * 100:g}%", f"{c['queue_bdp']:g}", str(c["flows"])]
+                if wg_mode:
+                    row = [f"{c['rtt_ms']:g}", str(c["flows"])]
+                else:
+                    row = [f"{c['rtt_ms']:g}", f"{max(c['loss'], c.get('loss_up', 0)) * 100:g}%", f"{c['queue_bdp']:g}", str(c["flows"])]
                 vals = {}
                 for s in stacks:
                     ds = by[k].get(s, [])
@@ -298,17 +352,26 @@ def make_report(outdir, baseline):
                         row.append(ratio_str(vals[s], vals.get(baseline, [])))
                 L.append("| " + " | ".join(row) + " |")
             L.append("")
-    # Emulator health
-    L.append("## Emulator health\n")
-    lates = [d["link"]["down"]["timing_late_mean_us"] for _, _, d in res]
-    lmax = [d["link"]["down"]["timing_late_max_us"] for _, _, d in res]
-    tund = sum((d["link"]["tun_a"] or {}).get("qdisc_drops", 0) + (d["link"]["tun_a"] or {}).get("tx_dropped", 0)
-               for _, _, d in res)
-    sn = sum(d["link"].get("softnet_backlog_drops", 0) for _, _, d in res)
-    if lates:
-        L.append(f"- down-link delivery lateness: mean of means {statistics.mean(lates):.1f} µs, "
-                 f"worst max {max(lmax):.0f} µs")
-    L.append(f"- drops outside the emulator (TUN qdisc/tx_dropped): {tund}; softnet backlog drops: {sn}")
+    if not wg_mode:
+        # Emulator health
+        L.append("## Emulator health\n")
+        lates = [d["link"]["down"]["timing_late_mean_us"] for _, _, d in res]
+        lmax = [d["link"]["down"]["timing_late_max_us"] for _, _, d in res]
+        tund = sum((d["link"]["tun_a"] or {}).get("qdisc_drops", 0) + (d["link"]["tun_a"] or {}).get("tx_dropped", 0)
+                   for _, _, d in res)
+        sn = sum(d["link"].get("softnet_backlog_drops", 0) for _, _, d in res)
+        if lates:
+            L.append(f"- down-link delivery lateness: mean of means {statistics.mean(lates):.1f} µs, "
+                     f"worst max {max(lmax):.0f} µs")
+        L.append(f"- drops outside the emulator (TUN qdisc/tx_dropped): {tund}; softnet backlog drops: {sn}")
+    else:
+        L.append("## Tunnel\n")
+        rtts = [d["config"]["rtt_ms"] for _, _, d in res if d["config"].get("rtt_ms")]
+        if rtts:
+            L.append(f"- tunnel RTT (connect probes): median {statistics.median(rtts):.1f} ms, "
+                     f"range {min(rtts):.1f}–{max(rtts):.1f} ms over {len(rtts)} runs")
+        modes = sorted({f"client {d['config'].get('client_wg')}, server {d['config'].get('server_wg')}" for _, _, d in res})
+        L.append(f"- WireGuard implementations: {'; '.join(modes)}")
     errs = [(k, s, d["errors"]) for k, s, d in res if d.get("errors")]
     if errs or failed:
         L.append("\n## Failures\n")
@@ -350,6 +413,8 @@ def main():
     ap.add_argument("--outdir", type=Path, help="explicit output directory (default results/<date>-<name>)")
     ap.add_argument("--report-only", type=Path, metavar="DIR")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--wg-server", metavar="HOST", help="WG link mode against `zfbench --serve-wg` on HOST (token from ZFBENCH_TOKEN)")
+    ap.add_argument("--client-wg", default="auto", choices=["auto", "kernel", "userspace"])
     ap.add_argument("extra", nargs="*", help="extra zfbench args after --")
     a = ap.parse_args()
 
@@ -367,6 +432,8 @@ def main():
     a.mixed_rtts = parse_list(a.mixed_rtts, float)
     a.mixed_queues = parse_list(a.mixed_queues, float)
 
+    if a.wg_server and not os.environ.get("ZFBENCH_TOKEN"):
+        sys.exit("--wg-server needs the control token in ZFBENCH_TOKEN")
     cells = build_runs(a)
     runs = [(rep, c, s) for rep in range(a.reps) for c in cells for s in a.stacks]
     est = sum((a.secs + 3) if c["test"] != "mixed" else (a.secs + 6) for _, c, _ in runs if c["test"] != "connect")
