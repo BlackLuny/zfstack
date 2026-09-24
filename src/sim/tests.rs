@@ -664,3 +664,41 @@ fn reordered_and_duplicated_acks_are_not_desync() {
     }
     assert!(rtos > 50, "scenario too gentle: {rtos} RTOs");
 }
+
+/// Request/response shape: the server's reply is a single segment. When that
+/// segment is lost, the tail-loss probe must repair it well before the 200 ms
+/// RTO once the peer's delayed-ACK time (40 ms here) has been measured.
+#[test]
+fn lost_lone_segment_is_probed_before_rto() {
+    let link = LinkParams { delay: Duration::from_millis(10), ..Default::default() };
+    let mut s = sim(31, link.clone(), link);
+    let id = s.connect(47000, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(200));
+    let srv = s.a.accepted[0];
+    let reply = |s: &mut Sim| {
+        s.a.conns.get_mut(&srv).unwrap().to_send += 500;
+    };
+    // A few exchanges so the server learns RTT and the peer's ACK delay.
+    for _ in 0..6 {
+        reply(&mut s);
+        s.run_until(s.now + Duration::from_millis(300));
+    }
+    let got = s.b.conns[&id].received;
+    assert_eq!(got, 3000);
+    // Next reply: drop it on the wire.
+    reply(&mut s);
+    let t0 = s.now;
+    while s.ab.inflight.is_empty() {
+        s.run_until(s.now + Duration::from_micros(100));
+    }
+    let k = *s.ab.inflight.keys().last().unwrap();
+    s.ab.inflight.remove(&k);
+    while s.b.conns[&id].received == got && s.now < t0 + secs(2) {
+        s.run_until(s.now + Duration::from_millis(1));
+    }
+    let took = s.now - t0;
+    assert_eq!(s.b.conns[&id].received, got + 500);
+    let st = s.a.shard.info(srv).unwrap();
+    println!("lone segment repaired after {took:?} ({st:?})");
+    assert!(took < Duration::from_millis(150), "lone segment took {took:?} to repair (RTO-bound)");
+}

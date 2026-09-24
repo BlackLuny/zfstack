@@ -15,7 +15,8 @@ set -euo pipefail
 SRV=$1 SRV_PORT=$2 CLI=$3 CLI_PORT=$4
 shift 4
 MATRIX_ARGS=("$@")
-[ ${#MATRIX_ARGS[@]} -eq 0 ] && MATRIX_ARGS=(--stacks kernel-cubic,smoltcp-cubic,zfstack-cubic,zfstack-bbr --tests down,up,mixed,connect --flows 1,8 --reps 3)
+# kernel-bbr is the reference for zfstack-bbr's loss rate on the same path.
+[ ${#MATRIX_ARGS[@]} -eq 0 ] && MATRIX_ARGS=(--stacks kernel-cubic,kernel-bbr,smoltcp-cubic,zfstack-cubic,zfstack-bbr --tests down,up,mixed,connect --flows 1,8 --reps 3)
 NAME=${NAME:-wan-$(date +%Y%m%d-%H%M)}
 REMOTE_DIR=/root/zfstack-bench
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,6 +24,9 @@ TOKEN=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
 ssh_s() { ssh -p "$SRV_PORT" -o StrictHostKeyChecking=accept-new "$SRV" "$@"; }
 ssh_c() { ssh -p "$CLI_PORT" -o StrictHostKeyChecking=accept-new "$CLI" "$@"; }
+
+# The nodes may not have git: record the commit next to the synced tree.
+git -C "$ROOT" rev-parse --short HEAD > "$ROOT/.zfstack_commit" 2>/dev/null || true
 
 prepare() { # $1 = ssh function, $2 = port, $3 = host
     echo "== $3: sync + build" >&2

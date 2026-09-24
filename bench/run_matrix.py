@@ -43,6 +43,16 @@ DEFAULT_BIN = HERE.parent / "target" / "release" / "zfbench"
 child = None
 
 
+def zfstack_commit():
+    try:
+        out = subprocess.run(["git", "-C", str(HERE.parent), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        out = ""
+    if not out and (HERE.parent / ".zfstack_commit").exists():
+        out = (HERE.parent / ".zfstack_commit").read_text().strip()
+    return out
+
+
 def cleanup(binpath):
     try:
         subprocess.run([str(binpath), "--cleanup"], stdout=subprocess.DEVNULL,
@@ -454,8 +464,7 @@ def main():
     env = {
         "uname": subprocess.run(["uname", "-a"], capture_output=True, text=True).stdout.strip(),
         "nproc": os.cpu_count(),
-        "zfstack_commit": subprocess.run(["git", "-C", str(HERE.parent), "rev-parse", "HEAD"],
-                                         capture_output=True, text=True).stdout.strip(),
+        "zfstack_commit": zfstack_commit(),
         "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
     }
     for k in ("net.ipv4.tcp_rmem", "net.ipv4.tcp_wmem", "net.ipv4.tcp_congestion_control"):
