@@ -31,7 +31,10 @@ enum StackKind {
     SmoltcpCubic,
     SmoltcpBbr,
     SmoltcpReno,
-    Zfstack,
+    ZfstackCubic,
+    ZfstackBbr,
+    /// zfstack CUBIC without pacing (isolates the pacing effect).
+    ZfstackNopace,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -148,11 +151,16 @@ fn build_stack(a: &Args, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
         StackKind::SmoltcpCubic => CC::Cubic,
         StackKind::SmoltcpBbr => CC::Bbr,
         StackKind::SmoltcpReno => CC::Reno,
-        StackKind::Zfstack => {
+        StackKind::ZfstackCubic | StackKind::ZfstackBbr | StackKind::ZfstackNopace => {
             #[cfg(feature = "zfstack")]
             {
+                let (cc, pacing) = match a.stack {
+                    StackKind::ZfstackBbr => (zfstack::CcAlgo::Bbr, true),
+                    StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
+                    _ => (zfstack::CcAlgo::Cubic, true),
+                };
                 return Box::new(adapters::zfstack::ZfStack::new(
-                    adapters::zfstack::ZfOpts { sock_buf: a.sock_buf_kb * 1024 },
+                    adapters::zfstack::ZfOpts { sock_buf: a.sock_buf_kb * 1024, cc, pacing },
                     counters,
                 ));
             }
@@ -183,7 +191,9 @@ fn stack_name(s: StackKind) -> &'static str {
         StackKind::SmoltcpCubic => "smoltcp-cubic",
         StackKind::SmoltcpBbr => "smoltcp-bbr",
         StackKind::SmoltcpReno => "smoltcp-reno",
-        StackKind::Zfstack => "zfstack",
+        StackKind::ZfstackCubic => "zfstack-cubic",
+        StackKind::ZfstackBbr => "zfstack-bbr",
+        StackKind::ZfstackNopace => "zfstack-nopace",
     }
 }
 

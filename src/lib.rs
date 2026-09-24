@@ -110,5 +110,6 @@ pub struct ConnInfo {
     pub in_recovery: bool,
     pub delivered: u64,
     pub cc: &'static str,
+    pub cc_debug: String,
     pub stats: ConnStats,
 }

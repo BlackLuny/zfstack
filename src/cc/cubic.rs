@@ -128,7 +128,7 @@ impl CongestionControl for Cubic {
             return;
         }
         // Do not grow cwnd when not cwnd-limited (RFC 9438 §4.8 / RFC 7661).
-        let cwnd_limited = ctx.rs.prior_in_flight + 2 * ctx.mss as u64 >= self.cwnd || self.cwnd < self.ssthresh && ctx.rs.prior_in_flight * 2 >= self.cwnd;
+        let cwnd_limited = ctx.cwnd_limited || ctx.rs.prior_in_flight + 2 * ctx.mss as u64 >= self.cwnd || self.cwnd < self.ssthresh && ctx.rs.prior_in_flight * 2 >= self.cwnd;
         if !cwnd_limited {
             return;
         }
@@ -236,6 +236,7 @@ mod tests {
             in_recovery: false,
             round_start: false,
             round_count: 0,
+            cwnd_limited: true,
         }
     }
 

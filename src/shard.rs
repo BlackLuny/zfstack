@@ -873,9 +873,15 @@ impl Shard {
         loop {
             let Some(plan): Option<Plan> = conn.plan(now, level) else { return (sent, false) };
             if plan.paced() {
-                if let Some(_r) = rate {
-                    if conn.next_send_time > now {
+                if let Some(r) = rate {
+                    // Pacing granularity = one scheduling quantum, clamp(rate × 1 ms, 2 MSS,
+                    // 64 KiB) (§7.1; Linux TSO autosizing uses the same ~1 ms): a segment
+                    // may leave up to one quantum's worth of time ahead of its EDT slot.
+                    let pq = ((r / 1000) as usize).clamp(2 * mss, self.cfg.max_quantum);
+                    let ahead = Duration::from_nanos((pq as u128 * 1_000_000_000 / r.max(1) as u128).min(u64::MAX as u128) as u64);
+                    if conn.next_send_time > now + ahead {
                         conn.note_pacing_limited(now);
+                        // Wake when a full quantum of credit has accumulated.
                         let t = conn.next_send_time;
                         self.pacing.set(idx, t);
                         return (sent, false);

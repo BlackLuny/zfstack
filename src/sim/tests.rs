@@ -298,3 +298,79 @@ fn bbr_and_brutal_complete() {
         assert_download_ok(&c, 8 << 20);
     }
 }
+
+fn goodput_run(cc: CcAlgo, rate: u64, rtt_ms: u64, queue_bdp: f64, loss: f64, bytes: u64, gap: Duration) -> (f64, crate::ConnInfo) {
+    let bdp = (rate / 8) as f64 * rtt_ms as f64 / 1000.0;
+    let p = LinkParams {
+        rate_bps: rate,
+        delay: Duration::from_millis(rtt_ms / 2),
+        queue_bytes: (bdp * queue_bdp) as usize,
+        loss,
+        ..Default::default()
+    };
+    let mut cfg = StackConfig::default();
+    cfg.cc = cc;
+    let mut s = Sim::new(777, cfg, StackConfig::default(), p.clone(), LinkParams { loss: 0.0, ..p });
+    s.gap_a = gap;
+    s.check_invariants = false;
+    let start = s.now;
+    let (_, c) = download(&mut s, bytes, secs(120));
+    assert_download_ok(&c, bytes);
+    let srv = s.a.accepted[0];
+    let info = s.a.shard.info(srv).unwrap_or_else(|| panic!("no info"));
+    let mbps = bytes as f64 * 8.0 / (s.now - start).as_secs_f64() / 1e6;
+    (mbps, info)
+}
+
+#[test]
+fn bbr_shallow_queue_long_rtt() {
+    let (mbps, info) = goodput_run(CcAlgo::Bbr, 200_000_000, 80, 0.25, 0.0, 240 << 20, Duration::ZERO);
+    let rtx = info.stats.bytes_retrans as f64 / info.stats.bytes_sent as f64;
+    eprintln!("bbr 80ms/0.25BDP: {mbps:.1} Mbit/s, retrans {:.2}%", rtx * 100.0);
+    assert!(mbps > 150.0, "goodput {mbps:.1}");
+    assert!(rtx < 0.05, "retransmission ratio {rtx}");
+}
+
+#[test]
+fn bbr_random_loss_keeps_rate() {
+    // BBR must not collapse under 1% random loss (unlike loss-based CC).
+    let (mbps, _) = goodput_run(CcAlgo::Bbr, 100_000_000, 40, 2.0, 0.01, 48 << 20, Duration::ZERO);
+    eprintln!("bbr 1% loss: {mbps:.1} Mbit/s");
+    assert!(mbps > 50.0, "goodput {mbps:.1}");
+}
+
+#[test]
+#[ignore]
+fn bbr_trace() {
+    let rate = 200_000_000u64;
+    let bdp = (rate / 8) as f64 * 0.08;
+    let p = LinkParams { rate_bps: rate, delay: Duration::from_millis(40), queue_bytes: (bdp * 0.25) as usize, ..Default::default() };
+    let mut cfg = StackConfig::default();
+    cfg.cc = CcAlgo::Bbr;
+    let mut s = Sim::new(777, cfg, StackConfig::default(), p.clone(), p);
+    s.check_invariants = false;
+    s.a.accept_template = AppConn { to_send: u64::MAX, ..Default::default() };
+    let id = s.connect(40000, AppConn::default());
+    let mut last = 0;
+    for i in 0..100 {
+        s.run_until(s.now + Duration::from_millis(100));
+        let got = s.b.conns[&id].received;
+        let Some(&srv) = s.a.accepted.first() else { continue };
+        let info = s.a.shard.info(srv).unwrap();
+        eprintln!("{:>4}ms {:>6.1}Mbps drops={} rtx={} rto={} tlp={} fr={} {}", i * 100, (got - last) as f64 * 8.0 / 0.1 / 1e6, s.ab.stats.queue_drops, info.stats.bytes_retrans, info.stats.rto_count, info.stats.tlp_count, info.stats.fast_recoveries, info.cc_debug);
+        last = got;
+    }
+}
+
+#[test]
+#[ignore]
+fn bbr_probe_steady_state() {
+    for (q, bytes) in [(0.25, 240u64 << 20), (2.0, 240 << 20)] {
+        let (mbps, info) = goodput_run(CcAlgo::Bbr, 200_000_000, 80, q, 0.0, bytes, Duration::ZERO);
+        eprintln!("q={q}: {mbps:.1} Mbit/s cwnd={} pacing={:?} srtt={:?} minrtt={:?} rtx={}", info.cwnd, info.pacing_rate, info.srtt, info.min_rtt, info.stats.bytes_retrans);
+    }
+    for (q, bytes) in [(0.25, 240u64 << 20), (2.0, 240 << 20)] {
+        let (mbps, info) = goodput_run(CcAlgo::Cubic, 200_000_000, 80, q, 0.0, bytes, Duration::ZERO);
+        eprintln!("cubic q={q}: {mbps:.1} Mbit/s cwnd={} rtx={}", info.cwnd, info.stats.bytes_retrans);
+    }
+}
