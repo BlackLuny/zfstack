@@ -264,6 +264,28 @@ impl Scoreboard {
         n
     }
 
+    /// Forget SACK information and mark everything lost (suspected reneging after
+    /// repeated RTO, RFC 2018 §8). Returns newly lost bytes.
+    pub fn renege_all(&mut self) -> u64 {
+        let mut n = 0;
+        for i in 0..self.recs.len() {
+            let r = self.recs[i];
+            if r.has(F_SACKED) {
+                self.unaccount(&r);
+                let mut m = r;
+                // Its original send time no longer yields a valid RTT sample.
+                m.flags = (m.flags & !(F_SACKED | F_RETRANS)) | F_LOST | F_EVER_RETRANS;
+                self.account(&m);
+                self.recs[i] = m;
+                n += m.len();
+            } else {
+                n += self.mark_lost(i);
+            }
+        }
+        self.rtx_hint = 0;
+        n
+    }
+
     /// Sanity check of the incremental counters (tests / debug).
     pub fn check(&self) {
         let (mut s, mut l, mut r) = (0, 0, 0);

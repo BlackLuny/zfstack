@@ -20,6 +20,9 @@ pub mod wire;
 #[cfg(any(test, feature = "test-peer"))]
 pub mod sim;
 
+#[cfg(feature = "tokio")]
+pub mod tokio_adapter;
+
 pub use cc::CcAlgo;
 pub use config::StackConfig;
 pub use conn::{ConnStats, ReadResult, State, WriteResult};
