@@ -155,6 +155,10 @@ pub struct ConnStats {
     pub paws_drops: u64,
     pub challenge_acks: u64,
     pub zero_window_probes: u64,
+    /// New-data segments shorter than the MSS.
+    pub small_segs: u64,
+    /// Send records visited by RACK loss detection (CPU diagnostics).
+    pub rack_scanned: u64,
     /// Time spent limited by each factor (ns): rwnd, cwnd, pacing, app.
     pub limited_rwnd_ns: u64,
     pub limited_cwnd_ns: u64,
@@ -210,6 +214,8 @@ pub struct Conn {
     ws_ok: bool,
     rack_timeout: Option<Instant>,
     rto_tsval_pending: bool,
+    cwnd_limited_now: bool,
+    cwnd_limited_prev: bool,
     adv_mss: u16,
     /// Next time a paced segment may leave (EDT).
     pub next_send_time: Instant,
@@ -368,6 +374,8 @@ impl Conn {
             ws_ok: false,
             rack_timeout: None,
             rto_tsval_pending: false,
+            cwnd_limited_now: false,
+            cwnd_limited_prev: false,
             adv_mss: mss.min(65535) as u16,
             next_send_time: Instant::ZERO,
             rx_sp: SeqSpace { isn: Seq(0) },
@@ -1364,6 +1372,8 @@ impl Conn {
                 self.dl.next_round_delivered = self.dl.delivered;
                 self.dl.round_count += 1;
                 round_start = true;
+                self.cwnd_limited_prev = self.cwnd_limited_now;
+                self.cwnd_limited_now = false;
             }
         }
         if self.dl.app_limited != 0 && self.dl.delivered > self.dl.app_limited {
@@ -1376,6 +1386,9 @@ impl Conn {
         if let Some(p) = self.rto_recovery {
             if self.snd_una >= p {
                 self.rto_recovery = None;
+                if !self.cc.uses_prr() {
+                    self.cc.on_recovery_exit(now);
+                }
             }
         }
         if let Some(rec) = &self.recovery {
@@ -1419,6 +1432,7 @@ impl Conn {
                 in_recovery: self.recovery.is_some() || self.rto_recovery.is_some(),
                 round_start,
                 round_count: self.dl.round_count,
+                cwnd_limited: self.cwnd_limited_now || self.cwnd_limited_prev || prior_in_flight + self.mss as u64 >= self.cc.cwnd(),
             };
             self.cc.on_ack(&ctx_ack);
         } else if newly_lost > 0 && !self.cc.uses_prr() {
@@ -1433,6 +1447,7 @@ impl Conn {
                 in_recovery: true,
                 round_start,
                 round_count: self.dl.round_count,
+                cwnd_limited: true,
             };
             self.cc.on_ack(&ctx_ack);
         }
@@ -1530,6 +1545,7 @@ impl Conn {
             if r.start >= self.rack.end {
                 break;
             }
+            self.stats.rack_scanned += 1;
             if r.has(F_SACKED) || (r.has(F_LOST) && !r.has(F_RETRANS)) {
                 i += 1;
                 continue;
@@ -1760,12 +1776,15 @@ impl Conn {
             }
             if len > room {
                 self.set_limit(now, LIM_CWND);
+                self.cwnd_limited_now = true;
                 return None;
             }
             let fin = self.snd_nxt + len == fin_off;
+            // PSH marks the end of what the application has written so far.
+            let psh = len == unsent;
             return Some(Plan {
                 kind: PlanKind::New,
-                flags: ACK | PSH | if fin { FIN } else { 0 },
+                flags: ACK | if psh { PSH } else { 0 } | if fin { FIN } else { 0 },
                 seq_off: self.snd_nxt,
                 len: len as u32,
                 window: 0,
@@ -1939,6 +1958,9 @@ impl Conn {
         self.snd_nxt = end;
         self.snd_max = self.snd_max.max(end);
         self.stats.bytes_sent += p.len as u64;
+        if (p.len as u64) < self.mss as u64 && p.len > 0 {
+            self.stats.small_segs += 1;
+        }
         if let Some(rec) = self.recovery.as_mut() {
             rec.prr_out += end - p.seq_off;
             rec.quota = rec.quota.saturating_sub(end - p.seq_off);
@@ -2216,6 +2238,7 @@ impl Conn {
             in_recovery: self.recovery.is_some(),
             delivered: self.dl.delivered,
             cc: self.cc.name(),
+            cc_debug: self.cc.debug(),
             stats: self.stats.clone(),
         }
     }

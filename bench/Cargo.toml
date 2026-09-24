@@ -20,12 +20,13 @@ smoltcp = { git = "https://github.com/BlackLuny/smoltcp", rev = "8014f8b21e12faf
     "socket-tcp-reno",
 ] }
 zfstack = { path = "..", optional = true }
+bytes = "1"
 crossbeam-channel = "0.5"
 libc = "0.2"
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 
 [features]
-default = []
+default = ["zfstack"]
 zfstack = ["dep:zfstack"]
 

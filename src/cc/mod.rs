@@ -58,6 +58,8 @@ pub struct AckCtx {
     /// True at the start of a new delivery round (one RTT of data).
     pub round_start: bool,
     pub round_count: u64,
+    /// Sending was limited by cwnd at some point during the last round.
+    pub cwnd_limited: bool,
 }
 
 pub trait CongestionControl: Send {
@@ -82,6 +84,10 @@ pub trait CongestionControl: Send {
     /// Whether the connection should apply PRR during loss recovery.
     fn uses_prr(&self) -> bool {
         true
+    }
+    /// Internal state for diagnostics.
+    fn debug(&self) -> String {
+        String::new()
     }
     /// Application became idle/restarted after idle.
     fn on_app_restart(&mut self, _now: Instant) {}
