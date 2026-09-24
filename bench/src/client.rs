@@ -37,7 +37,21 @@ pub struct TestOutcome {
 
 pub type Mark<'a> = &'a mut dyn FnMut(&'static str);
 
-fn server_addr() -> SocketAddr {
+/// Read access to the server-side application counters. The emulator mode
+/// shares [`ServerCounters`] in-process; the WG mode fetches them from the
+/// remote server over the control channel.
+pub trait ServerView {
+    /// Bytes received by the server app on upload flows `0..n`.
+    fn up_flow_bytes(&self, n: usize) -> Vec<u64>;
+}
+
+impl ServerView for Arc<ServerCounters> {
+    fn up_flow_bytes(&self, n: usize) -> Vec<u64> {
+        self.up_flow_bytes[..n].iter().map(|c| c.load(Relaxed)).collect()
+    }
+}
+
+pub fn server_addr() -> SocketAddr {
     SocketAddr::new(tun::SERVER_ADDR.parse().unwrap(), tun::SERVER_PORT)
 }
 
@@ -182,7 +196,7 @@ type SideTask = Box<dyn FnOnce(Instant, Arc<AtomicBool>) -> (serde_json::Value, 
 
 /// Run N bulk flows (down or up) with per-second sampling. `side` runs in its
 /// own thread from t0 (used by `mixed`) and returns extra results.
-fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>, mark: Mark, side: Option<SideTask>) -> TestOutcome {
+fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mark: Mark, side: Option<SideTask>) -> TestOutcome {
     let stop = Arc::new(AtomicBool::new(false));
     let mut errors = Vec::new();
     // Connect all flows first.
@@ -203,12 +217,14 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>
     }
     // Receiver-side per-flow byte counters.
     let recv_ctrs: Vec<Arc<AtomicU64>> = (0..flows).map(|_| Arc::new(AtomicU64::new(0))).collect();
-    let base_up: Vec<u64> = (0..flows).map(|i| counters.up_flow_bytes[i].load(Relaxed)).collect();
-    let read_recv = |i: usize| -> u64 {
+    let base_up: Vec<u64> = if up { counters.up_flow_bytes(flows) } else { vec![0; flows] };
+    // One sample of every flow's receiver-side byte count (one control round
+    // trip in WG mode).
+    let read_all = || -> Vec<u64> {
         if up {
-            counters.up_flow_bytes[i].load(Relaxed) - base_up[i]
+            counters.up_flow_bytes(flows).iter().zip(&base_up).map(|(v, b)| v.saturating_sub(*b)).collect()
         } else {
-            recv_ctrs[i].load(Relaxed)
+            recv_ctrs.iter().map(|c| c.load(Relaxed)).collect()
         }
     };
     let t0 = Instant::now();
@@ -228,27 +244,28 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>
     for sec in 1..=o.secs {
         if sec - 1 == o.warmup {
             // measurement window starts now (== t0 + warmup)
-            window_start_bytes = (0..flows).map(read_recv).sum();
+            window_start_bytes = read_all().iter().sum();
             mark("window_start");
         }
         sleep_until(t0 + Duration::from_secs(sec));
+        let now = read_all();
         for i in 0..flows {
-            let v = read_recv(i);
-            series[i].push(v - last[i]);
-            last[i] = v;
+            series[i].push(now[i].saturating_sub(last[i]));
+            last[i] = now[i];
         }
     }
-    let window_end_bytes: u64 = (0..flows).map(read_recv).sum();
+    let window_end_bytes: u64 = read_all().iter().sum();
     mark("window_end");
     stop.store(true, Relaxed);
     let reports: Vec<FlowReport> = handles.into_iter().map(|h| h.join().unwrap()).collect();
     let side_res = side_h.map(|h| h.join().unwrap());
+    let final_recv = read_all();
 
     let w = o.warmup as usize;
     let agg: Vec<u64> = (0..o.secs as usize).map(|s| series.iter().map(|f| f[s]).sum()).collect();
     let post: Vec<f64> = agg[w.min(agg.len())..].iter().map(|b| *b as f64 * 8.0 / 1e6).collect();
     let zero_secs = agg[w.min(agg.len())..].iter().filter(|b| **b == 0).count();
-    let window_bytes = window_end_bytes - window_start_bytes;
+    let window_bytes = window_end_bytes.saturating_sub(window_start_bytes);
     let window_secs = (o.secs - o.warmup) as f64;
     let mut flows_json = Vec::new();
     for (i, r) in reports.into_iter().enumerate() {
@@ -259,7 +276,7 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>
         flows_json.push(json!({
             "flow": i,
             "total_bytes": r.bytes,
-            "receiver_bytes": read_recv(i),
+            "receiver_bytes": final_recv[i],
             "zero_secs": fz,
             "mbps_per_sec": series[i].iter().map(|b| *b as f64 * 8.0 / 1e6).collect::<Vec<_>>(),
             "info": r.info,
@@ -281,16 +298,16 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &Arc<ServerCounters>
     TestOutcome { results, errors, window_bytes, window_secs }
 }
 
-pub fn test_down(o: &TestOpts, c: &Arc<ServerCounters>, mark: Mark) -> TestOutcome {
+pub fn test_down(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
     run_bulk(o, false, o.flows, c, mark, None)
 }
 
-pub fn test_up(o: &TestOpts, c: &Arc<ServerCounters>, mark: Mark) -> TestOutcome {
+pub fn test_up(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
     run_bulk(o, true, o.flows, c, mark, None)
 }
 
 /// E8: one saturating download + an RR connection (1 KiB every 100 ms).
-pub fn test_mixed(o: &TestOpts, c: &Arc<ServerCounters>, mark: Mark) -> TestOutcome {
+pub fn test_mixed(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
     let mut errors = Vec::new();
     let msg: Vec<u8> = app::pattern_at(7, o.rr_size.min(app::PAT_CHUNK)).to_vec();
     let mut rr = match connect(o, Duration::from_secs(5)).and_then(|mut s| {
@@ -374,7 +391,7 @@ pub fn test_mixed(o: &TestOpts, c: &Arc<ServerCounters>, mark: Mark) -> TestOutc
 }
 
 /// E7: K connections with concurrency C. Each = connect + header + wait for EOF.
-pub fn test_connect(o: &TestOpts, _c: &Arc<ServerCounters>, mark: Mark) -> TestOutcome {
+pub fn test_connect(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcome {
     let next = Arc::new(AtomicUsize::new(0));
     let lat = Arc::new(Mutex::new(Vec::<f64>::with_capacity(o.conns)));
     let conn_lat = Arc::new(Mutex::new(Vec::<f64>::with_capacity(o.conns)));

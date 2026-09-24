@@ -45,7 +45,7 @@ jobs:
       - run: cargo test -p zfstack --release --features tokio
 
   bench:
-    name: zfbench build
+    name: zfbench build + unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,5 +53,6 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
-      # Needs root + TUN to run, so CI only checks that the harness still builds.
+      # Running a benchmark needs root + TUN, so CI only builds the harness and runs its unit tests.
       - run: cargo build -p zfbench --release
+      - run: cargo test -p zfbench --release
