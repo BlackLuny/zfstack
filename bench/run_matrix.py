@@ -8,7 +8,7 @@ bench/results/<date>-<name>/, the report to report.md in the same directory.
 Stack specs:
   kernel            kernel server, system default congestion control
   kernel-<cc>       kernel server with TCP_CONGESTION=<cc> (e.g. kernel-cubic)
-  smoltcp-cubic | smoltcp-bbr | smoltcp-reno | zfstack
+  smoltcp-cubic | smoltcp-bbr | smoltcp-reno | zfstack-cubic | zfstack-bbr | zfstack-nopace
 
 Examples:
   sudo ./run_matrix.py --name s0-e1                  # default matrix
