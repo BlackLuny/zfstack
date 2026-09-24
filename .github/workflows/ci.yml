@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep in sync with the toolchain used for development; bump deliberately so a
+  # new stable release cannot turn CI red with new lints.
+  RUST_TOOLCHAIN: "1.94.1"
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      # Deny-by-default lints (correctness) fail the build; style warnings do not.
+      - run: cargo clippy --workspace --all-targets --features zfstack/tokio
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      # The library must also build without optional features.
+      - run: cargo build -p zfstack --no-default-features
+      # Release: the simulator scenarios move hundreds of MiB and are slow in debug.
+      - run: cargo test -p zfstack --release --features tokio
+
+  bench:
+    name: zfbench build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      # Needs root + TUN to run, so CI only checks that the harness still builds.
+      - run: cargo build -p zfbench --release
