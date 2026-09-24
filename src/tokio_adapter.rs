@@ -267,12 +267,7 @@ impl<E: Egress> EgressSinks for Sink<'_, E> {
 
 /// Spawn the driver task on the current Tokio runtime. Returns the ingress handle,
 /// the acceptor and the iface ids (in the order of `ifaces`).
-pub fn spawn<E: Egress>(
-    cfg: StackConfig,
-    stream_cfg: StreamConfig,
-    ifaces: Vec<IfaceConfig>,
-    egress: E,
-) -> (StackHandle, Acceptor, Vec<IfaceId>) {
+pub fn spawn<E: Egress>(cfg: StackConfig, stream_cfg: StreamConfig, ifaces: Vec<IfaceConfig>, egress: E) -> (StackHandle, Acceptor, Vec<IfaceId>) {
     let mut shard = Shard::new(cfg);
     let ids: Vec<IfaceId> = ifaces.into_iter().map(|c| shard.add_iface(c)).collect();
     let (tx, rx) = mpsc::channel(1024);

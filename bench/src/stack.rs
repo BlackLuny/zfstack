@@ -49,13 +49,7 @@ const MAX_IDLE: Duration = Duration::from_millis(50);
 /// Stack thread body. Blocks on the ingress channel until the stack's next
 /// deadline, drains every queued batch, feeds them, polls once and forwards
 /// all produced packets to the link as one batch.
-pub fn run_stack_thread(
-    mut stack: Box<dyn UserStack>,
-    rx: Receiver<Batch>,
-    tx: Sender<Batch>,
-    stop: Arc<AtomicBool>,
-    live: Arc<StackLive>,
-) -> StackResult {
+pub fn run_stack_thread(mut stack: Box<dyn UserStack>, rx: Receiver<Batch>, tx: Sender<Batch>, stop: Arc<AtomicBool>, live: Arc<StackLive>) -> StackResult {
     util::set_timerslack_ns(1);
     let cpu0 = util::thread_cpu_now();
     let mut out_batch: Batch = Vec::with_capacity(256);
@@ -72,9 +66,7 @@ pub fn run_stack_thread(
             match rx.try_recv() {
                 Ok(b) => Ok(b),
                 Err(crossbeam_channel::TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    Err(RecvTimeoutError::Disconnected)
-                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
             }
         } else {
             rx.recv_deadline(wait_until)

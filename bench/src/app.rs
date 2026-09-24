@@ -32,9 +32,7 @@ pub fn encode_header(cmd: u8, param: u64) -> [u8; HDR_LEN] {
     h
 }
 
-static PATTERN: LazyLock<Vec<u8>> = LazyLock::new(|| {
-    (0..PAT_MOD + PAT_CHUNK).map(|i| (i % PAT_MOD) as u8).collect()
-});
+static PATTERN: LazyLock<Vec<u8>> = LazyLock::new(|| (0..PAT_MOD + PAT_CHUNK).map(|i| (i % PAT_MOD) as u8).collect());
 
 /// Pattern bytes for stream positions `[pos, pos + n)`, `n <= PAT_CHUNK`.
 #[inline]
@@ -123,10 +121,22 @@ pub enum CloseAction {
 }
 
 enum St {
-    Header { buf: [u8; HDR_LEN], got: usize },
-    Down { pos: u64 },
-    Up { pos: u64, flow: usize, reply: Option<([u8; 8], usize)> },
-    Echo { buf: VecDeque<u8>, eof: bool },
+    Header {
+        buf: [u8; HDR_LEN],
+        got: usize,
+    },
+    Down {
+        pos: u64,
+    },
+    Up {
+        pos: u64,
+        flow: usize,
+        reply: Option<([u8; 8], usize)>,
+    },
+    Echo {
+        buf: VecDeque<u8>,
+        eof: bool,
+    },
     /// Connect test: close as soon as the header is in.
     Connect,
     /// Finished: either close or abort.
@@ -172,11 +182,7 @@ impl AppConn {
                         } else {
                             match buf[1] {
                                 CMD_DOWN => St::Down { pos: 0 },
-                                CMD_UP => St::Up {
-                                    pos: 0,
-                                    flow: (param as usize).min(MAX_FLOWS - 1),
-                                    reply: None,
-                                },
+                                CMD_UP => St::Up { pos: 0, flow: (param as usize).min(MAX_FLOWS - 1), reply: None },
                                 CMD_ECHO => St::Echo { buf: VecDeque::new(), eof: false },
                                 CMD_CONNECT => St::Connect,
                                 _ => {

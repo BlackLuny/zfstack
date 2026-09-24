@@ -159,10 +159,7 @@ fn build_stack(a: &Args, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                return Box::new(adapters::zfstack::ZfStack::new(
-                    adapters::zfstack::ZfOpts { sock_buf: a.sock_buf_kb * 1024, cc, pacing },
-                    counters,
-                ));
+                return Box::new(adapters::zfstack::ZfStack::new(adapters::zfstack::ZfOpts { sock_buf: a.sock_buf_kb * 1024, cc, pacing }, counters));
             }
             #[cfg(not(feature = "zfstack"))]
             {
@@ -207,9 +204,7 @@ fn test_name(t: TestKind) -> &'static str {
 }
 
 fn sysctl(name: &str) -> String {
-    std::fs::read_to_string(format!("/proc/sys/{}", name.replace('.', "/")))
-        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
-        .unwrap_or_default()
+    std::fs::read_to_string(format!("/proc/sys/{}", name.replace('.', "/"))).map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default()
 }
 
 fn main() {
@@ -300,9 +295,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         let (up_tx, up_rx) = crossbeam_channel::unbounded();
         let (down_tx, down_rx) = crossbeam_channel::unbounded();
         let (stop, lv) = (stop_link.clone(), live.clone());
-        let h = std::thread::Builder::new()
-            .name("zfb-stack".into())
-            .spawn(move || stack::run_stack_thread(st, up_rx, down_tx, stop, lv))?;
+        let h = std::thread::Builder::new().name("zfb-stack".into()).spawn(move || stack::run_stack_thread(st, up_rx, down_tx, stop, lv))?;
         stack_handle = Some(h);
         up_src = Source::Tun(fd_a);
         up_sink = Sink::Chan(up_tx);
@@ -311,12 +304,8 @@ fn run(a: &Args) -> std::io::Result<i32> {
     }
     let (pu, pd) = (p_up.clone(), p_down.clone());
     let (s1, s2) = (stop_link.clone(), stop_link.clone());
-    let h_up = std::thread::Builder::new()
-        .name("zfb-link-up".into())
-        .spawn(move || link::run_direction(pu, up_src, up_sink, s1))?;
-    let h_down = std::thread::Builder::new()
-        .name("zfb-link-down".into())
-        .spawn(move || link::run_direction(pd, down_src, down_sink, s2))?;
+    let h_up = std::thread::Builder::new().name("zfb-link-up".into()).spawn(move || link::run_direction(pu, up_src, up_sink, s1))?;
+    let h_down = std::thread::Builder::new().name("zfb-link-down".into()).spawn(move || link::run_direction(pd, down_src, down_sink, s2))?;
     let stack_pt = stack_handle.as_ref().map(|h| h.as_pthread_t());
     let (up_pt, down_pt) = (h_up.as_pthread_t(), h_down.as_pthread_t());
     std::thread::sleep(Duration::from_millis(200));
@@ -397,7 +386,13 @@ fn run(a: &Args) -> std::io::Result<i32> {
     let window_wall = (w1.t - w0.t).as_secs_f64();
     let stack_window_cpu = dsub(w0.stack_cpu, w1.stack_cpu);
     let gb = outcome.window_bytes as f64 / 1e9;
-    let per_gb = |c: Option<f64>| -> Option<f64> { if gb > 0.0 { c.map(|c| c / gb) } else { None } };
+    let per_gb = |c: Option<f64>| -> Option<f64> {
+        if gb > 0.0 {
+            c.map(|c| c / gb)
+        } else {
+            None
+        }
+    };
     let sys_window = util::proc_stat_delta_json(&w0.procstat, &w1.procstat);
     let sys_busy = sys_window["busy_sec"].as_f64();
     let kernel_srv_cpu = kserver.as_ref().map(|_| counters.thread_cpu_us.load(Relaxed) as f64 / 1e6);
@@ -414,7 +409,11 @@ fn run(a: &Args) -> std::io::Result<i32> {
 
     let late_mean_us = {
         let n = live.timer_wakeups.load(Relaxed);
-        if n > 0 { live.deadline_late_sum_ns.load(Relaxed) as f64 / n as f64 / 1e3 } else { 0.0 }
+        if n > 0 {
+            live.deadline_late_sum_ns.load(Relaxed) as f64 / n as f64 / 1e3
+        } else {
+            0.0
+        }
     };
     let git = |dir: &str| tun::sh_output(&format!("git -C {dir} rev-parse --short HEAD")).trim().to_string();
     let result = json!({
