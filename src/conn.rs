@@ -5,8 +5,8 @@
 //! (serialize headers) and `commit` (the sink accepted the packet: advance state).
 //! A packet refused by the sink therefore never counts as sent (§4.3).
 
-use crate::buf::{BlockPool, OooQueue, RxQueue, TxBuf};
 use crate::budget::{Budget, Pressure};
+use crate::buf::{BlockPool, OooQueue, RxQueue, TxBuf};
 use crate::cc::{new_cc, AckCtx, CongestionControl, RateSample};
 use crate::config::StackConfig;
 use crate::rtt::RttEstimator;
@@ -923,10 +923,7 @@ impl Conn {
         }
         self.rx_sp = SeqSpace { isn: h.seq };
         self.rcv_nxt = 1;
-        self.apply_syn_options(
-            &SynParams { mss: h.opts.mss, wscale: h.opts.wscale, sack: h.opts.sack_perm, ts: h.opts.ts },
-            ctx.cfg,
-        );
+        self.apply_syn_options(&SynParams { mss: h.opts.mss, wscale: h.opts.wscale, sack: h.opts.sack_perm, ts: h.opts.ts }, ctx.cfg);
         if h.has(ACK) {
             self.snd_una = 1;
             self.snd_wnd = h.window as u64; // SYN windows are never scaled
@@ -1026,9 +1023,7 @@ impl Conn {
         // PAWS (RFC 7323 §5).
         if self.ts_ok && !h.has(RST) {
             if let Some((tsval, _)) = h.opts.ts {
-                if (tsval.wrapping_sub(self.ts_recent) as i32) < 0
-                    && now.saturating_since(self.ts_recent_time) < TS_VALID_FOR
-                {
+                if (tsval.wrapping_sub(self.ts_recent) as i32) < 0 && now.saturating_since(self.ts_recent_time) < TS_VALID_FOR {
                     self.stats.paws_drops += 1;
                     self.ack_need = AckNeed::Now;
                     if !syn_rcvd && h.has(ACK) {
@@ -1046,8 +1041,8 @@ impl Conn {
             if wnd == 0 {
                 seg_off == rcv_nxt
             } else {
-                rcv_nxt <= seg_off && seg_off < rcv_nxt + wnd
-                    || seg_off == rcv_nxt - 1 // keepalive / zero-window probe style
+                rcv_nxt <= seg_off && seg_off < rcv_nxt + wnd || seg_off == rcv_nxt - 1
+                // keepalive / zero-window probe style
             }
         } else if wnd == 0 {
             // Zero window: still process the ACK of an in-sequence segment.

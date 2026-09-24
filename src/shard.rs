@@ -1059,11 +1059,7 @@ impl Shard {
 
     /// Iterate over all live connections (diagnostics).
     pub fn conn_ids(&self) -> Vec<ConnId> {
-        self.slots
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| s.conn.as_ref().map(|_| ConnId::new(i as u32, s.gen)))
-            .collect()
+        self.slots.iter().enumerate().filter_map(|(i, s)| s.conn.as_ref().map(|_| ConnId::new(i as u32, s.gen))).collect()
     }
 
     /// Scheduling/container sizes (invariant checks, §14.4 #7).

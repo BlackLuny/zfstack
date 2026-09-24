@@ -104,10 +104,7 @@ impl Cubic {
             }
             return;
         }
-        if self.hs_samples >= HS_N_RTT_SAMPLE
-            && self.hs_last_round_min != Duration::MAX
-            && self.hs_cur_round_min != Duration::MAX
-        {
+        if self.hs_samples >= HS_N_RTT_SAMPLE && self.hs_last_round_min != Duration::MAX && self.hs_cur_round_min != Duration::MAX {
             let eta = (self.hs_last_round_min / 8).clamp(HS_MIN_RTT_THRESH, HS_MAX_RTT_THRESH);
             if self.hs_cur_round_min >= self.hs_last_round_min + eta {
                 self.hs_css = Some((self.hs_cur_round_min, 0));
@@ -128,7 +125,9 @@ impl CongestionControl for Cubic {
             return;
         }
         // Do not grow cwnd when not cwnd-limited (RFC 9438 §4.8 / RFC 7661).
-        let cwnd_limited = ctx.cwnd_limited || ctx.rs.prior_in_flight + 2 * ctx.mss as u64 >= self.cwnd || self.cwnd < self.ssthresh && ctx.rs.prior_in_flight * 2 >= self.cwnd;
+        let cwnd_limited = ctx.cwnd_limited
+            || ctx.rs.prior_in_flight + 2 * ctx.mss as u64 >= self.cwnd
+            || self.cwnd < self.ssthresh && ctx.rs.prior_in_flight * 2 >= self.cwnd;
         if !cwnd_limited {
             return;
         }

@@ -71,10 +71,7 @@ impl GlobalBudget {
 
 fn system_memory() -> Option<u64> {
     let phys = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
-        s.lines()
-            .find(|l| l.starts_with("MemTotal:"))
-            .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()))
-            .map(|kb| kb * 1024)
+        s.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok())).map(|kb| kb * 1024)
     });
     let cg = std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok().and_then(|s| s.trim().parse::<u64>().ok());
     match (phys, cg) {

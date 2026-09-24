@@ -578,7 +578,10 @@ impl Bbr {
                 }
                 if self.is_time_to_go_down(ctx) {
                     if std::env::var_os("ZF_BBR_TRACE").is_some() {
-                        eprintln!("UP->DOWN go_down: cwnd_limited={} cwnd={} ilt={} count={} rs.prior_in_flight={}", ctx.cwnd_limited, self.cwnd, self.inflight_longterm, self.full_bw_count, ctx.rs.prior_in_flight);
+                        eprintln!(
+                            "UP->DOWN go_down: cwnd_limited={} cwnd={} ilt={} count={} rs.prior_in_flight={}",
+                            ctx.cwnd_limited, self.cwnd, self.inflight_longterm, self.full_bw_count, ctx.rs.prior_in_flight
+                        );
                     }
                     self.start_probe_bw_down(ctx.now);
                 }
@@ -792,8 +795,16 @@ impl CongestionControl for Bbr {
         let f = |v: u64| if v == u64::MAX { "inf".to_string() } else { v.to_string() };
         format!(
             "mode={:?} cwnd={} max_bw={} bw_st={} infl_lt={} infl_st={} pacing={} min_rtt={:?} full={} extra={}",
-            self.mode, self.cwnd, self.max_bw, f(self.bw_shortterm), f(self.inflight_longterm), f(self.inflight_shortterm),
-            self.pacing_rate, self.min_rtt, self.full_bw_reached, self.extra_acked()
+            self.mode,
+            self.cwnd,
+            self.max_bw,
+            f(self.bw_shortterm),
+            f(self.inflight_longterm),
+            f(self.inflight_shortterm),
+            self.pacing_rate,
+            self.min_rtt,
+            self.full_bw_reached,
+            self.extra_acked()
         )
     }
 

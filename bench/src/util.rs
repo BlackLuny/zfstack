@@ -43,10 +43,7 @@ pub fn set_timerslack_ns(ns: u64) {
 }
 
 pub fn dur_to_timespec(d: Duration) -> libc::timespec {
-    libc::timespec {
-        tv_sec: d.as_secs() as libc::time_t,
-        tv_nsec: d.subsec_nanos() as libc::c_long,
-    }
+    libc::timespec { tv_sec: d.as_secs() as libc::time_t, tv_nsec: d.subsec_nanos() as libc::c_long }
 }
 
 /// SplitMix64: tiny, seedable, good enough for Bernoulli loss decisions.
@@ -141,23 +138,12 @@ pub fn softnet_dropped() -> u64 {
     let Ok(s) = std::fs::read_to_string("/proc/net/softnet_stat") else {
         return 0;
     };
-    s.lines()
-        .filter_map(|l| l.split_whitespace().nth(1))
-        .filter_map(|h| u64::from_str_radix(h, 16).ok())
-        .sum()
+    s.lines().filter_map(|l| l.split_whitespace().nth(1)).filter_map(|h| u64::from_str_radix(h, 16).ok()).sum()
 }
 
 /// Set TCP_CONGESTION on a kernel socket.
 pub fn set_tcp_cc(fd: std::os::fd::RawFd, name: &str) -> std::io::Result<()> {
-    let rc = unsafe {
-        libc::setsockopt(
-            fd,
-            libc::IPPROTO_TCP,
-            libc::TCP_CONGESTION,
-            name.as_ptr() as *const _,
-            name.len() as libc::socklen_t,
-        )
-    };
+    let rc = unsafe { libc::setsockopt(fd, libc::IPPROTO_TCP, libc::TCP_CONGESTION, name.as_ptr() as *const _, name.len() as libc::socklen_t) };
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
