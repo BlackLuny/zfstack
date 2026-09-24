@@ -6,8 +6,15 @@ publish = false
 description = "Userspace TCP stack specialised for proxy/forwarding dataplanes (passive-open, IP-packet in/out, stream out)."
 
 [dependencies]
+bytes = "1"
 
 [features]
 default = []
 # Async adapter (AsyncRead/AsyncWrite stream handles + driver). Core stays runtime-agnostic.
 tokio = []
+# Active open + deterministic simulator (tests / benchmarks only, §0).
+test-peer = []
+
+[workspace]
+members = ["bench"]
+resolver = "2"
