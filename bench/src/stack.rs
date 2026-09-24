@@ -126,3 +126,80 @@ fn recycle(spare: &mut Vec<Batch>, mut b: Batch) {
         spare.push(b);
     }
 }
+
+pub struct WgStackResult {
+    pub stack: StackResult,
+    pub peer: crate::wg::PeerStats,
+    pub udp: crate::wg::UdpStats,
+}
+
+/// Stack thread of the WG link mode: it owns the UDP socket and the WireGuard
+/// peer. Each wakeup drains the socket (`recvmmsg`), decrypts into `ingress`,
+/// polls once, encrypts every produced packet and sends them with one
+/// `sendmmsg` batch. Crypto runs on this thread, so its CPU time includes
+/// WireGuard (the per-peer split is in `WgStackResult::peer`).
+pub fn run_stack_thread_wg(
+    mut stack: Box<dyn UserStack>,
+    udp: std::net::UdpSocket,
+    mut peer: crate::wg::Peer,
+    stop: Arc<AtomicBool>,
+    live: Arc<StackLive>,
+) -> WgStackResult {
+    use crate::wg::{self, RxBatch, TxBatch, UdpStats};
+    use std::os::fd::AsRawFd;
+
+    util::set_timerslack_ns(1);
+    let cpu0 = util::thread_cpu_now();
+    let fd = udp.as_raw_fd();
+    let (mut rx, mut tx) = (RxBatch::default(), TxBatch::default());
+    let mut ust = UdpStats::default();
+    while !stop.load(Relaxed) {
+        let now = Instant::now();
+        let dl = stack.next_deadline(now);
+        let wait_until = dl.unwrap_or(now + MAX_IDLE).min(now + MAX_IDLE).min(peer.next_tick());
+        wg::wait_readable(&[fd], wait_until);
+        let now = Instant::now();
+        live.wakeups.fetch_add(1, Relaxed);
+        let mut n_in = 0u64;
+        loop {
+            let n = rx.recv(fd, &mut ust);
+            for i in 0..n {
+                let (d, from) = rx.get(i);
+                peer.decap(from, d, &mut tx, &mut |p| {
+                    stack.ingress(now, p);
+                    n_in += 1;
+                });
+            }
+            if n < wg::BATCH {
+                break;
+            }
+        }
+        peer.tick(now, &mut tx);
+        if n_in == 0 {
+            match dl {
+                Some(d) if d <= now => {
+                    live.timer_wakeups.fetch_add(1, Relaxed);
+                    let late = (now - d).as_nanos() as u64;
+                    live.deadline_late_sum_ns.fetch_add(late, Relaxed);
+                    live.deadline_late_max_ns.fetch_max(late, Relaxed);
+                }
+                _ => {
+                    // WG timer tick or idle cap: nothing for the stack.
+                    if let Some(ep) = peer.endpoint {
+                        tx.flush(fd, ep, &mut ust);
+                    }
+                    continue;
+                }
+            }
+        }
+        live.pkts_in.fetch_add(n_in, Relaxed);
+        let before = peer.st.tx_data;
+        stack.poll(now, &mut |p: &[u8]| peer.encap(p, &mut tx));
+        live.polls.fetch_add(1, Relaxed);
+        live.pkts_out.fetch_add(peer.st.tx_data - before, Relaxed);
+        if let Some(ep) = peer.endpoint {
+            tx.flush(fd, ep, &mut ust);
+        }
+    }
+    WgStackResult { stack: StackResult { cpu_sec: util::thread_cpu_now() - cpu0, stats: stack.stats() }, peer: peer.st, udp: ust }
+}
