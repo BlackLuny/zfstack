@@ -913,7 +913,7 @@ impl Shard {
             conn.note_egress_limited(now);
             return (0, true);
         }
-        let rate = if self.cfg.pacing { conn.pacing_rate() } else { None };
+        let rate = conn.egress_pacing_rate(&self.cfg);
         let mss = conn.mss as usize;
         let quantum = match rate {
             Some(r) => ((r / 1000) as usize).clamp(2 * mss, self.cfg.max_quantum),

@@ -68,6 +68,9 @@ pub enum CloseReason {
     Aborted,
     /// Active open refused (test peer).
     Refused,
+    /// The peer kept sending segments that can only come from a desynchronized
+    /// connection (e.g. after a forged ACK or timestamp); we reset it.
+    Desync,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

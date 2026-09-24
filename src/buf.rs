@@ -7,7 +7,7 @@
 //! * [`RxQueue`]: in-order bytes held as zero-copy slices of ingress packets (§5).
 //! * [`OooQueue`]: out-of-order ranges, allocated only when reordering happens (§6.1).
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
 
 pub const TX_BLOCK: usize = 64 * 1024;
@@ -120,10 +120,20 @@ impl TxBuf {
     }
 }
 
-/// In-order received data waiting for the application.
+/// Segments shorter than this are copied into a shared buffer instead of being kept
+/// as zero-copy slices (Linux `tcp_collapse` in spirit). A slice pins its whole
+/// ingress packet while the budget charges only the payload, so a peer sending tiny
+/// segments could pin far more memory than it is charged for; copying bounds pinned
+/// memory to about (packet size / RX_COPY_BELOW) × charged for per-packet buffers.
+pub const RX_COPY_BELOW: usize = 1024;
+const RX_COPY_BUF: usize = 8 * 1024;
+
+/// In-order received data waiting for the application: zero-copy slices, then
+/// `tail` (copied small segments, logically after everything in `q`).
 #[derive(Default)]
 pub struct RxQueue {
     q: VecDeque<Bytes>,
+    tail: BytesMut,
     len: usize,
 }
 
@@ -139,12 +149,36 @@ impl RxQueue {
             return;
         }
         self.len += b.len();
+        if b.len() < RX_COPY_BELOW {
+            if self.tail.capacity() - self.tail.len() < b.len() {
+                self.seal_tail();
+                self.tail.reserve(RX_COPY_BUF);
+            }
+            self.tail.extend_from_slice(&b);
+            return;
+        }
+        self.seal_tail();
         self.q.push_back(b);
     }
+    /// Move copied bytes into `q` (keeping the tail's spare capacity for later copies).
+    fn seal_tail(&mut self) {
+        if !self.tail.is_empty() {
+            self.q.push_back(self.tail.split().freeze());
+        }
+    }
     pub fn read(&mut self, dst: &mut [u8]) -> usize {
+        if self.q.is_empty() {
+            self.seal_tail();
+        }
         let mut n = 0;
         while n < dst.len() {
-            let Some(front) = self.q.front_mut() else { break };
+            let Some(front) = self.q.front_mut() else {
+                if self.tail.is_empty() {
+                    break;
+                }
+                self.seal_tail();
+                continue;
+            };
             let k = front.len().min(dst.len() - n);
             dst[n..n + k].copy_from_slice(&front[..k]);
             n += k;
@@ -158,6 +192,9 @@ impl RxQueue {
         n
     }
     pub fn read_chunk(&mut self, max: usize) -> Option<Bytes> {
+        if self.q.is_empty() {
+            self.seal_tail();
+        }
         let front = self.q.front_mut()?;
         let b = if front.len() <= max { self.q.pop_front().unwrap() } else { front.split_to(max) };
         self.len -= b.len();
@@ -165,10 +202,10 @@ impl RxQueue {
     }
     pub fn clear(&mut self) {
         self.q.clear();
+        self.tail = BytesMut::new();
         self.len = 0;
     }
 }
-
 
 /// Out-of-order segments keyed by 64-bit stream offset. Segments never overlap.
 /// `ranges` holds the merged intervals so SACK generation and block lookup are
@@ -337,6 +374,44 @@ impl OooQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rx_queue_copies_small_segments_in_order() {
+        // Tiny segments must not each keep their own (packet-pinning) slice.
+        let mut q = RxQueue::default();
+        let mut expect = Vec::new();
+        let mut k = 0u8;
+        for i in 0..5000usize {
+            let n = if i % 100 == 99 { 1400 } else { 1 + i % 7 };
+            let v: Vec<u8> = (0..n).map(|_| { k = k.wrapping_add(1); k }).collect();
+            expect.extend_from_slice(&v);
+            q.push(Bytes::from(v));
+        }
+        assert_eq!(q.len(), expect.len());
+        // 50 zero-copy big segments plus one sealed copy slice before each (slices of a
+        // few shared copy buffers), not ~5000 slices.
+        assert!(q.q.len() <= 2 * 50 + expect.len() / RX_COPY_BUF + 2, "{} slices", q.q.len());
+        let mut got = Vec::new();
+        let mut buf = [0u8; 333];
+        let mut flip = false;
+        while !q.is_empty() {
+            flip = !flip;
+            if flip {
+                let n = q.read(&mut buf);
+                got.extend_from_slice(&buf[..n]);
+            } else {
+                got.extend_from_slice(&q.read_chunk(777).unwrap());
+            }
+            // Interleave new data with reads.
+            if got.len() < 20_000 && got.len() % 3 == 0 {
+                let v = vec![k; 3];
+                expect.extend_from_slice(&v);
+                q.push(Bytes::from(v));
+            }
+        }
+        assert_eq!(got, expect);
+        assert!(q.read_chunk(10).is_none());
+    }
 
     #[test]
     fn tx_ring() {
