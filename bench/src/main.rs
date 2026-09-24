@@ -12,6 +12,8 @@ mod link;
 mod stack;
 mod tun;
 mod util;
+mod wg;
+mod wgmode;
 
 use std::os::unix::thread::JoinHandleExt;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -26,7 +28,7 @@ use crate::link::{DirParams, Sink, Source};
 use crate::stack::{StackLive, UserStack};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-enum StackKind {
+pub enum StackKind {
     Kernel,
     SmoltcpCubic,
     SmoltcpBbr,
@@ -38,7 +40,7 @@ enum StackKind {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-enum TestKind {
+pub enum TestKind {
     Down,
     Up,
     Mixed,
@@ -47,7 +49,7 @@ enum TestKind {
 
 #[derive(Parser, Debug)]
 #[command(name = "zfbench", about = "userspace TCP stack benchmark harness (needs root)")]
-struct Args {
+pub struct Args {
     /// Server-side stack.
     #[arg(long, value_enum, default_value = "smoltcp-cubic")]
     stack: StackKind,
@@ -132,6 +134,47 @@ struct Args {
     /// Only remove leftover TUN/netns state and exit.
     #[arg(long)]
     cleanup: bool,
+
+    // ---- WG link mode (see bench/README.md "WG link mode") ----
+    /// Client: run the test through WireGuard against a `--serve-wg` server at
+    /// HOST instead of the link emulator. The emulator flags (rate, RTT, loss,
+    /// queue) do not apply; the path is whatever the network between the two
+    /// machines is.
+    #[arg(long, value_name = "HOST")]
+    wg_server: Option<String>,
+    /// Client: control port of the WG server.
+    #[arg(long, default_value_t = 5202)]
+    ctl_port: u16,
+    /// Client: WireGuard implementation on the client side.
+    #[arg(long, value_enum, default_value = "auto")]
+    client_wg: WgImpl,
+    /// Server: run the WG benchmark server (one session at a time, until killed).
+    #[arg(long)]
+    serve_wg: bool,
+    /// Server: control listen address.
+    #[arg(long, default_value = "0.0.0.0:5202")]
+    ctl_listen: std::net::SocketAddr,
+    /// Server: WireGuard UDP listen address.
+    #[arg(long, default_value = "0.0.0.0:51820")]
+    wg_listen: std::net::SocketAddr,
+    /// Server: WireGuard implementation in front of the kernel-TCP baseline.
+    #[arg(long, value_enum, default_value = "auto")]
+    server_wg: WgImpl,
+    /// Server: only accept control connections from these addresses (default: any).
+    #[arg(long, value_delimiter = ',')]
+    allow: Vec<std::net::IpAddr>,
+    /// Shared secret for the control channel (both sides; required in WG mode).
+    #[arg(long, env = "ZFBENCH_TOKEN", hide_env_values = true)]
+    token: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum WgImpl {
+    /// Kernel WireGuard if `ip link add type wireguard` and `wg` work, else userspace.
+    Auto,
+    Kernel,
+    /// boringtun on a TUN device (like wireguard-go).
+    Userspace,
 }
 
 #[derive(Clone, Copy)]
@@ -145,21 +188,69 @@ struct Snap {
     stack_wakeups: u64,
 }
 
-fn build_stack(a: &Args, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
+/// Everything needed to build the server side of one run. In the WG mode it
+/// travels to the remote server over the control channel.
+#[derive(Clone, Debug)]
+pub struct StackOpts {
+    pub stack: StackKind,
+    pub sock_buf_kb: usize,
+    pub listen_pool: usize,
+    pub smol_pacing_backlog_us: Option<i64>,
+    pub smol_timestamps: bool,
+    pub kernel_cc: Option<String>,
+}
+
+impl StackOpts {
+    fn from_args(a: &Args) -> Self {
+        StackOpts {
+            stack: a.stack,
+            sock_buf_kb: a.sock_buf_kb,
+            listen_pool: a.listen_pool,
+            smol_pacing_backlog_us: a.smol_pacing_backlog_us,
+            smol_timestamps: a.smol_timestamps,
+            kernel_cc: a.kernel_cc.clone(),
+        }
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        json!({
+            "stack": stack_name(self.stack),
+            "sock_buf_kb": self.sock_buf_kb,
+            "listen_pool": self.listen_pool,
+            "smol_pacing_backlog_us": self.smol_pacing_backlog_us,
+            "smol_timestamps": self.smol_timestamps,
+            "kernel_cc": self.kernel_cc,
+        })
+    }
+
+    pub fn from_json(v: &serde_json::Value) -> Result<Self, String> {
+        let stack = v["stack"].as_str().ok_or("missing stack")?;
+        Ok(StackOpts {
+            stack: StackKind::from_str(stack, true)?,
+            sock_buf_kb: v["sock_buf_kb"].as_u64().ok_or("missing sock_buf_kb")? as usize,
+            listen_pool: v["listen_pool"].as_u64().ok_or("missing listen_pool")? as usize,
+            smol_pacing_backlog_us: v["smol_pacing_backlog_us"].as_i64(),
+            smol_timestamps: v["smol_timestamps"].as_bool().unwrap_or(false),
+            kernel_cc: v["kernel_cc"].as_str().map(str::to_string),
+        })
+    }
+}
+
+pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
     use smoltcp::socket::tcp::CongestionControl as CC;
-    let cc = match a.stack {
+    let cc = match o.stack {
         StackKind::SmoltcpCubic => CC::Cubic,
         StackKind::SmoltcpBbr => CC::Bbr,
         StackKind::SmoltcpReno => CC::Reno,
         StackKind::ZfstackCubic | StackKind::ZfstackBbr | StackKind::ZfstackNopace => {
             #[cfg(feature = "zfstack")]
             {
-                let (cc, pacing) = match a.stack {
+                let (cc, pacing) = match o.stack {
                     StackKind::ZfstackBbr => (zfstack::CcAlgo::Bbr, true),
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                return Box::new(adapters::zfstack::ZfStack::new(adapters::zfstack::ZfOpts { sock_buf: a.sock_buf_kb * 1024, cc, pacing }, counters));
+                return Box::new(adapters::zfstack::ZfStack::new(adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing }, counters));
             }
             #[cfg(not(feature = "zfstack"))]
             {
@@ -172,17 +263,17 @@ fn build_stack(a: &Args, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
     Box::new(adapters::smoltcp::SmolStack::new(
         adapters::smoltcp::SmolOpts {
             cc,
-            rx_buf: a.sock_buf_kb * 1024,
-            tx_buf: a.sock_buf_kb * 1024,
-            listen_pool: a.listen_pool,
-            pacing_backlog_us: a.smol_pacing_backlog_us,
-            timestamps: a.smol_timestamps,
+            rx_buf: o.sock_buf_kb * 1024,
+            tx_buf: o.sock_buf_kb * 1024,
+            listen_pool: o.listen_pool,
+            pacing_backlog_us: o.smol_pacing_backlog_us,
+            timestamps: o.smol_timestamps,
         },
         counters,
     ))
 }
 
-fn stack_name(s: StackKind) -> &'static str {
+pub fn stack_name(s: StackKind) -> &'static str {
     match s {
         StackKind::Kernel => "kernel",
         StackKind::SmoltcpCubic => "smoltcp-cubic",
@@ -194,7 +285,7 @@ fn stack_name(s: StackKind) -> &'static str {
     }
 }
 
-fn test_name(t: TestKind) -> &'static str {
+pub fn test_name(t: TestKind) -> &'static str {
     match t {
         TestKind::Down => "down",
         TestKind::Up => "up",
@@ -203,7 +294,7 @@ fn test_name(t: TestKind) -> &'static str {
     }
 }
 
-fn sysctl(name: &str) -> String {
+pub fn sysctl(name: &str) -> String {
     std::fs::read_to_string(format!("/proc/sys/{}", name.replace('.', "/"))).map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default()
 }
 
@@ -212,6 +303,17 @@ fn main() {
     if a.cleanup {
         tun::cleanup();
         return;
+    }
+    if a.serve_wg {
+        install_signal_cleanup();
+        match wgmode::serve(&a) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("zfbench: {e}");
+                tun::cleanup();
+                std::process::exit(3);
+            }
+        }
     }
     if a.warmup >= a.secs && matches!(a.test, TestKind::Down | TestKind::Up | TestKind::Mixed) {
         eprintln!("--warmup must be < --secs");
@@ -231,7 +333,7 @@ fn main() {
     }));
     install_signal_cleanup();
 
-    let code = match run(&a) {
+    let code = match if a.wg_server.is_some() { wgmode::run_client(&a) } else { run(&a) } {
         Ok(code) => code,
         Err(e) => {
             eprintln!("zfbench: setup error: {e}");
@@ -285,13 +387,13 @@ fn run(a: &Args) -> std::io::Result<i32> {
     if a.stack == StackKind::Kernel {
         let fb = tun::setup_ns_b()?;
         fd_b = Some(fb);
-        kserver = Some(kernel_server::start(counters.clone(), stop_srv.clone(), a.kernel_cc.clone())?);
+        kserver = Some(kernel_server::start(counters.clone(), stop_srv.clone(), a.kernel_cc.clone(), Some(tun::NETNS))?);
         up_src = Source::Tun(fd_a);
         up_sink = Sink::Tun(fb);
         down_src = Source::Tun(fb);
         down_sink = Sink::Tun(fd_a);
     } else {
-        let st = build_stack(a, counters.clone());
+        let st = build_stack(&StackOpts::from_args(a), counters.clone());
         let (up_tx, up_rx) = crossbeam_channel::unbounded();
         let (down_tx, down_rx) = crossbeam_channel::unbounded();
         let (stop, lv) = (stop_link.clone(), live.clone());

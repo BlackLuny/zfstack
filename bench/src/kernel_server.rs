@@ -1,4 +1,5 @@
-//! Kernel TCP server (baseline), running inside netns `zfbns`.
+//! Kernel TCP server (baseline): inside netns `zfbns` in the emulator mode,
+//! behind a WireGuard interface in the root netns in the WG mode.
 //! Same application protocol, driven by the shared [`AppConn`] state machine.
 
 use std::io::{self, Read, Write};
@@ -15,12 +16,12 @@ pub struct KernelServer {
     pub active: Arc<AtomicUsize>,
 }
 
-pub fn start(counters: Arc<ServerCounters>, stop: Arc<AtomicBool>, cc: Option<String>) -> io::Result<KernelServer> {
+pub fn start(counters: Arc<ServerCounters>, stop: Arc<AtomicBool>, cc: Option<String>, netns: Option<&'static str>) -> io::Result<KernelServer> {
     let (tx, rx) = std::sync::mpsc::channel::<io::Result<()>>();
     let active = Arc::new(AtomicUsize::new(0));
     let active2 = active.clone();
     std::thread::Builder::new().name("ksrv-accept".into()).spawn(move || {
-        let listener = match tun::enter_netns(tun::NETNS).and_then(|_| TcpListener::bind((tun::SERVER_ADDR, tun::SERVER_PORT))) {
+        let listener = match netns.map_or(Ok(()), tun::enter_netns).and_then(|_| TcpListener::bind((tun::SERVER_ADDR, tun::SERVER_PORT))) {
             Ok(l) => {
                 let _ = tx.send(Ok(()));
                 l

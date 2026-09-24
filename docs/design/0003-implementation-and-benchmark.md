@@ -9,6 +9,7 @@
 |---|---|---|
 | v0.1 | 2026-09-24 | 首版：核心栈 + 仿真器 + zfbench 台架 + 第一轮真机矩阵 |
 | v0.2 | 2026-09-24 | 修复 §6 的三项：低速 pacing CPU、伪造 ACK/时间戳失步、tokio orphan 与接收内存钉住；回归矩阵见 §5.7 |
+| v0.3 | 2026-09-24 | zfbench 增加 WG 链路模式（两机真实网络 + WireGuard，不依赖 zfc），为 0002 WAN A/B 做准备；单机冒烟见 §5.8 |
 
 ---
 
@@ -184,6 +185,26 @@
 - 上行（zfstack 当接收方，受接收队列改动影响）：193 Mbps，CPU 比 1.10（v0.1 为 1.09），满 MSS 段不拷贝，无回退。
 - zfstack-bbr 80 ms/1%/单流 54.7 [17–107] Mbps（v0.1 77.7 [16.5–79.5]）：BBR 不受本轮改动影响，两轮的三次重复区间都很宽，属于该格的离散度。
 
+### 5.8 WG 链路模式（v0.3）
+
+**为什么放在 zfbench 而不是 zfc**：zfstack 只做 IP 包进、字节流出，出口交给 `EgressSinks`，本身不依赖 WireGuard；加解密、UDP、peer 管理归 zfc。WAN A/B 要回答的「真实路径 + 加解密占 CPU 时，三个栈谁更好」并不需要 zfc 的业务代码，所以做成台架的一种链路模式：迭代快，三个栈同一条路径。zfc 的接线（PeerId、`EMSGSIZE`→MTU、AdmissionPolicy、`ZFW_WG_USTACK`）以及上线验收仍然要在 zfc 里做。
+
+**结构**（详见 `bench/README.md`「WG link mode」）：
+
+- 服务端 `zfbench --serve-wg`：用户态栈由**一个线程**完成 recvmmsg → boringtun 解密 → `ingress` → `poll` → 加密 → 每轮一次 sendmmsg；内核基线是 WG 接口（内核 WG 或 boringtun TUN 桥）加内核 TcpListener。
+- 客户端 `zfbench --wg-server HOST`：内核 TCP 客户端走 `zfbwg`（内核 WG 或 boringtun 用户态），测试用例与模拟器模式完全相同（down/up/mixed/connect，逐字节校验）。
+- 控制通道：隧道外的 TCP + JSON 行，带 token 与 `--allow`；负责交换 WG 公钥、下发栈参数、取服务端 CPU 与上传计数（`up` 测试每秒一次）。
+- `run_matrix.py --wg-server HOST`：只按测试 × 流数展开，报告换成「栈+WG 线程 CPU s/GB」和「服务端整机 CPU s/GB」（后者是内核基线唯一公平的口径）。
+
+**单机冒烟**（`bench/results/2026-09-24-wg-smoke-veth/`）：服务端在 netns 里、经 veth 连接，两侧都是 boringtun 用户态（这台 VM 没有内核 WG），各栈 1 次 6 s。只用来证明**功能正确**：24 次运行全部通过逐字节校验；客户端 kill -9 后服务端能清理并接受下一个会话；错误 token 被拒。**数字不能当对比结论**：
+
+- 无瓶颈、RTT 0.3 ms、同一台 4 vCPU，吞吐被客户端用户态解密卡在约 1.3 Gbps，下行各栈都在 1.0–1.4 Gbps；
+- 内核基线在服务端也走 boringtun TUN 桥（多一次 TUN 往返），所以它的上行吞吐偏低，不代表内核 WG；
+- mixed 的 zfstack-cubic RR P99 135 ms（其余 18–36 ms）来自客户端 UDP 接收缓冲（8 MiB）成了排队点：CUBIC 会填满瓶颈前的任何缓冲，这正是 §6 第 2 项讲的深队列问题；BBR 为 18 ms；
+- smoltcp 在建连测试中 300 次里有 199 次被拒，与 §5.4 的待命 listener 现象一致。
+
+用户态栈的「栈+WG 线程」CPU 约 2–3.6 s/GB（上行低、下行高），其中 boringtun 约占 30–40%（`link.server_wg.peer.{decap,encap}_sec`）。
+
 ## 6. 已知问题与后续
 
 按优先级：
@@ -194,6 +215,6 @@
 4. ✅（v0.2）**伪造 ACK / 时间戳失步**：失步检测只认同步对端不可能发出的报文——ACK 越出 [SND.UNA, SND.MAX] 且 TSval > TS.Recent，或 PAWS 失败却确认了 SND.UNA 之后的数据；每个无进展周期（RTO / 零窗口探测 / keepalive）最多计一次且 TSval 必须递增，连续 3 个周期即发 RST、`CloseReason::Desync`。乱序/重复的旧报文两个条件都不满足。未协商时间戳的连接不检测，仍由 user timeout 兜底。
 5. ✅（v0.2）**tokio orphan 与接收内存钉住**：drop 句柄时若适配层 tx 队列因零窗口排不空，以前永远不会调用 `close`、orphan 超时也不启动（对端响应探测，user timeout 同样不触发）→ 永久泄漏；现在驱动自己按 `orphan_timeout` 到期中止。接收队列里 < 1 KiB 的段拷贝进共享 8 KiB 缓冲，不再各自钉住整个入站报文（以前应用不读时 64 KiB 窗口的 1 字节小段可钉住约 6.4 万个报文缓冲）。剩余误差：≥ 1 KiB 的段仍零拷贝，钉住量 ≈ 报文大小/载荷（按 MTU 分配时 < 1.5×）；乱序队列按段数上限（平均 ≥ 512 B/段）约束在 ~3× 以内。若 WG 侧把一批报文切片自同一个大缓冲，应在 `ingress` 前拷贝或接受更大的钉住量。
 8. **仿真器不完全确定**：fuzz 用例同一种子在不同运行间结局不同（很可能是 sim 里 `HashMap` 的随机迭代顺序），削弱了「确定性回放」；待改为有序容器。
-6. **尚未实现 / 未完成**：0001 的 Driver B（io_uring/AF_XDP 批量驱动）、一致性 DSL、cargo-fuzz 接入与 72 h fuzz、WireGuard 集成与 0002 §3 的 WAN 真机 A/B（本台架是单机 + 用户态链路模拟器，200 Mbps 上限）。
-7. **台架局限**：4 vCPU 共享于客户端/模拟器/被测栈；无 netem；只测了 RTT 12/80 ms、200 Mbps。更高带宽（≥1 Gbps）下的 CPU 结论需要在物理机上复测。
+6. **尚未实现 / 未完成**：0001 的 Driver B（io_uring/AF_XDP 批量驱动）、一致性 DSL、cargo-fuzz 接入与 72 h fuzz、zfc 侧接线（S5）。0002 的 WAN 真机 A/B 已有工具（§5.8 的 WG 链路模式），待在真实节点（如 95 ↔ 218/96）上跑；用数据决定默认 CC。Driver B 的必要性看 WAN 数据与 zfc 里的 E2 时间线：WG 模式目前按 Driver B 的形态（同线程加密发包）运行，若要量化 zfc 现状（交回 Tokio 任务加密）的代价，可以再加一个「加密线程交接」选项做 A/B。
+7. **台架局限**：模拟器模式下 4 vCPU 共享于客户端/模拟器/被测栈；无 netem；只测了 RTT 12/80 ms、200 Mbps。更高带宽（≥1 Gbps）下的 CPU 结论需要在物理机上用 WG 链路模式复测。
 
