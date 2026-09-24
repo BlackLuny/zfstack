@@ -248,6 +248,16 @@ sudo -E bench/run_matrix.py --wg-server <server-ip> --name wan-218 \
      --stacks kernel-cubic,smoltcp-cubic,zfstack-cubic,zfstack-bbr --tests down,up,mixed,connect --reps 5
 ```
 
+From a machine that can SSH to both nodes, `bench/wan_ab.sh` does all of this
+in one go: it copies the source tree (rsync), installs Rust and
+wireguard-tools, builds, starts the server with a random token and
+`--allow <client public IP>`, runs the matrix on the client and copies the
+results back:
+
+```sh
+bench/wan_ab.sh root@<server> <ssh-port> root@<client> <ssh-port> [run_matrix args]
+```
+
 - **What travels over the control channel.** It is newline-delimited JSON
   on plain TCP outside the tunnel. `start` carries the stack options (the
   same `--stack`, `--sock-buf-kb`, `--kernel-cc` and smoltcp flags as the
