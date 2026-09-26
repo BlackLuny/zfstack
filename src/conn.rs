@@ -20,6 +20,42 @@ use core::time::Duration;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 
+/// The WG integration borrows a decrypted packet only for the duration of
+/// `Shard::ingress_borrowed`. Existing simulator/adapter callers can still pass
+/// owned Bytes without copying them. Only data actually retained by TCP is
+/// converted to owned storage.
+pub(crate) enum IngressPayload<'a> {
+    Borrowed(&'a [u8]),
+    Owned(Bytes),
+}
+
+impl IngressPayload<'_> {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Borrowed(v) => v.len(),
+            Self::Owned(v) => v.len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn slice(self, start: usize) -> Self {
+        match self {
+            Self::Borrowed(v) => Self::Borrowed(&v[start..]),
+            Self::Owned(v) => Self::Owned(v.slice(start..)),
+        }
+    }
+
+    fn truncate(&mut self, len: usize) {
+        match self {
+            Self::Borrowed(v) => *v = &v[..len],
+            Self::Owned(v) => v.truncate(len),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum State {
     SynSent,
@@ -254,6 +290,8 @@ pub struct Conn {
     fin_rcvd: Option<u64>,
     rcv_target: u64,
     rcv_charged: u64,
+    /// Bytes handed to an async adapter but not consumed by its application.
+    adapter_unread: u64,
     rcvq_space: u64,
     rcvq_copied: u64,
     rcvq_time: Instant,
@@ -297,6 +335,45 @@ pub struct Conn {
     pub stats: ConnStats,
 }
 
+/// Wire state needed after a full connection has completed the FIN exchange.
+/// Application unread data must be drained before creating this snapshot.
+#[derive(Clone, Copy)]
+pub(crate) struct TimeWaitState {
+    pub iface: IfaceId,
+    pub peer: PeerId,
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
+    pub snd_seq: Seq,
+    pub rcv_seq: Seq,
+    pub last_fin_seq: Seq,
+    pub ts_ok: bool,
+    pub ts_recent: u32,
+    pub ts_offset: u32,
+    pub expires: Instant,
+    pub pending_ack: bool,
+}
+
+impl TimeWaitState {
+    /// RFC 6191 §2: compare the new SYN's timestamp and, when required, its
+    /// ISN with the old peer FIN sequence (not the last packet header SEQ).
+    pub fn can_reuse(&self, syn: &TcpHeader, timestamps_enabled: bool) -> bool {
+        if !syn.has(SYN) || syn.has(ACK | FIN | RST) {
+            return false;
+        }
+        let new_ts = if timestamps_enabled { syn.opts.ts.map(|(v, _)| v) } else { None };
+        let newer_seq = syn.seq.gt(self.last_fin_seq);
+        match (self.ts_ok, new_ts) {
+            (true, Some(ts)) => {
+                let delta = ts.wrapping_sub(self.ts_recent) as i32;
+                delta > 0 || (delta == 0 && newer_seq)
+            }
+            (true, None) => newer_seq,
+            (false, Some(_)) => true,
+            (false, None) => newer_seq,
+        }
+    }
+}
+
 pub(crate) struct Ctx<'a> {
     pub cfg: &'a StackConfig,
     pub pool: &'a mut BlockPool,
@@ -308,8 +385,12 @@ pub(crate) struct Ctx<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteResult {
     Written(usize),
-    /// No space (or no memory quota); a `Writable` event follows.
+    /// TCP send window is full; an ACK produces a `Writable` event.
     WouldBlock,
+    /// Logical port or peer payload quota is full.
+    QuotaBlocked,
+    /// The next TX block could not acquire physical backing.
+    MemoryBlocked,
     Closed,
 }
 
@@ -343,6 +424,33 @@ pub(crate) struct SynParams {
 }
 
 impl Conn {
+    pub(crate) fn ready_for_time_wait_compaction(&self) -> bool {
+        self.state == State::TimeWait
+            && self.app_closed
+            && self.rx.is_empty()
+            && self.ooo.as_ref().is_none_or(|q| q.is_empty())
+            && self.adapter_unread == 0
+            && !self.wants_tx()
+    }
+
+    pub(crate) fn time_wait_snapshot(&self) -> TimeWaitState {
+        debug_assert!(self.ready_for_time_wait_compaction());
+        TimeWaitState {
+            iface: self.iface,
+            peer: self.peer,
+            local: self.local,
+            remote: self.remote,
+            snd_seq: self.tx_sp.seq(self.snd_nxt),
+            rcv_seq: self.rx_sp.seq(self.rcv_nxt),
+            last_fin_seq: self.rx_sp.seq(self.fin_rcvd.expect("TIME_WAIT requires peer FIN")),
+            ts_ok: self.ts_ok,
+            ts_recent: self.ts_recent,
+            ts_offset: self.ts_offset,
+            expires: self.life_at.expect("TIME_WAIT requires expiry"),
+            pending_ack: false,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn blank(
         id: ConnId,
@@ -419,6 +527,7 @@ impl Conn {
             fin_rcvd: None,
             rcv_target: cfg.init_rcv_wnd as u64,
             rcv_charged: 0,
+            adapter_unread: 0,
             rcvq_space: 0,
             rcvq_copied: 0,
             rcvq_time: now,
@@ -647,10 +756,12 @@ impl Conn {
         let inflight = self.snd_nxt.saturating_sub(self.snd_una);
         let win = inflight.max(self.cc.cwnd()).min(cfg.max_snd_inflight as u64);
         let prefetch = match self.pacing_rate() {
-            Some(r) => ((r as u128 * cfg.prefetch_time.as_nanos() / 1_000_000_000) as u64).max(cfg.min_prefetch as u64),
+            Some(r) => ((r as u128).saturating_mul(cfg.prefetch_time.as_nanos()) / 1_000_000_000).min(u64::MAX as u128) as u64,
             None => (cfg.min_prefetch as u64).max(self.cc.cwnd()),
-        };
-        win + prefetch
+        }
+        .max(cfg.min_prefetch as u64)
+        .min(cfg.prefetch_max as u64);
+        win.saturating_add(prefetch)
     }
 
     pub fn send_space(&self, cfg: &StackConfig) -> usize {
@@ -721,6 +832,7 @@ impl Conn {
         let _ = (unread, ooo);
         ctx.budget.release(self.peer, self.rcv_charged + self.tx_charged);
         self.rcv_charged = 0;
+        self.adapter_unread = 0;
         self.tx_charged = 0;
     }
 
@@ -791,6 +903,32 @@ impl Conn {
         }
     }
 
+    /// Transfer bytes to an async adapter without treating the transfer as an
+    /// application read. The advertised window and budget remain occupied until
+    /// `consume_adapter` reports the bytes actually copied by poll_read.
+    pub fn read_chunk_for_adapter(&mut self, max: usize, ctx: &mut Ctx, now: Instant) -> Result<Bytes, ReadResult> {
+        match self.rx.read_chunk(max) {
+            Some(b) => {
+                self.adapter_unread += b.len() as u64;
+                if self.rx.is_empty() {
+                    self.want_read = true;
+                }
+                Ok(b)
+            }
+            None => {
+                let mut z = [0u8; 0];
+                Err(self.read(&mut z, ctx, now))
+            }
+        }
+    }
+
+    pub fn consume_adapter(&mut self, n: usize, ctx: &mut Ctx, now: Instant) {
+        debug_assert!(n as u64 <= self.adapter_unread);
+        let n = (n as u64).min(self.adapter_unread);
+        self.adapter_unread -= n;
+        self.after_app_read(n as usize, ctx, now);
+    }
+
     fn after_app_read(&mut self, n: usize, ctx: &mut Ctx, now: Instant) {
         let n = n as u64;
         let rel = n.min(self.rcv_charged);
@@ -846,10 +984,14 @@ impl Conn {
         }
         if !ctx.budget.try_reserve(self.peer, n as u64, false) {
             self.want_write = true;
-            return WriteResult::WouldBlock;
+            return WriteResult::QuotaBlocked;
+        }
+        if !self.tx.push(ctx.pool, ctx.budget, self.peer, &src[..n]) {
+            ctx.budget.cancel_reserve(self.peer, n as u64);
+            self.want_write = true;
+            return WriteResult::MemoryBlocked;
         }
         self.tx_charged += n as u64;
-        self.tx.push(ctx.pool, &src[..n]);
         if n < src.len() {
             self.want_write = true;
         }
@@ -904,7 +1046,7 @@ impl Conn {
     // Input
 
     /// Process one segment addressed to this connection.
-    pub(crate) fn input(&mut self, now: Instant, h: &TcpHeader, payload: Bytes, ctx: &mut Ctx) {
+    pub(crate) fn input(&mut self, now: Instant, h: &TcpHeader, payload: IngressPayload<'_>, ctx: &mut Ctx) {
         self.stats.segs_in += 1;
         match self.state {
             State::Closed => {}
@@ -1019,7 +1161,7 @@ impl Conn {
         }
     }
 
-    fn input_sync(&mut self, now: Instant, h: &TcpHeader, mut payload: Bytes, ctx: &mut Ctx, syn_rcvd: bool) {
+    fn input_sync(&mut self, now: Instant, h: &TcpHeader, mut payload: IngressPayload<'_>, ctx: &mut Ctx, syn_rcvd: bool) {
         let seg_off = self.rx_sp.off(h.seq, self.rcv_nxt);
         let mut seg_len = payload.len() as i64 + h.has(SYN) as i64 + h.has(FIN) as i64;
         let rcv_nxt = self.rcv_nxt as i64;
@@ -1060,7 +1202,7 @@ impl Conn {
             // Zero window: still process the ACK of an in-sequence segment.
             if seg_off == rcv_nxt {
                 // The data is dropped, so a FIN riding on it must be ignored too.
-                payload = Bytes::new();
+                payload = IngressPayload::Borrowed(&[]);
                 seg_len = 0;
                 fin_dropped = true;
                 true
@@ -1245,7 +1387,7 @@ impl Conn {
         }
     }
 
-    fn process_data(&mut self, now: Instant, seg_off: i64, mut payload: Bytes, _psh: bool, ctx: &mut Ctx) {
+    fn process_data(&mut self, now: Instant, seg_off: i64, mut payload: IngressPayload<'_>, _psh: bool, ctx: &mut Ctx) {
         let mut off = seg_off;
         let rcv_nxt = self.rcv_nxt as i64;
         if off < rcv_nxt {
@@ -1261,7 +1403,7 @@ impl Conn {
             if self.sack_ok {
                 self.dsack = Some((off as u64, rcv_nxt as u64));
             }
-            payload = payload.slice(dup..);
+            payload = payload.slice(dup);
             off = rcv_nxt;
         }
         // Trim to the advertised right edge.
@@ -1292,12 +1434,20 @@ impl Conn {
             self.ack_need = AckNeed::Now;
             return;
         }
-        self.rcv_charged += len;
-        self.stats.bytes_received += len;
-
         if in_order {
             let was_empty = self.rx.is_empty();
-            self.rx.push(payload);
+            let retained = match &payload {
+                IngressPayload::Borrowed(v) => self.rx.push_charged(v, ctx.budget, self.peer),
+                IngressPayload::Owned(v) => self.rx.push_charged(v, ctx.budget, self.peer),
+            };
+            if !retained {
+                ctx.budget.release(self.peer, len);
+                self.stats.dropped_no_mem += 1;
+                self.ack_need = AckNeed::Now;
+                return;
+            }
+            self.rcv_charged += len;
+            self.stats.bytes_received += len;
             self.rcv_nxt += len;
             let had_ooo = self.ooo.as_ref().is_some_and(|o| !o.is_empty());
             if had_ooo {
@@ -1329,6 +1479,8 @@ impl Conn {
             }
             self.rcv_space_adjust(now, ctx);
         } else {
+            self.rcv_charged += len;
+            self.stats.bytes_received += len;
             self.stats.ooo_segs += 1;
             // Descriptor bound: an average of ≥ 512 bytes per stored segment over the
             // receive buffer (full-size segments always fit; 1-byte floods do not).
@@ -1342,7 +1494,20 @@ impl Conn {
                 return;
             }
             let o = self.ooo.get_or_insert_with(Default::default);
-            let added = o.insert(off as u64, payload);
+            let added = match &payload {
+                IngressPayload::Borrowed(v) => o.insert_charged(off as u64, v, ctx.budget, self.peer),
+                IngressPayload::Owned(v) => o.insert_charged(off as u64, v, ctx.budget, self.peer),
+            };
+            let Some(added) = added else {
+                self.rcv_charged -= len;
+                ctx.budget.release(self.peer, len);
+                self.stats.dropped_no_mem += 1;
+                self.ack_need = AckNeed::Now;
+                if o.is_empty() {
+                    self.ooo = None;
+                }
+                return;
+            };
             if (added as u64) < len {
                 let dup = len - added as u64;
                 self.rcv_charged -= dup;
@@ -1787,7 +1952,7 @@ impl Conn {
     }
 
     fn calc_window_l(&self, level: Pressure) -> u64 {
-        let unread = self.rx.len() as u64;
+        let unread = self.rx.len() as u64 + self.adapter_unread;
         let free = self.rcv_target.saturating_sub(unread);
         let mut right = self.rcv_nxt + free;
         // Receiver SWS avoidance (RFC 9293 §3.8.6.2.2): only move the right edge by at
@@ -2469,6 +2634,26 @@ impl Conn {
 }
 
 impl Conn {
+    /// A data plan may split one retransmission record or commit one new
+    /// segment. Pure control output needs no send-record allocation.
+    pub(crate) fn needs_record_spare(&self) -> bool {
+        !self.rst_pending && self.state.can_send_data() && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending() || self.tlp.pending)
+    }
+
+    /// An ACK can free a record slot without releasing its backing allocation.
+    /// A memory-blocked sender may resume immediately in that case.
+    pub(crate) fn has_record_spare(&self) -> bool {
+        self.sb.recs.len() < self.sb.recs.capacity()
+    }
+
+    pub(crate) fn record_reserve_bytes_needed(&self) -> Option<u64> {
+        self.sb.reserve_bytes_needed()
+    }
+
+    pub(crate) fn try_reserve_send_record(&mut self, budget: &mut Budget) -> bool {
+        self.sb.try_reserve_one(budget, self.peer)
+    }
+
     /// Lower the effective MSS after an MTU decrease (§10.4). Retransmissions are
     /// re-split to the new MSS when planned.
     pub(crate) fn clamp_mtu(&mut self, mtu: u16) {

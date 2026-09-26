@@ -4,10 +4,10 @@
 //! egress-blocked set of its iface, timer heap. Each round only touches connections
 //! with events, so cost scales with active connections, not total connections.
 
-use crate::budget::{Budget, GlobalBudget, Pressure};
+use crate::budget::{Budget, ConnectionPermit, GlobalBudget, MemoryHandle, MemoryLease, Pressure, RetainedMetadata};
 use crate::buf::BlockPool;
 use crate::config::StackConfig;
-use crate::conn::{Conn, Ctx, Plan, PlanKind, ReadResult, State, SynParams, WriteResult};
+use crate::conn::{Conn, Ctx, IngressPayload, Plan, PlanKind, ReadResult, State, SynParams, TimeWaitState, WriteResult};
 use crate::heap::IndexedHeap;
 use crate::seq::Seq;
 use crate::time::Instant;
@@ -16,7 +16,7 @@ use crate::{CloseReason, ConnId, ConnInfo, Event, IfaceId, PeerId};
 use bytes::Bytes;
 use core::time::Duration;
 use std::collections::hash_map::RandomState;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -104,6 +104,7 @@ pub struct ShardStats {
     pub rx_packets: u64,
     pub rx_dropped_parse: u64,
     pub rx_dropped_no_iface: u64,
+    pub rx_dropped_peer_mismatch: u64,
     pub rx_no_conn: u64,
     pub rst_sent: u64,
     pub syn_received: u64,
@@ -161,6 +162,7 @@ struct Iface {
     cfg: IfaceConfig,
     full: bool,
     drr: Drr,
+    tw_pending: usize,
 }
 
 #[derive(Default)]
@@ -174,8 +176,16 @@ struct Sched {
 struct Slot {
     gen: u32,
     conn: Option<Box<Conn>>,
+    tomb: Option<TimeWaitState>,
+    permit: Option<ConnectionPermit>,
+    active_memory: Option<MemoryLease>,
     sched: Sched,
+    retained: bool,
 }
+
+// Conn lives in a Box; the surplus covers its CC object and the initial
+// tuple/timer/event descriptors. Growing containers need separate accounting.
+const ACTIVE_STATE_BYTES: u64 = std::mem::size_of::<Conn>() as u64 + 1024;
 
 /// Pacing granularity: one quantum clamp(rate × 1 ms, 2 MSS, max_quantum) worth of time.
 fn pacing_ahead(rate: u64, mss: usize, max_quantum: usize) -> Duration {
@@ -192,8 +202,14 @@ enum CookieResult {
 struct Stateless {
     iface: IfaceId,
     peer: PeerId,
-    pkt: Vec<u8>,
+    header: [u8; MAX_HEADER],
+    len: usize,
+    _memory: MemoryLease,
 }
+
+// Charge the inline packet and conservative VecDeque growth slack while it is
+// queued. The queue is bounded and sparse backing is reclaimed after bursts.
+const STATELESS_CHARGE: u64 = (std::mem::size_of::<Stateless>() * 4) as u64;
 
 /// Wake-interval tracker for pacing credit (§7.2).
 struct WakeStats {
@@ -207,6 +223,9 @@ pub struct Shard {
     cfg: StackConfig,
     ifaces: Vec<Option<Iface>>,
     slots: Vec<Slot>,
+    /// One generation per index ever allocated. Keep only these compact values
+    /// when an idle shard releases its much larger slot/table high-water mark.
+    retired_generations: Vec<u32>,
     free: Vec<u32>,
     table: HashMap<Key, u32>,
     timers: IndexedHeap,
@@ -216,22 +235,30 @@ pub struct Shard {
     events: VecDeque<Event>,
     pool: BlockPool,
     budget: Budget,
+    /// Connections waiting for a send-record backing allocation. A release
+    /// epoch change retries each once; ingress ACKs can also reschedule them.
+    budget_blocked: HashSet<(u32, u32)>,
+    budget_wait_epoch: Option<u64>,
     admission: Box<dyn AdmissionPolicy>,
     stateless: VecDeque<Stateless>,
     hasher: RandomState,
     cookie_key: [RandomState; 2],
     cookie_gen: u64,
     half_open: usize,
-    time_wait: VecDeque<(u32, u32)>,
     time_wait_n: usize,
+    tw_ready: VecDeque<(u32, u32)>,
     wake: WakeStats,
     hdr: [u8; MAX_HEADER],
     stats: ShardStats,
+    /// Must drop after slot/index containers so retained capacity stays charged
+    /// through their deallocation.
+    retained_metadata: RetainedMetadata,
 }
 
 const COOKIE_PERIOD_S: u64 = 60;
 const MSS_TABLE: [u16; 8] = [216, 536, 1024, 1220, 1340, 1360, 1400, 1460];
 const STATELESS_MAX: usize = 1024;
+const IDLE_SLOT_RECLAIM_THRESHOLD: usize = 2048;
 
 impl Shard {
     pub fn new(cfg: StackConfig) -> Self {
@@ -240,29 +267,36 @@ impl Shard {
 
     pub fn with_budget(cfg: StackConfig, global: Arc<GlobalBudget>) -> Self {
         let credit = cfg.pacing_credit_min;
+        let retained_metadata = RetainedMetadata::new(Arc::clone(&global));
         Shard {
             cfg,
             ifaces: Vec::new(),
             slots: Vec::new(),
+            retired_generations: Vec::new(),
             free: Vec::new(),
             table: HashMap::new(),
             timers: IndexedHeap::default(),
             pacing: IndexedHeap::default(),
             iface_rr: 0,
             events: VecDeque::new(),
-            pool: BlockPool::new(256),
+            // Idle TX blocks are per shard. Bound the retained cache to 1 MiB
+            // so adding WG ports does not strand 16 MiB per idle port.
+            pool: BlockPool::new(16),
             budget: Budget::new(global),
+            budget_blocked: HashSet::new(),
+            budget_wait_epoch: None,
             admission: Box::new(AcceptAll),
             stateless: VecDeque::new(),
             hasher: RandomState::new(),
             cookie_key: [RandomState::new(), RandomState::new()],
             cookie_gen: 0,
             half_open: 0,
-            time_wait: VecDeque::new(),
             time_wait_n: 0,
+            tw_ready: VecDeque::new(),
             wake: WakeStats { last: None, samples: [0; 128], n: 0, credit },
             hdr: [0; MAX_HEADER],
             stats: ShardStats::default(),
+            retained_metadata,
         }
     }
 
@@ -274,6 +308,17 @@ impl Shard {
     }
     pub fn budget(&self) -> &Budget {
         &self.budget
+    }
+    /// Epoch to register with a caller's budget-release waker, if any core
+    /// senders need an allocation before their next data segment.
+    pub fn budget_wait_epoch(&self) -> Option<u64> {
+        self.budget_wait_epoch
+    }
+    pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
+        self.budget.memory_handle(peer)
+    }
+    pub fn set_budget_limits(&mut self, port_bytes: u64, peer_bytes: u64, peer_max_conns: u32) {
+        self.budget.set_limits(port_bytes, peer_bytes, peer_max_conns);
     }
     pub fn pacing_credit(&self) -> Duration {
         self.wake.credit
@@ -291,7 +336,7 @@ impl Shard {
 
     pub fn add_iface(&mut self, cfg: IfaceConfig) -> IfaceId {
         let id = self.ifaces.len();
-        self.ifaces.push(Some(Iface { cfg, full: false, drr: Drr::default() }));
+        self.ifaces.push(Some(Iface { cfg, full: false, drr: Drr::default(), tw_pending: 0 }));
         IfaceId(id as u16)
     }
 
@@ -311,6 +356,8 @@ impl Shard {
 
     /// Remove an interface, resetting all its connections.
     pub fn remove_iface(&mut self, id: IfaceId) {
+        self.stateless.retain(|reply| reply.iface != id);
+        self.shrink_stateless_queue();
         let idxs: Vec<u32> = self.table.iter().filter(|(k, _)| k.0 == id).map(|(_, &v)| v).collect();
         for idx in idxs {
             if let Some(c) = self.slots[idx as usize].conn.as_mut() {
@@ -331,7 +378,10 @@ impl Shard {
     /// Earliest instant at which `run` must be called without new input.
     pub fn next_deadline(&self) -> Option<Instant> {
         let ready = self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty());
-        if ready || (!self.stateless.is_empty() && self.ifaces.iter().flatten().any(|i| !i.full)) {
+        if ready
+            || (!self.stateless.is_empty() && self.ifaces.iter().flatten().any(|i| !i.full))
+            || self.ifaces.iter().flatten().any(|i| !i.full && i.tw_pending > 0)
+        {
             return Some(Instant::ZERO);
         }
         let a = self.timers.peek().map(|x| x.0);
@@ -347,6 +397,17 @@ impl Shard {
 
     /// Process one decrypted IP packet from `peer`.
     pub fn ingress(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes) {
+        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()));
+    }
+
+    /// Process a packet borrowed from a caller-owned pool. The caller may
+    /// recycle its buffer as soon as this returns; retained TCP data is copied
+    /// into stack-owned storage only after the packet passes admission checks.
+    pub fn ingress_borrowed(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8]) {
+        self.ingress_packet(now, iface, peer, pkt, None);
+    }
+
+    fn ingress_packet(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>) {
         self.stats.rx_packets += 1;
         if self.ifaces.get(iface.0 as usize).is_none_or(|i| i.is_none()) {
             self.stats.rx_dropped_no_iface += 1;
@@ -368,10 +429,15 @@ impl Shard {
         };
         let remote = SocketAddr::new(ip.src, h.src_port);
         let local = SocketAddr::new(ip.dst, h.dst_port);
-        let payload = pkt.slice(ip.l4_off + h.data_off..ip.l4_off + ip.l4_len);
+        let start = ip.l4_off + h.data_off;
+        let end = ip.l4_off + ip.l4_len;
+        let payload = match owner {
+            Some(pkt) => IngressPayload::Owned(pkt.slice(start..end)),
+            None => IngressPayload::Borrowed(&pkt[start..end]),
+        };
         let key = (iface, remote, local);
         if let Some(&idx) = self.table.get(&key) {
-            self.input_existing(now, idx, &h, payload);
+            self.input_existing(now, idx, peer, &h, payload);
             return;
         }
         self.stats.rx_no_conn += 1;
@@ -385,7 +451,7 @@ impl Shard {
         if h.has(ACK) && !h.has(SYN) {
             match self.try_cookie(now, iface, peer, remote, local, &h) {
                 CookieResult::Established(idx) => {
-                    self.input_existing(now, idx, &h, payload);
+                    self.input_existing(now, idx, peer, &h, payload);
                     return;
                 }
                 // Valid cookie but no resources: drop the ACK silently so the client
@@ -397,9 +463,39 @@ impl Shard {
         self.reply_rst(iface, peer, remote, local, &h, payload.len());
     }
 
-    fn input_existing(&mut self, now: Instant, idx: u32, h: &TcpHeader, payload: Bytes) {
+    fn input_existing(&mut self, now: Instant, idx: u32, peer: PeerId, h: &TcpHeader, payload: IngressPayload<'_>) {
+        if let Some(tomb) = self.slots[idx as usize].tomb {
+            if tomb.peer != peer {
+                self.stats.rx_dropped_peer_mismatch += 1;
+                return;
+            }
+            if h.has(SYN) {
+                if payload.len() == 0 && tomb.can_reuse(h, self.cfg.timestamps) {
+                    self.reuse_time_wait(now, idx, peer, h);
+                }
+                return;
+            }
+            if h.has(RST) {
+                return;
+            }
+            if h.has(FIN) {
+                let expires = now + self.cfg.time_wait;
+                self.slots[idx as usize].tomb.as_mut().unwrap().expires = expires;
+                self.timers.set(idx, expires);
+            }
+            if !self.slots[idx as usize].tomb.as_ref().unwrap().pending_ack {
+                self.slots[idx as usize].tomb.as_mut().unwrap().pending_ack = true;
+                self.tw_ready.push_back((idx, self.slots[idx as usize].gen));
+                self.ifaces[tomb.iface.0 as usize].as_mut().unwrap().tw_pending += 1;
+            }
+            return;
+        }
         let slot = &mut self.slots[idx as usize];
         let conn = slot.conn.as_mut().unwrap();
+        if conn.peer != peer {
+            self.stats.rx_dropped_peer_mismatch += 1;
+            return;
+        }
         {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.input(now, h, payload, &mut ctx);
@@ -427,38 +523,25 @@ impl Shard {
             self.time_wait_n = self.time_wait_n.saturating_sub(1);
         } else if !slot.sched.time_wait && st == State::TimeWait {
             slot.sched.time_wait = true;
-            self.note_time_wait(idx);
-        }
-    }
-
-    fn note_time_wait(&mut self, idx: u32) {
-        let gen = self.slots[idx as usize].gen;
-        self.time_wait.push_back((idx, gen));
-        self.time_wait_n += 1;
-        while self.time_wait_n > self.cfg.max_time_wait {
-            let Some((i, g)) = self.time_wait.pop_front() else { break };
-            let s = &self.slots[i as usize];
-            if i != idx && s.gen == g && s.sched.time_wait {
-                self.stats.time_wait_recycled += 1;
-                let c = self.slots[i as usize].conn.as_mut().unwrap();
-                c.app_closed = true;
-                c.state = State::Closed;
-                self.free_slot(i);
-            }
-        }
-        // Compact stale entries occasionally.
-        if self.time_wait.len() > 2 * self.time_wait_n + 64 {
-            let slots = &self.slots;
-            self.time_wait.retain(|&(i, g)| {
-                let s = &slots[i as usize];
-                s.gen == g && s.sched.time_wait
-            });
+            self.time_wait_n += 1;
         }
     }
 
     /// Reschedule timers / tx after any change to a connection; reap if done.
     fn after_conn_change(&mut self, idx: u32) {
         self.sync_counts(idx);
+        let gen = self.slots[idx as usize].gen;
+        if !self.budget_blocked.is_empty()
+            && self.slots[idx as usize].conn.as_ref().is_none_or(|c| !c.needs_record_spare())
+            && self.budget_blocked.remove(&(idx, gen))
+            && self.budget_blocked.is_empty()
+        {
+            self.budget_wait_epoch = None;
+        }
+        if self.slots[idx as usize].conn.as_ref().is_some_and(|c| c.ready_for_time_wait_compaction()) {
+            self.compact_time_wait(idx);
+            return;
+        }
         let slot = &mut self.slots[idx as usize];
         let Some(conn) = slot.conn.as_ref() else { return };
         if conn.reapable() && !conn.has_rst_pending() {
@@ -472,12 +555,41 @@ impl Shard {
         self.schedule(idx);
     }
 
+    fn compact_time_wait(&mut self, idx: u32) {
+        let slot = &mut self.slots[idx as usize];
+        let mut conn = slot.conn.take().expect("TIME_WAIT connection");
+        let tomb = conn.time_wait_snapshot();
+        let expires = tomb.expires;
+        {
+            let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
+            conn.destroy(&mut ctx);
+        }
+        self.budget.peer_conn_del(conn.peer);
+        slot.tomb = Some(tomb);
+        slot.active_memory.take();
+        slot.permit.as_mut().expect("connection permit").to_time_wait();
+        self.budget_blocked.remove(&(idx, slot.gen));
+        if self.budget_blocked.is_empty() {
+            self.budget_wait_epoch = None;
+        }
+        slot.sched.in_ready = false;
+        self.timers.set(idx, expires);
+        self.pacing.remove(idx);
+        self.stats.conns_freed += 1;
+    }
+
     fn schedule(&mut self, idx: u32) {
         let slot = &mut self.slots[idx as usize];
         if slot.sched.in_ready {
             return;
         }
         let Some(conn) = slot.conn.as_ref() else { return };
+        if self.budget_blocked.contains(&(idx, slot.gen)) && conn.needs_record_spare() && !conn.has_record_spare() && !conn.wants_unpaced_tx() {
+            // ACKs and app writes must not spin on the same failed allocation.
+            // A release epoch reschedules blocked senders in `run`; an ACK that
+            // frees an existing record slot or new control work bypasses this.
+            return;
+        }
         if self.pacing.contains(idx) {
             // Paced data waits, but ACKs / RSTs / probes must not: serve now; `serve`
             // puts the connection back into the pacing heap for its data.
@@ -498,10 +610,21 @@ impl Shard {
 
     fn free_slot(&mut self, idx: u32) {
         let slot = &mut self.slots[idx as usize];
-        let Some(mut conn) = slot.conn.take() else { return };
-        {
+        let conn = slot.conn.take();
+        let tomb = slot.tomb.take();
+        if conn.is_none() && tomb.is_none() {
+            return;
+        }
+        if let Some(mut conn) = conn {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.destroy(&mut ctx);
+            self.table.remove(&(conn.iface, conn.remote, conn.local));
+            self.budget.peer_conn_del(conn.peer);
+        } else if let Some(tomb) = tomb {
+            self.table.remove(&(tomb.iface, tomb.remote, tomb.local));
+            if tomb.pending_ack {
+                self.ifaces[tomb.iface.0 as usize].as_mut().unwrap().tw_pending -= 1;
+            }
         }
         if slot.sched.half_open {
             self.half_open = self.half_open.saturating_sub(1);
@@ -509,22 +632,77 @@ impl Shard {
         if slot.sched.time_wait {
             self.time_wait_n = self.time_wait_n.saturating_sub(1);
         }
-        self.table.remove(&(conn.iface, conn.remote, conn.local));
-        self.budget.peer_conn_del(conn.peer);
+        slot.active_memory.take();
+        if let Some(permit) = slot.permit.take() {
+            self.retained_metadata.retain_slot(permit);
+            slot.retained = true;
+        }
+        self.budget_blocked.remove(&(idx, slot.gen));
+        if self.budget_blocked.is_empty() {
+            self.budget_wait_epoch = None;
+        }
         slot.gen = slot.gen.wrapping_add(1);
         slot.sched = Sched::default();
         self.timers.remove(idx);
         self.pacing.remove(idx);
         self.free.push(idx);
         self.stats.conns_freed += 1;
+        if self.table.is_empty() && self.slots.capacity() > IDLE_SLOT_RECLAIM_THRESHOLD {
+            self.reclaim_idle_containers();
+        } else if self.table.capacity() > 512 && self.table.len() <= self.table.capacity() / 8 {
+            self.shrink_sparse_table();
+        }
+    }
+
+    /// Short-connection bursts can leave a large tuple table while one long
+    /// connection keeps the shard alive. Prepare the smaller table first so an
+    /// allocation failure leaves every tuple reachable in the old table.
+    fn shrink_sparse_table(&mut self) {
+        let mut compact = HashMap::new();
+        if compact.try_reserve(self.table.len()).is_err() {
+            return;
+        }
+        compact.extend(self.table.drain());
+        self.table = compact;
+    }
+
+    fn reclaim_idle_containers(&mut self) {
+        debug_assert!(self.table.is_empty());
+        if self.slots.iter().any(|slot| slot.conn.is_some() || slot.tomb.is_some()) {
+            return;
+        }
+        if self.retired_generations.len() < self.slots.len() {
+            self.retired_generations.resize(self.slots.len(), 1);
+        }
+        for (saved, slot) in self.retired_generations.iter_mut().zip(&self.slots) {
+            *saved = slot.gen;
+        }
+        self.slots = Vec::new();
+        self.free = Vec::new();
+        self.table = HashMap::new();
+        self.timers = IndexedHeap::default();
+        self.pacing = IndexedHeap::default();
+        self.tw_ready = VecDeque::new();
+        for iface in self.ifaces.iter_mut().flatten() {
+            iface.drr = Drr::default();
+            debug_assert_eq!(iface.tw_pending, 0);
+        }
+        self.retained_metadata.reclaim_to_generations((self.retired_generations.capacity() * std::mem::size_of::<u32>()) as u64);
     }
 
     fn alloc_slot(&mut self) -> (u32, u32) {
         if let Some(i) = self.free.pop() {
-            (i, self.slots[i as usize].gen)
+            let slot = &mut self.slots[i as usize];
+            if slot.retained {
+                slot.retained = false;
+                self.retained_metadata.reuse_slot();
+            }
+            (i, slot.gen)
         } else {
-            self.slots.push(Slot { gen: 1, conn: None, sched: Sched::default() });
-            ((self.slots.len() - 1) as u32, 1)
+            let idx = self.slots.len();
+            let gen = self.retired_generations.get(idx).copied().unwrap_or(1);
+            self.slots.push(Slot { gen, conn: None, tomb: None, permit: None, active_memory: None, sched: Sched::default(), retained: false });
+            (idx as u32, gen)
         }
     }
 
@@ -561,7 +739,11 @@ impl Shard {
         }
         // Resource limits: silently drop (§10.2).
         let peer_conns = self.budget.peers.get(&peer).map_or(0, |p| p.conns);
-        if self.budget.level() >= Pressure::High || peer_conns >= self.budget.peer_max_conns || self.events.len() >= self.cfg.accept_backlog * 4 {
+        if self.budget.level() >= Pressure::High
+            || peer_conns >= self.budget.peer_max_conns
+            || self.time_wait_n >= self.cfg.max_time_wait
+            || self.events.len() >= self.cfg.accept_backlog * 4
+        {
             self.stats.syn_dropped += 1;
             return;
         }
@@ -571,16 +753,27 @@ impl Shard {
             self.send_cookie_synack(now, iface, peer, remote, local, h, mtu);
             return;
         }
+        let Some(permit) = self.budget.global().try_acquire_connection() else {
+            self.stats.syn_dropped += 1;
+            return;
+        };
         if !self.budget.peer_conn_add(peer) {
             self.stats.syn_dropped += 1;
             return;
         }
+        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+            self.budget.peer_conn_del(peer);
+            self.stats.syn_dropped += 1;
+            return;
+        };
         let (idx, gen) = self.alloc_slot();
         let id = ConnId::new(idx, gen);
         let iss = self.isn(now, remote, local);
         let tso = self.ts_offset(remote, local);
         let conn = Conn::new_passive(id, iface, peer, local, remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
         self.slots[idx as usize].conn = Some(Box::new(conn));
+        self.slots[idx as usize].permit = Some(permit);
+        self.slots[idx as usize].active_memory = Some(active_memory);
         self.table.insert((iface, remote, local), idx);
         self.half_open += 1;
         self.slots[idx as usize].sched.half_open = true;
@@ -588,11 +781,68 @@ impl Shard {
         self.after_conn_change(idx);
     }
 
+    fn reuse_time_wait(&mut self, now: Instant, idx: u32, peer: PeerId, h: &TcpHeader) {
+        let old = self.slots[idx as usize].tomb.expect("TIME_WAIT tuple");
+        self.stats.syn_received += 1;
+        match self.admission.on_syn(old.iface, peer, old.remote, old.local) {
+            Admission::Accept => {}
+            Admission::Reject => {
+                self.stats.syn_rejected += 1;
+                return;
+            }
+            Admission::Drop => {
+                self.stats.syn_dropped += 1;
+                return;
+            }
+        }
+        if self.budget.level() >= Pressure::High
+            || self.half_open >= self.cfg.syn_backlog
+            || self.events.len() >= self.cfg.accept_backlog * 4
+            || !self.budget.peer_conn_add(peer)
+        {
+            self.stats.syn_dropped += 1;
+            return;
+        }
+        if !self.slots[idx as usize].permit.as_mut().expect("TIME_WAIT permit").try_reactivate() {
+            self.budget.peer_conn_del(peer);
+            self.stats.syn_dropped += 1;
+            return;
+        }
+        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+            self.slots[idx as usize].permit.as_mut().unwrap().to_time_wait();
+            self.budget.peer_conn_del(peer);
+            self.stats.syn_dropped += 1;
+            return;
+        };
+
+        let mtu = self.iface_mtu(old.iface);
+        let syn = SynParams { mss: h.opts.mss, wscale: h.opts.wscale, sack: h.opts.sack_perm, ts: h.opts.ts };
+        let iss = self.isn(now, old.remote, old.local);
+        let tso = self.ts_offset(old.remote, old.local);
+        let slot = &mut self.slots[idx as usize];
+        if old.pending_ack {
+            self.ifaces[old.iface.0 as usize].as_mut().unwrap().tw_pending -= 1;
+        }
+        slot.tomb = None;
+        slot.gen = slot.gen.wrapping_add(1);
+        let id = ConnId::new(idx, slot.gen);
+        slot.conn = Some(Box::new(Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now)));
+        slot.active_memory = Some(active_memory);
+        slot.sched.time_wait = false;
+        slot.sched.half_open = true;
+        self.time_wait_n -= 1;
+        self.half_open += 1;
+        self.timers.remove(idx);
+        self.stats.time_wait_recycled += 1;
+        self.stats.conns_created += 1;
+        self.after_conn_change(idx);
+    }
+
     // ---- SYN cookies (§10.2) ----
 
-    fn cookie_hash(&self, gen: u64, remote: SocketAddr, local: SocketAddr, peer_isn: Seq) -> u32 {
+    fn cookie_hash(&self, gen: u64, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, peer_isn: Seq) -> u32 {
         let mut h = self.cookie_key[(gen & 1) as usize].build_hasher();
-        (gen, remote, local, peer_isn.0).hash(&mut h);
+        (gen, iface, peer, remote, local, peer_isn.0).hash(&mut h);
         h.finish() as u32
     }
 
@@ -616,7 +866,7 @@ impl Shard {
         let peer_mss = h.opts.mss.unwrap_or(536) as u32;
         let mss = our_mss.min(peer_mss);
         let mss_idx = MSS_TABLE.iter().rposition(|&m| m as u32 <= mss).unwrap_or(0) as u32;
-        let hash = self.cookie_hash(gen, remote, local, h.seq);
+        let hash = self.cookie_hash(gen, iface, peer, remote, local, h.seq);
         let cookie = ((gen as u32 & 0x1f) << 27) | (mss_idx << 24) | (hash & 0x00ff_ffff);
         let mut o = EmitOptions { mss: Some(our_mss as u16), ..Default::default() };
         let ws_ok = self.cfg.window_scaling && h.opts.wscale.is_some();
@@ -656,9 +906,9 @@ impl Shard {
                 ttl: self.cfg.ttl,
             },
         );
-        let pkt = self.hdr[..n].to_vec();
-        self.stats.syn_cookies_sent += 1;
-        self.push_stateless(iface, peer, pkt);
+        if self.push_stateless(iface, peer, n) {
+            self.stats.syn_cookies_sent += 1;
+        }
     }
 
     fn try_cookie(&mut self, now: Instant, iface: IfaceId, peer: PeerId, remote: SocketAddr, local: SocketAddr, h: &TcpHeader) -> CookieResult {
@@ -684,7 +934,7 @@ impl Shard {
         if gen + 1 < self.cookie_gen {
             return Err(false);
         }
-        if self.cookie_hash(gen, remote, local, peer_isn) & 0x00ff_ffff != cookie & 0x00ff_ffff {
+        if self.cookie_hash(gen, iface, peer, remote, local, peer_isn) & 0x00ff_ffff != cookie & 0x00ff_ffff {
             return Err(false);
         }
         let mss = MSS_TABLE[((cookie >> 24) & 7) as usize];
@@ -700,7 +950,15 @@ impl Shard {
             }
         }
         // Re-check admission and resources (§10.2): a failure drops this ACK.
-        if self.budget.level() >= Pressure::High || !self.budget.peer_conn_add(peer) {
+        if self.budget.level() >= Pressure::High {
+            self.stats.syn_cookies_rejected_resources += 1;
+            return Err(true);
+        }
+        let Some(permit) = self.budget.global().try_acquire_connection() else {
+            self.stats.syn_cookies_rejected_resources += 1;
+            return Err(true);
+        };
+        if !self.budget.peer_conn_add(peer) {
             self.stats.syn_cookies_rejected_resources += 1;
             return Err(true);
         }
@@ -708,6 +966,11 @@ impl Shard {
             self.budget.peer_conn_del(peer);
             return Err(false);
         }
+        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+            self.budget.peer_conn_del(peer);
+            self.stats.syn_cookies_rejected_resources += 1;
+            return Err(true);
+        };
         self.stats.syn_cookies_ok += 1;
         let mtu = self.iface_mtu(iface);
         let (idx, gen_slot) = self.alloc_slot();
@@ -718,6 +981,8 @@ impl Shard {
         conn.accepted = true;
         self.events.push_back(Event::Accepted(id));
         self.slots[idx as usize].conn = Some(Box::new(conn));
+        self.slots[idx as usize].permit = Some(permit);
+        self.slots[idx as usize].active_memory = Some(active_memory);
         self.table.insert((iface, remote, local), idx);
         self.stats.conns_created += 1;
         Ok(idx)
@@ -754,16 +1019,33 @@ impl Shard {
                 ttl: self.cfg.ttl,
             },
         );
-        let pkt = self.hdr[..n].to_vec();
-        self.stats.rst_sent += 1;
-        self.push_stateless(iface, peer, pkt);
+        if self.push_stateless(iface, peer, n) {
+            self.stats.rst_sent += 1;
+        }
     }
 
-    fn push_stateless(&mut self, iface: IfaceId, peer: PeerId, pkt: Vec<u8>) {
+    fn push_stateless(&mut self, iface: IfaceId, peer: PeerId, len: usize) -> bool {
+        debug_assert!(len <= MAX_HEADER);
+        // A full queue already discards its oldest reply. Release that charge
+        // before trying to admit the replacement under memory pressure.
         if self.stateless.len() >= STATELESS_MAX {
             self.stateless.pop_front();
         }
-        self.stateless.push_back(Stateless { iface, peer, pkt });
+        let Some(memory) = self.budget.try_allocate_kind(peer, STATELESS_CHARGE, crate::budget::AllocationKind::Other) else {
+            return false;
+        };
+        let mut header = [0; MAX_HEADER];
+        header[..len].copy_from_slice(&self.hdr[..len]);
+        self.stateless.push_back(Stateless { iface, peer, header, len, _memory: memory });
+        true
+    }
+
+    fn shrink_stateless_queue(&mut self) {
+        if self.stateless.is_empty() && self.stateless.capacity() > 8 {
+            self.stateless = VecDeque::new();
+        } else if self.stateless.capacity() > 32 && self.stateless.len() * 4 < self.stateless.capacity() {
+            self.stateless.shrink_to_fit();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -791,8 +1073,32 @@ impl Shard {
         self.note_wake(now);
         let mut out = RunOutcome::default();
 
+        if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
+            self.budget_wait_epoch = None;
+            for (idx, gen) in std::mem::take(&mut self.budget_blocked) {
+                let retry = self.slots.get(idx as usize).filter(|s| s.gen == gen).and_then(|s| s.conn.as_ref()).is_some_and(|conn| {
+                    !conn.needs_record_spare()
+                        || conn.has_record_spare()
+                        || conn.wants_unpaced_tx()
+                        || conn.record_reserve_bytes_needed().is_some_and(|bytes| self.budget.can_allocate(conn.peer, bytes))
+                });
+                if retry {
+                    self.schedule(idx);
+                } else if self.slots.get(idx as usize).is_some_and(|s| s.gen == gen && s.conn.is_some()) {
+                    self.budget_blocked.insert((idx, gen));
+                }
+            }
+            if !self.budget_blocked.is_empty() {
+                self.budget_wait_epoch = Some(self.budget.global().release_epoch());
+            }
+        }
+
         while let Some(idx) = self.timers.pop_due(now) {
             let slot = &mut self.slots[idx as usize];
+            if slot.tomb.is_some() {
+                self.free_slot(idx);
+                continue;
+            }
             let Some(conn) = slot.conn.as_mut() else { continue };
             {
                 let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
@@ -809,18 +1115,20 @@ impl Shard {
             if self.ifaces.get(s.iface.0 as usize).is_none_or(|i| i.as_ref().is_none_or(|i| i.full)) {
                 if self.ifaces.get(s.iface.0 as usize).is_none_or(|i| i.is_none()) {
                     self.stateless.pop_front();
+                    self.shrink_stateless_queue();
                     continue;
                 }
                 break;
             }
-            let pkt = OutPacket { peer: s.peer, header: &s.pkt, payload: [&[], &[]] };
+            let pkt = OutPacket { peer: s.peer, header: &s.header[..s.len], payload: [&[], &[]] };
             match sinks.send(s.iface, &pkt) {
                 SendResult::Accepted => {
                     out.packets += 1;
-                    out.bytes += s.pkt.len();
+                    out.bytes += s.len;
                     self.stats.tx_packets += 1;
-                    self.stats.tx_bytes += s.pkt.len() as u64;
+                    self.stats.tx_bytes += s.len as u64;
                     self.stateless.pop_front();
+                    self.shrink_stateless_queue();
                 }
                 SendResult::Full => {
                     let i = s.iface;
@@ -829,6 +1137,66 @@ impl Shard {
                     break;
                 }
             }
+        }
+        // Each tombstone has at most one pending reply. A Full sink leaves it
+        // queued and no TCP send state is advanced before acceptance.
+        let mut tw_budget = self.cfg.round_bytes_cap;
+        let mut tw_checked = 0;
+        let tw_round = self.tw_ready.len();
+        while tw_budget > 0 && tw_checked < tw_round {
+            tw_checked += 1;
+            let Some(&(idx, gen)) = self.tw_ready.front() else { break };
+            let slot = &self.slots[idx as usize];
+            if slot.gen != gen || slot.tomb.is_none() {
+                self.tw_ready.pop_front();
+                continue;
+            }
+            let tomb = slot.tomb.as_ref().unwrap();
+            let iface = tomb.iface;
+            let peer = tomb.peer;
+            if self.ifaces[iface.0 as usize].as_ref().is_none_or(|i| i.full) {
+                self.tw_ready.rotate_left(1);
+                continue;
+            }
+            let opts = EmitOptions { ts: tomb.ts_ok.then(|| ((now.as_millis() as u32).wrapping_add(tomb.ts_offset), tomb.ts_recent)), ..Default::default() };
+            let empty: [&[u8]; 0] = [];
+            let len = wire::emit(
+                &mut self.hdr,
+                &EmitParams {
+                    src: tomb.local.ip(),
+                    dst: tomb.remote.ip(),
+                    src_port: tomb.local.port(),
+                    dst_port: tomb.remote.port(),
+                    seq: tomb.snd_seq,
+                    ack: tomb.rcv_seq,
+                    flags: ACK,
+                    window: 0,
+                    opts: &opts,
+                    payload: &empty,
+                    ttl: self.cfg.ttl,
+                },
+            );
+            let pkt = OutPacket { peer, header: &self.hdr[..len], payload: [&[], &[]] };
+            match sinks.send(iface, &pkt) {
+                SendResult::Accepted => {
+                    self.slots[idx as usize].tomb.as_mut().unwrap().pending_ack = false;
+                    self.ifaces[iface.0 as usize].as_mut().unwrap().tw_pending -= 1;
+                    self.tw_ready.pop_front();
+                    out.packets += 1;
+                    out.bytes += len;
+                    self.stats.tx_packets += 1;
+                    self.stats.tx_bytes += len as u64;
+                    tw_budget = tw_budget.saturating_sub(len);
+                }
+                SendResult::Full => {
+                    self.stats.sink_full += 1;
+                    self.ifaces[iface.0 as usize].as_mut().unwrap().full = true;
+                    self.tw_ready.rotate_left(1);
+                }
+            }
+        }
+        if !self.tw_ready.is_empty() && tw_budget == 0 {
+            out.more = true;
         }
 
         let mut budget = self.cfg.round_bytes_cap;
@@ -888,6 +1256,10 @@ impl Shard {
 
     fn after_conn_change_no_sched(&mut self, idx: u32) {
         self.sync_counts(idx);
+        if self.slots[idx as usize].conn.as_ref().is_some_and(|c| c.ready_for_time_wait_compaction()) {
+            self.compact_time_wait(idx);
+            return;
+        }
         let slot = &mut self.slots[idx as usize];
         let Some(conn) = slot.conn.as_ref() else { return };
         if conn.reapable() && !conn.has_rst_pending() {
@@ -923,7 +1295,19 @@ impl Shard {
         let credit = self.wake.credit;
         let mut sent = 0usize;
         loop {
-            let Some(mut plan): Option<Plan> = conn.plan(now, level) else { return (sent, false) };
+            let has_record_room = !conn.needs_record_spare() || conn.try_reserve_send_record(&mut self.budget);
+            let Some(mut plan): Option<Plan> = (if has_record_room {
+                if !self.budget_blocked.is_empty() && self.budget_blocked.remove(&(idx, gen)) && self.budget_blocked.is_empty() {
+                    self.budget_wait_epoch = None;
+                }
+                conn.plan(now, level)
+            } else {
+                self.budget_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
+                self.budget_blocked.insert((idx, gen));
+                conn.plan_control(level)
+            }) else {
+                return (sent, false);
+            };
             if plan.paced() && rate.is_some() && conn.next_send_time > now + pacing_ahead(rate.unwrap(), mss, self.cfg.max_quantum) {
                 // Data must wait for pacing, but a pending ACK / probe goes now.
                 if let Some(c) = conn.plan_control(level) {
@@ -983,7 +1367,7 @@ impl Shard {
             self.stats.tx_packets += 1;
             self.stats.tx_bytes += len as u64;
             if sent >= quantum {
-                return (sent, true);
+                return (sent, has_record_room);
             }
         }
     }
@@ -1019,11 +1403,32 @@ impl Shard {
     }
 
     pub fn read(&mut self, now: Instant, id: ConnId, dst: &mut [u8]) -> ReadResult {
+        if self.is_tombstone(id) {
+            return ReadResult::Eof;
+        }
         self.with_conn(id, |c, ctx| c.read(dst, ctx, now)).unwrap_or(ReadResult::Closed(CloseReason::Aborted))
     }
 
     pub fn read_chunk(&mut self, now: Instant, id: ConnId, max: usize) -> Result<Bytes, ReadResult> {
+        if self.is_tombstone(id) {
+            return Err(ReadResult::Eof);
+        }
         self.with_conn(id, |c, ctx| c.read_chunk(max, ctx, now)).unwrap_or(Err(ReadResult::Closed(CloseReason::Aborted)))
+    }
+
+    pub fn read_chunk_for_adapter(&mut self, now: Instant, id: ConnId, max: usize) -> Result<Bytes, ReadResult> {
+        if self.is_tombstone(id) {
+            return Err(ReadResult::Eof);
+        }
+        self.with_conn(id, |c, ctx| c.read_chunk_for_adapter(max, ctx, now)).unwrap_or(Err(ReadResult::Closed(CloseReason::Aborted)))
+    }
+
+    pub fn consume_adapter(&mut self, now: Instant, id: ConnId, bytes: usize) {
+        self.with_conn(id, |c, ctx| c.consume_adapter(bytes, ctx, now));
+    }
+
+    fn is_tombstone(&self, id: ConnId) -> bool {
+        self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.tomb.is_some())
     }
 
     pub fn write(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
@@ -1070,6 +1475,9 @@ impl Shard {
     /// Active open (test peer only, §0).
     #[cfg(any(test, feature = "test-peer"))]
     pub fn connect(&mut self, now: Instant, iface: IfaceId, peer: PeerId, local: SocketAddr, remote: SocketAddr) -> ConnId {
+        let permit = self.budget.global().try_acquire_connection().expect("test peer connection limit");
+        assert!(self.budget.peer_conn_add(peer), "test peer connection limit");
+        let active_memory = self.budget.try_allocate(peer, ACTIVE_STATE_BYTES).expect("test peer memory limit");
         let mtu = self.iface_mtu(iface);
         let (idx, gen) = self.alloc_slot();
         let id = ConnId::new(idx, gen);
@@ -1077,8 +1485,9 @@ impl Shard {
         let tso = self.ts_offset(remote, local);
         let conn = Conn::new_active(id, iface, peer, local, remote, iss, tso, mtu, &self.cfg, now);
         self.slots[idx as usize].conn = Some(Box::new(conn));
+        self.slots[idx as usize].permit = Some(permit);
+        self.slots[idx as usize].active_memory = Some(active_memory);
         self.table.insert((iface, remote, local), idx);
-        self.budget.peer_conn_add(peer);
         self.stats.conns_created += 1;
         self.after_conn_change(idx);
         id
@@ -1102,5 +1511,483 @@ impl Shard {
         }
         assert!(self.timers.len() <= self.slots.len());
         assert!(self.pacing.len() <= self.slots.len());
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use crate::wire::TcpOptions;
+
+    #[test]
+    fn stateless_replies_obey_budget_and_release_on_send_or_iface_removal() {
+        let global = GlobalBudget::new(STATELESS_CHARGE * 2);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        sh.set_budget_limits(global.high(), global.high(), 4);
+        let removed = sh.add_iface(IfaceConfig::default());
+        let active = sh.add_iface(IfaceConfig::default());
+        sh.hdr[..3].copy_from_slice(&[1, 2, 3]);
+        assert!(sh.push_stateless(removed, PeerId(1), 3));
+        assert!(sh.push_stateless(active, PeerId(2), 3));
+        assert!(!sh.push_stateless(active, PeerId(2), 3));
+        assert_eq!(global.reserved(), STATELESS_CHARGE * 2);
+
+        sh.remove_iface(removed);
+        assert_eq!(global.reserved(), STATELESS_CHARGE);
+        assert_eq!(sh.stateless.len(), 1);
+
+        let mut full = |_: IfaceId, _: &OutPacket<'_>| SendResult::Full;
+        sh.run(Instant::ZERO, &mut full);
+        assert_eq!(global.reserved(), STATELESS_CHARGE);
+
+        sh.egress_released(active);
+        let mut sent = Vec::new();
+        sh.run(Instant::ZERO, &mut |iface: IfaceId, pkt: &OutPacket<'_>| {
+            sent.push((iface, pkt.peer, pkt.header.to_vec()));
+            SendResult::Accepted
+        });
+        assert_eq!(sent, vec![(active, PeerId(2), vec![1, 2, 3])]);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn stateless_burst_releases_high_water_backing_after_drain() {
+        let global = GlobalBudget::new(STATELESS_CHARGE * 128);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        sh.set_budget_limits(global.high(), global.high(), 4);
+        let iface = sh.add_iface(IfaceConfig::default());
+        for _ in 0..128 {
+            assert!(sh.push_stateless(iface, PeerId(1), 40));
+        }
+        assert!(sh.stateless.capacity() >= 128);
+        assert_eq!(global.reserved(), global.high());
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::ZERO, &mut accepted);
+        assert!(sh.stateless.is_empty());
+        assert_eq!(sh.stateless.capacity(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    fn tombstone_container_capacity_bytes(sh: &Shard) -> u64 {
+        // HashMap::capacity is its usable element count; recover the power-of-
+        // two bucket allocation and include control bytes. The remaining
+        // vectors report their allocated element capacity directly.
+        let buckets = if sh.table.capacity() == 0 { 0 } else { (sh.table.capacity() + 1).next_power_of_two() };
+        let tuple_bytes = buckets * (std::mem::size_of::<(Key, u32)>() + 1) + if buckets == 0 { 0 } else { 16 };
+        (sh.slots.capacity() * std::mem::size_of::<Slot>()
+            + sh.retired_generations.capacity() * std::mem::size_of::<u32>()
+            + sh.free.capacity() * std::mem::size_of::<u32>()
+            + tuple_bytes
+            + sh.timers.backing_capacity_bytes()
+            + sh.pacing.backing_capacity_bytes()
+            + sh.tw_ready.capacity() * std::mem::size_of::<(u32, u32)>()) as u64
+    }
+
+    #[test]
+    fn tombstone_slot_reservation_covers_fixed_containers() {
+        // Hash table load factor and vector capacity slack are rounded up.
+        let tuple_index = (std::mem::size_of::<(Key, u32)>() + 1).div_ceil(7) * 8;
+        let fixed =
+            std::mem::size_of::<Slot>() + tuple_index + std::mem::size_of::<(Instant, u32)>() + std::mem::size_of::<u32>() + std::mem::size_of::<(u32, u32)>();
+        eprintln!(
+            "TIME_WAIT fixed container estimate: {fixed} bytes (slot={}, tuple={}, timer={}, free={}, ready={}), reserved: {} bytes",
+            std::mem::size_of::<Slot>(),
+            tuple_index,
+            std::mem::size_of::<(Instant, u32)>(),
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<(u32, u32)>(),
+            crate::budget::TIME_WAIT_SLOT_BYTES
+        );
+        assert!(fixed < crate::budget::TIME_WAIT_SLOT_BYTES as usize, "fixed bytes {fixed}");
+    }
+
+    #[test]
+    fn connection_limit_is_shared_across_shards_and_released_on_iface_removal() {
+        let global = GlobalBudget::with_connection_limits(1 << 20, 1, 2);
+        let mut a = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let mut b = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let ai = a.add_iface(IfaceConfig::default());
+        let bi = b.add_iface(IfaceConfig::default());
+        let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        let syn = TcpHeader {
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(100),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
+        };
+
+        a.handle_syn(Instant::ZERO, ai, PeerId(1), remote, local, &syn);
+        b.handle_syn(Instant::ZERO, bi, PeerId(2), remote, local, &syn);
+        assert_eq!(a.conn_count(), 1);
+        assert_eq!(b.conn_count(), 0);
+        assert_eq!(global.connection_counts(), (1, 1));
+        assert_eq!(b.stats().syn_dropped, 1);
+
+        a.remove_iface(ai);
+        assert_eq!(global.connection_counts(), (0, 0));
+        b.handle_syn(Instant::ZERO, bi, PeerId(2), remote, local, &syn);
+        assert_eq!(b.conn_count(), 1);
+        drop(b);
+        assert_eq!(global.connection_counts(), (0, 0));
+    }
+
+    #[test]
+    fn rfc6191_reuse_requires_timestamp_or_fin_sequence_progress() {
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
+        let tomb = TimeWaitState {
+            iface: IfaceId(0),
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: true,
+            ts_recent: 1000,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
+        };
+        let mut syn = TcpHeader {
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(50),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
+        };
+        syn.opts.ts = Some((1001, 0));
+        assert!(tomb.can_reuse(&syn, true));
+        syn.opts.ts = Some((1000, 0));
+        assert!(!tomb.can_reuse(&syn, true));
+        syn.seq = Seq(201);
+        assert!(tomb.can_reuse(&syn, true));
+        syn.opts.ts = Some((999, 0));
+        assert!(!tomb.can_reuse(&syn, true));
+        syn.opts.ts = None;
+        assert!(tomb.can_reuse(&syn, true));
+        syn.seq = Seq(200);
+        assert!(!tomb.can_reuse(&syn, true));
+        syn.flags = SYN | ACK;
+        assert!(!tomb.can_reuse(&syn, true));
+
+        let no_ts = TimeWaitState { ts_ok: false, ..tomb };
+        syn.flags = SYN;
+        syn.opts.ts = Some((1, 0));
+        assert!(no_ts.can_reuse(&syn, true));
+        assert!(!no_ts.can_reuse(&syn, false));
+        syn.seq = Seq(0);
+        let wrap = TimeWaitState { last_fin_seq: Seq(u32::MAX), ts_ok: false, ..tomb };
+        syn.opts.ts = None;
+        assert!(wrap.can_reuse(&syn, false));
+    }
+
+    #[test]
+    fn time_wait_reuse_keeps_old_state_when_active_admission_fails() {
+        let global = GlobalBudget::with_connection_limits(1 << 20, 1, 2);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let iface = sh.add_iface(IfaceConfig::default());
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
+        let (idx, old_gen) = sh.alloc_slot();
+        let mut permit = global.try_acquire_connection().unwrap();
+        permit.to_time_wait();
+        sh.slots[idx as usize].permit = Some(permit);
+        sh.slots[idx as usize].tomb = Some(TimeWaitState {
+            iface,
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: true,
+            ts_recent: 1000,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
+        });
+        sh.slots[idx as usize].sched.time_wait = true;
+        sh.time_wait_n = 1;
+        sh.table.insert((iface, remote, local), idx);
+        sh.timers.set(idx, Instant::from_millis(60_000));
+        let syn = TcpHeader {
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(50),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions { ts: Some((1001, 0)), ..Default::default() },
+            data_off: 20,
+        };
+
+        let other_active = global.try_acquire_connection().unwrap();
+        sh.input_existing(Instant::from_millis(1), idx, PeerId(1), &syn, IngressPayload::Borrowed(&[]));
+        assert!(sh.slots[idx as usize].tomb.is_some());
+        assert_eq!(sh.slots[idx as usize].gen, old_gen);
+        assert_eq!(global.connection_counts(), (1, 2));
+        drop(other_active);
+
+        let fin = TcpHeader { seq: Seq(200), flags: FIN | ACK, ..syn };
+        sh.input_existing(Instant::from_millis(2), idx, PeerId(1), &fin, IngressPayload::Borrowed(&[]));
+        assert!(sh.slots[idx as usize].tomb.as_ref().unwrap().pending_ack);
+        let mut refused = |_: IfaceId, _: &OutPacket<'_>| SendResult::Full;
+        sh.run(Instant::from_millis(2), &mut refused);
+        assert!(sh.slots[idx as usize].tomb.as_ref().unwrap().pending_ack);
+        sh.egress_released(iface);
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::from_millis(2), &mut accepted);
+        assert!(!sh.slots[idx as usize].tomb.as_ref().unwrap().pending_ack);
+
+        sh.input_existing(Instant::from_millis(3), idx, PeerId(1), &syn, IngressPayload::Borrowed(&[]));
+        assert!(sh.slots[idx as usize].conn.is_some());
+        assert_ne!(sh.slots[idx as usize].gen, old_gen);
+        assert_eq!(sh.time_wait_n, 0);
+        assert_eq!(global.connection_counts(), (1, 1));
+        sh.remove_iface(iface);
+        assert_eq!(global.connection_counts(), (0, 0));
+    }
+
+    #[test]
+    fn full_time_wait_table_rejects_new_tuple_until_expiry() {
+        let global = GlobalBudget::with_connection_limits(1 << 20, 2, 1);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let iface = sh.add_iface(IfaceConfig::default());
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
+        let (idx, _) = sh.alloc_slot();
+        let mut permit = global.try_acquire_connection().unwrap();
+        permit.to_time_wait();
+        sh.slots[idx as usize].permit = Some(permit);
+        sh.slots[idx as usize].tomb = Some(TimeWaitState {
+            iface,
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: false,
+            ts_recent: 0,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
+        });
+        sh.slots[idx as usize].sched.time_wait = true;
+        sh.time_wait_n = 1;
+        sh.table.insert((iface, remote, local), idx);
+        sh.timers.set(idx, Instant::from_millis(60_000));
+
+        let other = SocketAddr::from(([10, 0, 0, 2], 40001));
+        let syn = TcpHeader {
+            src_port: other.port(),
+            dst_port: local.port(),
+            seq: Seq(1),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
+        };
+        sh.handle_syn(Instant::ZERO, iface, PeerId(1), other, local, &syn);
+        assert!(sh.slots[idx as usize].tomb.is_some());
+        assert_eq!(sh.conn_count(), 1);
+        assert_eq!(global.connection_counts(), (0, 1));
+
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::from_millis(60_001), &mut accepted);
+        assert_eq!(sh.conn_count(), 0);
+        assert_eq!(global.connection_counts(), (0, 0));
+        sh.handle_syn(Instant::from_millis(60_001), iface, PeerId(1), other, local, &syn);
+        assert_eq!(global.connection_counts(), (1, 1));
+    }
+
+    #[test]
+    fn idle_high_water_reclaims_slots_without_reusing_old_connection_ids() {
+        let global = GlobalBudget::with_resource_limits(8 << 20, 4096, 4096, 4 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let iface = sh.add_iface(IfaceConfig::default());
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        let mut old_id = None;
+        for i in 0..2100u16 {
+            let (idx, gen) = sh.alloc_slot();
+            if i == 0 {
+                old_id = Some(ConnId::new(idx, gen));
+            }
+            let remote = SocketAddr::from(([10, 0, 0, 2], 10_000 + i));
+            let mut permit = global.try_acquire_connection().unwrap();
+            permit.to_time_wait();
+            sh.slots[idx as usize].permit = Some(permit);
+            sh.slots[idx as usize].tomb = Some(TimeWaitState {
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires: Instant::from_millis(1),
+                pending_ack: false,
+            });
+            sh.slots[idx as usize].sched.time_wait = true;
+            sh.time_wait_n += 1;
+            sh.table.insert((iface, remote, local), idx);
+            sh.timers.set(idx, Instant::from_millis(1));
+        }
+        assert!(sh.slots.capacity() > IDLE_SLOT_RECLAIM_THRESHOLD);
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::from_millis(2), &mut accepted);
+        assert!(sh.table.is_empty());
+        assert_eq!(sh.slots.capacity(), 0);
+        assert_eq!(sh.retired_generations.len(), 2100);
+        assert_eq!(global.connection_counts(), (0, 0));
+        assert_eq!(global.reserved(), sh.retained_metadata.total_bytes());
+        let (idx, gen) = sh.alloc_slot();
+        assert_eq!(idx, 0);
+        assert_ne!(ConnId::new(idx, gen), old_id.unwrap());
+        for _ in 1..2050 {
+            sh.alloc_slot();
+        }
+        sh.reclaim_idle_containers();
+        assert_eq!(sh.retired_generations.len(), 2100, "smaller idle cycle lost older slot generations");
+        for _ in 0..2050 {
+            sh.alloc_slot();
+        }
+        let (idx, gen) = sh.alloc_slot();
+        assert_eq!(idx, 2050);
+        assert_eq!(gen, 2, "older high-water slot must not restart at generation 1");
+        drop(sh);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn tuple_table_shrinks_while_one_time_wait_remains() {
+        let global = GlobalBudget::with_resource_limits(8 << 20, 8192, 8192, 4 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), global.clone());
+        let iface = sh.add_iface(IfaceConfig::default());
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        for i in 0..6000u16 {
+            let (idx, _) = sh.alloc_slot();
+            let remote = SocketAddr::from(([10, 0, 0, 2], 10_000 + i));
+            let mut permit = global.try_acquire_connection().unwrap();
+            permit.to_time_wait();
+            sh.slots[idx as usize].permit = Some(permit);
+            sh.slots[idx as usize].tomb = Some(TimeWaitState {
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires: Instant::from_millis(if i == 5999 { 60_000 } else { 1 }),
+                pending_ack: false,
+            });
+            sh.slots[idx as usize].sched.time_wait = true;
+            sh.time_wait_n += 1;
+            sh.table.insert((iface, remote, local), idx);
+            sh.timers.set(idx, sh.slots[idx as usize].tomb.as_ref().unwrap().expires);
+            assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192, "growing tombstone containers exceeded slot permits at {i}");
+        }
+        let peak = sh.table.capacity();
+        assert!(peak > 4096);
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::from_millis(2), &mut accepted);
+        assert_eq!(sh.table.len(), 1);
+        assert_eq!(sh.time_wait_n, 1);
+        assert!(sh.table.capacity() < peak / 4);
+        assert_eq!(sh.table.get(&(iface, SocketAddr::from(([10, 0, 0, 2], 15_999)), local)), Some(&5999));
+        assert_eq!(sh.retained_metadata.free_slot_bytes(), 5999 * crate::budget::RETAINED_SLOT_BYTES);
+        assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192, "sparse slot high-water mark escaped the retained budget");
+        let retained_before_reuse = sh.retained_metadata.free_slot_bytes();
+        let newcomer = SocketAddr::from(([10, 0, 0, 3], 40_001));
+        let syn = TcpHeader {
+            src_port: newcomer.port(),
+            dst_port: local.port(),
+            seq: Seq(1),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65_535,
+            opts: TcpOptions::default(),
+            data_off: 20,
+        };
+        sh.handle_syn(Instant::from_millis(3), iface, PeerId(1), newcomer, local, &syn);
+        let reused = *sh.table.get(&(iface, newcomer, local)).unwrap();
+        assert_eq!(sh.retained_metadata.free_slot_bytes(), retained_before_reuse - crate::budget::RETAINED_SLOT_BYTES);
+        sh.abort(ConnId::new(reused, sh.slots[reused as usize].gen));
+        sh.run(Instant::from_millis(3), &mut accepted);
+        assert_eq!(sh.retained_metadata.free_slot_bytes(), retained_before_reuse);
+        sh.run(Instant::from_millis(60_001), &mut accepted);
+        assert!(sh.table.is_empty());
+        assert_eq!(global.connection_counts(), (0, 0));
+        assert_eq!(global.reserved(), sh.retained_metadata.total_bytes());
+        drop(sh);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn hundred_twenty_thousand_time_wait_slots_remain_charged_after_expiry() {
+        const COUNT: u32 = 120_000;
+        let global = GlobalBudget::with_resource_limits(256 << 20, COUNT as u64, COUNT as u64, 128 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        let iface = sh.add_iface(IfaceConfig::default());
+        let local = SocketAddr::from(([10, 0, 0, 1], 443));
+        for i in 0..COUNT {
+            let (idx, _) = sh.alloc_slot();
+            let remote = SocketAddr::from(([10, 1, (i >> 16) as u8, (i >> 8) as u8], 10_000 + (i & 255) as u16));
+            let mut permit = global.try_acquire_connection().unwrap();
+            permit.to_time_wait();
+            sh.slots[idx as usize].permit = Some(permit);
+            let expires = Instant::from_millis(if i + 1 == COUNT { 60_000 } else { 1 });
+            sh.slots[idx as usize].tomb = Some(TimeWaitState {
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires,
+                pending_ack: false,
+            });
+            sh.slots[idx as usize].sched.time_wait = true;
+            sh.time_wait_n += 1;
+            sh.table.insert((iface, remote, local), idx);
+            sh.timers.set(idx, expires);
+            if i % 8192 == 0 || i + 1 == COUNT {
+                assert!(
+                    tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192,
+                    "120k TIME_WAIT high-water capacity escaped the reserved bytes at {i}"
+                );
+            }
+        }
+        let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;
+        sh.run(Instant::from_millis(2), &mut accepted);
+        assert_eq!(sh.table.len(), 1);
+        assert_eq!(sh.retained_metadata.free_slot_bytes(), (COUNT as u64 - 1) * crate::budget::RETAINED_SLOT_BYTES);
+        assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192);
+        sh.run(Instant::from_millis(60_001), &mut accepted);
+        assert_eq!(global.connection_counts(), (0, 0));
+        assert_eq!(global.reserved(), sh.retained_metadata.total_bytes());
+        drop(sh);
+        assert_eq!(global.reserved(), 0);
     }
 }

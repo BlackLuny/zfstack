@@ -359,6 +359,8 @@ pub struct Sim {
     /// Execution gap for side A (0 = runs whenever needed).
     pub gap_a: Duration,
     pub check_invariants: bool,
+    /// Exercise the borrowed ingress used by the WG integration on the server.
+    pub borrowed_server_ingress: bool,
     pub steps: u64,
 }
 
@@ -381,6 +383,7 @@ impl Sim {
             ba: Link::new(up),
             gap_a: Duration::ZERO,
             check_invariants: true,
+            borrowed_server_ingress: false,
             steps: 0,
         }
     }
@@ -476,12 +479,15 @@ impl Sim {
         let a_may_run = self.gap_a.is_zero() || self.quantize_a(now) == now;
         // Deliver packets.
         while let Some((peer, pkt)) = self.ab.pop_due(now) {
-            let _ = peer;
-            self.b.shard.ingress(now, self.b.iface, PeerId(0), pkt);
+            self.b.shard.ingress(now, self.b.iface, peer, pkt);
         }
         if a_may_run {
             while let Some((peer, pkt)) = self.ba.pop_due(now) {
-                self.a.shard.ingress(now, self.a.iface, peer, pkt);
+                if self.borrowed_server_ingress {
+                    self.a.shard.ingress_borrowed(now, self.a.iface, peer, &pkt);
+                } else {
+                    self.a.shard.ingress(now, self.a.iface, peer, pkt);
+                }
             }
         }
         for _ in 0..64 {

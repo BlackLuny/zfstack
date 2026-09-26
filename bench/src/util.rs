@@ -14,9 +14,9 @@ pub fn thread_cpu_now() -> f64 {
 }
 
 /// CPU time of another (live) thread of this process.
-pub fn pthread_cpu(t: libc::pthread_t) -> Option<f64> {
+pub fn pthread_cpu(t: std::os::unix::thread::RawPthread) -> Option<f64> {
     let mut clk: libc::clockid_t = 0;
-    let rc = unsafe { libc::pthread_getcpuclockid(t, &mut clk) };
+    let rc = unsafe { libc::pthread_getcpuclockid(t as libc::pthread_t, &mut clk) };
     if rc != 0 {
         return None;
     }

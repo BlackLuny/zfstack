@@ -188,7 +188,7 @@ impl ZfStack {
                             break;
                         }
                     }
-                    WriteResult::WouldBlock => break,
+                    WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => break,
                     WriteResult::Closed => {
                         self.drop_conn(id, zn, true);
                         return true;
@@ -220,7 +220,7 @@ impl ZfStack {
                         break;
                     }
                 }
-                WriteResult::WouldBlock => {
+                WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => {
                     c.pending.clear();
                     c.pending.extend_from_slice(&self.buf[..n]);
                     c.pending_off = 0;

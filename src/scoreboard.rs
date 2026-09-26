@@ -5,7 +5,9 @@
 //! Pipe accounting follows RFC 6675 / Linux:
 //! `pipe = (snd_nxt - snd_una) - sacked - lost + retrans_out`.
 
+use crate::budget::{Budget, MemoryLease};
 use crate::time::Instant;
+use crate::PeerId;
 use std::collections::VecDeque;
 
 pub const F_SACKED: u8 = 1;
@@ -16,6 +18,10 @@ pub const F_RETRANS: u8 = 4;
 pub const F_EVER_RETRANS: u8 = 8;
 pub const F_FIN: u8 = 16;
 pub const F_SYN: u8 = 32;
+
+/// Keep a few records for small request/reply bursts, but do not retain a
+/// large flight's backing for the rest of a long-lived idle connection.
+const IDLE_RECORD_CAP: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Rec {
@@ -46,6 +52,9 @@ impl Rec {
 #[derive(Default)]
 pub struct Scoreboard {
     pub recs: VecDeque<Rec>,
+    /// Owns the backing of `recs`; replacement holds both old and new leases
+    /// until the old allocation has actually been released.
+    backing: Option<MemoryLease>,
     pub sacked: u64,
     pub lost: u64,
     pub retrans_out: u64,
@@ -54,6 +63,25 @@ pub struct Scoreboard {
 }
 
 impl Scoreboard {
+    fn next_allocation(&self) -> Option<(usize, u64)> {
+        let target = match self.recs.capacity() {
+            0 => IDLE_RECORD_CAP,
+            n => n.checked_mul(2)?,
+        };
+        let bytes = target.checked_mul(std::mem::size_of::<Rec>())?.checked_mul(2)?;
+        Some((target, u64::try_from(bytes).ok()?))
+    }
+
+    /// Physical bytes needed before another record can be appended. An ACK
+    /// may free a slot in the existing allocation without releasing memory.
+    pub fn reserve_bytes_needed(&self) -> Option<u64> {
+        if self.recs.len() < self.recs.capacity() {
+            Some(0)
+        } else {
+            self.next_allocation().map(|(_, bytes)| bytes)
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.recs.is_empty()
     }
@@ -66,7 +94,33 @@ impl Scoreboard {
 
     pub fn push(&mut self, r: Rec) {
         debug_assert!(self.recs.back().map_or(true, |b| b.end == r.start));
+        debug_assert!(self.backing.is_none() || self.recs.len() < self.recs.capacity(), "send record grew without a lease");
         self.recs.push_back(r);
+    }
+
+    /// Leave room for the one record that a plan may insert or commit. Allocate
+    /// a separate deque so the old and new backing are both charged while the
+    /// records move. Charge twice the requested size to cover allocator slack.
+    pub fn try_reserve_one(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
+        if self.recs.len() < self.recs.capacity() {
+            return true;
+        }
+        let Some((target, bytes)) = self.next_allocation() else {
+            return false;
+        };
+        let Some(lease) = budget.try_allocate_kind(peer, bytes, crate::budget::AllocationKind::SendRecord) else { return false };
+        let mut next = VecDeque::new();
+        if next.try_reserve_exact(target).is_err() {
+            return false;
+        }
+        if next.capacity().checked_mul(std::mem::size_of::<Rec>()).is_none_or(|n| n as u64 > bytes) {
+            return false;
+        }
+        next.extend(self.recs.drain(..));
+        let old = std::mem::replace(&mut self.recs, next);
+        drop(old);
+        self.backing = Some(lease);
+        true
     }
 
     /// Index of the record containing `off`, if any.
@@ -103,6 +157,7 @@ impl Scoreboard {
 
     /// Split record `i` at `at` (start < at < end). The two halves share metadata.
     pub fn split(&mut self, i: usize, at: u64) {
+        debug_assert!(self.backing.is_none() || self.recs.len() < self.recs.capacity(), "split record grew without a lease");
         let r = self.recs[i];
         debug_assert!(r.start < at && at < r.end);
         let mut a = r;
@@ -145,6 +200,11 @@ impl Scoreboard {
             } else {
                 break;
             }
+        }
+        if self.recs.is_empty() && self.recs.capacity() > IDLE_RECORD_CAP {
+            self.recs = VecDeque::new();
+            self.backing = None;
+            self.rtx_hint = 0;
         }
     }
 
@@ -314,6 +374,7 @@ impl Scoreboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::budget::GlobalBudget;
 
     fn rec(s: u64, e: u64) -> Rec {
         Rec {
@@ -363,5 +424,57 @@ mod tests {
         sb.check();
         assert!(sb.is_empty());
         assert_eq!((sb.sacked, sb.lost, sb.retrans_out), (0, 0, 0));
+    }
+
+    #[test]
+    fn large_flight_releases_record_backing_after_ack() {
+        let mut sb = Scoreboard::default();
+        for i in 0..2048 {
+            sb.push(rec(i, i + 1));
+        }
+        assert!(sb.recs.capacity() > IDLE_RECORD_CAP);
+        sb.ack_to(2048, |_| {});
+        assert!(sb.is_empty());
+        assert_eq!(sb.recs.capacity(), 0);
+        sb.push(rec(2048, 2049));
+        sb.check();
+    }
+
+    #[test]
+    fn small_flight_keeps_record_backing_for_reuse() {
+        let mut sb = Scoreboard::default();
+        for i in 0..4 {
+            sb.push(rec(i, i + 1));
+        }
+        let capacity = sb.recs.capacity();
+        assert!(capacity <= IDLE_RECORD_CAP);
+        sb.ack_to(4, |_| {});
+        assert_eq!(sb.recs.capacity(), capacity);
+    }
+
+    #[test]
+    fn record_growth_charges_and_releases_physical_backing() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(16 << 10, 16 << 10, 1);
+        let peer = PeerId(7);
+        let mut sb = Scoreboard::default();
+        assert!(sb.try_reserve_one(&mut budget, peer));
+        let first = global.reserved();
+        assert!(first >= sb.recs.capacity() as u64 * std::mem::size_of::<Rec>() as u64);
+        let count = sb.recs.capacity();
+        for i in 0..count {
+            sb.push(rec(i as u64, i as u64 + 1));
+        }
+        assert!(sb.try_reserve_one(&mut budget, peer));
+        assert!(global.reserved() > first);
+        sb.ack_to(count as u64, |_| {});
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.physical_used(), 0);
+
+        let tight = GlobalBudget::new(256);
+        let mut tight_budget = Budget::new(tight.clone());
+        assert!(!Scoreboard::default().try_reserve_one(&mut tight_budget, peer));
+        assert_eq!(tight.reserved(), 0);
     }
 }

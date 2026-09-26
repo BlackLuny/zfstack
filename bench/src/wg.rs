@@ -185,7 +185,7 @@ impl RxBatch {
                 h
             })
             .collect();
-        let n = unsafe { libc::recvmmsg(fd, msgs.as_mut_ptr(), BATCH as _, libc::MSG_DONTWAIT, std::ptr::null_mut()) };
+        let n = unsafe { libc::recvmmsg(fd, msgs.as_mut_ptr(), BATCH as _, libc::MSG_DONTWAIT as _, std::ptr::null_mut()) };
         st.rx_calls += 1;
         self.n = n.max(0) as usize;
         for (i, m) in msgs.iter().enumerate().take(self.n) {
