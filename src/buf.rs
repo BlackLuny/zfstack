@@ -68,6 +68,13 @@ impl BlockPool {
     pub fn cached(&self) -> usize {
         self.free.len()
     }
+    /// Drop every idle block, releasing its global and port share. Returns
+    /// the number of blocks and bytes released.
+    pub fn reclaim(&mut self) -> (usize, u64) {
+        let n = self.free.len();
+        self.free = Vec::new();
+        (n, n as u64 * TX_BLOCK_CHARGE)
+    }
 }
 
 /// Send buffer. Offset 0 is the oldest unacknowledged byte.

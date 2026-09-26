@@ -22,6 +22,8 @@ pub const F_SYN: u8 = 32;
 /// Keep a few records for small request/reply bursts, but do not retain a
 /// large flight's backing for the rest of a long-lived idle connection.
 const IDLE_RECORD_CAP: usize = 8;
+/// Charge of the first record backing of a drained connection.
+pub(crate) const MIN_RECORD_CHARGE: u64 = (IDLE_RECORD_CAP * std::mem::size_of::<Rec>() * 2) as u64;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Rec {

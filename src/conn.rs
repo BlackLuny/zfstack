@@ -215,6 +215,10 @@ pub struct ConnStats {
 }
 
 pub struct Conn {
+    /// Host stream state reserved with this connection at admission; the
+    /// adapter takes it on accept. Boxed with the connection, so its slot
+    /// costs nothing while the connection lives.
+    pub(crate) stream_memory: Option<crate::budget::MemoryLease>,
     pub id: ConnId,
     pub iface: IfaceId,
     pub peer: PeerId,
@@ -467,6 +471,7 @@ impl Conn {
         let hdr = wire::ip_header_len(local.ip()) as u32 + 20;
         let mss = (mtu as u32).saturating_sub(hdr).max(64);
         Conn {
+            stream_memory: None,
             id,
             iface,
             peer,
@@ -2031,6 +2036,25 @@ impl Conn {
         p
     }
 
+    /// Plan while no send record can be added (docs/design/0005 §3). A lost
+    /// record that still fits one MSS is retransmitted in its existing slot,
+    /// so a sender that cannot grow its records still repairs the losses
+    /// whose ACKs free them; new data, probes and splits wait.
+    pub(crate) fn plan_in_place(&mut self, now: Instant, level: Pressure) -> Option<Plan> {
+        if !self.rst_pending && self.state.can_send_data() {
+            if let Some(mut p) = self.plan_data_with(now, false) {
+                p.window = self.window_field(level);
+                return Some(p);
+            }
+        }
+        self.plan_control(level)
+    }
+
+    /// A lost record that [`Self::plan_in_place`] could retransmit.
+    pub(crate) fn has_lost_pending(&self) -> bool {
+        self.sb.lost_pending() > 0
+    }
+
     /// A pure control segment (probe or ACK), used when data is pacing-blocked.
     pub(crate) fn plan_control(&mut self, level: Pressure) -> Option<Plan> {
         let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, window: 0, rec_idx: usize::MAX };
@@ -2046,6 +2070,12 @@ impl Conn {
     }
 
     fn plan_data(&mut self, now: Instant) -> Option<Plan> {
+        self.plan_data_with(now, true)
+    }
+
+    /// `can_insert` is false when the send records have no spare slot: only a
+    /// retransmission that reuses its record is planned.
+    fn plan_data_with(&mut self, now: Instant, can_insert: bool) -> Option<Plan> {
         if !self.state.can_send_data() {
             return None;
         }
@@ -2057,6 +2087,9 @@ impl Conn {
         if let Some(i) = self.sb.next_lost() {
             let r = self.sb.recs[i];
             if r.len() > mss {
+                if !can_insert {
+                    return None;
+                }
                 self.sb.split(i, r.start + mss);
             }
             let r = self.sb.recs[i];
@@ -2074,6 +2107,9 @@ impl Conn {
                 });
             }
             self.set_limit(now, LIM_CWND);
+            return None;
+        }
+        if !can_insert {
             return None;
         }
 
