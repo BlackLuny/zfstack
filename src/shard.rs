@@ -378,8 +378,10 @@ impl Shard {
     /// Earliest instant at which `run` must be called without new input.
     pub fn next_deadline(&self) -> Option<Instant> {
         let ready = self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty());
-        if ready || (!self.stateless.is_empty() && self.ifaces.iter().flatten().any(|i| !i.full))
-            || self.ifaces.iter().flatten().any(|i| !i.full && i.tw_pending > 0) {
+        if ready
+            || (!self.stateless.is_empty() && self.ifaces.iter().flatten().any(|i| !i.full))
+            || self.ifaces.iter().flatten().any(|i| !i.full && i.tw_pending > 0)
+        {
             return Some(Instant::ZERO);
         }
         let a = self.timers.peek().map(|x| x.0);
@@ -532,7 +534,8 @@ impl Shard {
         if !self.budget_blocked.is_empty()
             && self.slots[idx as usize].conn.as_ref().is_none_or(|c| !c.needs_record_spare())
             && self.budget_blocked.remove(&(idx, gen))
-            && self.budget_blocked.is_empty() {
+            && self.budget_blocked.is_empty()
+        {
             self.budget_wait_epoch = None;
         }
         if self.slots[idx as usize].conn.as_ref().is_some_and(|c| c.ready_for_time_wait_compaction()) {
@@ -566,7 +569,9 @@ impl Shard {
         slot.active_memory.take();
         slot.permit.as_mut().expect("connection permit").to_time_wait();
         self.budget_blocked.remove(&(idx, slot.gen));
-        if self.budget_blocked.is_empty() { self.budget_wait_epoch = None; }
+        if self.budget_blocked.is_empty() {
+            self.budget_wait_epoch = None;
+        }
         slot.sched.in_ready = false;
         self.timers.set(idx, expires);
         self.pacing.remove(idx);
@@ -579,11 +584,7 @@ impl Shard {
             return;
         }
         let Some(conn) = slot.conn.as_ref() else { return };
-        if self.budget_blocked.contains(&(idx, slot.gen))
-            && conn.needs_record_spare()
-            && !conn.has_record_spare()
-            && !conn.wants_unpaced_tx()
-        {
+        if self.budget_blocked.contains(&(idx, slot.gen)) && conn.needs_record_spare() && !conn.has_record_spare() && !conn.wants_unpaced_tx() {
             // ACKs and app writes must not spin on the same failed allocation.
             // A release epoch reschedules blocked senders in `run`; an ACK that
             // frees an existing record slot or new control work bypasses this.
@@ -611,7 +612,9 @@ impl Shard {
         let slot = &mut self.slots[idx as usize];
         let conn = slot.conn.take();
         let tomb = slot.tomb.take();
-        if conn.is_none() && tomb.is_none() { return; }
+        if conn.is_none() && tomb.is_none() {
+            return;
+        }
         if let Some(mut conn) = conn {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.destroy(&mut ctx);
@@ -635,7 +638,9 @@ impl Shard {
             slot.retained = true;
         }
         self.budget_blocked.remove(&(idx, slot.gen));
-        if self.budget_blocked.is_empty() { self.budget_wait_epoch = None; }
+        if self.budget_blocked.is_empty() {
+            self.budget_wait_epoch = None;
+        }
         slot.gen = slot.gen.wrapping_add(1);
         slot.sched = Sched::default();
         self.timers.remove(idx);
@@ -682,9 +687,7 @@ impl Shard {
             iface.drr = Drr::default();
             debug_assert_eq!(iface.tw_pending, 0);
         }
-        self.retained_metadata.reclaim_to_generations(
-            (self.retired_generations.capacity() * std::mem::size_of::<u32>()) as u64,
-        );
+        self.retained_metadata.reclaim_to_generations((self.retired_generations.capacity() * std::mem::size_of::<u32>()) as u64);
     }
 
     fn alloc_slot(&mut self) -> (u32, u32) {
@@ -736,8 +739,11 @@ impl Shard {
         }
         // Resource limits: silently drop (§10.2).
         let peer_conns = self.budget.peers.get(&peer).map_or(0, |p| p.conns);
-        if self.budget.level() >= Pressure::High || peer_conns >= self.budget.peer_max_conns
-            || self.time_wait_n >= self.cfg.max_time_wait || self.events.len() >= self.cfg.accept_backlog * 4 {
+        if self.budget.level() >= Pressure::High
+            || peer_conns >= self.budget.peer_max_conns
+            || self.time_wait_n >= self.cfg.max_time_wait
+            || self.events.len() >= self.cfg.accept_backlog * 4
+        {
             self.stats.syn_dropped += 1;
             return;
         }
@@ -789,8 +795,11 @@ impl Shard {
                 return;
             }
         }
-        if self.budget.level() >= Pressure::High || self.half_open >= self.cfg.syn_backlog
-            || self.events.len() >= self.cfg.accept_backlog * 4 || !self.budget.peer_conn_add(peer) {
+        if self.budget.level() >= Pressure::High
+            || self.half_open >= self.cfg.syn_backlog
+            || self.events.len() >= self.cfg.accept_backlog * 4
+            || !self.budget.peer_conn_add(peer)
+        {
             self.stats.syn_dropped += 1;
             return;
         }
@@ -817,8 +826,7 @@ impl Shard {
         slot.tomb = None;
         slot.gen = slot.gen.wrapping_add(1);
         let id = ConnId::new(idx, slot.gen);
-        slot.conn = Some(Box::new(Conn::new_passive(id, old.iface, peer, old.local, old.remote,
-            iss, tso, mtu, h.seq, &syn, &self.cfg, now)));
+        slot.conn = Some(Box::new(Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now)));
         slot.active_memory = Some(active_memory);
         slot.sched.time_wait = false;
         slot.sched.half_open = true;
@@ -1068,15 +1076,12 @@ impl Shard {
         if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
             self.budget_wait_epoch = None;
             for (idx, gen) in std::mem::take(&mut self.budget_blocked) {
-                let retry = self.slots.get(idx as usize)
-                    .filter(|s| s.gen == gen)
-                    .and_then(|s| s.conn.as_ref())
-                    .is_some_and(|conn| {
-                        !conn.needs_record_spare()
-                            || conn.has_record_spare()
-                            || conn.wants_unpaced_tx()
-                            || conn.record_reserve_bytes_needed().is_some_and(|bytes| self.budget.can_allocate(conn.peer, bytes))
-                    });
+                let retry = self.slots.get(idx as usize).filter(|s| s.gen == gen).and_then(|s| s.conn.as_ref()).is_some_and(|conn| {
+                    !conn.needs_record_spare()
+                        || conn.has_record_spare()
+                        || conn.wants_unpaced_tx()
+                        || conn.record_reserve_bytes_needed().is_some_and(|bytes| self.budget.can_allocate(conn.peer, bytes))
+                });
                 if retry {
                     self.schedule(idx);
                 } else if self.slots.get(idx as usize).is_some_and(|s| s.gen == gen && s.conn.is_some()) {
@@ -1153,17 +1158,24 @@ impl Shard {
                 self.tw_ready.rotate_left(1);
                 continue;
             }
-            let opts = EmitOptions {
-                ts: tomb.ts_ok.then(|| ((now.as_millis() as u32).wrapping_add(tomb.ts_offset), tomb.ts_recent)),
-                ..Default::default()
-            };
+            let opts = EmitOptions { ts: tomb.ts_ok.then(|| ((now.as_millis() as u32).wrapping_add(tomb.ts_offset), tomb.ts_recent)), ..Default::default() };
             let empty: [&[u8]; 0] = [];
-            let len = wire::emit(&mut self.hdr, &EmitParams {
-                src: tomb.local.ip(), dst: tomb.remote.ip(),
-                src_port: tomb.local.port(), dst_port: tomb.remote.port(),
-                seq: tomb.snd_seq, ack: tomb.rcv_seq, flags: ACK, window: 0,
-                opts: &opts, payload: &empty, ttl: self.cfg.ttl,
-            });
+            let len = wire::emit(
+                &mut self.hdr,
+                &EmitParams {
+                    src: tomb.local.ip(),
+                    dst: tomb.remote.ip(),
+                    src_port: tomb.local.port(),
+                    dst_port: tomb.remote.port(),
+                    seq: tomb.snd_seq,
+                    ack: tomb.rcv_seq,
+                    flags: ACK,
+                    window: 0,
+                    opts: &opts,
+                    payload: &empty,
+                    ttl: self.cfg.ttl,
+                },
+            );
             let pkt = OutPacket { peer, header: &self.hdr[..len], payload: [&[], &[]] };
             match sinks.send(iface, &pkt) {
                 SendResult::Accepted => {
@@ -1293,7 +1305,9 @@ impl Shard {
                 self.budget_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
                 self.budget_blocked.insert((idx, gen));
                 conn.plan_control(level)
-            }) else { return (sent, false) };
+            }) else {
+                return (sent, false);
+            };
             if plan.paced() && rate.is_some() && conn.next_send_time > now + pacing_ahead(rate.unwrap(), mss, self.cfg.max_quantum) {
                 // Data must wait for pacing, but a pending ACK / probe goes now.
                 if let Some(c) = conn.plan_control(level) {
@@ -1389,17 +1403,23 @@ impl Shard {
     }
 
     pub fn read(&mut self, now: Instant, id: ConnId, dst: &mut [u8]) -> ReadResult {
-        if self.is_tombstone(id) { return ReadResult::Eof; }
+        if self.is_tombstone(id) {
+            return ReadResult::Eof;
+        }
         self.with_conn(id, |c, ctx| c.read(dst, ctx, now)).unwrap_or(ReadResult::Closed(CloseReason::Aborted))
     }
 
     pub fn read_chunk(&mut self, now: Instant, id: ConnId, max: usize) -> Result<Bytes, ReadResult> {
-        if self.is_tombstone(id) { return Err(ReadResult::Eof); }
+        if self.is_tombstone(id) {
+            return Err(ReadResult::Eof);
+        }
         self.with_conn(id, |c, ctx| c.read_chunk(max, ctx, now)).unwrap_or(Err(ReadResult::Closed(CloseReason::Aborted)))
     }
 
     pub fn read_chunk_for_adapter(&mut self, now: Instant, id: ConnId, max: usize) -> Result<Bytes, ReadResult> {
-        if self.is_tombstone(id) { return Err(ReadResult::Eof); }
+        if self.is_tombstone(id) {
+            return Err(ReadResult::Eof);
+        }
         self.with_conn(id, |c, ctx| c.read_chunk_for_adapter(max, ctx, now)).unwrap_or(Err(ReadResult::Closed(CloseReason::Aborted)))
     }
 
@@ -1567,13 +1587,17 @@ mod admission_tests {
     fn tombstone_slot_reservation_covers_fixed_containers() {
         // Hash table load factor and vector capacity slack are rounded up.
         let tuple_index = (std::mem::size_of::<(Key, u32)>() + 1).div_ceil(7) * 8;
-        let fixed = std::mem::size_of::<Slot>() + tuple_index
-            + std::mem::size_of::<(Instant, u32)>() + std::mem::size_of::<u32>()
-            + std::mem::size_of::<(u32, u32)>();
-        eprintln!("TIME_WAIT fixed container estimate: {fixed} bytes (slot={}, tuple={}, timer={}, free={}, ready={}), reserved: {} bytes",
-            std::mem::size_of::<Slot>(), tuple_index, std::mem::size_of::<(Instant, u32)>(),
-            std::mem::size_of::<u32>(), std::mem::size_of::<(u32, u32)>(),
-            crate::budget::TIME_WAIT_SLOT_BYTES);
+        let fixed =
+            std::mem::size_of::<Slot>() + tuple_index + std::mem::size_of::<(Instant, u32)>() + std::mem::size_of::<u32>() + std::mem::size_of::<(u32, u32)>();
+        eprintln!(
+            "TIME_WAIT fixed container estimate: {fixed} bytes (slot={}, tuple={}, timer={}, free={}, ready={}), reserved: {} bytes",
+            std::mem::size_of::<Slot>(),
+            tuple_index,
+            std::mem::size_of::<(Instant, u32)>(),
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<(u32, u32)>(),
+            crate::budget::TIME_WAIT_SLOT_BYTES
+        );
         assert!(fixed < crate::budget::TIME_WAIT_SLOT_BYTES as usize, "fixed bytes {fixed}");
     }
 
@@ -1587,8 +1611,14 @@ mod admission_tests {
         let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
         let local = SocketAddr::from(([10, 0, 0, 1], 443));
         let syn = TcpHeader {
-            src_port: remote.port(), dst_port: local.port(), seq: Seq(100), ack: Seq(0),
-            flags: SYN, window: 65535, opts: TcpOptions::default(), data_off: 20,
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(100),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
         };
 
         a.handle_syn(Instant::ZERO, ai, PeerId(1), remote, local, &syn);
@@ -1611,14 +1641,28 @@ mod admission_tests {
         let local = SocketAddr::from(([10, 0, 0, 1], 443));
         let remote = SocketAddr::from(([10, 0, 0, 2], 40000));
         let tomb = TimeWaitState {
-            iface: IfaceId(0), peer: PeerId(1), local, remote,
-            snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-            ts_ok: true, ts_recent: 1000, ts_offset: 0,
-            expires: Instant::from_millis(60_000), pending_ack: false,
+            iface: IfaceId(0),
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: true,
+            ts_recent: 1000,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
         };
         let mut syn = TcpHeader {
-            src_port: remote.port(), dst_port: local.port(), seq: Seq(50), ack: Seq(0),
-            flags: SYN, window: 65535, opts: TcpOptions::default(), data_off: 20,
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(50),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
         };
         syn.opts.ts = Some((1001, 0));
         assert!(tomb.can_reuse(&syn, true));
@@ -1658,19 +1702,32 @@ mod admission_tests {
         permit.to_time_wait();
         sh.slots[idx as usize].permit = Some(permit);
         sh.slots[idx as usize].tomb = Some(TimeWaitState {
-            iface, peer: PeerId(1), local, remote,
-            snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-            ts_ok: true, ts_recent: 1000, ts_offset: 0,
-            expires: Instant::from_millis(60_000), pending_ack: false,
+            iface,
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: true,
+            ts_recent: 1000,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
         });
         sh.slots[idx as usize].sched.time_wait = true;
         sh.time_wait_n = 1;
         sh.table.insert((iface, remote, local), idx);
         sh.timers.set(idx, Instant::from_millis(60_000));
         let syn = TcpHeader {
-            src_port: remote.port(), dst_port: local.port(), seq: Seq(50), ack: Seq(0),
-            flags: SYN, window: 65535,
-            opts: TcpOptions { ts: Some((1001, 0)), ..Default::default() }, data_off: 20,
+            src_port: remote.port(),
+            dst_port: local.port(),
+            seq: Seq(50),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions { ts: Some((1001, 0)), ..Default::default() },
+            data_off: 20,
         };
 
         let other_active = global.try_acquire_connection().unwrap();
@@ -1712,10 +1769,18 @@ mod admission_tests {
         permit.to_time_wait();
         sh.slots[idx as usize].permit = Some(permit);
         sh.slots[idx as usize].tomb = Some(TimeWaitState {
-            iface, peer: PeerId(1), local, remote,
-            snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-            ts_ok: false, ts_recent: 0, ts_offset: 0,
-            expires: Instant::from_millis(60_000), pending_ack: false,
+            iface,
+            peer: PeerId(1),
+            local,
+            remote,
+            snd_seq: Seq(300),
+            rcv_seq: Seq(201),
+            last_fin_seq: Seq(200),
+            ts_ok: false,
+            ts_recent: 0,
+            ts_offset: 0,
+            expires: Instant::from_millis(60_000),
+            pending_ack: false,
         });
         sh.slots[idx as usize].sched.time_wait = true;
         sh.time_wait_n = 1;
@@ -1724,8 +1789,14 @@ mod admission_tests {
 
         let other = SocketAddr::from(([10, 0, 0, 2], 40001));
         let syn = TcpHeader {
-            src_port: other.port(), dst_port: local.port(), seq: Seq(1), ack: Seq(0),
-            flags: SYN, window: 65535, opts: TcpOptions::default(), data_off: 20,
+            src_port: other.port(),
+            dst_port: local.port(),
+            seq: Seq(1),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65535,
+            opts: TcpOptions::default(),
+            data_off: 20,
         };
         sh.handle_syn(Instant::ZERO, iface, PeerId(1), other, local, &syn);
         assert!(sh.slots[idx as usize].tomb.is_some());
@@ -1749,16 +1820,26 @@ mod admission_tests {
         let mut old_id = None;
         for i in 0..2100u16 {
             let (idx, gen) = sh.alloc_slot();
-            if i == 0 { old_id = Some(ConnId::new(idx, gen)); }
+            if i == 0 {
+                old_id = Some(ConnId::new(idx, gen));
+            }
             let remote = SocketAddr::from(([10, 0, 0, 2], 10_000 + i));
             let mut permit = global.try_acquire_connection().unwrap();
             permit.to_time_wait();
             sh.slots[idx as usize].permit = Some(permit);
             sh.slots[idx as usize].tomb = Some(TimeWaitState {
-                iface, peer: PeerId(1), local, remote,
-                snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-                ts_ok: false, ts_recent: 0, ts_offset: 0,
-                expires: Instant::from_millis(1), pending_ack: false,
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires: Instant::from_millis(1),
+                pending_ack: false,
             });
             sh.slots[idx as usize].sched.time_wait = true;
             sh.time_wait_n += 1;
@@ -1776,10 +1857,14 @@ mod admission_tests {
         let (idx, gen) = sh.alloc_slot();
         assert_eq!(idx, 0);
         assert_ne!(ConnId::new(idx, gen), old_id.unwrap());
-        for _ in 1..2050 { sh.alloc_slot(); }
+        for _ in 1..2050 {
+            sh.alloc_slot();
+        }
         sh.reclaim_idle_containers();
         assert_eq!(sh.retired_generations.len(), 2100, "smaller idle cycle lost older slot generations");
-        for _ in 0..2050 { sh.alloc_slot(); }
+        for _ in 0..2050 {
+            sh.alloc_slot();
+        }
         let (idx, gen) = sh.alloc_slot();
         assert_eq!(idx, 2050);
         assert_eq!(gen, 2, "older high-water slot must not restart at generation 1");
@@ -1800,17 +1885,24 @@ mod admission_tests {
             permit.to_time_wait();
             sh.slots[idx as usize].permit = Some(permit);
             sh.slots[idx as usize].tomb = Some(TimeWaitState {
-                iface, peer: PeerId(1), local, remote,
-                snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-                ts_ok: false, ts_recent: 0, ts_offset: 0,
-                expires: Instant::from_millis(if i == 5999 { 60_000 } else { 1 }), pending_ack: false,
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires: Instant::from_millis(if i == 5999 { 60_000 } else { 1 }),
+                pending_ack: false,
             });
             sh.slots[idx as usize].sched.time_wait = true;
             sh.time_wait_n += 1;
             sh.table.insert((iface, remote, local), idx);
             sh.timers.set(idx, sh.slots[idx as usize].tomb.as_ref().unwrap().expires);
-            assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192,
-                "growing tombstone containers exceeded slot permits at {i}");
+            assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192, "growing tombstone containers exceeded slot permits at {i}");
         }
         let peak = sh.table.capacity();
         assert!(peak > 4096);
@@ -1821,13 +1913,18 @@ mod admission_tests {
         assert!(sh.table.capacity() < peak / 4);
         assert_eq!(sh.table.get(&(iface, SocketAddr::from(([10, 0, 0, 2], 15_999)), local)), Some(&5999));
         assert_eq!(sh.retained_metadata.free_slot_bytes(), 5999 * crate::budget::RETAINED_SLOT_BYTES);
-        assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192,
-            "sparse slot high-water mark escaped the retained budget");
+        assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192, "sparse slot high-water mark escaped the retained budget");
         let retained_before_reuse = sh.retained_metadata.free_slot_bytes();
         let newcomer = SocketAddr::from(([10, 0, 0, 3], 40_001));
         let syn = TcpHeader {
-            src_port: newcomer.port(), dst_port: local.port(), seq: Seq(1), ack: Seq(0),
-            flags: SYN, window: 65_535, opts: TcpOptions::default(), data_off: 20,
+            src_port: newcomer.port(),
+            dst_port: local.port(),
+            seq: Seq(1),
+            ack: Seq(0),
+            flags: SYN,
+            window: 65_535,
+            opts: TcpOptions::default(),
+            data_off: 20,
         };
         sh.handle_syn(Instant::from_millis(3), iface, PeerId(1), newcomer, local, &syn);
         let reused = *sh.table.get(&(iface, newcomer, local)).unwrap();
@@ -1858,17 +1955,28 @@ mod admission_tests {
             sh.slots[idx as usize].permit = Some(permit);
             let expires = Instant::from_millis(if i + 1 == COUNT { 60_000 } else { 1 });
             sh.slots[idx as usize].tomb = Some(TimeWaitState {
-                iface, peer: PeerId(1), local, remote,
-                snd_seq: Seq(300), rcv_seq: Seq(201), last_fin_seq: Seq(200),
-                ts_ok: false, ts_recent: 0, ts_offset: 0, expires, pending_ack: false,
+                iface,
+                peer: PeerId(1),
+                local,
+                remote,
+                snd_seq: Seq(300),
+                rcv_seq: Seq(201),
+                last_fin_seq: Seq(200),
+                ts_ok: false,
+                ts_recent: 0,
+                ts_offset: 0,
+                expires,
+                pending_ack: false,
             });
             sh.slots[idx as usize].sched.time_wait = true;
             sh.time_wait_n += 1;
             sh.table.insert((iface, remote, local), idx);
             sh.timers.set(idx, expires);
             if i % 8192 == 0 || i + 1 == COUNT {
-                assert!(tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192,
-                    "120k TIME_WAIT high-water capacity escaped the reserved bytes at {i}");
+                assert!(
+                    tombstone_container_capacity_bytes(&sh) <= global.reserved() + 8192,
+                    "120k TIME_WAIT high-water capacity escaped the reserved bytes at {i}"
+                );
             }
         }
         let mut accepted = |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted;

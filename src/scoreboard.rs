@@ -68,8 +68,7 @@ impl Scoreboard {
             0 => IDLE_RECORD_CAP,
             n => n.checked_mul(2)?,
         };
-        let bytes = target.checked_mul(std::mem::size_of::<Rec>())?
-            .checked_mul(2)?;
+        let bytes = target.checked_mul(std::mem::size_of::<Rec>())?.checked_mul(2)?;
         Some((target, u64::try_from(bytes).ok()?))
     }
 

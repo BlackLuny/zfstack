@@ -72,20 +72,35 @@ struct ChargedDeque<T> {
 }
 
 impl<T> Default for ChargedDeque<T> {
-    fn default() -> Self { Self { items: VecDeque::new(), _capacity: None } }
+    fn default() -> Self {
+        Self { items: VecDeque::new(), _capacity: None }
+    }
 }
 
 impl<T> ChargedDeque<T> {
-    fn is_empty(&self) -> bool { self.items.is_empty() }
-    fn front(&self) -> Option<&T> { self.items.front() }
-    fn front_mut(&mut self) -> Option<&mut T> { self.items.front_mut() }
-    fn back(&self) -> Option<&T> { self.items.back() }
-    fn back_mut(&mut self) -> Option<&mut T> { self.items.back_mut() }
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+    fn front(&self) -> Option<&T> {
+        self.items.front()
+    }
+    fn front_mut(&mut self) -> Option<&mut T> {
+        self.items.front_mut()
+    }
+    fn back(&self) -> Option<&T> {
+        self.items.back()
+    }
+    fn back_mut(&mut self) -> Option<&mut T> {
+        self.items.back_mut()
+    }
 
     fn reserve_one(&mut self, memory: &MemoryHandle) -> Result<(), QueueGrowError> {
-        if self.items.len() < self.items.capacity() { return Ok(()) }
+        if self.items.len() < self.items.capacity() {
+            return Ok(());
+        }
         let target = self.items.capacity().max(4).checked_mul(2).ok_or(QueueGrowError::Allocation)?;
-        let bytes = target.checked_mul(std::mem::size_of::<T>())
+        let bytes = target
+            .checked_mul(std::mem::size_of::<T>())
             .and_then(|n| n.checked_mul(2))
             .and_then(|n| u64::try_from(n).ok())
             .ok_or(QueueGrowError::Allocation)?;
@@ -164,9 +179,16 @@ struct TxQueue {
 }
 
 impl TxQueue {
-    fn len(&self) -> usize { self.len }
-    fn is_empty(&self) -> bool { self.len == 0 }
-    fn clear(&mut self) { self.chunks.clear(); self.len = 0; }
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    fn clear(&mut self) {
+        self.chunks.clear();
+        self.len = 0;
+    }
     fn front(&self) -> &[u8] {
         self.chunks.front().map_or(&[], |c| &c.data[c.head..c.len])
     }
@@ -204,7 +226,9 @@ impl TxQueue {
             chunk.head += take;
             self.len -= take;
             n -= take;
-            if chunk.head == chunk.len { self.chunks.pop_front(); }
+            if chunk.head == chunk.len {
+                self.chunks.pop_front();
+            }
         }
     }
 }
@@ -239,8 +263,12 @@ struct DriverWake {
 }
 
 impl Wake for DriverWake {
-    fn wake(self: Arc<Self>) { self.ctl.mark(self.id); }
-    fn wake_by_ref(self: &Arc<Self>) { self.ctl.mark(self.id); }
+    fn wake(self: Arc<Self>) {
+        self.ctl.mark(self.id);
+    }
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.ctl.mark(self.id);
+    }
 }
 
 struct BudgetWake {
@@ -248,8 +276,12 @@ struct BudgetWake {
 }
 
 impl Wake for BudgetWake {
-    fn wake(self: Arc<Self>) { self.ctl.notify.notify_one(); }
-    fn wake_by_ref(self: &Arc<Self>) { self.ctl.notify.notify_one(); }
+    fn wake(self: Arc<Self>) {
+        self.ctl.notify.notify_one();
+    }
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.ctl.notify.notify_one();
+    }
 }
 
 /// Driver-side control: dirty stream list + wakeup.
@@ -280,9 +312,13 @@ fn compact_sparse_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>) {
         *map = HashMap::new();
         return;
     }
-    if map.capacity() <= 512 || map.len() > map.capacity() / 8 { return; }
+    if map.capacity() <= 512 || map.len() > map.capacity() / 8 {
+        return;
+    }
     let mut compact = HashMap::new();
-    if compact.try_reserve(map.len()).is_err() { return; }
+    if compact.try_reserve(map.len()).is_err() {
+        return;
+    }
     compact.extend(map.drain());
     *map = compact;
 }
@@ -619,10 +655,7 @@ where
     I: Send + 'static,
     F: FnMut(&mut Shard, crate::Instant, I) + Send + 'static,
 {
-    let (handle, acceptor, ids, task, ()) = spawn_with_source_factory(
-        cfg, stream_cfg, ifaces, move |_| (egress, ()), global, limits,
-        ingress_rx, on_ingress,
-    );
+    let (handle, acceptor, ids, task, ()) = spawn_with_source_factory(cfg, stream_cfg, ifaces, move |_| (egress, ()), global, limits, ingress_rx, on_ingress);
     (handle, acceptor, ids, task)
 }
 
@@ -654,8 +687,13 @@ where
     (handle, acceptor, ids, task, extra)
 }
 
-fn spawn_inner<E, I, F>(mut shard: Shard, stream_cfg: StreamConfig, ifaces: Vec<IfaceConfig>, egress: E, input: Option<InputSource<I, F>>)
-    -> (StackHandle, Acceptor, Vec<IfaceId>, tokio::task::JoinHandle<()>, Arc<AtomicBool>)
+fn spawn_inner<E, I, F>(
+    mut shard: Shard,
+    stream_cfg: StreamConfig,
+    ifaces: Vec<IfaceConfig>,
+    egress: E,
+    input: Option<InputSource<I, F>>,
+) -> (StackHandle, Acceptor, Vec<IfaceId>, tokio::task::JoinHandle<()>, Arc<AtomicBool>)
 where
     E: Egress,
     I: Send + 'static,
@@ -801,17 +839,14 @@ where
             }
             Cmd::Snapshot(reply) => {
                 let tail_connections = if self.streams.len() <= 4 {
-                    self.streams.iter().filter_map(|(&id, shared)| {
-                        let core = self.shard.info(id)?;
-                        let q = shared.q.lock().unwrap();
-                        Some(TailConnection {
-                            id,
-                            core,
-                            adapter_tx_queued: q.tx.len(),
-                            adapter_rx_queued: q.rx_len,
-                            write_parked: q.write_parked,
+                    self.streams
+                        .iter()
+                        .filter_map(|(&id, shared)| {
+                            let core = self.shard.info(id)?;
+                            let q = shared.q.lock().unwrap();
+                            Some(TailConnection { id, core, adapter_tx_queued: q.tx.len(), adapter_rx_queued: q.rx_len, write_parked: q.write_parked })
                         })
-                    }).collect()
+                        .collect()
                 } else {
                     Vec::new()
                 };
@@ -867,7 +902,18 @@ where
                 let driver_waiter = memory.global().new_waiter_id();
                 let rx_index_waiter = memory.global().new_waiter_id();
                 let driver_wake = Waker::from(Arc::new(DriverWake { ctl: self.ctl.clone(), id }));
-                let sh = Arc::new(Shared { id, q: Mutex::new(Queues::default()), ctl: self.ctl.clone(), cfg: self.stream_cfg.clone(), memory, _state_memory: state_memory, memory_waiter, driver_waiter, rx_index_waiter, driver_wake });
+                let sh = Arc::new(Shared {
+                    id,
+                    q: Mutex::new(Queues::default()),
+                    ctl: self.ctl.clone(),
+                    cfg: self.stream_cfg.clone(),
+                    memory,
+                    _state_memory: state_memory,
+                    memory_waiter,
+                    driver_waiter,
+                    rx_index_waiter,
+                    driver_wake,
+                });
                 self.streams.insert(id, sh.clone());
                 let meta = ConnMeta { iface: info.iface, peer: info.peer, local: info.local, remote: info.remote };
                 if self.accept_tx.try_send(TcpStream { sh, meta }).is_err() {
@@ -924,7 +970,9 @@ where
             let mut q = sh.q.lock().unwrap();
             let done = q.closed_by_app && (q.error.is_some() || q.tx.is_empty());
             let start_orphan = q.closed_by_app && !done && q.orphan_deadline.is_none();
-            if start_orphan { q.orphan_deadline = Some(now + timeout); }
+            if start_orphan {
+                q.orphan_deadline = Some(now + timeout);
+            }
             let orphan_deadline = if done { q.orphan_deadline.take() } else { None };
             (done, q.rx_len > 0, start_orphan, orphan_deadline)
         });
@@ -992,7 +1040,9 @@ where
                 wake_reader = q.read_waker.take();
             }
         }
-        if abort_rx { self.shard.abort(id); }
+        if abort_rx {
+            self.shard.abort(id);
+        }
         // tx: stream queue → shard.
         let mut wake_writer = None;
         let mut wake_flush = None;
@@ -1020,7 +1070,13 @@ where
                         break;
                     }
                     WriteResult::MemoryBlocked => {
-                        sh.memory.global().register_cacheable_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, crate::buf::TX_BLOCK_CHARGE);
+                        sh.memory.global().register_cacheable_physical_waiter(
+                            sh.driver_waiter,
+                            observed,
+                            &sh.driver_wake,
+                            &sh.memory,
+                            crate::buf::TX_BLOCK_CHARGE,
+                        );
                         break;
                     }
                     WriteResult::Closed => {
@@ -1031,7 +1087,9 @@ where
                     }
                 }
             }
-            if q.tx.is_empty() { sh.memory.global().remove_waiter(sh.driver_waiter); }
+            if q.tx.is_empty() {
+                sh.memory.global().remove_waiter(sh.driver_waiter);
+            }
             if q.write_parked && cfg.tx_cap - q.tx.len() >= cfg.tx_low_watermark {
                 q.write_parked = false;
                 wake_writer = q.write_waker.take();
@@ -1073,9 +1131,15 @@ impl<E: Egress, I, F> Drop for Driver<E, I, F> {
             q.tx.clear();
             let (r, w, f) = (q.read_waker.take(), q.write_waker.take(), q.flush_waker.take());
             drop(q);
-            if let Some(w) = r { w.wake(); }
-            if let Some(w) = w { w.wake(); }
-            if let Some(w) = f { w.wake(); }
+            if let Some(w) = r {
+                w.wake();
+            }
+            if let Some(w) = w {
+                w.wake();
+            }
+            if let Some(w) = f {
+                w.wake();
+            }
         }
     }
 }
@@ -1104,8 +1168,7 @@ mod tests {
         // The owner remains live when a select branch stops waiting for it.
         assert!(tokio::time::timeout(std::time::Duration::from_millis(1), task.wait_finished()).await.is_err());
         ingress_tx.send(()).await.unwrap();
-        let error = tokio::time::timeout(std::time::Duration::from_secs(1), task.wait_finished())
-            .await.unwrap().unwrap_err();
+        let error = tokio::time::timeout(std::time::Duration::from_secs(1), task.wait_finished()).await.unwrap().unwrap_err();
         assert!(error.is_panic());
         assert!(handle.snapshot().await.is_none());
         task.shutdown_and_join().await.unwrap();
@@ -1113,16 +1176,24 @@ mod tests {
 
     struct CountWake(AtomicUsize);
     impl Wake for CountWake {
-        fn wake(self: Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); }
-        fn wake_by_ref(self: &Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); }
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     #[test]
     fn short_connection_index_releases_sparse_capacity() {
         let mut streams = HashMap::new();
-        for id in 0..8192 { streams.insert(id, id); }
+        for id in 0..8192 {
+            streams.insert(id, id);
+        }
         let peak = streams.capacity();
-        for id in 0..8191 { streams.remove(&id); }
+        for id in 0..8191 {
+            streams.remove(&id);
+        }
         compact_sparse_map(&mut streams);
         assert_eq!(streams.get(&8191), Some(&8191));
         assert!(streams.capacity() < peak / 4);
@@ -1198,7 +1269,9 @@ mod tests {
         let mut accepted = 0u8;
         for i in 0..64u8 {
             let n = q.push(&[i; 64], &memory);
-            if n == 0 { break }
+            if n == 0 {
+                break;
+            }
             assert_eq!(n, 64);
             accepted += 1;
             assert!(q.chunks.capacity_bytes() <= global.reserved());

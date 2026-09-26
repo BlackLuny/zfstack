@@ -54,7 +54,6 @@ impl IngressPayload<'_> {
             Self::Owned(v) => v.truncate(len),
         }
     }
-
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -437,12 +436,18 @@ impl Conn {
     pub(crate) fn time_wait_snapshot(&self) -> TimeWaitState {
         debug_assert!(self.ready_for_time_wait_compaction());
         TimeWaitState {
-            iface: self.iface, peer: self.peer, local: self.local, remote: self.remote,
+            iface: self.iface,
+            peer: self.peer,
+            local: self.local,
+            remote: self.remote,
             snd_seq: self.tx_sp.seq(self.snd_nxt),
             rcv_seq: self.rx_sp.seq(self.rcv_nxt),
             last_fin_seq: self.rx_sp.seq(self.fin_rcvd.expect("TIME_WAIT requires peer FIN")),
-            ts_ok: self.ts_ok, ts_recent: self.ts_recent, ts_offset: self.ts_offset,
-            expires: self.life_at.expect("TIME_WAIT requires expiry"), pending_ack: false,
+            ts_ok: self.ts_ok,
+            ts_recent: self.ts_recent,
+            ts_offset: self.ts_offset,
+            expires: self.life_at.expect("TIME_WAIT requires expiry"),
+            pending_ack: false,
         }
     }
 
@@ -751,10 +756,11 @@ impl Conn {
         let inflight = self.snd_nxt.saturating_sub(self.snd_una);
         let win = inflight.max(self.cc.cwnd()).min(cfg.max_snd_inflight as u64);
         let prefetch = match self.pacing_rate() {
-            Some(r) => ((r as u128).saturating_mul(cfg.prefetch_time.as_nanos()) / 1_000_000_000)
-                .min(u64::MAX as u128) as u64,
+            Some(r) => ((r as u128).saturating_mul(cfg.prefetch_time.as_nanos()) / 1_000_000_000).min(u64::MAX as u128) as u64,
             None => (cfg.min_prefetch as u64).max(self.cc.cwnd()),
-        }.max(cfg.min_prefetch as u64).min(cfg.prefetch_max as u64);
+        }
+        .max(cfg.min_prefetch as u64)
+        .min(cfg.prefetch_max as u64);
         win.saturating_add(prefetch)
     }
 
@@ -1497,7 +1503,9 @@ impl Conn {
                 ctx.budget.release(self.peer, len);
                 self.stats.dropped_no_mem += 1;
                 self.ack_need = AckNeed::Now;
-                if o.is_empty() { self.ooo = None; }
+                if o.is_empty() {
+                    self.ooo = None;
+                }
                 return;
             };
             if (added as u64) < len {
@@ -2629,8 +2637,7 @@ impl Conn {
     /// A data plan may split one retransmission record or commit one new
     /// segment. Pure control output needs no send-record allocation.
     pub(crate) fn needs_record_spare(&self) -> bool {
-        !self.rst_pending && self.state.can_send_data()
-            && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending() || self.tlp.pending)
+        !self.rst_pending && self.state.can_send_data() && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending() || self.tlp.pending)
     }
 
     /// An ACK can free a record slot without releasing its backing allocation.

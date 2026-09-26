@@ -87,13 +87,19 @@ impl GlobalBudget {
             high,
             low: ((high as u128 * 3) / 8) as u64,
             pressure: ((high as u128 * 5) / 8) as u64,
-            reserved: AtomicU64::new(0), active_limit, time_wait_limit, time_wait_bytes_limit,
+            reserved: AtomicU64::new(0),
+            active_limit,
+            time_wait_limit,
+            time_wait_bytes_limit,
             allocation_lock: Mutex::new(()),
-            active: AtomicU64::new(0), time_wait_reserved: AtomicU64::new(0),
+            active: AtomicU64::new(0),
+            time_wait_reserved: AtomicU64::new(0),
             time_wait_bytes_reserved: AtomicU64::new(0),
             cached_bytes: AtomicU64::new(0),
             cache_limit: (high / 8).max(128 * 1024).min(high).min(16 << 20),
-            release_epoch: AtomicU64::new(0), next_waiter: AtomicU64::new(1), waiting: AtomicUsize::new(0),
+            release_epoch: AtomicU64::new(0),
+            next_waiter: AtomicU64::new(1),
+            waiting: AtomicUsize::new(0),
             waiters: Mutex::new(HashMap::new()),
             physical_waiters: Mutex::new(VecDeque::new()),
             physical_waiting: AtomicUsize::new(0),
@@ -239,9 +245,14 @@ impl GlobalBudget {
                 entry.cacheable = cacheable;
             } else {
                 waiters.push_back(PhysicalWaiter {
-                    id, port: Arc::downgrade(&memory.port), port_limit: memory.port_limit,
-                    peer: Arc::downgrade(&memory.peer), peer_limit: memory.peer_limit,
-                    bytes, cacheable, waker: waker.clone(),
+                    id,
+                    port: Arc::downgrade(&memory.port),
+                    port_limit: memory.port_limit,
+                    peer: Arc::downgrade(&memory.peer),
+                    peer_limit: memory.peer_limit,
+                    bytes,
+                    cacheable,
+                    waker: waker.clone(),
                 });
             }
             // Pairs with `wake_waiters`: publish the waiter, then read the
@@ -250,7 +261,9 @@ impl GlobalBudget {
             self.physical_waiting.store(waiters.len(), Ordering::SeqCst);
             self.release_epoch.load(Ordering::SeqCst) != observed
         };
-        if raced { self.wake_eligible_physical_waiters(); }
+        if raced {
+            self.wake_eligible_physical_waiters();
+        }
     }
 
     fn wake_eligible_physical_waiters(&self) {
@@ -269,7 +282,9 @@ impl GlobalBudget {
             let mut ready = Vec::new();
             for _ in 0..len {
                 let entry = waiters.pop_front().unwrap();
-                let Some((port, peer)) = entry.counters() else { continue; };
+                let Some((port, peer)) = entry.counters() else {
+                    continue;
+                };
                 let port_key = Arc::as_ptr(&port);
                 let peer_key = Arc::as_ptr(&peer);
                 let port_selected = selected_ports.get(&port_key).copied().unwrap_or(0);
@@ -299,7 +314,9 @@ impl GlobalBudget {
             self.physical_waiting.store(waiters.len(), Ordering::SeqCst);
             ready
         };
-        for (waker, _port, _peer) in ready { waker.wake(); }
+        for (waker, _port, _peer) in ready {
+            waker.wake();
+        }
     }
 
     /// Called on every successful send/write. A waiter id is registered and
@@ -333,7 +350,9 @@ impl GlobalBudget {
                 self.waiting.store(0, Ordering::Release);
                 std::mem::take(&mut *waiters)
             };
-            for waker in waiters.into_values() { waker.wake(); }
+            for waker in waiters.into_values() {
+                waker.wake();
+            }
         }
         if self.physical_waiting.load(Ordering::SeqCst) != 0 {
             self.wake_eligible_physical_waiters();
@@ -421,7 +440,9 @@ impl ConnectionPermit {
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
-        if self.retired { return; }
+        if self.retired {
+            return;
+        }
         if self.active {
             self.global.active.fetch_sub(1, Ordering::AcqRel);
         }
@@ -481,7 +502,9 @@ impl RetainedMetadata {
 impl Drop for RetainedMetadata {
     fn drop(&mut self) {
         let bytes = self.total_bytes();
-        if bytes != 0 { self.global.release(bytes); }
+        if bytes != 0 {
+            self.global.release(bytes);
+        }
     }
 }
 
@@ -490,7 +513,8 @@ impl Drop for RetainedMetadata {
 /// ancestor up to its memory-controller mount.
 pub fn system_memory() -> Option<u64> {
     let phys = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
-        s.lines().find(|l| l.starts_with("MemTotal:"))
+        s.lines()
+            .find(|l| l.starts_with("MemTotal:"))
             .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()))
             .and_then(|kb| kb.checked_mul(1024))
     });
@@ -520,9 +544,13 @@ fn memory_limit_from_mounts(membership: &str, mounts: &str) -> Option<u64> {
                         smallest = Some(smallest.map_or(bytes, |old: u64| old.min(bytes)));
                     }
                 }
-                if dir == mount { break }
+                if dir == mount {
+                    break;
+                }
                 let Some(parent) = dir.parent() else { break };
-                if !parent.starts_with(&mount) { break }
+                if !parent.starts_with(&mount) {
+                    break;
+                }
                 dir = parent;
             }
         }
@@ -531,33 +559,41 @@ fn memory_limit_from_mounts(membership: &str, mounts: &str) -> Option<u64> {
 }
 
 fn cgroup_memberships(data: &str) -> Vec<(&'static str, String)> {
-    data.lines().filter_map(|line| {
-        let mut fields = line.splitn(3, ':');
-        let _hierarchy = fields.next()?;
-        let controllers = fields.next()?;
-        let path = fields.next()?;
-        if controllers.is_empty() {
-            Some(("cgroup2", path.to_owned()))
-        } else if controllers.split(',').any(|name| name == "memory") {
-            Some(("cgroup", path.to_owned()))
-        } else {
-            None
-        }
-    }).collect()
+    data.lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, ':');
+            let _hierarchy = fields.next()?;
+            let controllers = fields.next()?;
+            let path = fields.next()?;
+            if controllers.is_empty() {
+                Some(("cgroup2", path.to_owned()))
+            } else if controllers.split(',').any(|name| name == "memory") {
+                Some(("cgroup", path.to_owned()))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn memory_mounts(data: &str, kind: &str) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
-    data.lines().filter_map(|line| {
-        let (left, right) = line.split_once(" - ")?;
-        let mut fields = left.split_whitespace();
-        let root = fields.nth(3)?;
-        let mount = fields.next()?;
-        let mut after = right.split_whitespace();
-        if after.next()? != kind { return None }
-        let _source = after.next()?;
-        if kind == "cgroup" && !after.next()?.split(',').any(|name| name == "memory") { return None }
-        Some((root.into(), mount.into()))
-    }).collect()
+    data.lines()
+        .filter_map(|line| {
+            let (left, right) = line.split_once(" - ")?;
+            let mut fields = left.split_whitespace();
+            let root = fields.nth(3)?;
+            let mount = fields.next()?;
+            let mut after = right.split_whitespace();
+            if after.next()? != kind {
+                return None;
+            }
+            let _source = after.next()?;
+            if kind == "cgroup" && !after.next()?.split(',').any(|name| name == "memory") {
+                return None;
+            }
+            Some((root.into(), mount.into()))
+        })
+        .collect()
 }
 
 fn cgroup_mount_path(root: &std::path::Path, mount: &std::path::Path, path: &str) -> Option<std::path::PathBuf> {
@@ -566,7 +602,9 @@ fn cgroup_mount_path(root: &std::path::Path, mount: &std::path::Path, path: &str
     // A cgroup namespace can expose its root as `/`, even when mountinfo
     // names the corresponding host-side subtree.
     let relative = group.strip_prefix(root).ok().or_else(|| group.strip_prefix("/").ok())?;
-    if relative.components().any(|c| !matches!(c, Component::Normal(_))) { return None }
+    if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
+        return None;
+    }
     Some(mount.join(relative))
 }
 
@@ -625,7 +663,18 @@ impl Budget {
     pub fn new(global: Arc<GlobalBudget>) -> Self {
         let peer_limit = global.high / 4;
         let port_limit = global.high;
-        Budget { global, physical_port: Arc::new(AtomicU64::new(0)), physical_peers: HashMap::new(), used: 0, port_limit, peers: HashMap::new(), peer_limit, peer_max_conns: 4096, reserve_failures: 0, failures_by_kind: ReserveFailures::default() }
+        Budget {
+            global,
+            physical_port: Arc::new(AtomicU64::new(0)),
+            physical_peers: HashMap::new(),
+            used: 0,
+            port_limit,
+            peers: HashMap::new(),
+            peer_limit,
+            peer_max_conns: 4096,
+            reserve_failures: 0,
+            failures_by_kind: ReserveFailures::default(),
+        }
     }
 
     /// Configure hard shard/peer shares before admitting any connection.
@@ -651,7 +700,9 @@ impl Budget {
 
     pub fn try_allocate_kind(&mut self, peer: PeerId, bytes: u64, kind: AllocationKind) -> Option<MemoryLease> {
         let lease = self.memory_handle(peer).try_allocate(bytes);
-        if lease.is_none() { self.note_reserve_failure(kind); }
+        if lease.is_none() {
+            self.note_reserve_failure(kind);
+        }
         lease
     }
 
@@ -671,7 +722,13 @@ impl Budget {
 
     pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
         let counter = self.physical_peers.entry(peer).or_insert_with(|| Arc::new(AtomicU64::new(0))).clone();
-        MemoryHandle { global: Arc::clone(&self.global), port: Arc::clone(&self.physical_port), peer: counter, port_limit: self.port_limit, peer_limit: self.peer_limit }
+        MemoryHandle {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.physical_port),
+            peer: counter,
+            port_limit: self.port_limit,
+            peer_limit: self.peer_limit,
+        }
     }
 
     pub fn physical_used(&self) -> u64 {
@@ -685,8 +742,7 @@ impl Budget {
         // port/peer check rolls it back. Do not mistake that transient share
         // for durable pressure and park without a future release notification.
         let _allocation = self.global.allocation_lock.lock().unwrap();
-        let peer_used = self.physical_peers.get(&peer)
-            .map_or(0, |counter| counter.load(Ordering::Relaxed));
+        let peer_used = self.physical_peers.get(&peer).map_or(0, |counter| counter.load(Ordering::Relaxed));
         self.global.reserved().checked_add(bytes).is_some_and(|n| n <= self.global.high())
             && self.physical_used().checked_add(bytes).is_some_and(|n| n <= self.port_limit)
             && peer_used.checked_add(bytes).is_some_and(|n| n <= self.peer_limit)
@@ -737,7 +793,9 @@ impl Budget {
     }
 
     pub fn release(&mut self, peer: PeerId, n: u64) {
-        if n == 0 { return; }
+        if n == 0 {
+            return;
+        }
         self.cancel_reserve(peer, n);
         self.global.wake_waiters();
     }
@@ -773,7 +831,9 @@ pub struct MemoryHandle {
 impl MemoryHandle {
     pub fn try_allocate(&self, bytes: u64) -> Option<MemoryLease> {
         let _allocation = self.global.allocation_lock.lock().unwrap();
-        if !self.global.try_reserve(bytes) { return None }
+        if !self.global.try_reserve(bytes) {
+            return None;
+        }
         if !reserve_amount(&self.port, self.port_limit, bytes) {
             self.global.release_uncommitted(bytes);
             return None;
@@ -783,10 +843,19 @@ impl MemoryHandle {
             self.global.release_uncommitted(bytes);
             return None;
         }
-        Some(MemoryLease { global: Arc::clone(&self.global), port: Arc::clone(&self.port), peer: Some(Arc::clone(&self.peer)), bytes, peer_limit: self.peer_limit, cached: false })
+        Some(MemoryLease {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.port),
+            peer: Some(Arc::clone(&self.peer)),
+            bytes,
+            peer_limit: self.peer_limit,
+            cached: false,
+        })
     }
 
-    pub fn global(&self) -> &Arc<GlobalBudget> { &self.global }
+    pub fn global(&self) -> &Arc<GlobalBudget> {
+        &self.global
+    }
 }
 
 /// One allocation's global/port reservation. Cached blocks can temporarily
@@ -802,7 +871,9 @@ pub struct MemoryLease {
 
 impl MemoryLease {
     pub fn park_cached(&mut self) -> bool {
-        if !self.global.try_cache(self.bytes) { return false }
+        if !self.global.try_cache(self.bytes) {
+            return false;
+        }
         if let Some(peer) = self.peer.take() {
             peer.fetch_sub(self.bytes, Ordering::AcqRel);
             self.global.wake_waiters();
@@ -849,8 +920,12 @@ mod tests {
     struct CountWake(AtomicUsize);
 
     impl Wake for CountWake {
-        fn wake(self: Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); }
-        fn wake_by_ref(self: &Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); }
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     #[test]
@@ -1016,7 +1091,9 @@ mod tests {
         drop(first);
         assert_eq!(wakes.iter().map(|w| w.0.load(Ordering::Relaxed)).sum::<usize>(), 3);
         drop(second);
-        for id in ids { global.remove_waiter(id); }
+        for id in ids {
+            global.remove_waiter(id);
+        }
     }
 
     #[test]
@@ -1043,7 +1120,9 @@ mod tests {
         drop(held_b);
         assert_eq!(wakes.iter().map(|w| w.0.load(Ordering::Relaxed)).sum::<usize>(), 3);
         drop((first, second));
-        for id in ids { global.remove_waiter(id); }
+        for id in ids {
+            global.remove_waiter(id);
+        }
     }
 
     #[test]
@@ -1071,7 +1150,9 @@ mod tests {
         drop(first);
         assert_eq!(wakes.iter().map(|w| w.0.load(Ordering::Relaxed)).sum::<usize>(), 3);
         drop(second);
-        for id in ids { global.remove_waiter(id); }
+        for id in ids {
+            global.remove_waiter(id);
+        }
     }
 
     #[test]
@@ -1225,7 +1306,9 @@ mod tests {
             global.register_physical_waiter(id, observed, &wake, &peer, 64);
         }
         assert!(global.physical_waiters.lock().unwrap().capacity() > 1024);
-        for id in ids { global.remove_waiter(id); }
+        for id in ids {
+            global.remove_waiter(id);
+        }
         assert_eq!(global.physical_waiters.lock().unwrap().capacity(), 0);
         assert_eq!(global.reserved(), 0);
     }

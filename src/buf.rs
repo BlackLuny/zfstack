@@ -8,9 +8,9 @@
 //!   charged compact chunks so packet-pool owners return immediately (§5).
 //! * [`OooQueue`]: out-of-order ranges, allocated only when reordering happens (§6.1).
 
-use bytes::{Bytes, BytesMut};
 use crate::budget::{Budget, MemoryLease};
 use crate::PeerId;
+use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
 use std::ops::{Deref, DerefMut};
 
@@ -27,11 +27,15 @@ struct Block {
 
 impl Deref for Block {
     type Target = [u8];
-    fn deref(&self) -> &Self::Target { &self.data }
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
 }
 
 impl DerefMut for Block {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.data }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
 }
 
 /// Recycles TX blocks between connections of one shard.
@@ -189,11 +193,15 @@ struct ChargedPayload {
 }
 
 impl AsRef<[u8]> for ChargedPayload {
-    fn as_ref(&self) -> &[u8] { &self.data }
+    fn as_ref(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 impl AsRef<[u8]> for ChargedChunk {
-    fn as_ref(&self) -> &[u8] { &self.data[..self.len] }
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.len]
+    }
 }
 
 /// In-order received data waiting for the application: owned slices or charged
@@ -250,7 +258,9 @@ impl RxQueue {
     /// Reserve the full backing of every new chunk before retaining any input.
     /// A failed reservation leaves the queue and advertised receive edge intact.
     pub fn push_charged(&mut self, mut data: &[u8], budget: &mut Budget, peer: PeerId) -> bool {
-        if data.is_empty() { return true }
+        if data.is_empty() {
+            return true;
+        }
         let current_free = self.charged_tail.as_ref().map_or(0, |c| c.data.len() - c.len);
         let mut remaining = data.len().saturating_sub(current_free);
         let mut fresh = VecDeque::new();
@@ -280,13 +290,17 @@ impl RxQueue {
 
     fn seal_charged_tail(&mut self) {
         if let Some(chunk) = self.charged_tail.take() {
-            if chunk.len != 0 { self.q.push_back(Bytes::from_owner(chunk)); }
+            if chunk.len != 0 {
+                self.q.push_back(Bytes::from_owner(chunk));
+            }
         }
     }
 
     /// Transfer an already accounted owner from the out-of-order queue.
     pub fn push_existing(&mut self, b: Bytes) {
-        if b.is_empty() { return }
+        if b.is_empty() {
+            return;
+        }
         self.seal_tail();
         self.seal_charged_tail();
         self.len += b.len();
@@ -397,7 +411,9 @@ impl OooQueue {
     /// segment slices keep the lease until the final owner is consumed.
     pub fn insert_charged(&mut self, off: u64, data: &[u8], budget: &mut Budget, peer: PeerId) -> Option<usize> {
         let gaps = self.uncovered(off, data.len());
-        if gaps.is_empty() { return Some(0) }
+        if gaps.is_empty() {
+            return Some(0);
+        }
         let total: usize = gaps.iter().map(|(s, e)| (e - s) as usize).sum();
         let descriptors = (gaps.len() as u64).checked_mul(OOO_DESCRIPTOR_BYTES)?;
         let lease = budget.try_allocate_kind(peer, (total as u64).checked_add(descriptors)?, crate::budget::AllocationKind::Ooo)?;
@@ -422,7 +438,9 @@ impl OooQueue {
 
     fn uncovered(&self, off: u64, len: usize) -> Vec<(u64, u64)> {
         let end = off + len as u64;
-        if len == 0 { return Vec::new() }
+        if len == 0 {
+            return Vec::new();
+        }
         // Gaps of [off, end) not covered by existing ranges.
         let mut gaps: Vec<(u64, u64)> = Vec::new();
         let mut cur = off;
