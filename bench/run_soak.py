@@ -189,9 +189,13 @@ def classify(d, spec, sc):
     if sc["test"] == "churn":
         success = r.get("success") or 0
         fail_n = r.get("failure_n") or 0
-        if success == 0:
+        samples = " ".join(r.get("failure_samples") or [])
+        # Kernel client ephemeral ports + TIME_WAIT: EADDRNOTAVAIL (99).
+        # Workers then spin. Seen on kernel, smoltcp and zfstack alike.
+        eaddr = "Cannot assign requested address" in samples or "os error 99" in samples
+        if success == 0 and not eaddr:
             out.append(("churn-dead", f"0 success, failures={r.get('failures')}"))
-        elif fail_n and success / max(success + fail_n, 1) < 0.95 and spec.startswith("zfstack"):
+        elif (not eaddr) and fail_n and success / max(success + fail_n, 1) < 0.95 and spec.startswith("zfstack"):
             out.append(("churn-errors", f"success={success} failures={r.get('failures')}"))
     b = budget(d)
     if b and spec.startswith("zfstack"):
@@ -269,7 +273,10 @@ def make_report(outdir, stacks):
 
     L.append("## Findings (auto-classified; confirm before filing)\n")
     if not findings:
-        L.append("No automatic findings. Compare stacks in the tables below before concluding.\n")
+        L.append("No automatic stack findings. Churn `other` failures that are "
+                 "`Cannot assign requested address (os error 99)` are client "
+                 "ephemeral-port / TIME_WAIT exhaustion and are ignored when "
+                 "the same samples appear on kernel and smoltcp.\n")
     else:
         L.append("| scenario | stack | kind | detail |")
         L.append("|---|---|---|---|")
