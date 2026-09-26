@@ -38,12 +38,37 @@ const META_RESERVE: u64 = {
     }
 };
 
+/// Physical use of one port or peer level. The global level keeps the same
+/// counters on [`GlobalBudget`].
+#[derive(Debug, Default)]
+pub struct LevelUse {
+    used: AtomicU64,
+    /// TX blocks and send records: the leases an ACK releases (docs/design/0006 §3).
+    drain: AtomicU64,
+    /// Admission state this level owes after refusing new connections
+    /// (docs/design/0006 §2).
+    debt: AtomicU64,
+    /// Total bytes of `drain` ever released: shows whether an owed level
+    /// still frees room (docs/design/0006 §3).
+    drained: AtomicU64,
+}
+
+impl LevelUse {
+    fn limit(&self, global: &GlobalBudget, limit: u64, tier: Tier) -> u64 {
+        global.level_limit(limit, tier, self.drain.load(Ordering::Acquire), self.debt.load(Ordering::Acquire))
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalBudget {
     high: u64,
     low: u64,
     pressure: u64,
     reserved: AtomicU64,
+    /// Global counterparts of [`LevelUse::drain`] and [`LevelUse::debt`].
+    drain: AtomicU64,
+    admit_debt: AtomicU64,
+    drained: AtomicU64,
     /// A failed hierarchical allocation rolls back its temporary global
     /// reservation without a release notification. Serialize admission so
     /// another allocator cannot park on that uncommitted reservation.
@@ -81,9 +106,9 @@ pub struct GlobalBudget {
 #[derive(Debug)]
 struct PhysicalWaiter {
     id: u64,
-    port: Weak<AtomicU64>,
+    port: Weak<LevelUse>,
     port_limit: u64,
-    peer: Weak<AtomicU64>,
+    peer: Weak<LevelUse>,
     peer_limit: u64,
     bytes: u64,
     kind: AllocationKind,
@@ -91,7 +116,7 @@ struct PhysicalWaiter {
 }
 
 impl PhysicalWaiter {
-    fn counters(&self) -> Option<(Arc<AtomicU64>, Arc<AtomicU64>)> {
+    fn counters(&self) -> Option<(Arc<LevelUse>, Arc<LevelUse>)> {
         self.port.upgrade().zip(self.peer.upgrade())
     }
 }
@@ -116,6 +141,9 @@ impl GlobalBudget {
             low: ((high as u128 * 3) / 8) as u64,
             pressure: ((high as u128 * 5) / 8) as u64,
             reserved: AtomicU64::new(0),
+            drain: AtomicU64::new(0),
+            admit_debt: AtomicU64::new(0),
+            drained: AtomicU64::new(0),
             active_limit,
             time_wait_limit,
             time_wait_bytes_limit,
@@ -203,8 +231,32 @@ impl GlobalBudget {
         self.headroom(limit, Tier::Bulk) != 0
     }
 
-    fn tier_limit(&self, limit: u64, tier: Tier) -> u64 {
-        limit - self.headroom(limit, tier)
+    /// Limit for a `tier` allocation at one level. While admission owes the
+    /// level `debt`, bulk buffering leaves that room, and TX blocks leave it
+    /// plus the one block they may otherwise use above the admission line,
+    /// as far as TX blocks and send records at the level can release it
+    /// (docs/design/0006 §2, §3).
+    fn level_limit(&self, limit: u64, tier: Tier, drain: u64, debt: u64) -> u64 {
+        let headroom = self.headroom(limit, tier);
+        let owed = if headroom == 0 || debt == 0 {
+            0
+        } else {
+            match tier {
+                Tier::Bulk => debt,
+                Tier::Block => crate::buf::TX_BLOCK_CHARGE.saturating_add(debt).min(drain),
+                Tier::Egress | Tier::Drain | Tier::Admit => 0,
+            }
+        };
+        limit.saturating_sub(headroom.saturating_add(owed))
+    }
+
+    fn global_limit(&self, tier: Tier) -> u64 {
+        self.level_limit(self.high, tier, self.drain.load(Ordering::Acquire), self.admit_debt.load(Ordering::Acquire))
+    }
+
+    /// Admission state owed by the global level.
+    pub fn admission_debt(&self) -> u64 {
+        self.admit_debt.load(Ordering::Relaxed)
     }
 
     fn has_waiters(&self) -> bool {
@@ -273,7 +325,7 @@ impl GlobalBudget {
     }
 
     fn try_reserve(&self, n: u64, tier: Tier) -> bool {
-        let limit = self.tier_limit(self.high, tier);
+        let limit = self.global_limit(tier);
         let mut cur = self.reserved.load(Ordering::Relaxed);
         loop {
             if n > limit.saturating_sub(cur) {
@@ -372,8 +424,8 @@ impl GlobalBudget {
             let mut waiters = self.physical_waiters.lock().unwrap();
             let reserved = self.reserved.load(Ordering::Acquire);
             let mut global_selected = 0u64;
-            let mut selected_ports: HashMap<*const AtomicU64, u64> = HashMap::new();
-            let mut selected_peers: HashMap<*const AtomicU64, u64> = HashMap::new();
+            let mut selected_ports: HashMap<*const LevelUse, u64> = HashMap::new();
+            let mut selected_peers: HashMap<*const LevelUse, u64> = HashMap::new();
             let cache_available = self.cached_bytes.load(Ordering::Acquire) != 0;
             let mut cache_retry_selected = false;
             let len = waiters.len();
@@ -388,12 +440,12 @@ impl GlobalBudget {
                 let port_selected = selected_ports.get(&port_key).copied().unwrap_or(0);
                 let peer_selected = selected_peers.get(&peer_key).copied().unwrap_or(0);
                 let tier = entry.kind.tier();
-                let peer_limit = self.tier_limit(entry.peer_limit, tier);
-                let port_limit = self.tier_limit(entry.port_limit, tier);
-                let global_limit = self.tier_limit(self.high, tier);
-                let peer_fits = entry.bytes <= peer_limit.saturating_sub(peer.load(Ordering::Acquire)).saturating_sub(peer_selected);
+                let peer_limit = peer.limit(self, entry.peer_limit, tier);
+                let port_limit = port.limit(self, entry.port_limit, tier);
+                let global_limit = self.global_limit(tier);
+                let peer_fits = entry.bytes <= peer_limit.saturating_sub(peer.used.load(Ordering::Acquire)).saturating_sub(peer_selected);
                 let new_allocation_fits = entry.bytes <= global_limit.saturating_sub(reserved).saturating_sub(global_selected)
-                    && entry.bytes <= port_limit.saturating_sub(port.load(Ordering::Acquire)).saturating_sub(port_selected);
+                    && entry.bytes <= port_limit.saturating_sub(port.used.load(Ordering::Acquire)).saturating_sub(port_selected);
                 let cacheable = matches!(entry.kind, AllocationKind::TxBlock);
                 let cache_retry = !new_allocation_fits && cacheable && cache_available && !cache_retry_selected;
                 if peer_fits && (new_allocation_fits || cache_retry) {
@@ -423,7 +475,7 @@ impl GlobalBudget {
     }
 
     /// Physical waiters parked on one port's share, by allocation kind.
-    pub fn physical_waiters_on(&self, port: &Arc<AtomicU64>) -> KindCounts {
+    pub fn physical_waiters_on(&self, port: &Arc<LevelUse>) -> KindCounts {
         let mut counts = KindCounts::default();
         if self.physical_waiting.load(Ordering::SeqCst) == 0 {
             return counts;
@@ -784,6 +836,11 @@ impl AllocationKind {
             AllocationKind::RxChunk | AllocationKind::Ooo | AllocationKind::AdapterTx => Tier::Bulk,
         }
     }
+
+    /// Leases an ACK releases without any further allocation.
+    fn drains(self) -> bool {
+        matches!(self, AllocationKind::TxBlock | AllocationKind::SendRecord)
+    }
 }
 
 /// Counts per allocation kind (failures or parked waiters).
@@ -860,8 +917,8 @@ impl PortStats {
 /// Shard-local accounting.
 pub struct Budget {
     global: Arc<GlobalBudget>,
-    physical_port: Arc<AtomicU64>,
-    physical_peers: HashMap<PeerId, Arc<AtomicU64>>,
+    physical_port: Arc<LevelUse>,
+    physical_peers: HashMap<PeerId, Arc<LevelUse>>,
     /// Logical TCP payload retained by the core, distinct from physical backing.
     pub used: u64,
     pub port_limit: u64,
@@ -877,7 +934,7 @@ impl Budget {
         let port_limit = global.high;
         Budget {
             global,
-            physical_port: Arc::new(AtomicU64::new(0)),
+            physical_port: Arc::default(),
             physical_peers: HashMap::new(),
             used: 0,
             port_limit,
@@ -948,7 +1005,7 @@ impl Budget {
     }
 
     pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
-        let counter = self.physical_peers.entry(peer).or_insert_with(|| Arc::new(AtomicU64::new(0))).clone();
+        let counter = self.physical_peers.entry(peer).or_default().clone();
         MemoryHandle {
             global: Arc::clone(&self.global),
             port: Arc::clone(&self.physical_port),
@@ -960,7 +1017,39 @@ impl Budget {
     }
 
     pub fn physical_used(&self) -> u64 {
-        self.physical_port.load(Ordering::Relaxed)
+        self.physical_port.used.load(Ordering::Relaxed)
+    }
+
+    /// Admission state owed by the global, port and peer levels (the peer
+    /// entry sums this port's peers).
+    pub fn admission_debt(&self) -> [u64; 3] {
+        let peers = self.physical_peers.values().map(|p| p.debt.load(Ordering::Relaxed)).sum();
+        [self.global.admission_debt(), self.physical_port.debt.load(Ordering::Relaxed), peers]
+    }
+
+    /// Record that `level` refused `bytes` of admission state for a new
+    /// connection. Buffering on that level leaves the room until the returned
+    /// token drops; a level already owed the admission reserve takes no more.
+    pub fn admit_debt(&mut self, peer: PeerId, level: Level, bytes: u64) -> AdmitDebt {
+        let owner = match level {
+            Level::Global => None,
+            Level::Port => Some(Arc::clone(&self.physical_port)),
+            Level::Peer => Some(self.physical_peers.entry(peer).or_default().clone()),
+        };
+        let counter = owner.as_ref().map_or(&self.global.admit_debt, |l| &l.debt);
+        let cap = self.global.admit_reserve.load(Ordering::Relaxed);
+        let mut cur = counter.load(Ordering::Relaxed);
+        let owed = loop {
+            let add = bytes.min(cap.saturating_sub(cur));
+            if add == 0 {
+                break 0;
+            }
+            match counter.compare_exchange_weak(cur, cur + add, Ordering::AcqRel, Ordering::Relaxed) {
+                Ok(_) => break add,
+                Err(v) => cur = v,
+            }
+        };
+        AdmitDebt { global: Arc::clone(&self.global), level: owner, bytes: owed }
     }
 
     /// A read-only admission hint for a sender parked after an allocation
@@ -971,10 +1060,12 @@ impl Budget {
         // for durable pressure and park without a future release notification.
         let _allocation = self.global.allocation_lock.lock().unwrap();
         let tier = kind.tier();
-        let peer_used = self.physical_peers.get(&peer).map_or(0, |counter| counter.load(Ordering::Relaxed));
-        self.global.reserved().checked_add(bytes).is_some_and(|n| n <= self.global.tier_limit(self.global.high(), tier))
-            && self.physical_used().checked_add(bytes).is_some_and(|n| n <= self.global.tier_limit(self.port_limit, tier))
-            && peer_used.checked_add(bytes).is_some_and(|n| n <= self.global.tier_limit(self.peer_limit, tier))
+        let peer_fits = self.physical_peers.get(&peer).map_or(bytes <= self.global.level_limit(self.peer_limit, tier, 0, 0), |p| {
+            p.used.load(Ordering::Relaxed).checked_add(bytes).is_some_and(|n| n <= p.limit(&self.global, self.peer_limit, tier))
+        });
+        self.global.reserved().checked_add(bytes).is_some_and(|n| n <= self.global.global_limit(tier))
+            && self.physical_used().checked_add(bytes).is_some_and(|n| n <= self.physical_port.limit(&self.global, self.port_limit, tier))
+            && peer_fits
     }
 
     pub fn level(&self) -> Pressure {
@@ -1051,8 +1142,8 @@ impl Budget {
 #[derive(Clone)]
 pub struct MemoryHandle {
     global: Arc<GlobalBudget>,
-    port: Arc<AtomicU64>,
-    peer: Arc<AtomicU64>,
+    port: Arc<LevelUse>,
+    peer: Arc<LevelUse>,
     port_limit: u64,
     peer_limit: u64,
     stats: Arc<PortStats>,
@@ -1066,37 +1157,48 @@ impl MemoryHandle {
     }
 
     pub fn try_allocate_kind(&self, bytes: u64, kind: AllocationKind) -> Option<MemoryLease> {
-        let rejected = self.reserve(bytes, kind.tier());
-        if let Some(level) = rejected {
+        self.try_allocate_level(bytes, kind).ok()
+    }
+
+    /// Like [`Self::try_allocate_kind`], but reports the level that refused.
+    pub fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
+        if let Some(level) = self.reserve(bytes, kind) {
             self.stats.note(kind, Some(level));
             // Idle cached blocks may hold the share this allocation needs.
             self.global.request_cache_reclaim();
-            return None;
+            return Err(level);
         }
-        Some(MemoryLease {
+        Ok(MemoryLease {
             global: Arc::clone(&self.global),
             port: Arc::clone(&self.port),
             peer: Some(Arc::clone(&self.peer)),
             bytes,
             peer_limit: self.peer_limit,
             cached: false,
+            drain: kind.drains(),
         })
     }
 
-    fn reserve(&self, bytes: u64, tier: Tier) -> Option<Level> {
+    fn reserve(&self, bytes: u64, kind: AllocationKind) -> Option<Level> {
         let global = &self.global;
+        let tier = kind.tier();
         let _allocation = global.allocation_lock.lock().unwrap();
         if !global.try_reserve(bytes, tier) {
             return Some(Level::Global);
         }
-        if !reserve_amount(&self.port, global.tier_limit(self.port_limit, tier), bytes) {
+        if !reserve_amount(&self.port.used, self.port.limit(global, self.port_limit, tier), bytes) {
             global.release_uncommitted(bytes);
             return Some(Level::Port);
         }
-        if !reserve_amount(&self.peer, global.tier_limit(self.peer_limit, tier), bytes) {
-            self.port.fetch_sub(bytes, Ordering::AcqRel);
+        if !reserve_amount(&self.peer.used, self.peer.limit(global, self.peer_limit, tier), bytes) {
+            self.port.used.fetch_sub(bytes, Ordering::AcqRel);
             global.release_uncommitted(bytes);
             return Some(Level::Peer);
+        }
+        if kind.drains() {
+            global.drain.fetch_add(bytes, Ordering::AcqRel);
+            self.port.drain.fetch_add(bytes, Ordering::AcqRel);
+            self.peer.drain.fetch_add(bytes, Ordering::AcqRel);
         }
         None
     }
@@ -1110,11 +1212,13 @@ impl MemoryHandle {
 /// release their peer share without releasing the still-resident backing.
 pub struct MemoryLease {
     global: Arc<GlobalBudget>,
-    port: Arc<AtomicU64>,
-    peer: Option<Arc<AtomicU64>>,
+    port: Arc<LevelUse>,
+    peer: Option<Arc<LevelUse>>,
     bytes: u64,
     peer_limit: u64,
     cached: bool,
+    /// Counted in each level's `drain` (a TX block or send record in use).
+    drain: bool,
 }
 
 impl MemoryLease {
@@ -1122,11 +1226,14 @@ impl MemoryLease {
     /// is released instead: a cached block would pin the share it waits for
     /// without a failure left to request its reclaim.
     pub fn park_cached(&mut self) -> bool {
-        if self.global.has_waiters() || !self.global.try_cache(self.bytes) {
+        // Owed admission state needs this room back too (docs/design/0006 §2).
+        let owed = self.global.admit_debt.load(Ordering::Acquire) != 0 || self.port.debt.load(Ordering::Acquire) != 0;
+        if owed || self.global.has_waiters() || !self.global.try_cache(self.bytes) {
             return false;
         }
+        self.stop_draining();
         if let Some(peer) = self.peer.take() {
-            peer.fetch_sub(self.bytes, Ordering::AcqRel);
+            peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
             self.global.wake_waiters();
         }
         self.cached = true;
@@ -1135,11 +1242,15 @@ impl MemoryLease {
 
     pub fn assign(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
         debug_assert!(self.peer.is_none());
-        let counter = budget.physical_peers.entry(peer).or_insert_with(|| Arc::new(AtomicU64::new(0))).clone();
-        if !reserve_amount(&counter, self.global.tier_limit(self.peer_limit, Tier::Block), self.bytes) {
+        let counter = budget.physical_peers.entry(peer).or_default().clone();
+        if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
             budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
             return false;
         }
+        for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
+            drain.fetch_add(self.bytes, Ordering::AcqRel);
+        }
+        self.drain = true;
         self.peer = Some(counter);
         if self.cached {
             self.cached = false;
@@ -1149,16 +1260,58 @@ impl MemoryLease {
     }
 }
 
+impl MemoryLease {
+    fn stop_draining(&mut self) {
+        if std::mem::take(&mut self.drain) {
+            self.global.drain.fetch_sub(self.bytes, Ordering::AcqRel);
+            self.global.drained.fetch_add(self.bytes, Ordering::AcqRel);
+            for level in std::iter::once(&self.port).chain(&self.peer) {
+                level.drain.fetch_sub(self.bytes, Ordering::AcqRel);
+                level.drained.fetch_add(self.bytes, Ordering::AcqRel);
+            }
+        }
+    }
+}
+
 impl Drop for MemoryLease {
     fn drop(&mut self) {
+        self.stop_draining();
         if self.cached {
             self.global.release_cache(self.bytes);
         }
         if let Some(peer) = self.peer.take() {
-            peer.fetch_sub(self.bytes, Ordering::AcqRel);
+            peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
         }
-        self.port.fetch_sub(self.bytes, Ordering::AcqRel);
+        self.port.used.fetch_sub(self.bytes, Ordering::AcqRel);
         self.global.release(self.bytes);
+    }
+}
+
+/// Admission state a level owes after refusing a new connection. Buffering
+/// on the level leaves the room until this drops (docs/design/0006 §2).
+pub struct AdmitDebt {
+    global: Arc<GlobalBudget>,
+    level: Option<Arc<LevelUse>>,
+    bytes: u64,
+}
+
+impl AdmitDebt {
+    /// Bytes of TX blocks and send records the owed level has released so
+    /// far. A debt whose level stops releasing them only holds room back.
+    pub fn released(&self) -> u64 {
+        self.level.as_ref().map_or(&self.global.drained, |l| &l.drained).load(Ordering::Acquire)
+    }
+}
+
+impl Drop for AdmitDebt {
+    fn drop(&mut self) {
+        if self.bytes == 0 {
+            return;
+        }
+        let counter = self.level.as_ref().map_or(&self.global.admit_debt, |l| &l.debt);
+        counter.fetch_sub(self.bytes, Ordering::AcqRel);
+        // The TX block and bulk limits rise again.
+        self.global.wake_waiters();
     }
 }
 
@@ -1679,6 +1832,85 @@ mod tests {
             drop((bulk, admitted, block, record, egress));
             assert_eq!(global.reserved(), 0);
         }
+    }
+
+    #[test]
+    fn admission_debt_holds_back_tx_blocks_and_bulk_at_every_level() {
+        const L: u64 = 512 << 10;
+        for (level, (high, port, peer)) in [(Level::Global, (L, L, L)), (Level::Port, (2 * L, L, L)), (Level::Peer, (2 * L, 2 * L, L))] {
+            let global = GlobalBudget::new(high);
+            global.ensure_egress_reserve(8192);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, peer, 4);
+            let (h3, h4) = (global.headroom(L, Tier::Admit), global.headroom(L, Tier::Bulk));
+            let block = crate::buf::TX_BLOCK_CHARGE;
+            let memory = budget.memory_handle(PeerId(1));
+            // TX blocks up to the admission line: one more block would still
+            // fit without a debt, since blocks may use one block beyond it.
+            let blocks = memory.try_allocate_kind(L - h3 - 1024, AllocationKind::TxBlock).unwrap();
+            let debt = budget.admit_debt(PeerId(1), level, 4096);
+            assert_eq!(budget.admission_debt()[level as usize], 4096, "{level:?}");
+            assert!(memory.try_allocate_kind(block, AllocationKind::TxBlock).is_none(), "{level:?}");
+            // Admission itself, and the drain tiers, are not held back.
+            let admitted = memory.try_allocate_kind(512, AllocationKind::ActiveState).unwrap();
+            let record = memory.try_allocate_kind(512, AllocationKind::SendRecord).unwrap();
+            drop(debt);
+            assert_eq!(budget.admission_debt(), [0; 3]);
+            let refill = memory.try_allocate_kind(block - 2048, AllocationKind::TxBlock).unwrap();
+            drop((blocks, admitted, record, refill));
+            assert_eq!(global.reserved(), 0);
+
+            // Bulk leaves the owed room too.
+            let bulk = memory.try_allocate_kind(L - h4 - 8192, AllocationKind::AdapterTx).unwrap();
+            let debt = budget.admit_debt(PeerId(1), level, 4096);
+            assert!(memory.try_allocate_kind(6144, AllocationKind::RxChunk).is_none(), "{level:?}");
+            drop(debt);
+            let more = memory.try_allocate_kind(6144, AllocationKind::RxChunk).unwrap();
+            drop((bulk, more));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn admission_debt_never_holds_back_a_level_without_tx_blocks_or_records() {
+        // With nothing an ACK would release, holding TX blocks back could
+        // stall every connection (docs/design/0006 §3).
+        const L: u64 = 512 << 10;
+        let global = GlobalBudget::new(2 * L);
+        global.ensure_egress_reserve(8192);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(L, L, 4);
+        let h3 = global.headroom(L, Tier::Admit);
+        let memory = budget.memory_handle(PeerId(1));
+        let states = memory.try_allocate_kind(L - h3 - 1024, AllocationKind::StreamState).unwrap();
+        let _debt = budget.admit_debt(PeerId(1), Level::Port, 4096);
+        let block = memory.try_allocate_kind(crate::buf::TX_BLOCK_CHARGE, AllocationKind::TxBlock).expect("first TX block is not held back");
+        drop((block, states));
+    }
+
+    #[test]
+    fn admission_debt_is_capped_and_its_repayment_wakes_waiters() {
+        const L: u64 = 512 << 10;
+        let global = GlobalBudget::new(2 * L);
+        global.ensure_egress_reserve(8192);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(L, L, 4);
+        let h3 = global.headroom(L, Tier::Admit);
+        let memory = budget.memory_handle(PeerId(1));
+        let blocks = memory.try_allocate_kind(L - h3 - 1024, AllocationKind::TxBlock).unwrap();
+        let first = budget.admit_debt(PeerId(1), Level::Port, DEFAULT_ADMIT_RESERVE - 100);
+        let second = budget.admit_debt(PeerId(1), Level::Port, 4096);
+        assert_eq!(budget.admission_debt()[1], DEFAULT_ADMIT_RESERVE, "debt stops at the admission reserve");
+        let woken = Arc::new(CountWake(AtomicUsize::new(0)));
+        let id = global.new_waiter_id();
+        assert!(memory.try_allocate_kind(crate::buf::TX_BLOCK_CHARGE, AllocationKind::TxBlock).is_none());
+        global.register_physical_waiter(id, global.release_epoch(), &Waker::from(woken.clone()), &memory, crate::buf::TX_BLOCK_CHARGE, AllocationKind::TxBlock);
+        drop(second);
+        assert_eq!(woken.0.load(Ordering::Relaxed), 0, "still owed");
+        drop(first);
+        assert_eq!(woken.0.load(Ordering::Relaxed), 1, "repaid debt wakes the held-back block");
+        global.remove_waiter(id);
+        drop(blocks);
     }
 
     #[test]

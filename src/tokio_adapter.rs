@@ -511,6 +511,9 @@ pub struct StackSnapshot {
     pub record_waiters: usize,
     /// Whether global, port and peer all keep the progress reserves.
     pub progress_reserve: bool,
+    /// Admission state owed by the global, port and peer levels after
+    /// refused connections (docs/design/0006 §2).
+    pub admission_debt: [u64; 3],
     pub active_connections: usize,
     pub adapter_streams: usize,
     /// Only the core's send-record wait; adapter and host waiters are in
@@ -920,6 +923,7 @@ where
                     waiters: budget.physical_waiters(),
                     record_waiters: self.shard.record_waiters(),
                     progress_reserve: budget.progress_reserve_active(),
+                    admission_debt: budget.admission_debt(),
                     closes: self.closes,
                     aborts: self.aborts,
                     active_connections: self.shard.conn_count(),
@@ -1634,7 +1638,7 @@ mod tests {
     /// Accepted streams each send `per_conn` bytes over 64 KiB stream queues.
     fn limited_server(global: Arc<GlobalBudget>, profile: Profile) -> LimitedServer {
         global.ensure_egress_reserve(2 * 2048);
-        let limits = ResourceLimits { port_bytes: profile.port_bytes, peer_bytes: profile.peer_bytes, peer_max_connections: 64 };
+        let limits = ResourceLimits { port_bytes: profile.port_bytes, peer_bytes: profile.peer_bytes, peer_max_connections: 128 };
         let stream_cfg = StreamConfig { rx_cap: 64 * 1024, tx_cap: 64 * 1024, tx_low_watermark: 16 * 1024 };
         let (to_client_tx, to_client) = mpsc::unbounded_channel();
         let (ingress, ingress_rx) = mpsc::channel::<Ingress>(1024);
@@ -1696,6 +1700,34 @@ mod tests {
     /// Open `conns` client connections, spread over the profile's peers, and
     /// read `per_conn` bytes from each. Samples the physical bounds meanwhile.
     async fn download(server: &mut LimitedServer, first_port: u16, conns: u16, limit: std::time::Duration) -> Result<(), String> {
+        download_with(server, first_port, conns, limit, Load::default()).await.map(|_| ())
+    }
+
+    #[derive(Default, Clone, Copy)]
+    struct Load {
+        /// Bytes per second each load stream reads; 0 reads everything.
+        read_rate: u64,
+        /// Open one more connection once every load stream has read this many
+        /// bytes, and read it unthrottled.
+        late_after: Option<u64>,
+        /// Open the late connection only once the port holds more than this
+        /// many physical bytes.
+        late_above: u64,
+    }
+
+    #[derive(Debug, Default)]
+    struct LoadReport {
+        /// Time from the late connect to its handshake, and how many load
+        /// streams were still running then.
+        late_connected: Option<(std::time::Duration, usize)>,
+        /// Load streams still running when the late connection finished.
+        late_done_while_loading: Option<usize>,
+        /// Bytes each load stream read between the late connect and its
+        /// handshake, while the late connection was being refused.
+        load_progress: Vec<u64>,
+    }
+
+    async fn download_with(server: &mut LimitedServer, first_port: u16, conns: u16, limit: std::time::Duration, load: Load) -> Result<LoadReport, String> {
         let per_conn = server.profile.per_conn;
         let peers = server.profile.peers;
         let epoch = tokio::time::Instant::now();
@@ -1708,11 +1740,15 @@ mod tests {
                 c.connect(now(), ci, peer, SocketAddr::from(([10, 0, 0, 2], first_port + k)), "10.0.0.1:80".parse().unwrap())
             })
             .collect();
+        let mut ids = ids;
+        let load_n = ids.len();
         let mut recvd = vec![0u64; ids.len()];
         let mut eof = vec![false; ids.len()];
         let mut buf = vec![0u8; 64 * 1024];
         let deadline = tokio::time::Instant::now() + limit;
         let mut rounds = 0u64;
+        let mut report = LoadReport::default();
+        let mut late_started: Option<tokio::time::Instant> = None;
         loop {
             assert!(server.global.reserved() <= server.global.high(), "global budget exceeded");
             rounds += 1;
@@ -1747,33 +1783,67 @@ mod tests {
             if !out.is_empty() && server.ingress.send((server.iface, out)).await.is_err() {
                 return Err("server ingress closed".into());
             }
+            let loading = |eof: &[bool]| eof[..load_n].iter().filter(|&&e| !e).count();
             while let Some(ev) = c.poll_event() {
-                if let Event::Closed(id, reason) = ev {
-                    if let Some(k) = ids.iter().position(|&x| x == id) {
-                        if reason != CloseReason::Normal && !eof[k] {
-                            return Err(format!("conn {k} closed with {reason:?} after {} bytes", recvd[k]));
+                match ev {
+                    Event::Closed(id, reason) => {
+                        if let Some(k) = ids.iter().position(|&x| x == id) {
+                            if reason != CloseReason::Normal && !eof[k] {
+                                return Err(format!("conn {k} closed with {reason:?} after {} bytes", recvd[k]));
+                            }
                         }
                     }
+                    Event::Connected(id) if ids.len() > load_n && id == ids[load_n] => {
+                        report.late_connected = Some((late_started.unwrap().elapsed(), loading(&eof)));
+                        for (k, p) in report.load_progress.iter_mut().enumerate() {
+                            *p = recvd[k] - *p;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(after) = load.late_after {
+                let full = load.late_above == 0 || server.handle.snapshot().await.is_some_and(|s| s.port_physical_bytes > load.late_above);
+                if late_started.is_none() && recvd[..load_n].iter().all(|&n| n >= after) && full {
+                    let port = first_port + conns;
+                    ids.push(c.connect(now(), ci, PeerId(9), SocketAddr::from(([10, 0, 0, 2], port)), "10.0.0.1:80".parse().unwrap()));
+                    recvd.push(0);
+                    eof.push(false);
+                    late_started = Some(tokio::time::Instant::now());
+                    report.load_progress = recvd[..load_n].to_vec();
                 }
             }
             for (k, &id) in ids.iter().enumerate() {
-                while !eof[k] {
-                    match c.read(now(), id, &mut buf) {
+                let mut budget = if k < load_n && load.read_rate > 0 {
+                    let allowed = (load.read_rate as u128 * epoch.elapsed().as_nanos() / 1_000_000_000) as u64;
+                    allowed.saturating_sub(recvd[k]) as usize
+                } else {
+                    usize::MAX
+                };
+                while !eof[k] && budget > 0 {
+                    let want = buf.len().min(budget);
+                    match c.read(now(), id, &mut buf[..want]) {
                         ReadResult::Data(n) => {
                             for (j, &b) in buf[..n].iter().enumerate() {
                                 assert_eq!(b, pattern_byte(recvd[k] + j as u64), "conn {k} corrupted");
                             }
                             recvd[k] += n as u64;
+                            budget -= n.min(budget);
                         }
-                        ReadResult::Eof => eof[k] = true,
+                        ReadResult::Eof => {
+                            eof[k] = true;
+                            if k == load_n {
+                                report.late_done_while_loading = Some(loading(&eof));
+                            }
+                        }
                         ReadResult::WouldBlock => break,
                         ReadResult::Closed(r) => return Err(format!("conn {k} closed with {r:?} after {} bytes", recvd[k])),
                     }
                 }
             }
-            if eof.iter().all(|&e| e) {
+            if eof.iter().all(|&e| e) && (load.late_after.is_none() || late_started.is_some()) {
                 assert!(recvd.iter().all(|&n| n == per_conn), "short stream: {recvd:?}");
-                return Ok(());
+                return Ok(report);
             }
             let wait = c.next_deadline().map_or(std::time::Duration::from_millis(5), |d| {
                 std::time::Duration::from_nanos(d.as_nanos().saturating_sub(now().as_nanos())).min(std::time::Duration::from_millis(5))
@@ -1859,6 +1929,65 @@ mod tests {
                 .unwrap_or_else(|e| panic!("round {round} single stream after load: {e}"));
         }
         let snap = server.handle.snapshot().await.unwrap();
+        assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_connection_is_admitted_while_senders_keep_refilling_tx_blocks() {
+        // Busy senders take a TX block back as soon as they free one, which
+        // keeps the port above the admission line (TX blocks may use one block
+        // more than admission). A new connection must still get in on an
+        // early SYN retransmit instead of waiting for the senders to stop.
+        let global = GlobalBudget::new(8 << 20);
+        let mut server = limited_server(global.clone(), Profile::zfc_repro(false, 256 << 10));
+        let churn = spawn_refilling_senders(server.memory.clone(), 3500);
+        let load = Load { read_rate: 0, late_after: Some(0), late_above: 0 };
+        let report = download_with(&mut server, 20_000, 0, std::time::Duration::from_secs(20), load).await.expect("new connection");
+        churn.await.unwrap();
+        let (connect, _) = report.late_connected.expect("never connected");
+        let snap = server.handle.snapshot().await.unwrap();
+        assert!(connect < std::time::Duration::from_millis(2500), "handshake took {connect:?}; active_state failures {}", snap.failures_by_kind.active_state);
+        assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    /// Busy senders refill every freed TX block (docs/design/0006 §1) until
+    /// `ms`, next to real load streams on the same port.
+    fn spawn_refilling_senders(memory: MemoryHandle, ms: u64) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let until = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
+            let mut held: std::collections::VecDeque<MemoryLease> = std::collections::VecDeque::new();
+            while tokio::time::Instant::now() < until {
+                if held.len() > 1 {
+                    held.pop_front();
+                }
+                while let Some(lease) = memory.try_allocate_kind(crate::buf::TX_BLOCK_CHARGE, AllocationKind::TxBlock) {
+                    held.push_back(lease);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn owed_admission_room_does_not_stop_established_streams() {
+        // Six real streams read at 128 KiB/s while refilling senders pin the
+        // share. The debt left by the refused SYN holds refills back; the
+        // real streams must keep moving through that window and all finish.
+        let global = GlobalBudget::new(8 << 20);
+        let admit_line = 819_200 - global.headroom(819_200, crate::budget::Tier::Admit);
+        let mut server = limited_server(global, Profile::zfc_repro(false, 1 << 20));
+        let churn = spawn_refilling_senders(server.memory.clone(), 3500);
+        let load = Load { read_rate: 128 << 10, late_after: Some(64 << 10), late_above: admit_line };
+        let report = download_with(&mut server, 20_000, 6, std::time::Duration::from_secs(40), load).await.expect("load and late stream");
+        churn.await.unwrap();
+        let (connect, loading) = report.late_connected.expect("never connected");
+        let snap = server.handle.snapshot().await.unwrap();
+        assert!(snap.stats.admission_debts > 0, "the late SYN was never refused");
+        assert!(connect < std::time::Duration::from_millis(2500), "handshake took {connect:?}");
+        assert!(loading > 0);
+        assert!(report.load_progress.iter().all(|&n| n >= 64 << 10), "a load stream stalled while admission was owed: {:?}", report.load_progress);
         assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
         server.task.shutdown_and_join().await.unwrap();
     }

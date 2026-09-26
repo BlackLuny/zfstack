@@ -4,7 +4,7 @@
 //! egress-blocked set of its iface, timer heap. Each round only touches connections
 //! with events, so cost scales with active connections, not total connections.
 
-use crate::budget::{Budget, ConnectionPermit, GlobalBudget, MemoryHandle, MemoryLease, Pressure, RetainedMetadata};
+use crate::budget::{AdmitDebt, Budget, ConnectionPermit, GlobalBudget, Level, MemoryHandle, MemoryLease, Pressure, RetainedMetadata};
 use crate::buf::BlockPool;
 use crate::config::StackConfig;
 use crate::conn::{Conn, Ctx, IngressPayload, Plan, PlanKind, ReadResult, State, SynParams, TimeWaitState, WriteResult};
@@ -127,6 +127,42 @@ pub struct ShardStats {
     /// Rounds that dropped idle TX blocks on request, and the bytes released.
     pub cache_reclaims: u64,
     pub cache_reclaimed_bytes: u64,
+    /// New connections refused for memory that left an admission debt, and
+    /// debts dropped because the peer did not retry in time.
+    pub admission_debts: u64,
+    pub admission_debts_expired: u64,
+    /// Debts moved to another level, and debts lifted because the owed
+    /// level stopped releasing TX blocks and send records.
+    pub admission_debts_moved: u64,
+    pub admission_debts_stalled: u64,
+}
+
+/// How long a refused connection keeps room owed for its next SYN
+/// (docs/design/0006 §2). SYN retransmits back off exponentially, so the
+/// wait for the next one is about the time since the first: hold twice that
+/// plus slack, at least 4s (a 3s initial RTO) and at most 64s.
+fn admission_hold(since_first: core::time::Duration) -> core::time::Duration {
+    const MIN: core::time::Duration = core::time::Duration::from_secs(4);
+    const MAX: core::time::Duration = core::time::Duration::from_secs(64);
+    (since_first * 2 + core::time::Duration::from_secs(2)).clamp(MIN, MAX)
+}
+
+/// An owed level that releases no TX block or send record for this long
+/// cannot make room by holding refills back (docs/design/0006 §3): its
+/// holders wait on a zero window or a stalled host. The debt is lifted.
+const ADMISSION_DEBT_STALL: core::time::Duration = core::time::Duration::from_secs(1);
+
+/// A connection refused for memory, whose retransmitted SYN the refusing
+/// level keeps room for.
+struct PendingAdmission {
+    key: (IfaceId, SocketAddr, SocketAddr),
+    first: Instant,
+    until: Instant,
+    /// The level that refused the latest attempt, and its debt. `None`
+    /// after the level stopped releasing; the next refusal owes again.
+    debt: Option<(Level, AdmitDebt)>,
+    released: u64,
+    progress_at: Instant,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -246,6 +282,8 @@ pub struct Shard {
     cache_reclaim_seen: u64,
     /// Bytes a host adapter needs per accepted stream, reserved at SYN time.
     stream_state_bytes: u64,
+    /// At most `ADMIT_BURST` refused connections, oldest first.
+    pending_admissions: VecDeque<PendingAdmission>,
     admission: Box<dyn AdmissionPolicy>,
     stateless: VecDeque<Stateless>,
     hasher: RandomState,
@@ -295,6 +333,7 @@ impl Shard {
             budget_wait_epoch: None,
             cache_reclaim_seen,
             stream_state_bytes: 0,
+            pending_admissions: VecDeque::new(),
             admission: Box::new(AcceptAll),
             stateless: VecDeque::new(),
             hasher: RandomState::new(),
@@ -396,10 +435,8 @@ impl Shard {
         }
         let a = self.timers.peek().map(|x| x.0);
         let b = self.pacing.peek().map(|x| x.0);
-        match (a, b) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
+        let c = self.pending_admissions.iter().map(|p| if p.debt.is_some() { p.until.min(p.progress_at + ADMISSION_DEBT_STALL) } else { p.until }).min();
+        [a, b, c].into_iter().flatten().min()
     }
 
     // ------------------------------------------------------------------
@@ -777,7 +814,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(now, (iface, remote, local), peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
             return;
@@ -825,7 +862,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(now, (old.iface, old.remote, old.local), peer) else {
             self.slots[idx as usize].permit.as_mut().unwrap().to_time_wait();
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
@@ -985,7 +1022,7 @@ impl Shard {
             self.budget.peer_conn_del(peer);
             return Err(false);
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(now, (iface, remote, local), peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_cookies_rejected_resources += 1;
             return Err(true);
@@ -1122,26 +1159,92 @@ impl Shard {
     /// Core state plus reserved stream state for a new connection. If this
     /// shard's own idle TX blocks hold the room, drop them and retry once, so
     /// the SYN is not dropped for memory that was only cached.
-    fn admit_memory(&mut self, peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
-        if let Some(memory) = self.try_admit_memory(peer) {
-            return Some(memory);
+    ///
+    /// A refusal leaves an admission debt on the level that refused, so
+    /// buffering there frees room for the peer's SYN retransmit instead of
+    /// taking every released block back (docs/design/0006 §2).
+    fn admit_memory(&mut self, now: Instant, key: (IfaceId, SocketAddr, SocketAddr), peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
+        let admitted = match self.try_admit_memory(peer) {
+            Err(_) if self.reclaim_own_cache() => self.try_admit_memory(peer),
+            r => r,
+        };
+        let pending = self.pending_admissions.iter().position(|p| p.key == key);
+        match admitted {
+            Ok(memory) => {
+                if let Some(k) = pending {
+                    self.pending_admissions.remove(k);
+                }
+                Some(memory)
+            }
+            Err(level) => {
+                let bytes = ACTIVE_STATE_BYTES + self.stream_state_bytes;
+                let k = match pending {
+                    Some(k) => k,
+                    None if self.pending_admissions.len() < crate::budget::ADMIT_BURST as usize => {
+                        self.pending_admissions.push_back(PendingAdmission { key, first: now, until: now, debt: None, released: 0, progress_at: now });
+                        self.stats.admission_debts += 1;
+                        self.pending_admissions.len() - 1
+                    }
+                    None => return None,
+                };
+                let p = &mut self.pending_admissions[k];
+                p.until = now + admission_hold(now.saturating_since(p.first));
+                // Owe the level that refused this attempt; a retransmit may
+                // hit a different level than the first SYN did.
+                let owed = p.debt.as_ref().map(|(l, _)| *l);
+                if owed != Some(level) {
+                    if owed.is_some() {
+                        self.stats.admission_debts_moved += 1;
+                    }
+                    p.debt = None;
+                    let debt = self.budget.admit_debt(peer, level, bytes);
+                    let p = &mut self.pending_admissions[k];
+                    p.released = debt.released();
+                    p.progress_at = now;
+                    p.debt = Some((level, debt));
+                }
+                None
+            }
         }
+    }
+
+    fn reclaim_own_cache(&mut self) -> bool {
         let (blocks, bytes) = self.pool.reclaim();
         if blocks == 0 {
-            return None;
+            return false;
         }
         self.stats.cache_reclaims += 1;
         self.stats.cache_reclaimed_bytes += bytes;
-        self.try_admit_memory(peer)
+        true
     }
 
-    fn try_admit_memory(&mut self, peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
-        let active = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
+    fn try_admit_memory(&mut self, peer: PeerId) -> Result<(MemoryLease, Option<MemoryLease>), Level> {
+        let memory = self.budget.memory_handle(peer);
+        let active = memory.try_allocate_level(ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
         if self.stream_state_bytes == 0 {
-            return Some((active, None));
+            return Ok((active, None));
         }
-        let stream = self.budget.try_allocate_kind(peer, self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?;
-        Some((active, Some(stream)))
+        let stream = memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?;
+        Ok((active, Some(stream)))
+    }
+
+    /// Drop admission debts whose peer did not retry within the hold, and
+    /// lift debts on levels that stopped releasing TX blocks and records.
+    fn expire_admission_debts(&mut self, now: Instant) {
+        let before = self.pending_admissions.len();
+        self.pending_admissions.retain(|p| p.until > now);
+        self.stats.admission_debts_expired += (before - self.pending_admissions.len()) as u64;
+        for p in &mut self.pending_admissions {
+            let Some((_, debt)) = &p.debt else { continue };
+            let released = debt.released();
+            if released != p.released {
+                p.released = released;
+                p.progress_at = now;
+            } else if now.saturating_since(p.progress_at) >= ADMISSION_DEBT_STALL {
+                p.debt = None;
+                self.stats.admission_debts_stalled += 1;
+            }
+        }
     }
 
     /// Connections waiting for a send-record backing allocation.
@@ -1155,6 +1258,7 @@ impl Shard {
         self.note_wake(now);
         let mut out = RunOutcome::default();
         self.reclaim_cache_if_requested();
+        self.expire_admission_debts(now);
 
         if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
             self.budget_wait_epoch = None;
@@ -1719,6 +1823,163 @@ mod admission_tests {
         assert_eq!(b.conn_count(), 1);
         drop(b);
         assert_eq!(global.connection_counts(), (0, 0));
+    }
+
+    struct AdmitRig {
+        global: Arc<GlobalBudget>,
+        sh: Shard,
+        iface: IfaceId,
+    }
+
+    impl AdmitRig {
+        fn new(port: u64, peer: u64) -> Self {
+            let global = GlobalBudget::new(8 << 20);
+            let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+            sh.set_budget_limits(port, peer, 64);
+            let iface = sh.add_iface(IfaceConfig::default());
+            AdmitRig { global, sh, iface }
+        }
+
+        fn syn(&mut self, ms: u64, peer: u64, port: u16) {
+            let local = SocketAddr::from(([10, 0, 0, 1], 443));
+            let h =
+                TcpHeader { src_port: port, dst_port: 443, seq: Seq(100), ack: Seq(0), flags: SYN, window: 65535, opts: TcpOptions::default(), data_off: 20 };
+            self.sh.handle_syn(Instant::from_millis(ms), self.iface, PeerId(peer), SocketAddr::from(([10, 0, 0, 2], port)), local, &h);
+        }
+
+        fn run(&mut self, ms: u64) {
+            self.sh.run(Instant::from_millis(ms), &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        }
+
+        /// Take TX blocks for `peer` until its share refuses one.
+        fn fill(&mut self, peer: u64) -> Vec<MemoryLease> {
+            let memory = self.sh.memory_handle(PeerId(peer));
+            std::iter::from_fn(|| memory.try_allocate_kind(crate::buf::TX_BLOCK_CHARGE, crate::budget::AllocationKind::TxBlock)).collect()
+        }
+
+        fn block_fits(&mut self, peer: u64) -> bool {
+            self.sh.memory_handle(PeerId(peer)).try_allocate_kind(crate::buf::TX_BLOCK_CHARGE, crate::budget::AllocationKind::TxBlock).is_some()
+        }
+
+        fn debt(&self) -> [u64; 3] {
+            self.sh.budget.admission_debt()
+        }
+    }
+
+    #[test]
+    fn refused_syn_leaves_an_admission_debt_until_admitted() {
+        let mut r = AdmitRig::new(819_200, 819_200);
+        // TX blocks above the admission line, as busy senders keep them.
+        let mut blocks = r.fill(1);
+        let admit_line = 819_200 - r.global.headroom(819_200, crate::budget::Tier::Admit);
+        assert!(r.sh.budget.physical_used() > admit_line);
+
+        r.syn(0, 1, 40000);
+        assert_eq!(r.sh.conn_count(), 0);
+        assert_eq!(r.sh.stats().admission_debts, 1);
+        let owed = r.debt()[1];
+        assert!(owed >= ACTIVE_STATE_BYTES, "{owed}");
+        // A retransmit refused by the same level refreshes, not adds.
+        r.syn(1000, 1, 40000);
+        assert_eq!(r.sh.stats().admission_debts, 1);
+        assert_eq!(r.debt()[1], owed);
+        // A released block is not taken back while the debt is owed.
+        blocks.pop();
+        assert!(!r.block_fits(1));
+        // The next retransmit gets in and repays the debt.
+        blocks.pop();
+        r.syn(3000, 1, 40000);
+        assert_eq!(r.sh.conn_count(), 1);
+        assert_eq!(r.debt(), [0; 3]);
+    }
+
+    #[test]
+    fn admission_debt_follows_the_level_that_refused_the_retransmit() {
+        // Peer shares of 512 KiB inside an 819 KiB port.
+        let mut r = AdmitRig::new(819_200, 512 << 10);
+        // Peer 2 fills the port: the first SYN from peer 1 is refused there.
+        let mut other = r.fill(2);
+        let mut own = r.fill(1);
+        r.syn(0, 1, 40000);
+        assert!(r.debt()[1] > 0 && r.debt()[2] == 0, "{:?}", r.debt());
+        // Peer 2 goes idle and peer 1 fills its own share: the retransmit is
+        // now refused by the peer level, which must owe the room.
+        other.clear();
+        own.extend(r.fill(1));
+        r.syn(1000, 1, 40000);
+        assert!(r.debt()[1] == 0 && r.debt()[2] > 0, "{:?}", r.debt());
+        assert_eq!(r.sh.stats().admission_debts_moved, 1);
+        // Peer 1 frees a block; the debt keeps it from being taken back, so
+        // the next retransmit fits the peer share.
+        own.pop();
+        assert!(!r.block_fits(1));
+        own.pop();
+        r.syn(3000, 1, 40000);
+        assert_eq!(r.sh.conn_count(), 1);
+        assert_eq!(r.debt(), [0; 3]);
+    }
+
+    #[test]
+    fn admission_debt_outlasts_backed_off_retransmits() {
+        // SYN retransmits at 0, 1, 3, 7 and 15 s. Meanwhile the level keeps
+        // releasing TX blocks, and send records (not held back) retake the
+        // room, so the first four attempts fail. The debt must still hold
+        // TX blocks back when each later retransmit arrives.
+        let mut r = AdmitRig::new(819_200, 819_200);
+        let _blocks = r.fill(1);
+        let records = r.sh.memory_handle(PeerId(1));
+        let record = || records.try_allocate_kind(4096, crate::budget::AllocationKind::SendRecord).unwrap();
+        let mut held: std::collections::VecDeque<_> = (0..4).map(|_| record()).collect();
+        let mut t = 0;
+        for next in [1000, 3000, 7000, 15000] {
+            r.syn(t, 1, 40000);
+            assert_eq!(r.sh.conn_count(), 0, "at {t} ms");
+            while t + 500 < next {
+                t += 500;
+                // An ACK frees a record, a new segment takes one again.
+                held.pop_front();
+                held.push_back(record());
+                assert!(!r.block_fits(1), "TX block refilled at {t} ms");
+                r.run(t);
+            }
+            t = next - 1;
+            r.run(t);
+            assert!(r.debt()[1] > 0, "debt gone before the retransmit at {next} ms");
+            t = next;
+        }
+        held.clear();
+        drop(_blocks);
+        r.syn(t, 1, 40000);
+        assert_eq!(r.sh.conn_count(), 1);
+        assert_eq!(r.debt(), [0; 3]);
+        assert_eq!(r.sh.stats().admission_debts_stalled, 0);
+    }
+
+    #[test]
+    fn admission_debt_is_lifted_when_the_level_stops_releasing() {
+        // Holders that never release (zero window, stalled host) cannot make
+        // room. After a second without releases the debt stops holding back
+        // the other senders; a peer that never retries expires later.
+        let mut r = AdmitRig::new(819_200, 819_200);
+        let mut blocks = r.fill(1);
+        blocks.pop();
+        blocks.pop();
+        blocks.pop();
+        let _stalled = r.fill(2);
+        r.syn(0, 1, 40000);
+        assert!(r.debt()[1] > 0);
+        blocks.pop();
+        assert!(!r.block_fits(1), "held back while releases may still come");
+        r.run(500);
+        assert!(r.debt()[1] > 0);
+        assert!(r.sh.next_deadline().is_some_and(|d| d <= Instant::from_millis(1500)));
+        r.run(1500);
+        assert_eq!(r.debt(), [0; 3]);
+        assert_eq!(r.sh.stats().admission_debts_stalled, 1);
+        assert!(r.block_fits(1), "a stalled debt no longer holds TX blocks back");
+        r.run(4000);
+        assert_eq!(r.sh.stats().admission_debts_expired, 1);
+        drop(blocks);
     }
 
     #[test]
