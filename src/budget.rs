@@ -43,6 +43,11 @@ pub struct GlobalBudget {
     /// Physical allocation waiters are served one at a time. Broadcasting a
     /// single freed TX block to every stream of a peer causes a retry storm.
     physical_waiters: Mutex<VecDeque<PhysicalWaiter>>,
+    /// Length of `physical_waiters`, published under its lock. Every lease
+    /// drop and logical release calls `wake_waiters`; with no waiter parked
+    /// that path must stay lock-free instead of taking the process-wide
+    /// allocation lock on every packet.
+    physical_waiting: AtomicUsize,
 }
 
 #[derive(Debug)]
@@ -91,6 +96,7 @@ impl GlobalBudget {
             release_epoch: AtomicU64::new(0), next_waiter: AtomicU64::new(1), waiting: AtomicUsize::new(0),
             waiters: Mutex::new(HashMap::new()),
             physical_waiters: Mutex::new(VecDeque::new()),
+            physical_waiting: AtomicUsize::new(0),
         })
     }
 
@@ -188,17 +194,22 @@ impl GlobalBudget {
         self.next_waiter.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Returns false if a release raced the failed allocation; the caller's
-    /// task is woken immediately so it can retry without a lost notification.
+    /// If a release raced the failed allocation, the caller's task is woken
+    /// immediately so it can retry without a lost notification.
     pub fn register_waiter(&self, id: u64, observed: u64, waker: &Waker) {
         let mut waiters = self.waiters.lock().unwrap();
-        if self.release_epoch() != observed {
+        // Publish before reading the epoch (both SeqCst, pairs with
+        // `wake_waiters`). Checking first let a release bump the epoch and
+        // read `waiting == 0` between the check and the insert, losing it.
+        if waiters.insert(id, waker.clone()).is_none() {
+            self.waiting.fetch_add(1, Ordering::SeqCst);
+        }
+        if self.release_epoch.load(Ordering::SeqCst) != observed {
+            if waiters.remove(&id).is_some() {
+                self.waiting.fetch_sub(1, Ordering::SeqCst);
+            }
             drop(waiters);
             waker.wake_by_ref();
-        } else {
-            if waiters.insert(id, waker.clone()).is_none() {
-                self.waiting.fetch_add(1, Ordering::Release);
-            }
         }
     }
 
@@ -233,7 +244,11 @@ impl GlobalBudget {
                     bytes, cacheable, waker: waker.clone(),
                 });
             }
-            self.release_epoch() != observed
+            // Pairs with `wake_waiters`: publish the waiter, then read the
+            // epoch (both SeqCst). A releaser that skipped the scan because it
+            // saw no waiter must have bumped the epoch first, so we see it.
+            self.physical_waiting.store(waiters.len(), Ordering::SeqCst);
+            self.release_epoch.load(Ordering::SeqCst) != observed
         };
         if raced { self.wake_eligible_physical_waiters(); }
     }
@@ -281,30 +296,38 @@ impl GlobalBudget {
             if waiters.is_empty() && waiters.capacity() > 1024 {
                 *waiters = VecDeque::new();
             }
+            self.physical_waiting.store(waiters.len(), Ordering::SeqCst);
             ready
         };
         for (waker, _port, _peer) in ready { waker.wake(); }
     }
 
+    /// Called on every successful send/write. A waiter id is registered and
+    /// removed by its single owner, so an owner that sees an empty set cannot
+    /// have an entry of its own there; skip both locks in the common case.
     pub fn remove_waiter(&self, id: u64) {
-        let mut waiters = self.waiters.lock().unwrap();
-        if waiters.remove(&id).is_some() {
-            self.waiting.fetch_sub(1, Ordering::Release);
-            if waiters.is_empty() && waiters.capacity() > 1024 {
-                *waiters = HashMap::new();
+        if self.waiting.load(Ordering::Acquire) != 0 {
+            let mut waiters = self.waiters.lock().unwrap();
+            if waiters.remove(&id).is_some() {
+                self.waiting.fetch_sub(1, Ordering::Release);
+                if waiters.is_empty() && waiters.capacity() > 1024 {
+                    *waiters = HashMap::new();
+                }
             }
         }
-        drop(waiters);
-        let mut physical = self.physical_waiters.lock().unwrap();
-        physical.retain(|entry| entry.id != id);
-        if physical.is_empty() && physical.capacity() > 1024 {
-            *physical = VecDeque::new();
+        if self.physical_waiting.load(Ordering::SeqCst) != 0 {
+            let mut physical = self.physical_waiters.lock().unwrap();
+            physical.retain(|entry| entry.id != id);
+            if physical.is_empty() && physical.capacity() > 1024 {
+                *physical = VecDeque::new();
+            }
+            self.physical_waiting.store(physical.len(), Ordering::SeqCst);
         }
     }
 
     fn wake_waiters(&self) {
-        self.release_epoch.fetch_add(1, Ordering::AcqRel);
-        if self.waiting.load(Ordering::Acquire) != 0 {
+        self.release_epoch.fetch_add(1, Ordering::SeqCst);
+        if self.waiting.load(Ordering::SeqCst) != 0 {
             let waiters = {
                 let mut waiters = self.waiters.lock().unwrap();
                 self.waiting.store(0, Ordering::Release);
@@ -312,7 +335,9 @@ impl GlobalBudget {
             };
             for waker in waiters.into_values() { waker.wake(); }
         }
-        self.wake_eligible_physical_waiters();
+        if self.physical_waiting.load(Ordering::SeqCst) != 0 {
+            self.wake_eligible_physical_waiters();
+        }
     }
 
     pub fn level(&self) -> Pressure {
@@ -1140,6 +1165,36 @@ mod tests {
         assert_eq!(wake.0.load(Ordering::Relaxed), 1);
         drop(held_a);
         global.remove_waiter(id);
+    }
+
+    #[test]
+    fn waiter_counters_track_parked_entries_for_lock_free_release() {
+        let global = GlobalBudget::new(1024);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(1024, 512, 1);
+        let peer = budget.memory_handle(PeerId(1));
+        let held = peer.try_allocate(512).unwrap();
+        let count = Arc::new(CountWake(AtomicUsize::new(0)));
+        let waker = Waker::from(count.clone());
+        let (physical, broadcast) = (global.new_waiter_id(), global.new_waiter_id());
+        let observed = global.release_epoch();
+        global.register_physical_waiter(physical, observed, &waker, &peer, 256);
+        global.register_waiter(broadcast, observed, &waker);
+        assert_eq!(global.physical_waiting.load(Ordering::SeqCst), 1);
+        assert_eq!(global.waiting.load(Ordering::SeqCst), 1);
+        // Removing an unrelated id keeps both entries parked.
+        global.remove_waiter(global.new_waiter_id());
+        assert_eq!(global.physical_waiting.load(Ordering::SeqCst), 1);
+        drop(held);
+        assert_eq!(count.0.load(Ordering::Relaxed), 2);
+        assert_eq!(global.physical_waiting.load(Ordering::SeqCst), 0);
+        assert_eq!(global.waiting.load(Ordering::SeqCst), 0);
+        // A stale registration after the release wakes at once and is not kept.
+        global.register_waiter(broadcast, observed, &waker);
+        assert_eq!(count.0.load(Ordering::Relaxed), 3);
+        assert_eq!(global.waiting.load(Ordering::SeqCst), 0);
+        global.remove_waiter(physical);
+        global.remove_waiter(broadcast);
     }
 
     #[test]
