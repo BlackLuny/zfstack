@@ -45,6 +45,8 @@ pub enum TestKind {
     Up,
     Mixed,
     Connect,
+    /// Timed connection cycling: connect + 1 KiB echo + close, for `--secs`.
+    Churn,
 }
 
 #[derive(Parser, Debug)]
@@ -104,6 +106,16 @@ pub struct Args {
     /// mixed test: idle RR baseline duration.
     #[arg(long, default_value_t = 3)]
     idle_rr_secs: u64,
+    /// Download only: stop reading after this many seconds (0 = no pause).
+    /// Used to exercise zero-window / persist and resume (卡死 after 停读).
+    #[arg(long, default_value_t = 0)]
+    pause_after_secs: u64,
+    /// Download only: how long the mid-stream read pause lasts.
+    #[arg(long, default_value_t = 0)]
+    pause_for_secs: u64,
+    /// Hold this many idle echo connections for the whole test (leak / stall).
+    #[arg(long, default_value_t = 0)]
+    idle_hold: usize,
     /// Userspace stack socket rx/tx buffer size (KiB).
     #[arg(long, default_value_t = 4096)]
     sock_buf_kb: usize,
@@ -185,6 +197,7 @@ struct Snap {
     link_down_cpu: Option<f64>,
     proc_cpu: f64,
     procstat: util::ProcStat,
+    proc_mem: util::ProcMem,
     stack_wakeups: u64,
 }
 
@@ -291,6 +304,7 @@ pub fn test_name(t: TestKind) -> &'static str {
         TestKind::Up => "up",
         TestKind::Mixed => "mixed",
         TestKind::Connect => "connect",
+        TestKind::Churn => "churn",
     }
 }
 
@@ -419,6 +433,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         link_down_cpu: util::pthread_cpu(down_pt),
         proc_cpu: util::process_cpu_now(),
         procstat: util::proc_stat(),
+        proc_mem: util::proc_mem(),
         stack_wakeups: live.wakeups.load(Relaxed),
     };
     let s_begin = snap();
@@ -434,6 +449,9 @@ fn run(a: &Args) -> std::io::Result<i32> {
         concurrency: a.concurrency,
         connect_timeout: Duration::from_millis(a.connect_timeout_ms),
         client_cc: a.client_cc.clone(),
+        pause_after_secs: a.pause_after_secs,
+        pause_for_secs: a.pause_for_secs,
+        idle_hold: a.idle_hold,
     };
     let t_test = Instant::now();
     let outcome = {
@@ -443,6 +461,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
             TestKind::Up => client::test_up(&o, &counters, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
+            TestKind::Churn => client::test_churn(&o, &counters, &mut mark),
         }
     };
     let test_secs = t_test.elapsed().as_secs_f64();
@@ -539,6 +558,9 @@ fn run(a: &Args) -> std::io::Result<i32> {
             "conns": a.conns,
             "concurrency": a.concurrency,
             "rr_size": a.rr_size,
+            "pause_after_secs": a.pause_after_secs,
+            "pause_for_secs": a.pause_for_secs,
+            "idle_hold": a.idle_hold,
             "sock_buf_kb": a.sock_buf_kb,
             "listen_pool": a.listen_pool,
             "smol_pacing_backlog_us": a.smol_pacing_backlog_us,
@@ -560,6 +582,13 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "ok": errors.is_empty(),
         "errors": errors,
         "results": outcome.results,
+        "mem": {
+            "begin": s_begin.proc_mem.to_json(),
+            "end": s_end.proc_mem.to_json(),
+            "window_start": w0.proc_mem.to_json(),
+            "window_end": w1.proc_mem.to_json(),
+            "rss_kb_delta": s_end.proc_mem.vmrss_kb as i64 - s_begin.proc_mem.vmrss_kb as i64,
+        },
         "link": {
             "down": c_down.to_json(&p_down),
             "up": c_up.to_json(&p_up),

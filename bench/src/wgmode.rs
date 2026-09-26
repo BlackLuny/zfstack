@@ -438,6 +438,9 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
         concurrency: a.concurrency,
         connect_timeout: Duration::from_millis(a.connect_timeout_ms),
         client_cc: a.client_cc.clone(),
+        pause_after_secs: a.pause_after_secs,
+        pause_for_secs: a.pause_for_secs,
+        idle_hold: a.idle_hold,
     };
     let bridge_pt = side.bridge.as_ref().map(|(h, _)| h.as_pthread_t());
     let local = || json!({ "proc_cpu": util::process_cpu_now(), "procstat": util::proc_stat().v, "bridge_cpu": bridge_pt.and_then(util::pthread_cpu) });
@@ -450,6 +453,7 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
             TestKind::Up => client::test_up(&o, &view, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &view, &mut mark),
             TestKind::Connect => client::test_connect(&o, &view, &mut mark),
+            TestKind::Churn => client::test_churn(&o, &view, &mut mark),
         }
     } else {
         client::TestOutcome { results: json!({ "error": "tunnel not usable" }), errors: Vec::new(), window_bytes: 0, window_secs: 0.0 }

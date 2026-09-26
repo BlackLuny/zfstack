@@ -24,6 +24,11 @@ pub struct TestOpts {
     pub connect_timeout: Duration,
     /// TCP_CONGESTION for client sockets (None = system default).
     pub client_cc: Option<String>,
+    /// Download: stop reading after this many seconds (0 = never).
+    pub pause_after_secs: u64,
+    pub pause_for_secs: u64,
+    /// Idle echo connections held for the whole test.
+    pub idle_hold: usize,
 }
 
 pub struct TestOutcome {
@@ -90,14 +95,21 @@ struct FlowReport {
 }
 
 /// Download flow: read and verify until `stop`.
-fn down_flow(s: TcpStream, ctr: Arc<AtomicU64>, stop: Arc<AtomicBool>) -> FlowReport {
+fn down_flow(s: TcpStream, ctr: Arc<AtomicU64>, stop: Arc<AtomicBool>, pause_after: u64, pause_for: u64) -> FlowReport {
     let mut s = s;
     let mut r = FlowReport::default();
     let mut buf = vec![0u8; 256 * 1024];
     let mut pos = 0u64;
     let mut mismatches = 0u64;
+    let t0 = Instant::now();
+    let mut paused = false;
     s.set_read_timeout(Some(Duration::from_millis(50))).ok();
     while !stop.load(Relaxed) {
+        if !paused && pause_after > 0 && pause_for > 0 && t0.elapsed() >= Duration::from_secs(pause_after) {
+            std::thread::sleep(Duration::from_secs(pause_for));
+            paused = true;
+            continue;
+        }
         match s.read(&mut buf) {
             Ok(0) => {
                 r.errors.push("download: unexpected EOF".into());
@@ -122,7 +134,7 @@ fn down_flow(s: TcpStream, ctr: Arc<AtomicU64>, stop: Arc<AtomicBool>) -> FlowRe
         r.errors.push(format!("download: {mismatches} pattern mismatches"));
     }
     r.bytes = pos;
-    r.info = json!({ "pattern_mismatch_reads": mismatches });
+    r.info = json!({ "pattern_mismatch_reads": mismatches, "paused": paused });
     r
 }
 
@@ -196,9 +208,43 @@ type SideTask = Box<dyn FnOnce(Instant, Arc<AtomicBool>) -> (serde_json::Value, 
 
 /// Run N bulk flows (down or up) with per-second sampling. `side` runs in its
 /// own thread from t0 (used by `mixed`) and returns extra results.
+fn hold_idle(o: &TestOpts) -> Result<Vec<TcpStream>, Vec<String>> {
+    if o.idle_hold == 0 {
+        return Ok(Vec::new());
+    }
+    let mut held = Vec::with_capacity(o.idle_hold);
+    let mut errs = Vec::new();
+    for i in 0..o.idle_hold {
+        let r = connect(o, Duration::from_secs(5)).and_then(|mut s| {
+            s.write_all(&app::encode_header(app::CMD_ECHO, 1024))?;
+            s.set_read_timeout(Some(Duration::from_secs(3600))).ok();
+            Ok(s)
+        });
+        match r {
+            Ok(s) => held.push(s),
+            Err(e) => errs.push(format!("idle-hold {i}: {e}")),
+        }
+        if i > 0 {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    if errs.is_empty() {
+        Ok(held)
+    } else {
+        Err(errs)
+    }
+}
+
 fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mark: Mark, side: Option<SideTask>) -> TestOutcome {
     let stop = Arc::new(AtomicBool::new(false));
     let mut errors = Vec::new();
+    let idle = match hold_idle(o) {
+        Ok(s) => s,
+        Err(e) => {
+            errors.extend(e);
+            return TestOutcome { results: json!({ "error": "idle-hold connect failed" }), errors, window_bytes: 0, window_secs: 0.0 };
+        }
+    };
     // Connect all flows first.
     let mut streams = Vec::new();
     for i in 0..flows {
@@ -229,10 +275,11 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
     };
     let t0 = Instant::now();
     let mut handles = Vec::new();
+    let (pause_after, pause_for) = (o.pause_after_secs, o.pause_for_secs);
     for (i, s) in streams.into_iter().enumerate() {
         let st = stop.clone();
         let c = recv_ctrs[i].clone();
-        handles.push(std::thread::spawn(move || if up { up_flow(s, c, st) } else { down_flow(s, c, st) }));
+        handles.push(std::thread::spawn(move || if up { up_flow(s, c, st) } else { down_flow(s, c, st, pause_after, pause_for) }));
     }
     let side_h = side.map(|f| {
         let st = stop.clone();
@@ -240,6 +287,7 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
     });
     let mut series: Vec<Vec<u64>> = vec![Vec::new(); flows];
     let mut last: Vec<u64> = vec![0; flows];
+    let mut rss_kb: Vec<u64> = Vec::with_capacity(o.secs as usize);
     let mut window_start_bytes = 0u64;
     for sec in 1..=o.secs {
         if sec - 1 == o.warmup {
@@ -253,6 +301,7 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
             series[i].push(now[i].saturating_sub(last[i]));
             last[i] = now[i];
         }
+        rss_kb.push(util::proc_mem().vmrss_kb);
     }
     let window_end_bytes: u64 = read_all().iter().sum();
     mark("window_end");
@@ -261,12 +310,25 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
     let side_res = side_h.map(|h| h.join().unwrap());
     let final_recv = read_all();
 
+    drop(idle);
     let w = o.warmup as usize;
     let agg: Vec<u64> = (0..o.secs as usize).map(|s| series.iter().map(|f| f[s]).sum()).collect();
     let post: Vec<f64> = agg[w.min(agg.len())..].iter().map(|b| *b as f64 * 8.0 / 1e6).collect();
-    let zero_secs = agg[w.min(agg.len())..].iter().filter(|b| **b == 0).count();
+    let stall = util::stall_stats(&agg, o.warmup, o.pause_after_secs, o.pause_for_secs);
+    let zero_secs = stall["zero_throughput_secs"].as_u64().unwrap_or(0) as usize;
     let window_bytes = window_end_bytes.saturating_sub(window_start_bytes);
     let window_secs = (o.secs - o.warmup) as f64;
+    let resume_idx = (o.pause_after_secs + o.pause_for_secs) as usize;
+    let resume_mbps = if o.pause_for_secs > 0 && resume_idx < agg.len() {
+        let slice = &agg[resume_idx..];
+        if slice.is_empty() {
+            None
+        } else {
+            Some(slice.iter().sum::<u64>() as f64 * 8.0 / 1e6 / slice.len() as f64)
+        }
+    } else {
+        None
+    };
     let mut flows_json = Vec::new();
     for (i, r) in reports.into_iter().enumerate() {
         for e in &r.errors {
@@ -289,6 +351,13 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
         "goodput_mbps_window": window_bytes as f64 * 8.0 / 1e6 / window_secs,
         "agg_mbps_per_sec": agg.iter().map(|b| *b as f64 * 8.0 / 1e6).collect::<Vec<_>>(),
         "zero_throughput_secs": zero_secs,
+        "stall": stall,
+        "rss_kb_per_sec": rss_kb,
+        "rss_kb_delta": rss_kb.last().copied().unwrap_or(0) as i64 - rss_kb.first().copied().unwrap_or(0) as i64,
+        "idle_hold": o.idle_hold,
+        "pause_after_secs": o.pause_after_secs,
+        "pause_for_secs": o.pause_for_secs,
+        "resume_goodput_mbps": resume_mbps,
         "per_flow": flows_json,
     });
     if let Some((v, e)) = side_res {
@@ -472,6 +541,111 @@ pub fn test_connect(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcom
         // Failures are a measured outcome here, not a harness correctness error.
         errors: Vec::new(),
         window_bytes: 0,
+        window_secs: elapsed,
+    }
+}
+
+/// Soak: keep `--concurrency` workers cycling connect + 1 KiB echo + close
+/// for `--secs`. Failures are measured (like `connect`); a total wipe-out is
+/// a correctness error. RSS is sampled every second.
+pub fn test_churn(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcome {
+    let stop = Arc::new(AtomicBool::new(false));
+    let ok = Arc::new(AtomicU64::new(0));
+    let fails = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+    let other_samples = Arc::new(Mutex::new(Vec::<String>::new()));
+    let lat = Arc::new(Mutex::new(Vec::<f64>::new()));
+    let msg: Vec<u8> = app::pattern_at(0, o.rr_size.min(app::PAT_CHUNK)).to_vec();
+    let workers = o.concurrency.max(1);
+    let to = o.connect_timeout;
+    mark("window_start");
+    let t0 = Instant::now();
+    let hs: Vec<_> = (0..workers)
+        .map(|_| {
+            let (stop, ok, fails, other, lat) = (stop.clone(), ok.clone(), fails.clone(), other_samples.clone(), lat.clone());
+            let msg = msg.clone();
+            std::thread::spawn(move || {
+                let mut rbuf = vec![0u8; msg.len()];
+                while !stop.load(Relaxed) {
+                    let t = Instant::now();
+                    let r = (|| -> io::Result<()> {
+                        let mut s = TcpStream::connect_timeout(&server_addr(), to)?;
+                        s.set_nodelay(true)?;
+                        s.set_read_timeout(Some(to))?;
+                        s.set_write_timeout(Some(to))?;
+                        s.write_all(&app::encode_header(app::CMD_ECHO, msg.len() as u64))?;
+                        s.write_all(&msg)?;
+                        s.read_exact(&mut rbuf)?;
+                        if rbuf != msg {
+                            return Err(io::Error::other("echo mismatch"));
+                        }
+                        let _ = s.shutdown(Shutdown::Write);
+                        Ok(())
+                    })();
+                    match r {
+                        Ok(()) => {
+                            ok.fetch_add(1, Relaxed);
+                            lat.lock().unwrap().push(t.elapsed().as_secs_f64() * 1e3);
+                        }
+                        Err(e) => {
+                            let kind = match e.kind() {
+                                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timeout",
+                                io::ErrorKind::ConnectionRefused => "refused",
+                                io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted | io::ErrorKind::BrokenPipe => "reset",
+                                _ => "other",
+                            };
+                            *fails.lock().unwrap().entry(kind.into()).or_default() += 1;
+                            if kind == "other" {
+                                let mut o = other.lock().unwrap();
+                                if o.len() < 8 {
+                                    o.push(e.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        })
+        .collect();
+    let mut rss_kb = Vec::with_capacity(o.secs as usize);
+    let mut ok_per_sec = Vec::with_capacity(o.secs as usize);
+    let mut last_ok = 0u64;
+    for sec in 1..=o.secs {
+        sleep_until(t0 + Duration::from_secs(sec));
+        let now = ok.load(Relaxed);
+        ok_per_sec.push(now.saturating_sub(last_ok));
+        last_ok = now;
+        rss_kb.push(util::proc_mem().vmrss_kb);
+    }
+    stop.store(true, Relaxed);
+    for h in hs {
+        let _ = h.join();
+    }
+    mark("window_end");
+    let elapsed = t0.elapsed().as_secs_f64();
+    let success = ok.load(Relaxed);
+    let fails = fails.lock().unwrap().clone();
+    let fail_n: u64 = fails.values().copied().sum();
+    let mut errors = Vec::new();
+    if success == 0 {
+        errors.push(format!("churn: 0 successful echoes in {elapsed:.1}s ({fail_n} failures)"));
+    }
+    TestOutcome {
+        results: json!({
+            "test": "churn",
+            "concurrency": workers,
+            "success": success,
+            "failures": fails,
+            "failure_n": fail_n,
+            "failure_samples": other_samples.lock().unwrap().clone(),
+            "elapsed_sec": elapsed,
+            "conn_per_sec": success as f64 / elapsed.max(1e-6),
+            "ok_per_sec": ok_per_sec,
+            "latency_total": util::lat_summary(&lat.lock().unwrap()),
+            "rss_kb_per_sec": rss_kb,
+            "rss_kb_delta": rss_kb.last().copied().unwrap_or(0) as i64 - rss_kb.first().copied().unwrap_or(0) as i64,
+        }),
+        errors,
+        window_bytes: success * msg.len() as u64,
         window_secs: elapsed,
     }
 }
