@@ -13,7 +13,7 @@
 //! watermark is free; below it the task is parked until the driver drains the
 //! queue past the watermark. Wakeups only happen on watermark crossings.
 
-use crate::budget::{GlobalBudget, MemoryHandle, MemoryLease};
+use crate::budget::{AllocationKind, GlobalBudget, KindCounts, MemoryHandle, MemoryLease};
 use crate::shard::{EgressSinks, IfaceConfig, OutPacket, SendResult, Shard, ShardStats};
 use crate::{CloseReason, ConnId, Event, IfaceId, PeerId, ReadResult, StackConfig, WriteResult};
 use bytes::Bytes;
@@ -94,7 +94,7 @@ impl<T> ChargedDeque<T> {
         self.items.back_mut()
     }
 
-    fn reserve_one(&mut self, memory: &MemoryHandle) -> Result<(), QueueGrowError> {
+    fn reserve_one(&mut self, memory: &MemoryHandle, kind: AllocationKind) -> Result<(), QueueGrowError> {
         if self.items.len() < self.items.capacity() {
             return Ok(());
         }
@@ -104,7 +104,7 @@ impl<T> ChargedDeque<T> {
             .and_then(|n| n.checked_mul(2))
             .and_then(|n| u64::try_from(n).ok())
             .ok_or(QueueGrowError::Allocation)?;
-        let lease = memory.try_allocate(bytes).ok_or(QueueGrowError::Quota(bytes))?;
+        let lease = memory.try_allocate_kind(bytes, kind).ok_or(QueueGrowError::Quota(bytes))?;
         let mut next = VecDeque::new();
         next.try_reserve(target).map_err(|_| QueueGrowError::Allocation)?;
         if (next.capacity() as u64).saturating_mul(std::mem::size_of::<T>() as u64) > bytes {
@@ -199,12 +199,12 @@ impl TxQueue {
             if self.chunks.back().is_none_or(|c| c.len == c.data.len()) {
                 let cap = src.len().min(64 * 1024).next_power_of_two().max(64);
                 let observed = memory.global().release_epoch();
-                if let Err(error) = self.chunks.reserve_one(memory) {
+                if let Err(error) = self.chunks.reserve_one(memory, AllocationKind::AdapterTx) {
                     self.last_failure = Some((error, observed));
                     break;
                 }
                 let observed = memory.global().release_epoch();
-                let Some(lease) = memory.try_allocate(cap as u64 + 64) else {
+                let Some(lease) = memory.try_allocate_kind(cap as u64 + 64, AllocationKind::AdapterTx) else {
                     self.last_failure = Some((QueueGrowError::Quota(cap as u64 + 64), observed));
                     break;
                 };
@@ -429,7 +429,7 @@ impl AsyncWrite for TcpStream {
                 _ => src.len().min(64 * 1024).next_power_of_two().max(64) as u64 + 64,
             };
             let observed = failure.map_or_else(|| sh.memory.global().release_epoch(), |(_, observed)| observed);
-            sh.memory.global().register_physical_waiter(sh.memory_waiter, observed, cx.waker(), &sh.memory, needed);
+            sh.memory.global().register_physical_waiter(sh.memory_waiter, observed, cx.waker(), &sh.memory, needed, AllocationKind::AdapterTx);
             return Poll::Pending;
         }
         sh.memory.global().remove_waiter(sh.memory_waiter);
@@ -502,10 +502,63 @@ pub struct StackSnapshot {
     pub port_physical_bytes: u64,
     pub core_reserve_failures: u64,
     pub failures_by_kind: crate::budget::ReserveFailures,
+    /// Physical failures rejected by the global, port and peer share.
+    pub failures_by_level: [u64; 3],
+    /// Physical waiters parked on this port, by allocation kind. `tx_block`
+    /// counts streams whose adapter bytes wait for a core TX block.
+    pub waiters: KindCounts,
+    /// Core connections waiting for a send-record allocation.
+    pub record_waiters: usize,
+    /// Whether global, port and peer all keep the progress reserves.
+    pub progress_reserve: bool,
     pub active_connections: usize,
     pub adapter_streams: usize,
+    /// Only the core's send-record wait; adapter and host waiters are in
+    /// `waiters`.
     pub budget_waiting: bool,
+    pub closes: CloseCounts,
+    pub aborts: AbortCounts,
     pub tail_connections: Vec<TailConnection>,
+}
+
+/// Connection close events seen by the adapter, by reason.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CloseCounts {
+    pub normal: u64,
+    pub reset: u64,
+    pub timeout: u64,
+    pub aborted: u64,
+    pub refused: u64,
+    pub desync: u64,
+}
+
+impl CloseCounts {
+    fn note(&mut self, reason: CloseReason) {
+        let n = match reason {
+            CloseReason::Normal => &mut self.normal,
+            CloseReason::Reset => &mut self.reset,
+            CloseReason::Timeout => &mut self.timeout,
+            CloseReason::Aborted => &mut self.aborted,
+            CloseReason::Refused => &mut self.refused,
+            CloseReason::Desync => &mut self.desync,
+        };
+        *n += 1;
+    }
+}
+
+/// Connections the adapter aborted itself (each sends an RST), by cause.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AbortCounts {
+    /// No memory for the stream state of an accepted connection.
+    pub stream_state: u64,
+    /// The accept backlog was full.
+    pub accept_backlog: u64,
+    /// A dropped stream could not hand its bytes to the core in time.
+    pub orphan_timeout: u64,
+    /// The app dropped the stream with unread data.
+    pub unread_drop: u64,
+    /// The RX descriptor allocation itself failed (not a quota wait).
+    pub rx_index_alloc: u64,
 }
 
 /// Handle used by the WG side to feed decrypted packets.
@@ -699,6 +752,8 @@ where
     I: Send + 'static,
     F: FnMut(&mut Shard, crate::Instant, I) + Send + 'static,
 {
+    shard.reserve_stream_state(STREAM_STATE_BYTES);
+    shard.budget().global().ensure_admit_reserve(crate::budget::ADMIT_BURST * (crate::shard::ACTIVE_STATE_BYTES + STREAM_STATE_BYTES));
     let ids: Vec<IfaceId> = ifaces.into_iter().map(|c| shard.add_iface(c)).collect();
     let (tx, rx) = mpsc::channel(1024);
     let (acc_tx, acc_rx) = mpsc::channel(shard.config().accept_backlog.max(1));
@@ -720,7 +775,10 @@ where
         orphans: BTreeSet::new(),
         stream_cfg,
         epoch: tokio::time::Instant::now(),
+        closes: CloseCounts::default(),
+        aborts: AbortCounts::default(),
     };
+    driver.shard.budget().global().register_cache_holder(driver.budget_waiter, &driver.budget_wake);
     let join = tokio::spawn(driver.run());
     (StackHandle { tx, ctl }, Acceptor { rx: acc_rx }, ids, join, stop)
 }
@@ -742,6 +800,8 @@ struct Driver<E: Egress, I, F> {
     orphans: BTreeSet<(crate::Instant, ConnId)>,
     stream_cfg: StreamConfig,
     epoch: tokio::time::Instant,
+    closes: CloseCounts,
+    aborts: AbortCounts,
 }
 
 impl<E, I, F> Driver<E, I, F>
@@ -854,8 +914,14 @@ where
                 let _ = reply.send(StackSnapshot {
                     stats: self.shard.stats().clone(),
                     port_physical_bytes: budget.physical_used(),
-                    core_reserve_failures: budget.reserve_failures,
-                    failures_by_kind: budget.failures_by_kind,
+                    core_reserve_failures: budget.reserve_failures(),
+                    failures_by_kind: budget.stats().failures(),
+                    failures_by_level: budget.stats().failures_by_level(),
+                    waiters: budget.physical_waiters(),
+                    record_waiters: self.shard.record_waiters(),
+                    progress_reserve: budget.progress_reserve_active(),
+                    closes: self.closes,
+                    aborts: self.aborts,
                     active_connections: self.shard.conn_count(),
                     adapter_streams: self.streams.len(),
                     budget_waiting: self.shard.budget_wait_epoch().is_some(),
@@ -894,7 +960,11 @@ where
             Event::Accepted(id) => {
                 let Some(info) = self.shard.info(id) else { return };
                 let memory = self.shard.memory_handle(info.peer);
-                let Some(state_memory) = memory.try_allocate(STREAM_STATE_BYTES) else {
+                // Reserved with the core state at SYN time; allocating here is
+                // only a fallback for a shard configured without it.
+                let reserved = self.shard.take_stream_memory(id);
+                let Some(state_memory) = reserved.or_else(|| memory.try_allocate_kind(STREAM_STATE_BYTES, AllocationKind::StreamState)) else {
+                    self.aborts.stream_state += 1;
                     self.shard.abort(id);
                     return;
                 };
@@ -917,6 +987,7 @@ where
                 self.streams.insert(id, sh.clone());
                 let meta = ConnMeta { iface: info.iface, peer: info.peer, local: info.local, remote: info.remote };
                 if self.accept_tx.try_send(TcpStream { sh, meta }).is_err() {
+                    self.aborts.accept_backlog += 1;
                     self.shard.abort(id);
                     self.remove_stream(id);
                     return;
@@ -925,6 +996,7 @@ where
             }
             Event::Readable(id) | Event::Writable(id) => self.pump(id),
             Event::Closed(id, reason) => {
+                self.closes.note(reason);
                 self.pump(id);
                 if let Some(sh) = self.streams.get(&id) {
                     let mut q = sh.q.lock().unwrap();
@@ -952,6 +1024,7 @@ where
             self.orphans.pop_first();
             if let Some(sh) = self.remove_stream(id) {
                 sh.q.lock().unwrap().tx.clear();
+                self.aborts.orphan_timeout += 1;
                 self.shard.abort(id);
             }
         }
@@ -985,6 +1058,7 @@ where
             }
             if unread {
                 // Dropped with unread data: the bytes are lost, tell the peer (§10.3).
+                self.aborts.unread_drop += 1;
                 self.shard.abort(id);
             } else {
                 let now = self.now();
@@ -1014,10 +1088,17 @@ where
             let was_empty = q.rx.is_empty() && !q.rx_eof;
             while q.rx_len < cfg.rx_cap && !q.rx_eof && q.error.is_none() {
                 let observed = sh.memory.global().release_epoch();
-                match q.rx.reserve_one(&sh.memory) {
+                match q.rx.reserve_one(&sh.memory, AllocationKind::AdapterRx) {
                     Ok(()) => sh.memory.global().remove_waiter(sh.rx_index_waiter),
                     Err(QueueGrowError::Quota(bytes)) => {
-                        sh.memory.global().register_physical_waiter(sh.rx_index_waiter, observed, &sh.driver_wake, &sh.memory, bytes);
+                        sh.memory.global().register_physical_waiter(
+                            sh.rx_index_waiter,
+                            observed,
+                            &sh.driver_wake,
+                            &sh.memory,
+                            bytes,
+                            AllocationKind::AdapterRx,
+                        );
                         break;
                     }
                     Err(QueueGrowError::Allocation) => {
@@ -1041,6 +1122,7 @@ where
             }
         }
         if abort_rx {
+            self.aborts.rx_index_alloc += 1;
             self.shard.abort(id);
         }
         // tx: stream queue → shard.
@@ -1070,12 +1152,13 @@ where
                         break;
                     }
                     WriteResult::MemoryBlocked => {
-                        sh.memory.global().register_cacheable_physical_waiter(
+                        sh.memory.global().register_physical_waiter(
                             sh.driver_waiter,
                             observed,
                             &sh.driver_wake,
                             &sh.memory,
                             crate::buf::TX_BLOCK_CHARGE,
+                            AllocationKind::TxBlock,
                         );
                         break;
                     }
@@ -1123,6 +1206,7 @@ where
 impl<E: Egress, I, F> Drop for Driver<E, I, F> {
     fn drop(&mut self) {
         self.shard.budget().global().remove_waiter(self.budget_waiter);
+        self.shard.budget().global().remove_cache_holder(self.budget_waiter);
         for sh in self.streams.values() {
             let mut q = sh.q.lock().unwrap();
             q.error = Some(CloseReason::Aborted);
@@ -1242,7 +1326,7 @@ mod tests {
         let memory = budget.memory_handle(PeerId(1));
         let mut queue = ChargedDeque::<Bytes>::default();
         let mut inserted = 0u8;
-        while queue.reserve_one(&memory).is_ok() {
+        while queue.reserve_one(&memory, AllocationKind::AdapterRx).is_ok() {
             queue.push_back_reserved(Bytes::from(vec![inserted]));
             inserted += 1;
             assert!(queue.capacity_bytes() <= global.reserved());
@@ -1466,5 +1550,336 @@ mod tests {
         assert_eq!(server_global.connection_counts(), (0, 0));
         assert_eq!(server_global.cached_bytes(), 0);
         assert_eq!(server_global.reserved(), 0, "adapter/core backing survived cancellation");
+    }
+
+    // #664 (zfc): adapter queues, buffered core data, idle TX cache and host
+    // egress packets share global/port/peer budgets; none may stop progress.
+
+    type Ingress = (IfaceId, Vec<(PeerId, Bytes)>);
+    type ToClient = (PeerId, Vec<u8>, Option<MemoryLease>);
+
+    struct EgressWake(std::sync::OnceLock<(StackHandle, IfaceId)>);
+
+    impl Wake for EgressWake {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            if let Some((handle, iface)) = self.0.get() {
+                handle.egress_released(*iface);
+            }
+        }
+    }
+
+    /// Host egress in the zfc shape: each queued packet keeps a lease on the
+    /// port/peer share until the WG side has consumed it.
+    struct ChargedEgress {
+        to_client: mpsc::UnboundedSender<ToClient>,
+        memory: HashMap<PeerId, MemoryHandle>,
+        global: Arc<GlobalBudget>,
+        waiter: u64,
+        waker: Waker,
+    }
+
+    impl Egress for ChargedEgress {
+        fn send(&mut self, _iface: IfaceId, peer: PeerId, pkt: &OutPacket<'_>) -> SendResult {
+            let lease = match self.memory.get(&peer) {
+                None => None,
+                Some(memory) => {
+                    let bytes = pkt.len().max(2048) as u64;
+                    let observed = self.global.release_epoch();
+                    match memory.try_allocate_kind(bytes, AllocationKind::Egress) {
+                        Some(lease) => Some(lease),
+                        None => {
+                            self.global.register_physical_waiter(self.waiter, observed, &self.waker, memory, bytes, AllocationKind::Egress);
+                            return SendResult::Full;
+                        }
+                    }
+                }
+            };
+            self.global.remove_waiter(self.waiter);
+            let _ = self.to_client.send((peer, pkt.to_vec(), lease));
+            SendResult::Accepted
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct Profile {
+        port_bytes: u64,
+        peer_bytes: u64,
+        peers: u64,
+        charge_egress: bool,
+        per_conn: u64,
+    }
+
+    impl Profile {
+        /// zfc repro: 10% of an 8 MiB global budget, one peer.
+        fn zfc_repro(charge_egress: bool, per_conn: u64) -> Self {
+            Profile { port_bytes: 819_200, peer_bytes: 819_200, peers: 1, charge_egress, per_conn }
+        }
+    }
+
+    struct LimitedServer {
+        handle: StackHandle,
+        iface: IfaceId,
+        ingress: mpsc::Sender<Ingress>,
+        to_client: mpsc::UnboundedReceiver<ToClient>,
+        task: DriverTask,
+        global: Arc<GlobalBudget>,
+        profile: Profile,
+        /// Peer 9's handle on the port share, for tests that hold part of it.
+        memory: MemoryHandle,
+    }
+
+    /// Accepted streams each send `per_conn` bytes over 64 KiB stream queues.
+    fn limited_server(global: Arc<GlobalBudget>, profile: Profile) -> LimitedServer {
+        global.ensure_egress_reserve(2 * 2048);
+        let limits = ResourceLimits { port_bytes: profile.port_bytes, peer_bytes: profile.peer_bytes, peer_max_connections: 64 };
+        let stream_cfg = StreamConfig { rx_cap: 64 * 1024, tx_cap: 64 * 1024, tx_low_watermark: 16 * 1024 };
+        let (to_client_tx, to_client) = mpsc::unbounded_channel();
+        let (ingress, ingress_rx) = mpsc::channel::<Ingress>(1024);
+        let wake = Arc::new(EgressWake(std::sync::OnceLock::new()));
+        let egress_global = global.clone();
+        let egress_wake = wake.clone();
+        let (handle, mut acc, ids, task, memory) = spawn_with_source_factory(
+            StackConfig::default(),
+            stream_cfg,
+            vec![IfaceConfig::default()],
+            move |shard: &mut Shard| {
+                let memory = if profile.charge_egress {
+                    (0..profile.peers).map(|k| (PeerId(9 + k), shard.memory_handle(PeerId(9 + k)))).collect()
+                } else {
+                    HashMap::new()
+                };
+                let egress = ChargedEgress {
+                    to_client: to_client_tx,
+                    memory,
+                    waiter: egress_global.new_waiter_id(),
+                    global: egress_global,
+                    waker: Waker::from(egress_wake),
+                };
+                (egress, shard.memory_handle(PeerId(9)))
+            },
+            global.clone(),
+            limits,
+            ingress_rx,
+            |shard: &mut Shard, now: crate::Instant, (iface, pkts): Ingress| {
+                for (peer, p) in pkts {
+                    shard.ingress(now, iface, peer, p);
+                }
+            },
+        );
+        let _ = wake.0.set((handle.clone(), ids[0]));
+        let per_conn = profile.per_conn;
+        tokio::spawn(async move {
+            while let Some(mut s) = acc.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 16 * 1024];
+                    let mut off = 0u64;
+                    while off < per_conn {
+                        let n = ((per_conn - off) as usize).min(buf.len());
+                        for (k, b) in buf[..n].iter_mut().enumerate() {
+                            *b = pattern_byte(off + k as u64);
+                        }
+                        if s.write_all(&buf[..n]).await.is_err() {
+                            return;
+                        }
+                        off += n as u64;
+                    }
+                    let _ = s.shutdown().await;
+                });
+            }
+        });
+        LimitedServer { handle, iface: ids[0], ingress, to_client, task, global, profile, memory }
+    }
+
+    /// Open `conns` client connections, spread over the profile's peers, and
+    /// read `per_conn` bytes from each. Samples the physical bounds meanwhile.
+    async fn download(server: &mut LimitedServer, first_port: u16, conns: u16, limit: std::time::Duration) -> Result<(), String> {
+        let per_conn = server.profile.per_conn;
+        let peers = server.profile.peers;
+        let epoch = tokio::time::Instant::now();
+        let now = || crate::Instant::from_nanos(epoch.elapsed().as_nanos() as u64 + 1);
+        let mut c = Shard::with_budget(StackConfig::default(), GlobalBudget::new(1 << 30));
+        let ci = c.add_iface(IfaceConfig::default());
+        let ids: Vec<ConnId> = (0..conns)
+            .map(|k| {
+                let peer = PeerId(9 + u64::from(k) % peers);
+                c.connect(now(), ci, peer, SocketAddr::from(([10, 0, 0, 2], first_port + k)), "10.0.0.1:80".parse().unwrap())
+            })
+            .collect();
+        let mut recvd = vec![0u64; ids.len()];
+        let mut eof = vec![false; ids.len()];
+        let mut buf = vec![0u8; 64 * 1024];
+        let deadline = tokio::time::Instant::now() + limit;
+        let mut rounds = 0u64;
+        loop {
+            assert!(server.global.reserved() <= server.global.high(), "global budget exceeded");
+            rounds += 1;
+            if rounds.is_multiple_of(64) {
+                if let Some(snap) = server.handle.snapshot().await {
+                    assert!(snap.port_physical_bytes <= server.profile.port_bytes, "port share exceeded");
+                }
+            }
+            if tokio::time::Instant::now() > deadline {
+                let snap = server.handle.snapshot().await;
+                return Err(format!(
+                    "stalled: recvd={recvd:?} cached={} reserved={} snapshot={:?}",
+                    server.global.cached_bytes(),
+                    server.global.reserved(),
+                    snap.map(|s| (
+                        s.port_physical_bytes,
+                        s.failures_by_kind,
+                        s.failures_by_level,
+                        s.waiters,
+                        s.record_waiters,
+                        s.stats.sink_full,
+                        s.active_connections
+                    ))
+                ));
+            }
+            let mut out = Vec::new();
+            let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
+                out.push((p.peer, Bytes::from(p.to_vec())));
+                SendResult::Accepted
+            };
+            c.run(now(), &mut sink);
+            if !out.is_empty() && server.ingress.send((server.iface, out)).await.is_err() {
+                return Err("server ingress closed".into());
+            }
+            while let Some(ev) = c.poll_event() {
+                if let Event::Closed(id, reason) = ev {
+                    if let Some(k) = ids.iter().position(|&x| x == id) {
+                        if reason != CloseReason::Normal && !eof[k] {
+                            return Err(format!("conn {k} closed with {reason:?} after {} bytes", recvd[k]));
+                        }
+                    }
+                }
+            }
+            for (k, &id) in ids.iter().enumerate() {
+                while !eof[k] {
+                    match c.read(now(), id, &mut buf) {
+                        ReadResult::Data(n) => {
+                            for (j, &b) in buf[..n].iter().enumerate() {
+                                assert_eq!(b, pattern_byte(recvd[k] + j as u64), "conn {k} corrupted");
+                            }
+                            recvd[k] += n as u64;
+                        }
+                        ReadResult::Eof => eof[k] = true,
+                        ReadResult::WouldBlock => break,
+                        ReadResult::Closed(r) => return Err(format!("conn {k} closed with {r:?} after {} bytes", recvd[k])),
+                    }
+                }
+            }
+            if eof.iter().all(|&e| e) {
+                assert!(recvd.iter().all(|&n| n == per_conn), "short stream: {recvd:?}");
+                return Ok(());
+            }
+            let wait = c.next_deadline().map_or(std::time::Duration::from_millis(5), |d| {
+                std::time::Duration::from_nanos(d.as_nanos().saturating_sub(now().as_nanos())).min(std::time::Duration::from_millis(5))
+            });
+            // The lease of each packet is dropped once the client ingested it.
+            if let Ok(Some((peer, p, _lease))) = tokio::time::timeout(wait, server.to_client.recv()).await {
+                c.ingress(now(), ci, peer, Bytes::from(p));
+                while let Ok((peer, p, _lease)) = server.to_client.try_recv() {
+                    c.ingress(now(), ci, peer, Bytes::from(p));
+                }
+            }
+        }
+    }
+
+    const SECS: std::time::Duration = std::time::Duration::from_secs(30);
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn adapter_queues_do_not_starve_core_tx_blocks() {
+        // 16 full 64 KiB adapter queues exceed an 819 KiB port share. Queued
+        // bytes can only drain into core TX blocks from that same share.
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 1 << 20));
+        download(&mut server, 20_000, 16, SECS).await.expect("16 concurrent streams");
+        let snap = server.handle.snapshot().await.unwrap();
+        assert!(snap.progress_reserve);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn idle_tx_cache_does_not_block_the_next_stream_on_the_same_port() {
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 4 << 20));
+        download(&mut server, 20_000, 1, SECS).await.expect("first stream");
+        download(&mut server, 21_000, 1, std::time::Duration::from_secs(10)).await.expect("next stream");
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn charged_egress_makes_progress_when_port_share_is_full() {
+        // Few streams, so adapter queues fit; buffered core data then fills
+        // the share that zfc also charges for each queued egress packet.
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(true, 8 << 20));
+        download(&mut server, 20_000, 4, SECS).await.expect("4 streams with charged egress");
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn small_peer_shares_each_make_progress() {
+        // Four peers with a quarter of the port share each, two streams per
+        // peer and charged egress: the peer level binds first.
+        let profile = Profile { port_bytes: 819_200, peer_bytes: 204_800, peers: 4, charge_egress: true, per_conn: 1 << 20 };
+        let mut server = limited_server(GlobalBudget::new(8 << 20), profile);
+        download(&mut server, 20_000, 8, SECS).await.expect("4 peers x 2 streams");
+        let snap = server.handle.snapshot().await.unwrap();
+        assert!(snap.progress_reserve);
+        assert!(snap.failures_by_level[2] > 0, "peer shares were never under pressure");
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ports_sharing_a_small_global_budget_all_make_progress() {
+        // Each port may use 800 KiB, but together they only get 1 MiB, so
+        // the global level binds and each port waits on the other's releases.
+        let global = GlobalBudget::new(1 << 20);
+        let profile = Profile { port_bytes: 819_200, peer_bytes: 819_200, peers: 2, charge_egress: true, per_conn: 1 << 20 };
+        let mut a = limited_server(global.clone(), profile);
+        let mut b = limited_server(global.clone(), profile);
+        let (ra, rb) = tokio::join!(download(&mut a, 20_000, 8, SECS), download(&mut b, 21_000, 8, SECS));
+        ra.expect("port a");
+        rb.expect("port b");
+        let (sa, sb) = (a.handle.snapshot().await.unwrap(), b.handle.snapshot().await.unwrap());
+        assert!(sa.failures_by_level[0] + sb.failures_by_level[0] > 0, "global budget was never under pressure");
+        a.task.shutdown_and_join().await.unwrap();
+        b.task.shutdown_and_join().await.unwrap();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn saturate_release_and_single_stream_rounds_recover_on_the_same_port() {
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(true, 512 << 10));
+        for round in 0..3u16 {
+            download(&mut server, 20_000 + round * 100, 16, SECS).await.unwrap_or_else(|e| panic!("round {round} load: {e}"));
+            download(&mut server, 20_050 + round * 100, 1, std::time::Duration::from_secs(10))
+                .await
+                .unwrap_or_else(|e| panic!("round {round} single stream after load: {e}"));
+        }
+        let snap = server.handle.snapshot().await.unwrap();
+        assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn established_connection_is_not_reset_when_stream_state_is_short() {
+        // Admission room for the core state of one connection, but not for its
+        // adapter stream state too: the handshake must not end in a reset.
+        let global = GlobalBudget::new(8 << 20);
+        let mut server = limited_server(global.clone(), Profile::zfc_repro(false, 256 << 10));
+        let admit_limit = 819_200 - global.headroom(819_200, crate::budget::Tier::Admit);
+        let used = server.handle.snapshot().await.unwrap().port_physical_bytes;
+        let room = crate::shard::ACTIVE_STATE_BYTES + STREAM_STATE_BYTES / 2;
+        let blocker = server.memory.try_allocate_kind(admit_limit - used - room, AllocationKind::Other).unwrap();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            drop(blocker);
+        });
+        download(&mut server, 20_000, 1, std::time::Duration::from_secs(10)).await.expect("connection after admission shortage");
+        let snap = server.handle.snapshot().await.unwrap();
+        assert_eq!(snap.aborts.stream_state, 0);
+        server.task.shutdown_and_join().await.unwrap();
     }
 }

@@ -62,17 +62,17 @@ fn send_record_quota_retries_after_physical_memory_release() {
     let blocker = s.a.shard.memory_handle(PeerId(1)).try_allocate(port_limit - used - 512).unwrap();
     s.step();
     assert!(s.a.shard.budget_wait_epoch().is_some());
-    assert!(s.a.shard.budget().failures_by_kind.send_record > 0);
+    assert!(s.a.shard.budget().stats().failures().send_record > 0);
     assert_eq!(s.b.conns[&client].received, 0);
 
     // Repeated app wakeups with unchanged capacity cannot keep retrying the
     // same failed record allocation. They used to burn an entire driver core.
-    let failures = s.a.shard.budget().reserve_failures;
+    let failures = s.a.shard.budget().reserve_failures();
     for _ in 0..20 {
         let _ = s.a.shard.write(server, &[]);
         s.step();
     }
-    assert_eq!(s.a.shard.budget().reserve_failures, failures);
+    assert_eq!(s.a.shard.budget().reserve_failures(), failures);
     // Releases by an unrelated peer advance the global epoch but cannot
     // satisfy this peer/port's next record allocation.
     for _ in 0..20 {
@@ -80,13 +80,68 @@ fn send_record_quota_retries_after_physical_memory_release() {
         drop(unrelated);
         s.step();
     }
-    assert_eq!(s.a.shard.budget().reserve_failures, failures);
+    assert_eq!(s.a.shard.budget().reserve_failures(), failures);
 
     drop(blocker);
     s.step();
     s.run_until(s.now + secs(3));
     assert_eq!(s.b.conns[&client].received, payload.len() as u64);
     assert!(s.a.shard.budget_wait_epoch().is_none());
+    let global = s.a.shard.budget().global().clone();
+    drop(s);
+    assert_eq!(global.reserved(), 0);
+}
+
+/// #664: a sender whose send records are full and cannot grow must still
+/// retransmit lost records in place; their ACKs free the slots new data needs.
+#[test]
+fn full_send_records_retransmit_in_place_when_growth_is_impossible() {
+    let down = LinkParams::default();
+    // Let one write buffer the whole payload before the port is filled.
+    let server_cfg = StackConfig { min_prefetch: 4 << 20, prefetch_max: 4 << 20, ..Default::default() };
+    let mut s = Sim::new(842, server_cfg, StackConfig::default(), down, LinkParams::default());
+    let port_limit = 8 << 20;
+    s.a.shard.set_budget_limits(port_limit, port_limit, 8);
+    let client = s.connect(40044, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(100));
+    let server = s.a.accepted[0];
+    let payload: Vec<u8> = (0..(2u64 << 20)).map(pattern_byte).collect();
+    let WriteResult::Written(total) = s.a.shard.write(server, &payload) else { panic!("write refused") };
+    assert_eq!(total, payload.len());
+    s.run_until(s.now + Duration::from_millis(30));
+    assert!(s.b.conns[&client].received < total as u64, "transfer finished before the port was filled");
+
+    // Keep the port at the TX-block tier limit: only the record headroom is
+    // left, too small to grow a full deque, and whatever an ACK releases is
+    // taken again before the next round.
+    let memory = s.a.shard.memory_handle(PeerId(1));
+    let mut blockers = Vec::new();
+    // When the full deque first blocks new data, lose the ACKs of the whole
+    // window: the RTO then marks every record lost while none is spare.
+    let failures = s.a.shard.budget().stats().failures().send_record;
+    let mut outage_end = None;
+    // Unblocked, the transfer ends within about half a second.
+    let end = s.now + secs(5);
+    while s.now < end && s.b.conns[&client].received < total as u64 {
+        if outage_end.is_none() && s.a.shard.budget().stats().failures().send_record > failures {
+            outage_end = Some(s.now + Duration::from_millis(60));
+        }
+        s.ba.p.loss = if outage_end.is_some_and(|t| s.now < t) { 1.0 } else { 0.0 };
+        // Blockers stand for buffered bytes that cannot drain (TX-block tier):
+        // they leave only the progress headroom above them.
+        let block_limit = port_limit - s.a.shard.budget().global().headroom(port_limit, crate::budget::Tier::Block);
+        let room = block_limit.saturating_sub(s.a.shard.budget().physical_used());
+        if room > 0 {
+            blockers.push(memory.try_allocate_kind(room, crate::budget::AllocationKind::TxBlock).unwrap());
+        }
+        s.run_until(s.now + Duration::from_millis(1));
+    }
+    let c = &s.b.conns[&client];
+    assert!(!c.corrupt);
+    assert_eq!(c.received, total as u64, "sender stalled with full records");
+    assert!(s.a.shard.budget().stats().failures().send_record > 0, "records never needed to grow");
+    assert!(outage_end.is_some() && s.ba.stats.random_drops > 0, "the deque never filled");
+    drop(blockers);
     let global = s.a.shard.budget().global().clone();
     drop(s);
     assert_eq!(global.reserved(), 0);

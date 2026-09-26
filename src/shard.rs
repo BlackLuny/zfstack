@@ -124,6 +124,9 @@ pub struct ShardStats {
     pub pacing_credit_dropped: u64,
     pub mtu_changes: u64,
     pub round_budget_exhausted: u64,
+    /// Rounds that dropped idle TX blocks on request, and the bytes released.
+    pub cache_reclaims: u64,
+    pub cache_reclaimed_bytes: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -185,7 +188,7 @@ struct Slot {
 
 // Conn lives in a Box; the surplus covers its CC object and the initial
 // tuple/timer/event descriptors. Growing containers need separate accounting.
-const ACTIVE_STATE_BYTES: u64 = std::mem::size_of::<Conn>() as u64 + 1024;
+pub(crate) const ACTIVE_STATE_BYTES: u64 = std::mem::size_of::<Conn>() as u64 + 1024;
 
 /// Pacing granularity: one quantum clamp(rate × 1 ms, 2 MSS, max_quantum) worth of time.
 fn pacing_ahead(rate: u64, mss: usize, max_quantum: usize) -> Duration {
@@ -239,6 +242,10 @@ pub struct Shard {
     /// epoch change retries each once; ingress ACKs can also reschedule them.
     budget_blocked: HashSet<(u32, u32)>,
     budget_wait_epoch: Option<u64>,
+    /// Last cache reclaim request this shard has served.
+    cache_reclaim_seen: u64,
+    /// Bytes a host adapter needs per accepted stream, reserved at SYN time.
+    stream_state_bytes: u64,
     admission: Box<dyn AdmissionPolicy>,
     stateless: VecDeque<Stateless>,
     hasher: RandomState,
@@ -268,6 +275,7 @@ impl Shard {
     pub fn with_budget(cfg: StackConfig, global: Arc<GlobalBudget>) -> Self {
         let credit = cfg.pacing_credit_min;
         let retained_metadata = RetainedMetadata::new(Arc::clone(&global));
+        let cache_reclaim_seen = global.cache_reclaim_epoch();
         Shard {
             cfg,
             ifaces: Vec::new(),
@@ -285,6 +293,8 @@ impl Shard {
             budget: Budget::new(global),
             budget_blocked: HashSet::new(),
             budget_wait_epoch: None,
+            cache_reclaim_seen,
+            stream_state_bytes: 0,
             admission: Box::new(AcceptAll),
             stateless: VecDeque::new(),
             hasher: RandomState::new(),
@@ -584,10 +594,16 @@ impl Shard {
             return;
         }
         let Some(conn) = slot.conn.as_ref() else { return };
-        if self.budget_blocked.contains(&(idx, slot.gen)) && conn.needs_record_spare() && !conn.has_record_spare() && !conn.wants_unpaced_tx() {
+        if self.budget_blocked.contains(&(idx, slot.gen))
+            && conn.needs_record_spare()
+            && !conn.has_record_spare()
+            && !conn.wants_unpaced_tx()
+            && !conn.has_lost_pending()
+        {
             // ACKs and app writes must not spin on the same failed allocation.
             // A release epoch reschedules blocked senders in `run`; an ACK that
-            // frees an existing record slot or new control work bypasses this.
+            // frees an existing record slot, new control work, or a loss that
+            // can be retransmitted in place bypasses this.
             return;
         }
         if self.pacing.contains(idx) {
@@ -761,7 +777,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
             return;
@@ -770,7 +786,8 @@ impl Shard {
         let id = ConnId::new(idx, gen);
         let iss = self.isn(now, remote, local);
         let tso = self.ts_offset(remote, local);
-        let conn = Conn::new_passive(id, iface, peer, local, remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
+        let mut conn = Conn::new_passive(id, iface, peer, local, remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
+        conn.stream_memory = stream_memory;
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.slots[idx as usize].permit = Some(permit);
         self.slots[idx as usize].active_memory = Some(active_memory);
@@ -808,7 +825,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
             self.slots[idx as usize].permit.as_mut().unwrap().to_time_wait();
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
@@ -826,7 +843,9 @@ impl Shard {
         slot.tomb = None;
         slot.gen = slot.gen.wrapping_add(1);
         let id = ConnId::new(idx, slot.gen);
-        slot.conn = Some(Box::new(Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now)));
+        let mut conn = Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
+        conn.stream_memory = stream_memory;
+        slot.conn = Some(Box::new(conn));
         slot.active_memory = Some(active_memory);
         slot.sched.time_wait = false;
         slot.sched.half_open = true;
@@ -966,7 +985,7 @@ impl Shard {
             self.budget.peer_conn_del(peer);
             return Err(false);
         }
-        let Some(active_memory) = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState) else {
+        let Some((active_memory, stream_memory)) = self.admit_memory(peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_cookies_rejected_resources += 1;
             return Err(true);
@@ -978,6 +997,7 @@ impl Shard {
         let tso = self.ts_offset(remote, local);
         let syn = SynParams { mss: Some(mss), wscale, sack, ts };
         let mut conn = Conn::new_from_cookie(id, iface, peer, local, remote, Seq(cookie), tso, mtu, peer_isn, &syn, &self.cfg, now);
+        conn.stream_memory = stream_memory;
         conn.accepted = true;
         self.events.push_back(Event::Accepted(id));
         self.slots[idx as usize].conn = Some(Box::new(conn));
@@ -1031,7 +1051,7 @@ impl Shard {
         if self.stateless.len() >= STATELESS_MAX {
             self.stateless.pop_front();
         }
-        let Some(memory) = self.budget.try_allocate_kind(peer, STATELESS_CHARGE, crate::budget::AllocationKind::Other) else {
+        let Some(memory) = self.budget.try_allocate_kind(peer, STATELESS_CHARGE, crate::budget::AllocationKind::Stateless) else {
             return false;
         };
         let mut header = [0; MAX_HEADER];
@@ -1067,11 +1087,74 @@ impl Shard {
         self.wake.last = Some(now);
     }
 
+    /// Drop idle TX blocks after any allocation failed while they were cached
+    /// (docs/design/0005 §4). The release wakes the parked allocator.
+    fn reclaim_cache_if_requested(&mut self) {
+        let epoch = self.budget.global().cache_reclaim_epoch();
+        if epoch == self.cache_reclaim_seen {
+            return;
+        }
+        self.cache_reclaim_seen = epoch;
+        let (blocks, bytes) = self.pool.reclaim();
+        if blocks != 0 {
+            self.stats.cache_reclaims += 1;
+            self.stats.cache_reclaimed_bytes += bytes;
+        }
+    }
+
+    /// Reserve `bytes` of host stream state with every passive connection, in
+    /// the same admission step as its core state. A shortage then drops the
+    /// SYN (the peer retries) instead of the host having to reset a connection
+    /// it cannot attach after the handshake (#664).
+    pub fn reserve_stream_state(&mut self, bytes: u64) {
+        self.stream_state_bytes = bytes;
+    }
+
+    /// The stream state reserved for `id`, handed over once on accept.
+    pub fn take_stream_memory(&mut self, id: ConnId) -> Option<MemoryLease> {
+        let slot = self.slots.get_mut(id.idx())?;
+        if slot.gen != id.gen() {
+            return None;
+        }
+        slot.conn.as_mut()?.stream_memory.take()
+    }
+
+    /// Core state plus reserved stream state for a new connection. If this
+    /// shard's own idle TX blocks hold the room, drop them and retry once, so
+    /// the SYN is not dropped for memory that was only cached.
+    fn admit_memory(&mut self, peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
+        if let Some(memory) = self.try_admit_memory(peer) {
+            return Some(memory);
+        }
+        let (blocks, bytes) = self.pool.reclaim();
+        if blocks == 0 {
+            return None;
+        }
+        self.stats.cache_reclaims += 1;
+        self.stats.cache_reclaimed_bytes += bytes;
+        self.try_admit_memory(peer)
+    }
+
+    fn try_admit_memory(&mut self, peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
+        let active = self.budget.try_allocate_kind(peer, ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
+        if self.stream_state_bytes == 0 {
+            return Some((active, None));
+        }
+        let stream = self.budget.try_allocate_kind(peer, self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?;
+        Some((active, Some(stream)))
+    }
+
+    /// Connections waiting for a send-record backing allocation.
+    pub fn record_waiters(&self) -> usize {
+        self.budget_blocked.len()
+    }
+
     /// One scheduling round (§8): timers, pacing wakeups, then per-peer DRR.
     pub fn run(&mut self, now: Instant, sinks: &mut impl EgressSinks) -> RunOutcome {
         self.stats.runs += 1;
         self.note_wake(now);
         let mut out = RunOutcome::default();
+        self.reclaim_cache_if_requested();
 
         if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
             self.budget_wait_epoch = None;
@@ -1080,7 +1163,9 @@ impl Shard {
                     !conn.needs_record_spare()
                         || conn.has_record_spare()
                         || conn.wants_unpaced_tx()
-                        || conn.record_reserve_bytes_needed().is_some_and(|bytes| self.budget.can_allocate(conn.peer, bytes))
+                        || conn
+                            .record_reserve_bytes_needed()
+                            .is_some_and(|bytes| self.budget.can_allocate(conn.peer, bytes, crate::budget::AllocationKind::SendRecord))
                 });
                 if retry {
                     self.schedule(idx);
@@ -1304,7 +1389,7 @@ impl Shard {
             } else {
                 self.budget_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
                 self.budget_blocked.insert((idx, gen));
-                conn.plan_control(level)
+                conn.plan_in_place(now, level)
             }) else {
                 return (sent, false);
             };
@@ -1989,5 +2074,59 @@ mod admission_tests {
         assert_eq!(global.reserved(), sh.retained_metadata.total_bytes());
         drop(sh);
         assert_eq!(global.reserved(), 0);
+    }
+
+    struct CountWake(std::sync::atomic::AtomicUsize);
+
+    impl std::task::Wake for CountWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// #664: idle TX blocks fill the port share, so an admission allocation
+    /// fails. The failure must ask the shard to drop its cache; the release
+    /// then wakes the parked allocator and the same allocation succeeds.
+    #[test]
+    fn idle_tx_cache_is_reclaimed_when_it_blocks_another_allocation() {
+        use crate::budget::AllocationKind;
+        use crate::buf::{TxBuf, TX_BLOCK_CHARGE};
+        let global = GlobalBudget::new(8 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        sh.set_budget_limits(819_200, 819_200, 64);
+        let mut bufs: Vec<TxBuf> = (0..12).map(|_| TxBuf::default()).collect();
+        for tx in &mut bufs {
+            assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(1), &[1]));
+        }
+        for tx in &mut bufs {
+            tx.consume(&mut sh.pool, 1);
+        }
+        assert_eq!(sh.pool.cached(), 12);
+        assert_eq!(global.cached_bytes(), 12 * TX_BLOCK_CHARGE);
+
+        let memory = sh.memory_handle(PeerId(2));
+        let wake = Arc::new(CountWake(Default::default()));
+        let waiter = global.new_waiter_id();
+        let observed = global.release_epoch();
+        assert!(memory.try_allocate_kind(65_600, AllocationKind::AdapterTx).is_none());
+        global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, 65_600, AllocationKind::AdapterTx);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 0, "nothing was released yet");
+
+        sh.run(Instant::ZERO, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        assert_eq!(global.cached_bytes(), 0);
+        assert_eq!(sh.stats().cache_reclaims, 1);
+        assert_eq!(sh.stats().cache_reclaimed_bytes, 12 * TX_BLOCK_CHARGE);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1, "reclaim must wake the parked allocator");
+        let lease = memory.try_allocate_kind(65_600, AllocationKind::AdapterTx).expect("share freed by reclaim");
+        global.remove_waiter(waiter);
+        drop(lease);
+
+        // Without a new failure, later rounds keep the cache.
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(1), &[1]));
+        tx.consume(&mut sh.pool, 1);
+        sh.run(Instant::ZERO, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        assert_eq!(sh.pool.cached(), 1);
+        assert_eq!(sh.stats().cache_reclaims, 1);
     }
 }
