@@ -133,6 +133,85 @@ pub fn proc_stat_delta_json(a: &ProcStat, b: &ProcStat) -> serde_json::Value {
     })
 }
 
+/// Process memory from `/proc/self/status` (kB). Used by soak runs to watch
+/// for unbounded RSS growth.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProcMem {
+    pub vmrss_kb: u64,
+    pub vmsize_kb: u64,
+    pub vmdata_kb: u64,
+}
+
+impl ProcMem {
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "vmrss_kb": self.vmrss_kb,
+            "vmsize_kb": self.vmsize_kb,
+            "vmdata_kb": self.vmdata_kb,
+        })
+    }
+}
+
+pub fn proc_mem() -> ProcMem {
+    let mut m = ProcMem::default();
+    let Ok(s) = std::fs::read_to_string("/proc/self/status") else {
+        return m;
+    };
+    for line in s.lines() {
+        let mut it = line.split_whitespace();
+        let Some(k) = it.next() else { continue };
+        let Some(v) = it.next().and_then(|x| x.parse().ok()) else { continue };
+        match k {
+            "VmRSS:" => m.vmrss_kb = v,
+            "VmSize:" => m.vmsize_kb = v,
+            "VmData:" => m.vmdata_kb = v,
+            _ => {}
+        }
+    }
+    m
+}
+
+/// Zero-throughput streaks on the per-second byte series, skipping warmup
+/// and an optional mid-stream pause window (1-based seconds, inclusive).
+pub fn stall_stats(agg: &[u64], warmup: u64, pause_after: u64, pause_for: u64) -> serde_json::Value {
+    let mut max_streak = 0usize;
+    let mut events = 0usize;
+    let mut cur = 0usize;
+    let mut first = None;
+    let mut zero_secs = 0usize;
+    for (i, &b) in agg.iter().enumerate() {
+        let sec = (i as u64) + 1;
+        if (i as u64) < warmup {
+            continue;
+        }
+        if pause_for > 0 && sec > pause_after && sec <= pause_after + pause_for {
+            continue;
+        }
+        if b == 0 {
+            zero_secs += 1;
+            cur += 1;
+            if cur == 1 {
+                first.get_or_insert(sec);
+            }
+            max_streak = max_streak.max(cur);
+        } else {
+            if cur >= 2 {
+                events += 1;
+            }
+            cur = 0;
+        }
+    }
+    if cur >= 2 {
+        events += 1;
+    }
+    serde_json::json!({
+        "zero_throughput_secs": zero_secs,
+        "max_zero_streak": max_streak,
+        "stall_events_ge2s": events,
+        "first_zero_sec": first,
+    })
+}
+
 /// Sum of the per-CPU "dropped" column of /proc/net/softnet_stat (backlog drops).
 pub fn softnet_dropped() -> u64 {
     let Ok(s) = std::fs::read_to_string("/proc/net/softnet_stat") else {

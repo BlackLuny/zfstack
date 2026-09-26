@@ -330,6 +330,9 @@ impl UserStack for ZfStack {
             }
         }
         let st = self.shard.stats();
+        let budget = self.shard.budget();
+        let global = budget.global();
+        let (active, tw) = global.connection_counts();
         serde_json::json!({
             "impl": "zfstack",
             "cc": format!("{:?}", self.opts.cc),
@@ -341,6 +344,16 @@ impl UserStack for ZfStack {
             "live_conns": self.shard.conn_count(),
             "closed": self.closed_agg.json(),
             "live": live.json(),
+            "budget": {
+                "physical_used": budget.physical_used(),
+                "logical_used": budget.used,
+                "global_reserved": global.reserved(),
+                "global_high": global.high(),
+                "active_conns": active,
+                "time_wait_reserved": tw,
+                "time_wait_bytes": global.time_wait_bytes_reserved(),
+                "cached_bytes": global.cached_bytes(),
+            },
             "shard": {
                 "rx_packets": st.rx_packets, "tx_packets": st.tx_packets, "rst_sent": st.rst_sent,
                 "syn_received": st.syn_received, "syn_dropped": st.syn_dropped,
