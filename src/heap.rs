@@ -19,6 +19,11 @@ impl IndexedHeap {
     pub fn capacity(&self) -> usize {
         self.heap.capacity()
     }
+    #[cfg(test)]
+    pub(crate) fn backing_capacity_bytes(&self) -> usize {
+        self.heap.capacity() * std::mem::size_of::<(Instant, u32)>()
+            + self.pos.capacity() * std::mem::size_of::<u32>()
+    }
     pub fn contains(&self, idx: u32) -> bool {
         self.pos.get(idx as usize).is_some_and(|&p| p != NONE)
     }

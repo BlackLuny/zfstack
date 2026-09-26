@@ -48,6 +48,106 @@ fn clean_download() {
 }
 
 #[test]
+fn send_record_quota_retries_after_physical_memory_release() {
+    let mut s = sim(840, LinkParams::default(), LinkParams::default());
+    let port_limit = 128 << 10;
+    s.a.shard.set_budget_limits(port_limit, port_limit, 8);
+    let client = s.connect(40042, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(100));
+    let server = s.a.accepted[0];
+    let payload: Vec<u8> = (0..(32u64 << 10)).map(pattern_byte).collect();
+    assert_eq!(s.a.shard.write(server, &payload), WriteResult::Written(payload.len()));
+
+    let used = s.a.shard.budget().physical_used();
+    let blocker = s.a.shard.memory_handle(PeerId(1)).try_allocate(port_limit - used - 512).unwrap();
+    s.step();
+    assert!(s.a.shard.budget_wait_epoch().is_some());
+    assert!(s.a.shard.budget().failures_by_kind.send_record > 0);
+    assert_eq!(s.b.conns[&client].received, 0);
+
+    // Repeated app wakeups with unchanged capacity cannot keep retrying the
+    // same failed record allocation. They used to burn an entire driver core.
+    let failures = s.a.shard.budget().reserve_failures;
+    for _ in 0..20 {
+        let _ = s.a.shard.write(server, &[]);
+        s.step();
+    }
+    assert_eq!(s.a.shard.budget().reserve_failures, failures);
+    // Releases by an unrelated peer advance the global epoch but cannot
+    // satisfy this peer/port's next record allocation.
+    for _ in 0..20 {
+        let unrelated = s.a.shard.memory_handle(PeerId(2)).try_allocate(1).unwrap();
+        drop(unrelated);
+        s.step();
+    }
+    assert_eq!(s.a.shard.budget().reserve_failures, failures);
+
+    drop(blocker);
+    s.step();
+    s.run_until(s.now + secs(3));
+    assert_eq!(s.b.conns[&client].received, payload.len() as u64);
+    assert!(s.a.shard.budget_wait_epoch().is_none());
+    let global = s.a.shard.budget().global().clone();
+    drop(s);
+    assert_eq!(global.reserved(), 0);
+}
+
+#[test]
+fn blocked_send_record_does_not_survive_iface_removal() {
+    let mut s = sim(841, LinkParams::default(), LinkParams::default());
+    let port_limit = 128 << 10;
+    s.a.shard.set_budget_limits(port_limit, port_limit, 8);
+    s.connect(40043, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(100));
+    let server = s.a.accepted[0];
+    assert_eq!(s.a.shard.write(server, &vec![1; 32 << 10]), WriteResult::Written(32 << 10));
+    let used = s.a.shard.budget().physical_used();
+    let blocker = s.a.shard.memory_handle(PeerId(1)).try_allocate(port_limit - used - 512).unwrap();
+    s.step();
+    assert!(s.a.shard.budget_wait_epoch().is_some());
+
+    s.a.shard.remove_iface(s.a.iface);
+    assert!(s.a.shard.budget_wait_epoch().is_none());
+    assert_eq!(s.a.shard.conn_count(), 0);
+    drop(blocker);
+    let global = s.a.shard.budget().global().clone();
+    drop(s);
+    assert_eq!(global.reserved(), 0);
+}
+
+#[test]
+fn borrowed_server_ingress_survives_packet_recycling_and_reordering() {
+    let link = LinkParams { reorder: 0.02, reorder_delay: Duration::from_millis(3), ..Default::default() };
+    let mut s = sim(837, link.clone(), link);
+    s.borrowed_server_ingress = true;
+    s.a.accept_template = AppConn { to_send: 2 << 20, fin_after_send: true, ..Default::default() };
+    let id = s.connect(40000, AppConn { to_send: 1 << 20, fin_after_send: true, ..Default::default() });
+    s.run_until(s.now + secs(30));
+    let server = &s.a.conns[&id];
+    let client = &s.b.conns[&id];
+    assert!(!server.corrupt && !client.corrupt, "borrowed RX corrupted after source packets were released");
+    assert_eq!(server.received, 1 << 20);
+    assert_eq!(client.received, 2 << 20);
+    assert!(server.eof && client.eof);
+}
+
+#[test]
+fn adapter_transfer_does_not_consume_tcp_receive_credit() {
+    let mut s = sim(838, LinkParams::default(), LinkParams::default());
+    s.a.accept_template.read_paused_until = s.now + secs(10);
+    s.connect(40001, AppConn { to_send: 256 << 10, ..Default::default() });
+    s.run_until(s.now + secs(1));
+    let server_id = s.a.accepted[0];
+    let charged = s.a.shard.budget().used;
+    let chunk = s.a.shard.read_chunk_for_adapter(s.now, server_id, 64 << 10).unwrap();
+    assert!(!chunk.is_empty());
+    assert_eq!(s.a.shard.budget().used, charged, "core-to-adapter transfer released receive credit");
+    let consumed = chunk.len() / 2;
+    s.a.shard.consume_adapter(s.now, server_id, consumed);
+    assert_eq!(s.a.shard.budget().used, charged - consumed as u64);
+}
+
+#[test]
 fn download_with_random_loss() {
     for (seed, loss) in [(2, 0.001), (3, 0.01), (4, 0.03), (5, 0.05)] {
         let down = LinkParams { loss, ..Default::default() };
@@ -235,8 +335,36 @@ fn many_connections_and_full_release() {
     assert_eq!(s.a.shard.conn_count(), 0);
     assert_eq!(s.b.shard.conn_count(), 0);
     assert_eq!(s.a.shard.budget().used, 0, "budget must return to 0");
+    assert_eq!(s.a.shard.budget().global().connection_counts(), (0, 0));
+    assert_eq!(s.b.shard.budget().global().connection_counts(), (0, 0));
+    assert_eq!(s.a.shard.budget().global().time_wait_bytes_reserved(), 0);
+    assert_eq!(s.b.shard.budget().global().time_wait_bytes_reserved(), 0);
     let (t, p, _) = s.a.shard.container_sizes();
     assert_eq!((t, p), (0, 0));
+    let a_budget = s.a.shard.budget().global().clone();
+    let b_budget = s.b.shard.budget().global().clone();
+    drop(s);
+    assert_eq!(a_budget.reserved(), 0, "server backing leases survived shard teardown");
+    assert_eq!(b_budget.reserved(), 0, "client backing leases survived shard teardown");
+}
+
+#[test]
+fn time_wait_compacts_and_preserves_expiry() {
+    let mut s = sim(912, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 4096, fin_after_send: true, ..Default::default() };
+    let id = s.connect(49000, AppConn { to_send: 4096, fin_after_send: true, ..Default::default() });
+    s.run_until(s.now + secs(5));
+    assert_download_ok(&s.b.conns[&id], 4096);
+    let (_, a_tw) = s.a.shard.half_open_and_time_wait();
+    let (_, b_tw) = s.b.shard.half_open_and_time_wait();
+    assert!(a_tw + b_tw > 0, "no TIME_WAIT state after both FINs");
+    let (a_active, a_reserved) = s.a.shard.budget().global().connection_counts();
+    let (b_active, b_reserved) = s.b.shard.budget().global().connection_counts();
+    assert!(a_reserved + b_reserved >= a_tw as u64 + b_tw as u64);
+    assert!(a_active + b_active < a_reserved + b_reserved, "TIME_WAIT retained full active permit");
+    s.run_until(s.now + secs(70));
+    assert_eq!(s.a.shard.budget().global().connection_counts(), (0, 0));
+    assert_eq!(s.b.shard.budget().global().connection_counts(), (0, 0));
 }
 
 #[test]

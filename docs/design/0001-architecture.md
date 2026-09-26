@@ -143,6 +143,8 @@ pub trait AdmissionPolicy {  // 同步判断，不许 await
 
 ## 5. 数据所有权与拷贝次数
 
+> 2026-09-25 接入修订：以下为最初的 sans-IO/目标快路径模型。zfc 生产适配的借用 RX、实际拷贝次数、allocation ledger、端口份额和 TIME_WAIT 生命周期以 [0004](0004-zfc-production-adapter.md) 为准；接入实现仍在进行，以 0004 的逐项状态为准。
+
 以下是按字节路径计算的**用户态拷贝次数**（内核 socket 收发与 WG 加密/解密本身不计入）。
 
 | 方向 | 现状（smoltcp，按 `netstack.rs` 核实） | zfstack，AsyncRead/Write 路径 | zfstack，chunk 快路径 |

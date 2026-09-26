@@ -13,9 +13,10 @@ pub struct StackConfig {
     pub max_rcv_buf: u32,
     /// Per-connection cap on sent-but-unacknowledged bytes (§6.5).
     pub max_snd_inflight: u32,
-    /// Unsent prefetch horizon: prefetch ≤ max(min_prefetch, pacing_rate × prefetch_time).
+    /// Unsent prefetch horizon, additionally bounded by `prefetch_max`.
     pub prefetch_time: Duration,
     pub min_prefetch: u32,
+    pub prefetch_max: u32,
     /// Writable events fire when at least this much send space is free (§4.4).
     pub write_low_watermark: u32,
     pub min_rto: Duration,
@@ -63,6 +64,8 @@ impl Default for StackConfig {
             max_snd_inflight: 16 << 20,
             prefetch_time: Duration::from_millis(20),
             min_prefetch: 64 * 1024,
+            // Preserve the library's original behavior unless the host sets a cap.
+            prefetch_max: u32::MAX,
             write_low_watermark: 16 * 1024,
             min_rto: Duration::from_millis(200),
             max_rto: Duration::from_secs(60),
