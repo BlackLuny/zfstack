@@ -1240,8 +1240,8 @@ impl<E: Egress, I, F> Drop for Driver<E, I, F> {
 mod tests {
     use super::*;
     use crate::sim::pattern_byte;
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
     use std::task::Wake;
     use tokio::io::AsyncWriteExt;
 
@@ -1295,7 +1295,9 @@ mod tests {
                 }
                 tokio::task::yield_now().await;
             }
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(*seen.lock().unwrap(), (0..33).collect::<Vec<_>>());
         assert!(handle.snapshot().await.is_some());
         task.shutdown_and_join().await.unwrap();
