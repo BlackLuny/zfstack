@@ -1624,6 +1624,11 @@ impl Shard {
         self.with_conn(id, |c, ctx| c.write(src, ctx)).unwrap_or(WriteResult::Closed)
     }
 
+    #[cfg(feature = "tokio")]
+    pub(crate) fn write_allocation_charge(&mut self, id: ConnId, bytes: usize) -> u64 {
+        self.with_conn(id, |c, ctx| c.write_allocation_charge(bytes, ctx.cfg)).unwrap_or(0)
+    }
+
     /// Free send space (bytes) right now.
     pub fn send_space(&mut self, id: ConnId) -> usize {
         let cfg = self.cfg.clone();
@@ -2357,10 +2362,10 @@ mod admission_tests {
         sh.set_budget_limits(819_200, 819_200, 64);
         let mut bufs: Vec<TxBuf> = (0..12).map(|_| TxBuf::default()).collect();
         for tx in &mut bufs {
-            assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(1), &[1]));
+            assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(1), &vec![1; crate::buf::TX_BLOCK]));
         }
         for tx in &mut bufs {
-            tx.consume(&mut sh.pool, 1);
+            tx.consume(&mut sh.pool, crate::buf::TX_BLOCK);
         }
         assert_eq!(sh.pool.cached(), 12);
         assert_eq!(global.cached_bytes(), 12 * TX_BLOCK_CHARGE);

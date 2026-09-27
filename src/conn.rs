@@ -977,6 +977,11 @@ impl Conn {
         self.rcvq_off = self.rcv_nxt;
     }
 
+    #[cfg(feature = "tokio")]
+    pub(crate) fn write_allocation_charge(&self, bytes: usize, cfg: &StackConfig) -> u64 {
+        self.tx.write_allocation_charge(bytes.min(self.send_space(cfg)))
+    }
+
     pub fn write(&mut self, src: &[u8], ctx: &mut Ctx) -> WriteResult {
         if !matches!(self.state, State::Established | State::CloseWait | State::SynReceived) || self.fin_off.is_some() {
             return WriteResult::Closed;

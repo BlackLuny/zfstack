@@ -1,6 +1,7 @@
 //! Byte storage for connections.
 //!
-//! * [`TxBuf`]: unacknowledged + unsent bytes in a ring of fixed-size blocks. Any
+//! * [`TxBuf`]: unacknowledged + unsent bytes in 64 KiB blocks, with an optional
+//!   2 KiB first block for small writes. Any
 //!   stream offset maps to (block, position) in O(1), so segmentation and
 //!   re-segmentation after an MSS change never copy (§10.4). A segment spans at
 //!   most two blocks.
@@ -15,6 +16,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::ops::{Deref, DerefMut};
 
 pub const TX_BLOCK: usize = 64 * 1024;
+const SMALL_TX_BLOCK: usize = 2048;
 const BLOCK_METADATA_BYTES: u64 = 64;
 pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
 const CHUNK_METADATA_BYTES: u64 = 64;
@@ -42,38 +44,48 @@ impl DerefMut for Block {
 #[derive(Default)]
 pub struct BlockPool {
     free: Vec<Block>,
+    small: Vec<Block>,
     pub max_cached: usize,
 }
 
 impl BlockPool {
     pub fn new(max_cached: usize) -> Self {
-        BlockPool { free: Vec::new(), max_cached }
+        BlockPool { free: Vec::new(), small: Vec::new(), max_cached }
     }
-    fn get(&mut self, budget: &mut Budget, peer: PeerId) -> Option<Block> {
-        if let Some(mut block) = self.free.pop() {
+    fn get(&mut self, budget: &mut Budget, peer: PeerId, size: usize) -> Option<Block> {
+        let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
+        if let Some(mut block) = free.pop() {
             if block.lease.assign(budget, peer) {
                 return Some(block);
             }
-            self.free.push(block);
+            free.push(block);
             return None;
         }
-        let lease = budget.try_allocate_kind(peer, TX_BLOCK_CHARGE, crate::budget::AllocationKind::TxBlock)?;
-        Some(Block { data: vec![0u8; TX_BLOCK].into_boxed_slice(), lease })
+        let lease = budget.try_allocate_kind(peer, size as u64 + BLOCK_METADATA_BYTES, crate::budget::AllocationKind::TxBlock)?;
+        Some(Block { data: vec![0u8; size].into_boxed_slice(), lease })
     }
     fn put(&mut self, mut b: Block) {
-        if self.free.len() < self.max_cached && b.lease.park_cached() {
-            self.free.push(b);
+        // A previous short-flow phase must not pin every cache slot and force
+        // subsequent bulk transfers to allocate a full block on every write.
+        if self.cached() == self.max_cached {
+            if b.len() == SMALL_TX_BLOCK { self.free.pop(); } else { self.small.pop(); }
+        }
+        if self.cached() < self.max_cached && b.lease.park_cached() {
+            if b.len() == SMALL_TX_BLOCK { self.small.push(b); } else { self.free.push(b); }
         }
     }
     pub fn cached(&self) -> usize {
-        self.free.len()
+        self.free.len() + self.small.len()
     }
     /// Drop every idle block, releasing its global and port share. Returns
     /// the number of blocks and bytes released.
     pub fn reclaim(&mut self) -> (usize, u64) {
-        let n = self.free.len();
+        let n = self.cached();
+        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE
+            + self.small.len() as u64 * (SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
         self.free = Vec::new();
-        (n, n as u64 * TX_BLOCK_CHARGE)
+        self.small = Vec::new();
+        (n, bytes)
     }
 }
 
@@ -95,15 +107,18 @@ impl TxBuf {
     }
     /// Bytes of block memory held.
     pub fn allocated(&self) -> usize {
-        self.blocks.len() * TX_BLOCK
+        self.blocks.front().map_or(0, |b| b.len() + (self.blocks.len() - 1) * TX_BLOCK)
     }
 
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
         let before = self.blocks.len();
         let Some(total) = self.head.checked_add(self.len).and_then(|n| n.checked_add(src.len())) else { return false };
-        let needed = total.div_ceil(TX_BLOCK);
+        let first_size = self.blocks.front().map_or_else(
+            || if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
+        let needed = if total == 0 { 0 } else { 1 + total.saturating_sub(first_size).div_ceil(TX_BLOCK) };
         while self.blocks.len() < needed {
-            let Some(block) = pool.get(budget, peer) else {
+            let size = if self.blocks.is_empty() { first_size } else { TX_BLOCK };
+            let Some(block) = pool.get(budget, peer, size) else {
                 while self.blocks.len() > before {
                     pool.put(self.blocks.pop_back().unwrap());
                 }
@@ -114,9 +129,8 @@ impl TxBuf {
         }
         while !src.is_empty() {
             let end = self.head + self.len;
-            let bi = end / TX_BLOCK;
-            let pos = end % TX_BLOCK;
-            let n = (TX_BLOCK - pos).min(src.len());
+            let (bi, pos) = self.position(end);
+            let n = (self.blocks[bi].len() - pos).min(src.len());
             self.blocks[bi][pos..pos + n].copy_from_slice(&src[..n]);
             self.len += n;
             src = &src[n..];
@@ -129,10 +143,10 @@ impl TxBuf {
         let n = n.min(self.len);
         self.head += n;
         self.len -= n;
-        while self.head >= TX_BLOCK {
+        while self.blocks.front().is_some_and(|b| self.head >= b.len()) {
             let b = self.blocks.pop_front().unwrap();
+            self.head -= b.len();
             pool.put(b);
-            self.head -= TX_BLOCK;
         }
         if self.len == 0 {
             // An idle connection, including TIME_WAIT, must not pin a 64 KiB
@@ -160,6 +174,22 @@ impl TxBuf {
         }
     }
 
+    // Only the first block may be small. Every following block can hold a
+    // maximum-size TCP segment, preserving the two-slice output contract.
+    fn position(&self, offset: usize) -> (usize, usize) {
+        let first = self.blocks.front().unwrap().len();
+        if offset < first { (0, offset) } else { (1 + (offset - first) / TX_BLOCK, (offset - first) % TX_BLOCK) }
+    }
+
+    #[cfg(any(test, feature = "tokio"))]
+    pub(crate) fn write_allocation_charge(&self, bytes: usize) -> u64 {
+        if self.blocks.is_empty() && bytes <= SMALL_TX_BLOCK {
+            SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES
+        } else {
+            TX_BLOCK_CHARGE
+        }
+    }
+
     /// Up to two slices covering `[off, off+len)`.
     pub fn slices(&self, off: usize, len: usize) -> [&[u8]; 2] {
         debug_assert!(off + len <= self.len);
@@ -167,9 +197,8 @@ impl TxBuf {
             return [&[], &[]];
         }
         let abs = self.head + off;
-        let bi = abs / TX_BLOCK;
-        let pos = abs % TX_BLOCK;
-        let first = (TX_BLOCK - pos).min(len);
+        let (bi, pos) = self.position(abs);
+        let first = (self.blocks[bi].len() - pos).min(len);
         let a = &self.blocks[bi][pos..pos + first];
         if first == len {
             [a, &[]]
@@ -655,6 +684,112 @@ mod tests {
     }
 
     #[test]
+    fn small_first_block_crosses_into_full_blocks_and_survives_partial_ack() {
+        let mut pool = BlockPool::new(4);
+        let global = crate::budget::GlobalBudget::new(2 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut tx = TxBuf::default();
+        let mut expected: Vec<u8> = (0..1900).map(|n| (n % 251) as u8).collect();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &expected));
+        assert_eq!(tx.allocated(), SMALL_TX_BLOCK);
+        assert_eq!(budget.physical_used(), SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        let tail: Vec<u8> = (0..2 * TX_BLOCK).map(|n| (n % 239) as u8).collect();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &tail));
+        expected.extend_from_slice(&tail);
+        // A maximum segment beginning at the last byte of the small block
+        // must still fit in exactly two slices, including on retransmission.
+        for off in [0, SMALL_TX_BLOCK - 1, SMALL_TX_BLOCK, SMALL_TX_BLOCK + TX_BLOCK - 1] {
+            let n = TX_BLOCK.min(expected.len() - off);
+            let [a, b] = tx.slices(off, n);
+            assert_eq!([a, b].concat(), expected[off..off + n]);
+        }
+        for consumed in [17, SMALL_TX_BLOCK - 18, 2, TX_BLOCK - 1] {
+            tx.consume(&mut pool, consumed);
+            expected.drain(..consumed);
+            let n = TX_BLOCK.min(expected.len());
+            let [a, b] = tx.slices(0, n);
+            assert_eq!([a, b].concat(), expected[..n]);
+        }
+        tx.release_all(&mut pool);
+        let (count, bytes) = pool.reclaim();
+        assert_eq!(count, 3);
+        assert_eq!(bytes, 2 * TX_BLOCK_CHARGE + SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn small_tx_growth_failure_preserves_data_and_wait_size() {
+        let small_charge = SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+        let global = crate::budget::GlobalBudget::new(small_charge);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(small_charge, small_charge, 4);
+        let mut pool = BlockPool::new(0);
+        let mut tx = TxBuf::default();
+        assert_eq!(tx.write_allocation_charge(8), small_charge);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), b"response"));
+        assert_eq!(tx.write_allocation_charge(TX_BLOCK), TX_BLOCK_CHARGE);
+        assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &vec![7; TX_BLOCK]));
+        assert_eq!(tx.len(), 8);
+        assert_eq!(tx.slices(0, 8)[0], b"response");
+        assert_eq!(global.reserved(), small_charge);
+        tx.release_all(&mut pool);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn small_cached_block_moves_between_peers_and_waiter_fits_its_actual_size() {
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        struct Wake(AtomicUsize);
+        impl std::task::Wake for Wake { fn wake(self: Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); } }
+        let charge = SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+        let global = crate::budget::GlobalBudget::new(2 * charge);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(2 * charge, charge, 4);
+        let mut pool = BlockPool::new(1);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[3]));
+        tx.consume(&mut pool, 1);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[4]));
+        assert_eq!(budget.physical_used(), charge);
+        let memory = budget.memory_handle(PeerId(2));
+        let wake = Arc::new(Wake(AtomicUsize::new(0)));
+        let waiter = global.new_waiter_id();
+        let waiting = TxBuf::default();
+        assert!(memory.try_allocate_kind(charge, crate::budget::AllocationKind::TxBlock).is_none());
+        global.register_physical_waiter(waiter, global.release_epoch(), &std::task::Waker::from(wake.clone()), &memory,
+            waiting.write_allocation_charge(1), crate::budget::AllocationKind::TxBlock);
+        assert_eq!(wake.0.load(Ordering::Relaxed), 0);
+        tx.release_all(&mut pool);
+        assert!(wake.0.load(Ordering::Relaxed) > 0);
+        global.remove_waiter(waiter);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[5]));
+    }
+
+    #[test]
+    fn cache_switches_size_classes_without_growing_its_slot_limit() {
+        let global = crate::budget::GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(1);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1]));
+        tx.consume(&mut pool, 1);
+        assert_eq!(pool.small.len(), 1);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![2; TX_BLOCK]));
+        tx.consume(&mut pool, TX_BLOCK);
+        assert_eq!((pool.small.len(), pool.free.len()), (0, 1));
+        let ptr = pool.free[0].as_ptr();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; TX_BLOCK]));
+        assert_eq!(tx.blocks[0].as_ptr(), ptr, "bulk block must be reused after short-flow cache occupancy");
+        tx.consume(&mut pool, TX_BLOCK);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
+        tx.consume(&mut pool, 1);
+        assert_eq!((pool.small.len(), pool.free.len()), (1, 0));
+        assert_eq!(pool.cached(), 1);
+        pool.reclaim();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
     fn tx_ring() {
         let mut pool = BlockPool::new(4);
         let mut tx = TxBuf::default();
@@ -684,15 +819,15 @@ mod tests {
         budget.set_limits(2 * block_charge, block_charge, 4);
         let mut pool = BlockPool::new(1);
         let mut first = TxBuf::default();
-        assert!(first.push(&mut pool, &mut budget, PeerId(1), &[7]));
+        assert!(first.push(&mut pool, &mut budget, PeerId(1), &vec![7; TX_BLOCK]));
         assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
-        first.consume(&mut pool, 1);
+        first.consume(&mut pool, TX_BLOCK);
         assert_eq!(pool.cached(), 1);
         assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
         let mut second = TxBuf::default();
-        assert!(second.push(&mut pool, &mut budget, PeerId(2), &[9]));
+        assert!(second.push(&mut pool, &mut budget, PeerId(2), &vec![9; TX_BLOCK]));
         assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
-        second.consume(&mut pool, 1);
+        second.consume(&mut pool, TX_BLOCK);
         drop(pool);
         assert_eq!(budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
@@ -707,10 +842,10 @@ mod tests {
         let mut second_pool = BlockPool::new(16);
         let mut first = TxBuf::default();
         let mut second = TxBuf::default();
-        assert!(first.push(&mut first_pool, &mut first_budget, PeerId(1), &[1]));
-        assert!(second.push(&mut second_pool, &mut second_budget, PeerId(2), &[2]));
-        first.consume(&mut first_pool, 1);
-        second.consume(&mut second_pool, 1);
+        assert!(first.push(&mut first_pool, &mut first_budget, PeerId(1), &vec![1; TX_BLOCK]));
+        assert!(second.push(&mut second_pool, &mut second_budget, PeerId(2), &vec![2; TX_BLOCK]));
+        first.consume(&mut first_pool, TX_BLOCK);
+        second.consume(&mut second_pool, TX_BLOCK);
         assert_eq!(first_pool.cached() + second_pool.cached(), 1);
         assert_eq!(global.cached_bytes(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
         drop((first_pool, second_pool));

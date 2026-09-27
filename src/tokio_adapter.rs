@@ -823,6 +823,7 @@ where
 
     async fn run(mut self) {
         let mut more_work = false;
+        let mut ingress_batch = Vec::with_capacity(16);
         loop {
             if self.stop.load(Ordering::Acquire) {
                 break;
@@ -851,19 +852,22 @@ where
                     let Some(cmd) = cmd else { break };
                     self.handle_cmd(cmd);
                 }
-                pkt = async {
+                count = async {
                     match self.input.as_mut() {
-                        Some(source) => source.rx.recv().await,
+                        Some(source) => source.rx.recv_many(&mut ingress_batch, 16).await,
                         None => std::future::pending().await,
                     }
                 } => {
-                    match pkt {
-                        Some(pkt) => {
+                    if count == 0 {
+                        self.input = None;
+                    } else {
+                        // Bound the batch so control commands and egress still
+                        // get a service round under sustained ingress.
+                        for pkt in ingress_batch.drain(..) {
                             let now = self.now();
                             let source = self.input.as_mut().unwrap();
                             (source.handle)(&mut self.shard, now, pkt);
                         }
-                        None => self.input = None,
                     }
                 }
                 _ = ctl.notify.notified() => {}
@@ -1161,7 +1165,7 @@ where
                             observed,
                             &sh.driver_wake,
                             &sh.memory,
-                            crate::buf::TX_BLOCK_CHARGE,
+                            self.shard.write_allocation_charge(id, n),
                             AllocationKind::TxBlock,
                         );
                         break;
@@ -1236,6 +1240,7 @@ impl<E: Egress, I, F> Drop for Driver<E, I, F> {
 mod tests {
     use super::*;
     use crate::sim::pattern_byte;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::task::Wake;
     use tokio::io::AsyncWriteExt;
@@ -1259,6 +1264,40 @@ mod tests {
         let error = tokio::time::timeout(std::time::Duration::from_secs(1), task.wait_finished()).await.unwrap().unwrap_err();
         assert!(error.is_panic());
         assert!(handle.snapshot().await.is_none());
+        task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn source_batch_preserves_order_and_closed_source_keeps_driver_alive() {
+        let (ingress_tx, ingress_rx) = mpsc::channel(64);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_by_driver = Arc::clone(&seen);
+        let (handle, _acceptor, _ids, task) = spawn_with_source(
+            StackConfig::default(),
+            StreamConfig::default(),
+            vec![IfaceConfig::default()],
+            |_iface: IfaceId, _peer: PeerId, _packet: &OutPacket<'_>| SendResult::Accepted,
+            GlobalBudget::new(1 << 20),
+            ResourceLimits { port_bytes: 1 << 20, peer_bytes: 1 << 20, peer_max_connections: 1 },
+            ingress_rx,
+            move |_shard: &mut Shard, _now: crate::Instant, packet: usize| {
+                seen_by_driver.lock().unwrap().push(packet);
+            },
+        );
+        for packet in 0..33 {
+            ingress_tx.try_send(packet).unwrap();
+        }
+        drop(ingress_tx);
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if seen.lock().unwrap().len() == 33 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        }).await.unwrap();
+        assert_eq!(*seen.lock().unwrap(), (0..33).collect::<Vec<_>>());
+        assert!(handle.snapshot().await.is_some());
         task.shutdown_and_join().await.unwrap();
     }
 
