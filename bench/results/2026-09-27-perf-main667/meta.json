@@ -1,0 +1,79 @@
+{
+  "args": {
+    "name": "perf-main667",
+    "bin": "/workspace/target/release/zfbench",
+    "stacks": [
+      "kernel-cubic",
+      "smoltcp-cubic",
+      "smoltcp-bbr",
+      "zfstack-cubic",
+      "zfstack-bbr"
+    ],
+    "baseline": "smoltcp-cubic",
+    "tests": [
+      "down",
+      "up",
+      "mixed",
+      "connect"
+    ],
+    "rate": 200.0,
+    "rtts": [
+      12.0,
+      80.0
+    ],
+    "losses": [
+      0.0,
+      0.01
+    ],
+    "queues": [
+      2.0,
+      0.25
+    ],
+    "flows": [
+      1,
+      8
+    ],
+    "mixed_rtts": [
+      12.0,
+      80.0
+    ],
+    "mixed_queues": [
+      2.0,
+      0.25
+    ],
+    "connect_rtt": 12.0,
+    "conns": 2000,
+    "concurrency": 64,
+    "secs": 15,
+    "warmup": 3,
+    "reps": 3,
+    "seed": 1,
+    "client_cc": "cubic",
+    "quick": false,
+    "resume": false,
+    "outdir": "/workspace/bench/results/2026-09-27-perf-main667",
+    "report_only": null,
+    "dry_run": false,
+    "wg_server": null,
+    "client_wg": "auto",
+    "extra": []
+  },
+  "stacks": [
+    "kernel-cubic",
+    "smoltcp-cubic",
+    "smoltcp-bbr",
+    "zfstack-cubic",
+    "zfstack-bbr"
+  ],
+  "env": {
+    "uname": "Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC Thu Sep 24 16:04:37 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux",
+    "nproc": 4,
+    "zfstack_commit": "940533ad4468f2f7be1d8f6804caddf6b5e4d4b0",
+    "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
+    "net.ipv4.tcp_rmem": "4096 131072 6291456",
+    "net.ipv4.tcp_wmem": "4096 16384 4194304",
+    "net.ipv4.tcp_congestion_control": "cubic"
+  },
+  "started": "2026-09-27T11:57:31",
+  "finished": "2026-09-27T14:57:29"
+}
