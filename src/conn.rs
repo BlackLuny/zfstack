@@ -849,7 +849,9 @@ impl Conn {
     }
 
     pub(crate) fn notify_writable(&mut self, ev: &mut VecDeque<Event>, cfg: &StackConfig, budget: &Budget) {
-        if self.want_write && self.accepted && self.fin_off.is_none()
+        if self.want_write
+            && self.accepted
+            && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
             && self.send_space(cfg, budget) >= cfg.write_low_watermark as usize
         {
@@ -861,7 +863,9 @@ impl Conn {
     /// Only share-bound writers need a retry on another connection's release.
     /// Congestion/window-bound writers continue to wait for their own ACKs.
     pub(crate) fn share_write_blocked(&self, cfg: &StackConfig, budget: &Budget) -> bool {
-        self.want_write && self.accepted && self.fin_off.is_none()
+        self.want_write
+            && self.accepted
+            && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
             && budget.send_share(self.peer) < self.sndbuf_limit(cfg)
             && self.send_space(cfg, budget) < cfg.write_low_watermark as usize

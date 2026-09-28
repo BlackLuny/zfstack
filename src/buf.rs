@@ -68,10 +68,18 @@ impl BlockPool {
         // A previous short-flow phase must not pin every cache slot and force
         // subsequent bulk transfers to allocate a full block on every write.
         if self.cached() == self.max_cached {
-            if b.len() == SMALL_TX_BLOCK { self.free.pop(); } else { self.small.pop(); }
+            if b.len() == SMALL_TX_BLOCK {
+                self.free.pop();
+            } else {
+                self.small.pop();
+            }
         }
         if self.cached() < self.max_cached && b.lease.park_cached() {
-            if b.len() == SMALL_TX_BLOCK { self.small.push(b); } else { self.free.push(b); }
+            if b.len() == SMALL_TX_BLOCK {
+                self.small.push(b);
+            } else {
+                self.free.push(b);
+            }
         }
     }
     pub fn cached(&self) -> usize {
@@ -81,8 +89,7 @@ impl BlockPool {
     /// the number of blocks and bytes released.
     pub fn reclaim(&mut self) -> (usize, u64) {
         let n = self.cached();
-        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE
-            + self.small.len() as u64 * (SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * (SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
         self.free = Vec::new();
         self.small = Vec::new();
         (n, bytes)
@@ -113,8 +120,7 @@ impl TxBuf {
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
         let before = self.blocks.len();
         let Some(total) = self.head.checked_add(self.len).and_then(|n| n.checked_add(src.len())) else { return false };
-        let first_size = self.blocks.front().map_or_else(
-            || if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
+        let first_size = self.blocks.front().map_or_else(|| if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
         let needed = if total == 0 { 0 } else { 1 + total.saturating_sub(first_size).div_ceil(TX_BLOCK) };
         while self.blocks.len() < needed {
             let size = if self.blocks.is_empty() { first_size } else { TX_BLOCK };
@@ -178,7 +184,11 @@ impl TxBuf {
     // maximum-size TCP segment, preserving the two-slice output contract.
     fn position(&self, offset: usize) -> (usize, usize) {
         let first = self.blocks.front().unwrap().len();
-        if offset < first { (0, offset) } else { (1 + (offset - first) / TX_BLOCK, (offset - first) % TX_BLOCK) }
+        if offset < first {
+            (0, offset)
+        } else {
+            (1 + (offset - first) / TX_BLOCK, (offset - first) % TX_BLOCK)
+        }
     }
 
     #[cfg(any(test, feature = "tokio"))]
@@ -738,9 +748,16 @@ mod tests {
 
     #[test]
     fn small_cached_block_moves_between_peers_and_waiter_fits_its_actual_size() {
-        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
         struct Wake(AtomicUsize);
-        impl std::task::Wake for Wake { fn wake(self: Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); } }
+        impl std::task::Wake for Wake {
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
         let charge = SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
         let global = crate::budget::GlobalBudget::new(2 * charge);
         let mut budget = Budget::new(global.clone());
@@ -756,8 +773,14 @@ mod tests {
         let waiter = global.new_waiter_id();
         let waiting = TxBuf::default();
         assert!(memory.try_allocate_kind(charge, crate::budget::AllocationKind::TxBlock).is_none());
-        global.register_physical_waiter(waiter, global.release_epoch(), &std::task::Waker::from(wake.clone()), &memory,
-            waiting.write_allocation_charge(1), crate::budget::AllocationKind::TxBlock);
+        global.register_physical_waiter(
+            waiter,
+            global.release_epoch(),
+            &std::task::Waker::from(wake.clone()),
+            &memory,
+            waiting.write_allocation_charge(1),
+            crate::budget::AllocationKind::TxBlock,
+        );
         assert_eq!(wake.0.load(Ordering::Relaxed), 0);
         tx.release_all(&mut pool);
         assert!(wake.0.load(Ordering::Relaxed) > 0);

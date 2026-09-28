@@ -1118,9 +1118,7 @@ impl Budget {
     /// global budget is nearly empty.
     pub fn level_for(&self, peer: PeerId) -> Pressure {
         let port = self.global.level_within(self.physical_used(), self.port_limit);
-        let peer_level = self.physical_peers.get(&peer).map_or(Pressure::Free, |p| {
-            self.global.level_within(p.used.load(Ordering::Relaxed), self.peer_limit)
-        });
+        let peer_level = self.physical_peers.get(&peer).map_or(Pressure::Free, |p| self.global.level_within(p.used.load(Ordering::Relaxed), self.peer_limit));
         self.global.level().max(port).max(peer_level)
     }
 
@@ -1149,8 +1147,7 @@ impl Budget {
             let n = u64::from(senders) + 1;
             total.saturating_sub(n) / n
         };
-        let blocks = share_blocks(self.port_limit, self.senders)
-            .min(share_blocks(self.peer_limit, self.peers.get(&peer).map_or(0, |p| p.senders)));
+        let blocks = share_blocks(self.port_limit, self.senders).min(share_blocks(self.peer_limit, self.peers.get(&peer).map_or(0, |p| p.senders)));
         (blocks * crate::buf::TX_BLOCK as u64).clamp(floor, hi)
     }
 

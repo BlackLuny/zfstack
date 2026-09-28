@@ -932,7 +932,14 @@ where
                         .filter_map(|(&id, shared)| {
                             let core = self.shard.info(id)?;
                             let q = shared.q.lock().unwrap();
-                            Some(TailConnection { id, core, adapter_tx_queued: q.tx.len(), adapter_rx_queued: q.rx_len, write_parked: q.write_parked, send_room: q.send_room })
+                            Some(TailConnection {
+                                id,
+                                core,
+                                adapter_tx_queued: q.tx.len(),
+                                adapter_rx_queued: q.rx_len,
+                                write_parked: q.write_parked,
+                                send_room: q.send_room,
+                            })
                         })
                         .collect()
                 } else {
@@ -1218,8 +1225,7 @@ where
             let share = self.shard.send_share(sh.peer);
             let core_tx = self.shard.tx_queued(id).unwrap_or(0) as u64;
             q.send_room = share.saturating_sub(core_tx + q.tx.len() as u64).min(usize::MAX as u64) as usize;
-            let wakeable = q.write_parked
-                && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= cfg.tx_low_watermark;
+            let wakeable = q.write_parked && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= cfg.tx_low_watermark;
             if wakeable {
                 q.write_parked = false;
                 wake_writer = q.write_waker.take();
@@ -1286,8 +1292,8 @@ impl<E: Egress, I, F> Drop for Driver<E, I, F> {
 mod tests {
     use super::*;
     use crate::sim::pattern_byte;
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
     use std::task::Wake;
     use tokio::io::AsyncWriteExt;
 
@@ -1341,7 +1347,9 @@ mod tests {
                 }
                 tokio::task::yield_now().await;
             }
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(*seen.lock().unwrap(), (0..33).collect::<Vec<_>>());
         assert!(handle.snapshot().await.is_some());
         task.shutdown_and_join().await.unwrap();
@@ -2016,8 +2024,17 @@ mod tests {
                             sn.tail_connections.iter().find(|t| ids.get(k) == Some(&t.id)).map(|t| {
                                 format!(
                                     "state={:?} cwnd={} snd_wnd={} txq={} unsent={} pipe={} pace={:?} atxq={} room={} parked={} want_write={}",
-                                    t.core.state, t.core.cwnd, t.core.snd_wnd, t.core.tx_queued, t.core.tx_unsent, t.core.pipe,
-                                    t.core.pacing_rate, t.adapter_tx_queued, t.send_room, t.write_parked, t.core.want_write
+                                    t.core.state,
+                                    t.core.cwnd,
+                                    t.core.snd_wnd,
+                                    t.core.tx_queued,
+                                    t.core.tx_unsent,
+                                    t.core.pipe,
+                                    t.core.pacing_rate,
+                                    t.adapter_tx_queued,
+                                    t.send_room,
+                                    t.write_parked,
+                                    t.core.want_write
                                 )
                             })
                         });
@@ -2126,12 +2143,9 @@ mod tests {
         // zfc #674: three clients stop reading from t=1s to t=7s. Pre-fix the
         // healthy streams made zero progress for the whole window.
         let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 1 << 20));
-        let pauses: Vec<_> = (0..3u16)
-            .map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7)))
-            .collect();
-        let (samples, finished) = download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30))
-            .await
-            .expect("six streams with three paused");
+        let pauses: Vec<_> = (0..3u16).map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7))).collect();
+        let (samples, finished) =
+            download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30)).await.expect("six streams with three paused");
         for k in 3..6 {
             let w = window_samples(&samples[k], std::time::Duration::from_secs(1), std::time::Duration::from_secs(7));
             assert!(longest_flat(w) <= MAX_FLAT_SAMPLES, "healthy conn {k} stalled: {w:?}");
@@ -2151,20 +2165,11 @@ mod tests {
         // Three paused streams fill their shares first; the connection joining
         // at t=2s must still complete while they remain paused (#674 §3).
         let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 1 << 20));
-        let pauses: Vec<_> = (0..3u16)
-            .map(|k| (k, std::time::Duration::ZERO, std::time::Duration::from_secs(12)))
-            .collect();
-        let (_samples, finished) = download_pauses(
-            &mut server,
-            20_000,
-            3,
-            0,
-            &pauses,
-            Some(std::time::Duration::from_secs(2)),
-            std::time::Duration::from_secs(30),
-        )
-        .await
-        .expect("late stream next to stopped readers");
+        let pauses: Vec<_> = (0..3u16).map(|k| (k, std::time::Duration::ZERO, std::time::Duration::from_secs(12))).collect();
+        let (_samples, finished) =
+            download_pauses(&mut server, 20_000, 3, 0, &pauses, Some(std::time::Duration::from_secs(2)), std::time::Duration::from_secs(30))
+                .await
+                .expect("late stream next to stopped readers");
         let late = finished[3].expect("late stream never finished");
         assert!(late < std::time::Duration::from_secs(12), "late stream finished at {late:?}, after the pause ended");
         server.task.shutdown_and_join().await.unwrap();
@@ -2177,13 +2182,9 @@ mod tests {
         // progress through the pause window.
         let profile = Profile { port_bytes: 819_200, peer_bytes: 409_600, peers: 2, charge_egress: false, per_conn: 1 << 20 };
         let mut server = limited_server(GlobalBudget::new(8 << 20), profile);
-        let pauses: Vec<_> = [0u16, 2]
-            .into_iter()
-            .map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7)))
-            .collect();
-        let (samples, finished) = download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30))
-            .await
-            .expect("peers with stopped readers");
+        let pauses: Vec<_> = [0u16, 2].into_iter().map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7))).collect();
+        let (samples, finished) =
+            download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30)).await.expect("peers with stopped readers");
         for k in [1usize, 3, 4, 5] {
             let w = window_samples(&samples[k], std::time::Duration::from_secs(1), std::time::Duration::from_secs(7));
             assert!(longest_flat(w) <= MAX_FLAT_SAMPLES, "healthy conn {k} stalled: {w:?}");
@@ -2193,7 +2194,6 @@ mod tests {
     }
 
     const SECS: std::time::Duration = std::time::Duration::from_secs(30);
-
 
     #[tokio::test(flavor = "current_thread")]
     async fn adapter_queues_do_not_starve_core_tx_blocks() {

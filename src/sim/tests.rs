@@ -939,7 +939,9 @@ fn assert_share_growth_writable(read_before_run: bool) {
     s.a.shard.run(s.now, &mut sink);
     let mut writable = false;
     while let Some(ev) = s.a.shard.poll_event() {
-        if matches!(ev, Event::Writable(id) if id == x) { writable = true; }
+        if matches!(ev, Event::Writable(id) if id == x) {
+            writable = true;
+        }
     }
     assert!(writable, "share grew, but no Writable event was emitted");
     assert!(s.a.shard.budget_wait_epoch().is_none());
