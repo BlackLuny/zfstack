@@ -114,6 +114,8 @@ pub struct ConnInfo {
     pub lost: u64,
     pub retrans_out: u64,
     pub in_recovery: bool,
+    /// App-level write interest is registered (a Writable event follows room).
+    pub want_write: bool,
     pub delivered: u64,
     pub cc: &'static str,
     pub cc_debug: String,

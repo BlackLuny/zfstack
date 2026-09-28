@@ -885,3 +885,72 @@ fn lost_lone_segment_is_probed_before_rto() {
     println!("lone segment repaired after {took:?} ({st:?})");
     assert!(took < Duration::from_millis(150), "lone segment took {took:?} to repair (RTO-bound)");
 }
+
+#[test]
+fn send_share_port_pressure_must_not_stop_a_reading_receiver() {
+    // Unrelated held TX/cache memory exceeds the local pressure threshold,
+    // but leaves enough physical room for this receiver to keep draining.
+    // Exercise both a pressured port and a pressured peer on a roomy port.
+    for port_limit in [819_200, 1_638_400] {
+        let mut s = sim(67401, LinkParams::default(), LinkParams::default());
+        s.b.shard.set_budget_limits(port_limit, 819_200, 128);
+        let _held = s.b.shard.memory_handle(PeerId(1)).try_allocate(550_000).unwrap();
+        let (_, c) = download(&mut s, 1 << 20, secs(10));
+        assert_download_ok(&c, 1 << 20);
+    }
+}
+
+#[test]
+fn send_share_growth_emits_writable_without_own_ack() {
+    assert_share_growth_writable(false);
+    assert_share_growth_writable(true);
+}
+
+fn assert_share_growth_writable(read_before_run: bool) {
+    let mut cfg = StackConfig::default();
+    cfg.min_prefetch = 1 << 20;
+    cfg.prefetch_max = 1 << 20;
+    let mut s = Sim::new(67402, cfg, StackConfig::default(), LinkParams::default(), LinkParams::default());
+    s.a.shard.set_budget_limits(819_200, 819_200, 128);
+    s.connect(41001, AppConn::default());
+    s.connect(41002, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(100));
+    let x = s.a.accepted[0];
+    let y = s.a.accepted[1];
+    assert_eq!(s.a.shard.write(x, &vec![1; 16 << 10]), WriteResult::Written(16 << 10));
+    assert_eq!(s.a.shard.write(y, &vec![1; 16 << 10]), WriteResult::Written(16 << 10));
+    let room = s.a.shard.send_space(x);
+    assert_eq!(s.a.shard.write(x, &vec![1; room]), WriteResult::Written(room));
+    assert_eq!(s.a.shard.write(x, &[1]), WriteResult::QuotaBlocked);
+    while s.a.shard.poll_event().is_some() {}
+    assert!(s.a.shard.budget_wait_epoch().is_some(), "share writer must arm the driver release wake");
+    let mut sink = |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Full;
+    // An unrelated allocation release must not emit a false Writable.
+    drop(s.a.shard.memory_handle(PeerId(2)).try_allocate(1).unwrap());
+    s.a.shard.run(s.now, &mut sink);
+    assert!(!std::iter::from_fn(|| s.a.shard.poll_event()).any(|ev| matches!(ev, Event::Writable(id) if id == x)));
+    assert!(s.a.shard.budget_wait_epoch().is_some());
+    s.a.shard.abort(y);
+    assert!(s.a.shard.send_space(x) >= 64 << 10);
+    // Visiting x before run must not silently drop the now-satisfied waiter.
+    if read_before_run {
+        let _ = s.a.shard.read(s.now, x, &mut [0u8; 1]);
+    }
+    s.a.shard.run(s.now, &mut sink);
+    let mut writable = false;
+    while let Some(ev) = s.a.shard.poll_event() {
+        if matches!(ev, Event::Writable(id) if id == x) { writable = true; }
+    }
+    assert!(writable, "share grew, but no Writable event was emitted");
+    assert!(s.a.shard.budget_wait_epoch().is_none());
+    s.a.shard.run(s.now, &mut sink);
+    assert!(!std::iter::from_fn(|| s.a.shard.poll_event()).any(|ev| matches!(ev, Event::Writable(id) if id == x)), "no duplicate Writable");
+    // Re-arm, then destroy the waiting connection: no stale release wake
+    // may survive for a future occupant of this slot.
+    let room = s.a.shard.send_space(x);
+    assert_eq!(s.a.shard.write(x, &vec![1; room]), WriteResult::Written(room));
+    assert_eq!(s.a.shard.write(x, &[1]), WriteResult::QuotaBlocked);
+    assert!(s.a.shard.budget_wait_epoch().is_some());
+    s.a.shard.abort(x);
+    assert!(s.a.shard.budget_wait_epoch().is_none());
+}

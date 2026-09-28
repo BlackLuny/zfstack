@@ -38,6 +38,13 @@ const META_RESERVE: u64 = {
     }
 };
 
+/// Smallest per-connection share of a port/peer send budget
+/// (docs/design/0007 §2.2). One TX block keeps the minimum in-flight quantum
+/// (cwnd floors at a few MSS) plus the adapter queue moving no matter how
+/// many connections share the level, while halving what a stopped reader
+/// pins compared to two blocks.
+pub const MIN_SEND_SHARE: u64 = crate::buf::TX_BLOCK as u64;
+
 /// Physical use of one port or peer level. The global level keeps the same
 /// counters on [`GlobalBudget`].
 #[derive(Debug, Default)]
@@ -539,6 +546,22 @@ impl GlobalBudget {
             Pressure::Free
         }
     }
+
+    /// Pressure of one port/peer level with the same proportions as the
+    /// global gauge (docs/design/0007 §2.5).
+    pub fn level_within(&self, used: u64, limit: u64) -> Pressure {
+        let used = used as u128;
+        let limit = limit as u128;
+        if used >= limit {
+            Pressure::High
+        } else if used * 8 >= limit * 5 {
+            Pressure::Pressure
+        } else if used * 8 >= limit * 3 {
+            Pressure::Low
+        } else {
+            Pressure::Free
+        }
+    }
 }
 
 fn reserve_count(count: &AtomicU64, limit: u64) -> bool {
@@ -788,6 +811,9 @@ pub enum Pressure {
 pub struct PeerUsage {
     pub bytes: u64,
     pub conns: u32,
+    /// Connections of this peer currently holding send-side bytes
+    /// (docs/design/0007 §2.2).
+    pub senders: u32,
 }
 
 /// Progress rank of a physical allocation (docs/design/0005 §2). A lower rank
@@ -894,6 +920,8 @@ pub enum Level {
 pub struct PortStats {
     failures: Mutex<KindCounts>,
     by_level: [AtomicU64; 3],
+    /// Writes rejected by the per-connection send share (docs/design/0007 §5).
+    share_blocked: AtomicU64,
 }
 
 impl PortStats {
@@ -902,6 +930,14 @@ impl PortStats {
         if let Some(level) = level {
             self.by_level[level as usize].fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    pub(crate) fn note_share_blocked(&self) {
+        self.share_blocked.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn share_blocked(&self) -> u64 {
+        self.share_blocked.load(Ordering::Relaxed)
     }
 
     pub fn failures(&self) -> KindCounts {
@@ -925,6 +961,9 @@ pub struct Budget {
     pub peers: HashMap<PeerId, PeerUsage>,
     pub peer_limit: u64,
     pub peer_max_conns: u32,
+    /// Connections currently holding send-side bytes on this port
+    /// (docs/design/0007 §2.2).
+    senders: u32,
     stats: Arc<PortStats>,
 }
 
@@ -941,6 +980,7 @@ impl Budget {
             peers: HashMap::new(),
             peer_limit,
             peer_max_conns: 4096,
+            senders: 0,
             stats: Arc::default(),
         }
     }
@@ -1072,6 +1112,66 @@ impl Budget {
         self.global.level()
     }
 
+    /// Highest pressure across the global, port and this peer's level, each
+    /// measured against its own share (docs/design/0007 §2.5). Receive-side
+    /// gating uses this so a full port/peer tightens windows even while the
+    /// global budget is nearly empty.
+    pub fn level_for(&self, peer: PeerId) -> Pressure {
+        let port = self.global.level_within(self.physical_used(), self.port_limit);
+        let peer_level = self.physical_peers.get(&peer).map_or(Pressure::Free, |p| {
+            self.global.level_within(p.used.load(Ordering::Relaxed), self.peer_limit)
+        });
+        self.global.level().max(port).max(peer_level)
+    }
+
+    /// Connections holding send-side bytes on this port (docs/design/0007 §2.2).
+    pub fn senders(&self) -> u32 {
+        self.senders
+    }
+
+    /// Writes rejected by the per-connection send share.
+    pub fn share_blocked(&self) -> u64 {
+        self.stats.share_blocked()
+    }
+
+    /// Per-connection send share in bytes (docs/design/0007 §2.2). Both the
+    /// port and the peer level constrain; within a level the share splits per
+    /// sender, always leaving one share for the next connection. The share is
+    /// counted in whole TX blocks against the physical charge, with one block
+    /// per sender reserved for the partial-buffer-plus-partial-queue
+    /// transient, so honoured shares also fit the physical limit. The floor
+    /// keeps a minimal in-flight quantum no matter the sender count.
+    pub fn send_share(&self, peer: PeerId) -> u64 {
+        let hi = self.port_limit.min(self.peer_limit);
+        let floor = MIN_SEND_SHARE.min(hi);
+        let share_blocks = |limit: u64, senders: u32| {
+            let total = limit / crate::buf::TX_BLOCK_CHARGE;
+            let n = u64::from(senders) + 1;
+            total.saturating_sub(n) / n
+        };
+        let blocks = share_blocks(self.port_limit, self.senders)
+            .min(share_blocks(self.peer_limit, self.peers.get(&peer).map_or(0, |p| p.senders)));
+        (blocks * crate::buf::TX_BLOCK as u64).clamp(floor, hi)
+    }
+
+    pub(crate) fn sender_add(&mut self, peer: PeerId) {
+        self.senders += 1;
+        self.peers.entry(peer).or_default().senders += 1;
+    }
+
+    /// A connection emptied its send side or went away: every other sender's
+    /// share just grew, so parked senders re-evaluate.
+    pub(crate) fn sender_del(&mut self, peer: PeerId) {
+        self.senders = self.senders.saturating_sub(1);
+        if let Some(p) = self.peers.get_mut(&peer) {
+            p.senders = p.senders.saturating_sub(1);
+            if p.bytes == 0 && p.conns == 0 && p.senders == 0 {
+                self.peers.remove(&peer);
+            }
+        }
+        self.global.wake_waiters();
+    }
+
     /// Charge TCP payload for flow-control and per-peer byte quotas. Actual
     /// backing is separately charged by `try_allocate` before allocation.
     /// `force` never bypasses either limit.
@@ -1106,7 +1206,7 @@ impl Budget {
         self.used -= n;
         if let Some(p) = self.peers.get_mut(&peer) {
             p.bytes -= n;
-            if p.bytes == 0 && p.conns == 0 {
+            if p.bytes == 0 && p.conns == 0 && p.senders == 0 {
                 self.peers.remove(&peer);
             }
         }
@@ -1132,7 +1232,7 @@ impl Budget {
     pub fn peer_conn_del(&mut self, peer: PeerId) {
         if let Some(p) = self.peers.get_mut(&peer) {
             p.conns = p.conns.saturating_sub(1);
-            if p.bytes == 0 && p.conns == 0 {
+            if p.bytes == 0 && p.conns == 0 && p.senders == 0 {
                 self.peers.remove(&peer);
             }
         }
@@ -1338,6 +1438,37 @@ mod tests {
         assert_eq!(global.low, ((u64::MAX as u128 * 3) / 8) as u64);
         assert_eq!(global.pressure, ((u64::MAX as u128 * 5) / 8) as u64);
         assert!(global.low < global.pressure && global.pressure < global.high);
+    }
+
+    #[test]
+    fn send_share_splits_whole_blocks_and_reserves_the_next_sender() {
+        let global = GlobalBudget::new(8 << 20);
+        let mut b = Budget::new(global);
+        b.set_limits(819_200, 819_200, 128);
+        let block = crate::buf::TX_BLOCK as u64;
+        // The level holds 819_200 / 65_600 = 12 blocks (docs/design/0007 §2.2).
+        assert_eq!(b.send_share(PeerId(1)), 11 * block, "no senders: (12 − 1)/1");
+        b.sender_add(PeerId(1));
+        assert_eq!(b.send_share(PeerId(1)), 5 * block, "one sender: (12 − 2)/2");
+        b.sender_add(PeerId(1));
+        b.sender_add(PeerId(2));
+        assert_eq!(b.send_share(PeerId(1)), 2 * block, "three senders: (12 − 4)/4");
+        // The peer level binds tighter than the port level.
+        let mut tight = Budget::new(GlobalBudget::new(8 << 20));
+        tight.set_limits(819_200, 409_600, 128);
+        assert_eq!(tight.send_share(PeerId(1)), 5 * block, "peer holds 6 blocks: (6 − 1)/1");
+        // Too many senders: the floor binds instead of the formula.
+        for _ in 0..6 {
+            b.sender_add(PeerId(1));
+        }
+        assert_eq!(b.send_share(PeerId(1)), MIN_SEND_SHARE);
+        // A sender leaving wakes parked senders: their shares just grew.
+        let wake = Arc::new(CountWake(AtomicUsize::new(0)));
+        let id = b.global().new_waiter_id();
+        let observed = b.global().release_epoch();
+        b.global().register_waiter(id, observed, &Waker::from(wake.clone()));
+        b.sender_del(PeerId(2));
+        assert_eq!(wake.0.load(Ordering::Relaxed), 1);
     }
 
     #[test]

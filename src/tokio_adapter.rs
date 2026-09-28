@@ -162,6 +162,10 @@ struct Queues {
     flush_waker: Option<Waker>,
     /// Writer parked below the low watermark.
     write_parked: bool,
+    /// Additional bytes this stream may buffer across the adapter queue and
+    /// the core send buffer under its send share; published by the driver on
+    /// each pump (docs/design/0007 §2.4). Writes consume it synchronously.
+    send_room: usize,
 }
 
 struct TxChunk {
@@ -235,6 +239,7 @@ impl TxQueue {
 
 struct Shared {
     id: ConnId,
+    peer: PeerId,
     q: Mutex<Queues>,
     ctl: Arc<Ctl>,
     cfg: StreamConfig,
@@ -407,16 +412,24 @@ impl AsyncWrite for TcpStream {
         if q.tx_shutdown {
             return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "write side shut down")));
         }
-        let free = sh.cfg.tx_cap.saturating_sub(q.tx.len());
+        // The fixed queue bound and the connection's send share both cap how
+        // much the app may buffer (docs/design/0007 §2.4).
+        let free = sh.cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room);
         let min_free = sh.cfg.tx_low_watermark.min(src.len().max(1));
         if free < min_free {
             q.write_waker = Some(cx.waker().clone());
             q.write_parked = true;
+            // Republish the room promptly: the core buffer may have drained
+            // since the last pump, and an empty queue gives no other wake
+            // (docs/design/0007 §2.4).
+            drop(q);
+            sh.ctl.mark(sh.id);
             return Poll::Pending;
         }
         let n = free.min(src.len());
         let was_empty = q.tx.is_empty();
         let written = q.tx.push(&src[..n], &sh.memory);
+        q.send_room = q.send_room.saturating_sub(written);
         if written == 0 {
             let failure = q.tx.last_failure.take();
             if matches!(failure, Some((QueueGrowError::Allocation, _))) {
@@ -433,6 +446,7 @@ impl AsyncWrite for TcpStream {
             return Poll::Pending;
         }
         sh.memory.global().remove_waiter(sh.memory_waiter);
+        q.write_parked = false;
         drop(q);
         if was_empty {
             sh.ctl.mark(sh.id);
@@ -491,6 +505,8 @@ pub struct TailConnection {
     pub adapter_tx_queued: usize,
     pub adapter_rx_queued: usize,
     pub write_parked: bool,
+    /// Share-aware room left for app writes (docs/design/0007 §2.4).
+    pub send_room: usize,
 }
 
 /// Point-in-time counters from the shard owner task. Only when at most four
@@ -516,7 +532,12 @@ pub struct StackSnapshot {
     pub admission_debt: [u64; 3],
     pub active_connections: usize,
     pub adapter_streams: usize,
-    /// Only the core's send-record wait; adapter and host waiters are in
+    /// Connections currently holding send-side bytes on this port, and how
+    /// often a write was rejected by the per-connection send share
+    /// (docs/design/0007 §5).
+    pub senders: u32,
+    pub share_blocked: u64,
+    /// Core send-record or send-share wait; adapter and host waiters are in
     /// `waiters`.
     pub budget_waiting: bool,
     pub closes: CloseCounts,
@@ -905,13 +926,13 @@ where
                 }
             }
             Cmd::Snapshot(reply) => {
-                let tail_connections = if self.streams.len() <= 4 {
+                let tail_connections = if self.streams.len() <= 8 {
                     self.streams
                         .iter()
                         .filter_map(|(&id, shared)| {
                             let core = self.shard.info(id)?;
                             let q = shared.q.lock().unwrap();
-                            Some(TailConnection { id, core, adapter_tx_queued: q.tx.len(), adapter_rx_queued: q.rx_len, write_parked: q.write_parked })
+                            Some(TailConnection { id, core, adapter_tx_queued: q.tx.len(), adapter_rx_queued: q.rx_len, write_parked: q.write_parked, send_room: q.send_room })
                         })
                         .collect()
                 } else {
@@ -932,6 +953,8 @@ where
                     aborts: self.aborts,
                     active_connections: self.shard.conn_count(),
                     adapter_streams: self.streams.len(),
+                    senders: budget.senders(),
+                    share_blocked: budget.share_blocked(),
                     budget_waiting: self.shard.budget_wait_epoch().is_some(),
                     tail_connections,
                 });
@@ -980,9 +1003,13 @@ where
                 let driver_waiter = memory.global().new_waiter_id();
                 let rx_index_waiter = memory.global().new_waiter_id();
                 let driver_wake = Waker::from(Arc::new(DriverWake { ctl: self.ctl.clone(), id }));
+                // Start the share-aware room at the first pump's value so an
+                // immediately-writing app does not park on a stale zero.
+                let send_room = self.shard.send_share(info.peer).min(self.stream_cfg.tx_cap as u64) as usize;
                 let sh = Arc::new(Shared {
                     id,
-                    q: Mutex::new(Queues::default()),
+                    peer: info.peer,
+                    q: Mutex::new(Queues { send_room, ..Queues::default() }),
                     ctl: self.ctl.clone(),
                     cfg: self.stream_cfg.clone(),
                     memory,
@@ -1040,6 +1067,10 @@ where
 
     fn remove_stream(&mut self, id: ConnId) -> Option<Arc<Shared>> {
         let removed = self.streams.remove(&id);
+        if removed.is_some() {
+            // The queue is gone; stop charging it to the core connection.
+            self.shard.set_adapter_tx(id, 0);
+        }
         compact_sparse_map(&mut self.streams);
         removed
     }
@@ -1143,7 +1174,7 @@ where
             while !q.tx.is_empty() {
                 let n = q.tx.front().len().min(64 * 1024);
                 let observed = sh.memory.global().release_epoch();
-                match self.shard.write(id, &q.tx.front()[..n]) {
+                match self.shard.write_for_adapter(id, &q.tx.front()[..n]) {
                     WriteResult::Written(w) => {
                         sh.memory.global().remove_waiter(sh.driver_waiter);
                         q.tx.consume(w);
@@ -1181,9 +1212,24 @@ where
             if q.tx.is_empty() {
                 sh.memory.global().remove_waiter(sh.driver_waiter);
             }
-            if q.write_parked && cfg.tx_cap - q.tx.len() >= cfg.tx_low_watermark {
+            // Publish the share-aware room: one accounting across the adapter
+            // queue and the core send buffer (docs/design/0007 §2.1, §2.4).
+            self.shard.set_adapter_tx(id, q.tx.len() as u32);
+            let share = self.shard.send_share(sh.peer);
+            let core_tx = self.shard.tx_queued(id).unwrap_or(0) as u64;
+            q.send_room = share.saturating_sub(core_tx + q.tx.len() as u64).min(usize::MAX as u64) as usize;
+            let wakeable = q.write_parked
+                && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= cfg.tx_low_watermark;
+            if wakeable {
                 q.write_parked = false;
                 wake_writer = q.write_waker.take();
+            }
+            // A writer parked on the share may have an empty queue, so no
+            // core write will block to set want_write: mark it here, or a
+            // later drain of the core buffer never re-runs this pump
+            // (docs/design/0007 §2.4).
+            if q.write_parked {
+                self.shard.note_write_parked(id);
             }
             if q.tx.is_empty() {
                 wake_flush = q.flush_waker.take();
@@ -1897,7 +1943,257 @@ mod tests {
         }
     }
 
+    /// Client whose receive window closes while the app is paused (#674).
+    fn pausable_client() -> Shard {
+        let mut cfg = StackConfig::default();
+        cfg.max_rcv_buf = 64 * 1024;
+        cfg.init_rcv_wnd = 64 * 1024;
+        Shard::with_budget(cfg, GlobalBudget::new(1 << 30))
+    }
+
+    /// Download with per-connection read pauses and one optional late
+    /// connection. Returns per-connection 250 ms progress samples and finish
+    /// times. `pauses`: (conn index, start, end) from the download start.
+    async fn download_pauses(
+        server: &mut LimitedServer,
+        first_port: u16,
+        conns: u16,
+        read_rate: u64,
+        pauses: &[(u16, std::time::Duration, std::time::Duration)],
+        late_at: Option<std::time::Duration>,
+        limit: std::time::Duration,
+    ) -> Result<(Vec<Vec<u64>>, Vec<Option<std::time::Duration>>), String> {
+        let per_conn = server.profile.per_conn;
+        let peers = server.profile.peers;
+        let epoch = tokio::time::Instant::now();
+        let now = || crate::Instant::from_nanos(epoch.elapsed().as_nanos() as u64 + 1);
+        let mut c = pausable_client();
+        let ci = c.add_iface(IfaceConfig::default());
+        let total = conns + u16::from(late_at.is_some());
+        let mut ids: Vec<ConnId> = (0..conns)
+            .map(|k| {
+                let peer = PeerId(9 + u64::from(k) % peers);
+                c.connect(now(), ci, peer, SocketAddr::from(([10, 0, 0, 2], first_port + k)), "10.0.0.1:80".parse().unwrap())
+            })
+            .collect();
+        let mut recvd = vec![0u64; total as usize];
+        let mut eof = vec![false; total as usize];
+        let mut finished: Vec<Option<std::time::Duration>> = vec![None; total as usize];
+        let mut samples: Vec<Vec<u64>> = (0..total).map(|_| vec![0]).collect();
+        /// Sample index at which each connection was opened (the late
+        /// connection's earlier samples are placeholders, not stalls).
+        let mut conn_since: Vec<usize> = vec![0; total as usize];
+        let mut next_sample = std::time::Duration::from_millis(250);
+        let mut buf = vec![0u8; 64 * 1024];
+        let deadline = tokio::time::Instant::now() + limit;
+        let mut rounds = 0u64;
+        loop {
+            assert!(server.global.reserved() <= server.global.high(), "global budget exceeded");
+            rounds += 1;
+            if rounds.is_multiple_of(64) {
+                if let Some(snap) = server.handle.snapshot().await {
+                    assert!(snap.port_physical_bytes <= server.profile.port_bytes, "port share exceeded");
+                }
+            }
+            let elapsed = epoch.elapsed();
+            if tokio::time::Instant::now() > deadline {
+                return Err(format!("stalled: recvd={recvd:?}"));
+            }
+            while elapsed >= next_sample {
+                for (k, s) in samples.iter_mut().enumerate() {
+                    s.push(recvd[k]);
+                    // Diagnostic: a non-paused, already-connected stream flat
+                    // for >= 8 samples (2 s) violates the design's progress
+                    // bound; dump the stack state right then. A flat run that
+                    // overlaps a pause window (including its final instant,
+                    // before the resumed client has read) is expected.
+                    let flat_from = elapsed.saturating_sub(std::time::Duration::from_millis(250 * 7));
+                    let overlaps_pause = pauses.iter().any(|&(conn, _start, end)| conn as usize == k && flat_from < end);
+                    let live = s.len() - conn_since[k];
+                    if !overlaps_pause && k < ids.len() && !eof[k] && live >= 8 && s[s.len() - 8..].iter().all(|&v| v == s[s.len() - 1]) {
+                        let snap = server.handle.snapshot().await;
+                        let tail = snap.as_ref().and_then(|sn| {
+                            sn.tail_connections.iter().find(|t| ids.get(k) == Some(&t.id)).map(|t| {
+                                format!(
+                                    "state={:?} cwnd={} snd_wnd={} txq={} unsent={} pipe={} pace={:?} atxq={} room={} parked={} want_write={}",
+                                    t.core.state, t.core.cwnd, t.core.snd_wnd, t.core.tx_queued, t.core.tx_unsent, t.core.pipe,
+                                    t.core.pacing_rate, t.adapter_tx_queued, t.send_room, t.write_parked, t.core.want_write
+                                )
+                            })
+                        });
+                        panic!("conn {k} flat at {} around {elapsed:?}: {tail:?}", s[s.len() - 1]);
+                    }
+                }
+                next_sample += std::time::Duration::from_millis(250);
+            }
+            if late_at.is_some_and(|at| elapsed >= at) && ids.len() < total as usize {
+                let k = (total - 1) as usize;
+                let peer = PeerId(9 + k as u64 % peers);
+                let port = first_port + total - 1;
+                conn_since[k] = samples[k].len();
+                ids.push(c.connect(now(), ci, peer, SocketAddr::from(([10, 0, 0, 2], port)), "10.0.0.1:80".parse().unwrap()));
+            }
+            let mut out = Vec::new();
+            let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
+                out.push((p.peer, Bytes::from(p.to_vec())));
+                SendResult::Accepted
+            };
+            c.run(now(), &mut sink);
+            if !out.is_empty() && server.ingress.send((server.iface, out)).await.is_err() {
+                return Err("server ingress closed".into());
+            }
+            while let Some(ev) = c.poll_event() {
+                if let Event::Closed(id, reason) = ev {
+                    if let Some(k) = ids.iter().position(|&x| x == id) {
+                        if reason != CloseReason::Normal && !eof[k] {
+                            return Err(format!("conn {k} closed with {reason:?} after {} bytes", recvd[k]));
+                        }
+                    }
+                }
+            }
+            for (k, &id) in ids.iter().enumerate() {
+                let paused = pauses.iter().any(|&(conn, start, end)| conn as usize == k && elapsed >= start && elapsed < end);
+                if paused || eof[k] {
+                    continue;
+                }
+                let mut budget = if read_rate > 0 {
+                    let allowed = (read_rate as u128 * elapsed.as_nanos() / 1_000_000_000) as u64;
+                    allowed.saturating_sub(recvd[k]) as usize
+                } else {
+                    usize::MAX
+                };
+                while !eof[k] && budget > 0 {
+                    let want = buf.len().min(budget);
+                    match c.read(now(), id, &mut buf[..want]) {
+                        ReadResult::Data(n) => {
+                            for (j, &b) in buf[..n].iter().enumerate() {
+                                assert_eq!(b, pattern_byte(recvd[k] + j as u64), "conn {k} corrupted");
+                            }
+                            recvd[k] += n as u64;
+                            budget -= n.min(budget);
+                        }
+                        ReadResult::Eof => {
+                            eof[k] = true;
+                            finished[k] = Some(elapsed);
+                        }
+                        ReadResult::WouldBlock => break,
+                        ReadResult::Closed(r) => return Err(format!("conn {k} closed with {r:?} after {} bytes", recvd[k])),
+                    }
+                }
+            }
+            if eof.iter().all(|&e| e) && ids.len() == total as usize {
+                assert!(recvd.iter().all(|&n| n == per_conn), "short stream: {recvd:?}");
+                return Ok((samples, finished));
+            }
+            let wait = c.next_deadline().map_or(std::time::Duration::from_millis(5), |d| {
+                std::time::Duration::from_nanos(d.as_nanos().saturating_sub(now().as_nanos())).min(std::time::Duration::from_millis(5))
+            });
+            if let Ok(Some((peer, p, _lease))) = tokio::time::timeout(wait, server.to_client.recv()).await {
+                c.ingress(now(), ci, peer, Bytes::from(p));
+                while let Ok((peer, p, _lease)) = server.to_client.try_recv() {
+                    c.ingress(now(), ci, peer, Bytes::from(p));
+                }
+            }
+        }
+    }
+
+    /// Sample indices covering [start, end) of the 250 ms progress samples.
+    fn window_samples(samples: &[u64], start: std::time::Duration, end: std::time::Duration) -> &[u64] {
+        let lo = (start.as_millis() / 250) as usize;
+        let hi = ((end.as_millis() / 250) as usize).min(samples.len());
+        samples.get(lo..hi).unwrap_or(&[])
+    }
+
+    /// Longest run of equal 250 ms progress samples: the stream made no
+    /// progress for (run − 1) × 250 ms.
+    fn longest_flat(samples: &[u64]) -> usize {
+        let mut best = 1;
+        let mut run = 1;
+        for pair in samples.windows(2) {
+            run = if pair[0] == pair[1] { run + 1 } else { 1 };
+            best = best.max(run);
+        }
+        best
+    }
+
+    /// The design guarantees progress well inside the 5 s evidence threshold
+    /// of #674 even when the port is saturated at the per-connection floor
+    /// (docs/design/0007 §3); 8 samples = 1.75 s without progress.
+    const MAX_FLAT_SAMPLES: usize = 8;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stopped_readers_do_not_starve_healthy_streams() {
+        // zfc #674: three clients stop reading from t=1s to t=7s. Pre-fix the
+        // healthy streams made zero progress for the whole window.
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 1 << 20));
+        let pauses: Vec<_> = (0..3u16)
+            .map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7)))
+            .collect();
+        let (samples, finished) = download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30))
+            .await
+            .expect("six streams with three paused");
+        for k in 3..6 {
+            let w = window_samples(&samples[k], std::time::Duration::from_secs(1), std::time::Duration::from_secs(7));
+            assert!(longest_flat(w) <= MAX_FLAT_SAMPLES, "healthy conn {k} stalled: {w:?}");
+        }
+        // The paused streams recover once they resume (zero-window recovery).
+        for k in 0..6 {
+            assert!(finished[k].is_some(), "conn {k} never finished");
+        }
+        let snap = server.handle.snapshot().await.unwrap();
+        assert!(snap.share_blocked > 0, "the send share never bound");
+        assert_eq!(snap.senders, 0, "sender tally leaked: {}", snap.senders);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn late_stream_gets_a_share_while_stopped_readers_hold_theirs() {
+        // Three paused streams fill their shares first; the connection joining
+        // at t=2s must still complete while they remain paused (#674 §3).
+        let mut server = limited_server(GlobalBudget::new(8 << 20), Profile::zfc_repro(false, 1 << 20));
+        let pauses: Vec<_> = (0..3u16)
+            .map(|k| (k, std::time::Duration::ZERO, std::time::Duration::from_secs(12)))
+            .collect();
+        let (_samples, finished) = download_pauses(
+            &mut server,
+            20_000,
+            3,
+            0,
+            &pauses,
+            Some(std::time::Duration::from_secs(2)),
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        .expect("late stream next to stopped readers");
+        let late = finished[3].expect("late stream never finished");
+        assert!(late < std::time::Duration::from_secs(12), "late stream finished at {late:?}, after the pause ended");
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn healthy_stream_keeps_its_share_next_to_a_stopped_peer_mate() {
+        // Peer 9: two stopped readers and one healthy stream; peer 10: three
+        // healthy streams. Both levels constrain; every healthy stream must
+        // progress through the pause window.
+        let profile = Profile { port_bytes: 819_200, peer_bytes: 409_600, peers: 2, charge_egress: false, per_conn: 1 << 20 };
+        let mut server = limited_server(GlobalBudget::new(8 << 20), profile);
+        let pauses: Vec<_> = [0u16, 2]
+            .into_iter()
+            .map(|k| (k, std::time::Duration::from_secs(1), std::time::Duration::from_secs(7)))
+            .collect();
+        let (samples, finished) = download_pauses(&mut server, 20_000, 6, 128 << 10, &pauses, None, std::time::Duration::from_secs(30))
+            .await
+            .expect("peers with stopped readers");
+        for k in [1usize, 3, 4, 5] {
+            let w = window_samples(&samples[k], std::time::Duration::from_secs(1), std::time::Duration::from_secs(7));
+            assert!(longest_flat(w) <= MAX_FLAT_SAMPLES, "healthy conn {k} stalled: {w:?}");
+        }
+        assert!(finished.iter().all(|f| f.is_some()));
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
     const SECS: std::time::Duration = std::time::Duration::from_secs(30);
+
 
     #[tokio::test(flavor = "current_thread")]
     async fn adapter_queues_do_not_starve_core_tx_blocks() {

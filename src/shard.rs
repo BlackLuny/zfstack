@@ -278,6 +278,10 @@ pub struct Shard {
     /// epoch change retries each once; ingress ACKs can also reschedule them.
     budget_blocked: HashSet<(u32, u32)>,
     budget_wait_epoch: Option<u64>,
+    /// Share-bound application writers, keyed by slot generation to prevent
+    /// a released slot from waking a replacement connection.
+    share_blocked: HashSet<(u32, u32)>,
+    share_wait_epoch: Option<u64>,
     /// Last cache reclaim request this shard has served.
     cache_reclaim_seen: u64,
     /// Bytes a host adapter needs per accepted stream, reserved at SYN time.
@@ -331,6 +335,8 @@ impl Shard {
             budget: Budget::new(global),
             budget_blocked: HashSet::new(),
             budget_wait_epoch: None,
+            share_blocked: HashSet::new(),
+            share_wait_epoch: None,
             cache_reclaim_seen,
             stream_state_bytes: 0,
             pending_admissions: VecDeque::new(),
@@ -359,9 +365,12 @@ impl Shard {
         &self.budget
     }
     /// Epoch to register with a caller's budget-release waker, if any core
-    /// senders need an allocation before their next data segment.
+    /// senders need an allocation or an application writer awaits more share.
     pub fn budget_wait_epoch(&self) -> Option<u64> {
-        self.budget_wait_epoch
+        match (self.budget_wait_epoch, self.share_wait_epoch) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
     pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
         self.budget.memory_handle(peer)
@@ -574,9 +583,51 @@ impl Shard {
         }
     }
 
+    fn sync_share_waiter(&mut self, idx: u32, register: bool) {
+        let slot = &mut self.slots[idx as usize];
+        let key = (idx, slot.gen);
+        if !register && !self.share_blocked.contains(&key) {
+            return;
+        }
+        if slot.conn.as_ref().is_some_and(|c| c.share_write_blocked(&self.cfg, &self.budget)) {
+            self.share_blocked.insert(key);
+            self.share_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
+        } else {
+            if self.share_blocked.remove(&key) {
+                // A read/control operation can visit this connection after
+                // another sender released its share but before run's retry.
+                // Do not discard its pending notification on that path.
+                if let Some(conn) = slot.conn.as_mut() {
+                    conn.notify_writable(&mut self.events, &self.cfg, &self.budget);
+                }
+            }
+            if self.share_blocked.is_empty() {
+                self.share_wait_epoch = None;
+            }
+        }
+    }
+
+    fn retry_share_writers(&mut self) {
+        let epoch = self.budget.global().release_epoch();
+        if self.share_wait_epoch.is_none_or(|seen| seen == epoch) {
+            return;
+        }
+        self.share_blocked.retain(|&(idx, gen)| {
+            let Some(slot) = self.slots.get_mut(idx as usize).filter(|s| s.gen == gen) else { return false };
+            let Some(conn) = slot.conn.as_mut() else { return false };
+            if conn.share_write_blocked(&self.cfg, &self.budget) {
+                return true;
+            }
+            conn.notify_writable(&mut self.events, &self.cfg, &self.budget);
+            false
+        });
+        self.share_wait_epoch = (!self.share_blocked.is_empty()).then_some(epoch);
+    }
+
     /// Reschedule timers / tx after any change to a connection; reap if done.
     fn after_conn_change(&mut self, idx: u32) {
         self.sync_counts(idx);
+        self.sync_share_waiter(idx, false);
         let gen = self.slots[idx as usize].gen;
         if !self.budget_blocked.is_empty()
             && self.slots[idx as usize].conn.as_ref().is_none_or(|c| !c.needs_record_spare())
@@ -615,6 +666,10 @@ impl Shard {
         slot.tomb = Some(tomb);
         slot.active_memory.take();
         slot.permit.as_mut().expect("connection permit").to_time_wait();
+        self.share_blocked.remove(&(idx, slot.gen));
+        if self.share_blocked.is_empty() {
+            self.share_wait_epoch = None;
+        }
         self.budget_blocked.remove(&(idx, slot.gen));
         if self.budget_blocked.is_empty() {
             self.budget_wait_epoch = None;
@@ -689,6 +744,10 @@ impl Shard {
         if let Some(permit) = slot.permit.take() {
             self.retained_metadata.retain_slot(permit);
             slot.retained = true;
+        }
+        self.share_blocked.remove(&(idx, slot.gen));
+        if self.share_blocked.is_empty() {
+            self.share_wait_epoch = None;
         }
         self.budget_blocked.remove(&(idx, slot.gen));
         if self.budget_blocked.is_empty() {
@@ -1259,6 +1318,7 @@ impl Shard {
         let mut out = RunOutcome::default();
         self.reclaim_cache_if_requested();
         self.expire_admission_debts(now);
+        self.retry_share_writers();
 
         if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
             self.budget_wait_epoch = None;
@@ -1445,6 +1505,7 @@ impl Shard {
 
     fn after_conn_change_no_sched(&mut self, idx: u32) {
         self.sync_counts(idx);
+        self.sync_share_waiter(idx, false);
         if self.slots[idx as usize].conn.as_ref().is_some_and(|c| c.ready_for_time_wait_compaction()) {
             self.compact_time_wait(idx);
             return;
@@ -1463,6 +1524,8 @@ impl Shard {
 
     /// Serve one connection for up to one quantum. Returns (bytes sent, wants more).
     fn serve(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
+        // Packet window fields must use the same policy as calc_window.
+        // Local TX/cache occupancy only gates RX growth, not RX progress.
         let level = self.budget.level();
         let slot = &mut self.slots[idx as usize];
         let gen = slot.gen;
@@ -1571,14 +1634,6 @@ impl Shard {
     // ------------------------------------------------------------------
     // Application API
 
-    fn conn_mut(&mut self, id: ConnId) -> Option<&mut Conn> {
-        let s = self.slots.get_mut(id.idx())?;
-        if s.gen != id.gen() {
-            return None;
-        }
-        s.conn.as_deref_mut()
-    }
-
     fn with_conn<R>(&mut self, id: ConnId, f: impl FnOnce(&mut Conn, &mut Ctx) -> R) -> Option<R> {
         let s = self.slots.get_mut(id.idx())?;
         if s.gen != id.gen() {
@@ -1621,18 +1676,67 @@ impl Shard {
     }
 
     pub fn write(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
+        let result = self.write_inner(id, src);
+        if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
+            self.sync_share_waiter(id.idx() as u32, true);
+        }
+        result
+    }
+
+    fn write_inner(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
         self.with_conn(id, |c, ctx| c.write(src, ctx)).unwrap_or(WriteResult::Closed)
+    }
+
+    /// The adapter owns a budget-release waiter for its pump. Do not also
+    /// register the core API's Writable waiter for the same pending write.
+    #[cfg(feature = "tokio")]
+    pub(crate) fn write_for_adapter(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
+        self.write_inner(id, src)
     }
 
     #[cfg(feature = "tokio")]
     pub(crate) fn write_allocation_charge(&mut self, id: ConnId, bytes: usize) -> u64 {
-        self.with_conn(id, |c, ctx| c.write_allocation_charge(bytes, ctx.cfg)).unwrap_or(0)
+        self.with_conn(id, |c, ctx| c.write_allocation_charge(bytes, ctx.cfg, ctx.budget)).unwrap_or(0)
     }
 
     /// Free send space (bytes) right now.
     pub fn send_space(&mut self, id: ConnId) -> usize {
         let cfg = self.cfg.clone();
-        self.conn_mut(id).map_or(0, |c| c.send_space(&cfg))
+        let Some(s) = self.slots.get_mut(id.idx()) else { return 0 };
+        if s.gen != id.gen() {
+            return 0;
+        }
+        s.conn.as_ref().map_or(0, |c| c.send_space(&cfg, &self.budget))
+    }
+
+    /// Per-connection send share of the port/peer budget (docs/design/0007).
+    #[cfg(feature = "tokio")]
+    pub(crate) fn send_share(&self, peer: PeerId) -> u64 {
+        self.budget.send_share(peer)
+    }
+
+    /// Bytes in the connection's core send buffer (in-flight plus unsent).
+    #[cfg(feature = "tokio")]
+    pub(crate) fn tx_queued(&self, id: ConnId) -> Option<usize> {
+        let s = self.slots.get(id.idx())?;
+        if s.gen != id.gen() {
+            return None;
+        }
+        s.conn.as_ref().map(|c| c.tx_queued_len())
+    }
+
+    /// Publish the adapter TX queue length into the connection's send-side
+    /// accounting (docs/design/0007 §2.1).
+    #[cfg(feature = "tokio")]
+    pub(crate) fn set_adapter_tx(&mut self, id: ConnId, bytes: u32) {
+        self.with_conn(id, |c, ctx| c.set_adapter_tx(bytes, ctx));
+    }
+
+    /// The adapter parked the app writer on the send share
+    /// (docs/design/0007 §2.4).
+    #[cfg(feature = "tokio")]
+    pub(crate) fn note_write_parked(&mut self, id: ConnId) {
+        self.with_conn(id, |c, _| c.note_write_parked());
     }
 
     pub fn shutdown_write(&mut self, id: ConnId) {

@@ -332,6 +332,11 @@ pub struct Conn {
     pub close_reason: Option<CloseReason>,
     closed_notified: bool,
     tx_charged: u64,
+    /// Bytes the adapter TX queue holds for this connection, not yet moved
+    /// into the core send buffer (docs/design/0007 §2.1).
+    adapter_tx: u32,
+    /// Counted in the port/peer sender tally while holding send-side bytes.
+    sender: bool,
     /// Snapshot for limited-time accounting.
     limit_state: u8,
     limit_since: Instant,
@@ -562,6 +567,8 @@ impl Conn {
             close_reason: None,
             closed_notified: false,
             tx_charged: 0,
+            adapter_tx: 0,
+            sender: false,
             limit_state: LIM_NONE,
             limit_since: now,
             stats: ConnStats::default(),
@@ -769,8 +776,52 @@ impl Conn {
         win.saturating_add(prefetch)
     }
 
-    pub fn send_space(&self, cfg: &StackConfig) -> usize {
-        self.sndbuf_limit(cfg).saturating_sub(self.tx.len() as u64) as usize
+    /// Send-side bytes this connection is charged with for the sender tally:
+    /// the core buffer (in-flight unacknowledged plus unsent) and the adapter
+    /// queue (docs/design/0007 §2.1).
+    pub(crate) fn send_occupancy(&self) -> u64 {
+        self.tx.len() as u64 + u64::from(self.adapter_tx)
+    }
+
+    /// Keep the port/peer sender tally in step with what this connection
+    /// holds (docs/design/0007 §2.2).
+    fn sync_sender(&mut self, ctx: &mut Ctx) {
+        let sending = self.send_occupancy() > 0;
+        if sending != self.sender {
+            self.sender = sending;
+            if sending {
+                ctx.budget.sender_add(self.peer);
+            } else {
+                ctx.budget.sender_del(self.peer);
+            }
+        }
+    }
+
+    /// Bytes the adapter TX queue currently holds for this connection. A
+    /// closed connection can never drain the queue, so it reports zero
+    /// (docs/design/0007 §2.2).
+    #[cfg(feature = "tokio")]
+    pub(crate) fn set_adapter_tx(&mut self, bytes: u32, ctx: &mut Ctx) {
+        let bytes = if self.state == State::Closed { 0 } else { bytes };
+        if self.adapter_tx != bytes {
+            self.adapter_tx = bytes;
+            self.sync_sender(ctx);
+        }
+    }
+
+    /// Free send space: the connection's own send-buffer limit and its fair
+    /// share of the port/peer budget, whichever is smaller
+    /// (docs/design/0007 §2.3). The adapter queue is not subtracted here:
+    /// moving bytes between it and the core buffer must stay neutral.
+    /// Bytes in the core send buffer: in-flight unacknowledged plus unsent.
+    #[cfg(feature = "tokio")]
+    pub(crate) fn tx_queued_len(&self) -> usize {
+        self.tx.len()
+    }
+
+    pub fn send_space(&self, cfg: &StackConfig, budget: &Budget) -> usize {
+        let cap = self.sndbuf_limit(cfg).min(budget.send_share(self.peer));
+        cap.saturating_sub(self.tx.len() as u64) as usize
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -797,11 +848,32 @@ impl Conn {
         }
     }
 
-    fn notify_writable(&mut self, ev: &mut VecDeque<Event>, cfg: &StackConfig) {
-        if self.want_write && self.accepted && self.send_space(cfg) >= cfg.write_low_watermark as usize {
+    pub(crate) fn notify_writable(&mut self, ev: &mut VecDeque<Event>, cfg: &StackConfig, budget: &Budget) {
+        if self.want_write && self.accepted && self.fin_off.is_none()
+            && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
+            && self.send_space(cfg, budget) >= cfg.write_low_watermark as usize
+        {
             self.want_write = false;
             ev.push_back(Event::Writable(self.id));
         }
+    }
+
+    /// Only share-bound writers need a retry on another connection's release.
+    /// Congestion/window-bound writers continue to wait for their own ACKs.
+    pub(crate) fn share_write_blocked(&self, cfg: &StackConfig, budget: &Budget) -> bool {
+        self.want_write && self.accepted && self.fin_off.is_none()
+            && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
+            && budget.send_share(self.peer) < self.sndbuf_limit(cfg)
+            && self.send_space(cfg, budget) < cfg.write_low_watermark as usize
+    }
+
+    /// The adapter parked the app writer while this connection held its whole
+    /// send share, possibly with an empty adapter queue, so no core write
+    /// blocks to set `want_write` by itself (docs/design/0007 §2.4). Mark the
+    /// pending write here or a later drain would never re-notify the stream.
+    #[cfg(feature = "tokio")]
+    pub(crate) fn note_write_parked(&mut self) {
+        self.want_write = true;
     }
 
     fn set_closed(&mut self, reason: CloseReason, ctx: &mut Ctx) {
@@ -839,6 +911,8 @@ impl Conn {
         self.rcv_charged = 0;
         self.adapter_unread = 0;
         self.tx_charged = 0;
+        self.adapter_tx = 0;
+        self.sync_sender(ctx);
     }
 
     fn release_send_side(&mut self, ctx: &mut Ctx) {
@@ -846,6 +920,8 @@ impl Conn {
         self.sb.clear();
         ctx.budget.release(self.peer, self.tx_charged);
         self.tx_charged = 0;
+        self.adapter_tx = 0;
+        self.sync_sender(ctx);
     }
 
     /// Free everything (slot is being reclaimed).
@@ -863,6 +939,8 @@ impl Conn {
         self.sb.clear();
         ctx.budget.release(self.peer, self.tx_charged);
         self.tx_charged = 0;
+        self.adapter_tx = 0;
+        self.sync_sender(ctx);
     }
 
     // ------------------------------------------------------------------
@@ -965,7 +1043,7 @@ impl Conn {
                 let grow = win * (copied - self.rcvq_space) / self.rcvq_space;
                 win += grow.min(win);
             }
-            let allowed = ctx.budget.level() < Pressure::Low;
+            let allowed = ctx.budget.level_for(self.peer) < Pressure::Low;
             let max = if self.rcv_wscale == 0 { 65535 } else { ctx.cfg.max_rcv_buf as u64 };
             if allowed && win > self.rcv_target {
                 self.rcv_target = win.min(max);
@@ -978,18 +1056,25 @@ impl Conn {
     }
 
     #[cfg(feature = "tokio")]
-    pub(crate) fn write_allocation_charge(&self, bytes: usize, cfg: &StackConfig) -> u64 {
-        self.tx.write_allocation_charge(bytes.min(self.send_space(cfg)))
+    pub(crate) fn write_allocation_charge(&self, bytes: usize, cfg: &StackConfig, budget: &Budget) -> u64 {
+        self.tx.write_allocation_charge(bytes.min(self.send_space(cfg, budget)))
     }
 
     pub fn write(&mut self, src: &[u8], ctx: &mut Ctx) -> WriteResult {
         if !matches!(self.state, State::Established | State::CloseWait | State::SynReceived) || self.fin_off.is_some() {
             return WriteResult::Closed;
         }
-        let space = self.send_space(ctx.cfg);
+        let space = self.send_space(ctx.cfg, ctx.budget);
         let n = space.min(src.len());
         if n == 0 {
             self.want_write = true;
+            // A share-bound connection waits for any budget release or sender
+            // change; a send-buffer-bound one waits for its own ACKs
+            // (docs/design/0007 §2.3).
+            if ctx.budget.send_share(self.peer) < self.sndbuf_limit(ctx.cfg) {
+                ctx.budget.stats().note_share_blocked();
+                return WriteResult::QuotaBlocked;
+            }
             return WriteResult::WouldBlock;
         }
         if !ctx.budget.try_reserve(self.peer, n as u64, false) {
@@ -1002,6 +1087,7 @@ impl Conn {
             return WriteResult::MemoryBlocked;
         }
         self.tx_charged += n as u64;
+        self.sync_sender(ctx);
         if n < src.len() {
             self.want_write = true;
         }
@@ -1110,7 +1196,7 @@ impl Conn {
 
     fn notify_writable_initial(&mut self, ctx: &mut Ctx) {
         self.want_write = true;
-        self.notify_writable(ctx.events, ctx.cfg);
+        self.notify_writable(ctx.events, ctx.cfg, ctx.budget);
     }
 
     /// Desync detection. A synchronized peer's cumulative ACK and TSval never go
@@ -1432,7 +1518,7 @@ impl Conn {
 
         // Memory: reserve before keeping the bytes (§6.3/§6.4). In-order data may use
         // the per-connection progress reserve (2 MSS) beyond peer quota / pressure.
-        let level = ctx.budget.level();
+        let level = ctx.budget.level_for(self.peer);
         let progress = in_order && self.rcv_charged < 2 * self.rcv_mss as u64;
         if !in_order && level >= Pressure::Pressure {
             self.stats.dropped_no_mem += 1;
@@ -1601,6 +1687,7 @@ impl Conn {
                 let rel = (n as u64).min(self.tx_charged);
                 self.tx_charged -= rel;
                 ctx.budget.release(self.peer, rel);
+                self.sync_sender(ctx);
             }
             self.rto_backoff = 0;
             self.rto_base = now;
@@ -1825,7 +1912,7 @@ impl Conn {
         }
 
         if ack > prior_una {
-            self.notify_writable(ctx.events, ctx.cfg);
+            self.notify_writable(ctx.events, ctx.cfg, ctx.budget);
             if self.snd_una == self.snd_max {
                 self.life_at = self.life_at.filter(|_| self.app_closed || self.state == State::TimeWait);
             }
@@ -1958,6 +2045,9 @@ impl Conn {
     }
 
     fn calc_window(&self, ctx: &Ctx) -> u64 {
+        // Local TX/cache pressure must not close a healthy receive window.
+        // level_for still limits receive autotuning and OOO retention; actual
+        // RX allocations remain subject to all three physical hard limits.
         self.calc_window_l(ctx.budget.level())
     }
 
@@ -2656,6 +2746,7 @@ impl Conn {
             lost: self.sb.lost,
             retrans_out: self.sb.retrans_out,
             in_recovery: self.recovery.is_some(),
+            want_write: self.want_write,
             delivered: self.dl.delivered,
             cc: self.cc.name(),
             cc_debug: self.cc.debug(),
