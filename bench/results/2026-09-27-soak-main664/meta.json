@@ -1,0 +1,142 @@
+{
+  "args": {
+    "name": "soak-main664",
+    "bin": "/workspace/target/release/zfbench",
+    "stacks": [
+      "kernel-cubic",
+      "smoltcp-cubic",
+      "zfstack-cubic",
+      "zfstack-bbr"
+    ],
+    "rate": 200.0,
+    "seed": 1,
+    "client_cc": "cubic",
+    "quick": false,
+    "resume": false,
+    "outdir": "/workspace/bench/results/2026-09-27-soak-main664",
+    "report_only": null,
+    "only": "",
+    "dry_run": false
+  },
+  "stacks": [
+    "kernel-cubic",
+    "smoltcp-cubic",
+    "zfstack-cubic",
+    "zfstack-bbr"
+  ],
+  "scenarios": [
+    {
+      "name": "down-clean-12",
+      "test": "down",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 180,
+      "warmup": 5
+    },
+    {
+      "name": "down-loss-12",
+      "test": "down",
+      "rtt": 12.0,
+      "loss": 0.01,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "down-shallow-80",
+      "test": "down",
+      "rtt": 80.0,
+      "loss": 0.0,
+      "queue": 0.25,
+      "flows": 1,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "down-loss80-8f",
+      "test": "down",
+      "rtt": 80.0,
+      "loss": 0.01,
+      "queue": 2.0,
+      "flows": 8,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "up-clean-12",
+      "test": "up",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "up-loss-12",
+      "test": "up",
+      "rtt": 12.0,
+      "loss": 0.01,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "mixed-12",
+      "test": "mixed",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 120,
+      "warmup": 5
+    },
+    {
+      "name": "pause-12",
+      "test": "down",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 40,
+      "warmup": 3,
+      "pause_after": 8,
+      "pause_for": 8
+    },
+    {
+      "name": "idlehold-256",
+      "test": "down",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 60,
+      "warmup": 5,
+      "idle_hold": 256
+    },
+    {
+      "name": "churn-12",
+      "test": "churn",
+      "rtt": 12.0,
+      "loss": 0.0,
+      "queue": 2.0,
+      "flows": 1,
+      "secs": 60,
+      "warmup": 2,
+      "concurrency": 64
+    }
+  ],
+  "env": {
+    "uname": "Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC Thu Sep 24 16:04:37 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux",
+    "nproc": 4,
+    "zfstack_commit": "2f8e179869e571084594fc6e00a760749e2bfd31",
+    "quick": false,
+    "link": "isolated TUN emulator 10.201.0.0/24 (no WAN)"
+  },
+  "started": "2026-09-27T05:01:38",
+  "finished": "2026-09-27T06:13:16"
+}

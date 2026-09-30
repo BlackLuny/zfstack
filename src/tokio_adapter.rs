@@ -2513,4 +2513,96 @@ mod tests {
         assert_eq!(snap.aborts.stream_state, 0);
         server.task.shutdown_and_join().await.unwrap();
     }
+
+    /// Adapter soak: many short echo connections must return the shared budget
+    /// to zero after the driver shuts down (no leaked streams / leases).
+    #[tokio::test(flavor = "current_thread")]
+    async fn sequential_echo_connections_release_budget() {
+        let (to_client_tx, mut to_client_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let egress = move |_i: IfaceId, _p: PeerId, pkt: &OutPacket<'_>| {
+            let _ = to_client_tx.send(pkt.to_vec());
+            SendResult::Accepted
+        };
+        let server_global = GlobalBudget::new(1 << 28);
+        let (h, mut acc, ids, task) =
+            spawn_with_budget(StackConfig::default(), StreamConfig::default(), vec![IfaceConfig::default()], egress, server_global.clone());
+        tokio::spawn(async move {
+            while let Some(s) = acc.accept().await {
+                tokio::spawn(async move {
+                    let (mut r, mut w) = tokio::io::split(s);
+                    let _ = tokio::io::copy(&mut r, &mut w).await;
+                    let _ = w.shutdown().await;
+                });
+            }
+        });
+
+        let epoch = tokio::time::Instant::now();
+        let now = || crate::Instant::from_nanos(epoch.elapsed().as_nanos() as u64 + 1);
+        let mut c = Shard::with_budget(StackConfig::default(), GlobalBudget::new(1 << 28));
+        let ci = c.add_iface(IfaceConfig::default());
+        const N: usize = 16;
+        const TOTAL: u64 = 64 * 1024;
+        for i in 0..N {
+            let id = c.connect(now(), ci, PeerId(9), format!("10.0.0.2:{}", 10_000 + i).parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            let (mut sent, mut recvd, mut eof, mut shut) = (0u64, 0u64, false, false);
+            let mut buf = vec![0u8; 16 * 1024];
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+            while !eof {
+                assert!(tokio::time::Instant::now() < deadline, "conn {i} timed out sent={sent} recvd={recvd}");
+                let mut out: Vec<(PeerId, Bytes)> = Vec::new();
+                let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
+                    out.push((PeerId(9), Bytes::from(p.to_vec())));
+                    SendResult::Accepted
+                };
+                c.run(now(), &mut sink);
+                if !out.is_empty() {
+                    assert!(h.ingress(ids[0], out).await);
+                }
+                while c.poll_event().is_some() {}
+                while sent < TOTAL {
+                    let n = ((TOTAL - sent) as usize).min(buf.len());
+                    for (k, b) in buf[..n].iter_mut().enumerate() {
+                        *b = pattern_byte(sent + k as u64);
+                    }
+                    match c.write(id, &buf[..n]) {
+                        WriteResult::Written(w) => sent += w as u64,
+                        _ => break,
+                    }
+                }
+                if sent == TOTAL && !shut {
+                    c.shutdown_write(id);
+                    shut = true;
+                }
+                loop {
+                    match c.read(now(), id, &mut buf) {
+                        ReadResult::Data(n) => {
+                            recvd += n as u64;
+                        }
+                        ReadResult::Eof => {
+                            eof = true;
+                            break;
+                        }
+                        ReadResult::WouldBlock => break,
+                        ReadResult::Closed(r) => panic!("conn {i} closed: {r:?}"),
+                    }
+                }
+                let wait = c.next_deadline().map_or(std::time::Duration::from_millis(5), |d| {
+                    std::time::Duration::from_nanos(d.as_nanos().saturating_sub(now().as_nanos())).min(std::time::Duration::from_millis(5))
+                });
+                if let Ok(Some(p)) = tokio::time::timeout(wait, to_client_rx.recv()).await {
+                    c.ingress(now(), ci, PeerId(9), Bytes::from(p));
+                    while let Ok(p) = to_client_rx.try_recv() {
+                        c.ingress(now(), ci, PeerId(9), Bytes::from(p));
+                    }
+                }
+            }
+            assert_eq!(recvd, TOTAL, "conn {i}");
+            c.close(now(), id);
+        }
+        drop(h);
+        task.shutdown_and_join().await.unwrap();
+        assert_eq!(server_global.connection_counts(), (0, 0), "adapter soak left connections");
+        assert_eq!(server_global.cached_bytes(), 0);
+        assert_eq!(server_global.reserved(), 0, "adapter soak leaked reserved bytes");
+    }
 }

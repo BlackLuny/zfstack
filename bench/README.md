@@ -182,6 +182,35 @@ sudo bench/run_matrix.py --tests down --rtts 80 --queues 0.25 --losses 0,0.01 \
 bench/run_matrix.py --report-only bench/results/2026-09-24-s0-e1
 ```
 
+## Stability soak (`run_soak.py`)
+
+Longer isolated-emulator runs aimed at disconnects, stalls, resume-after-pause,
+connection churn and RSS growth — not a throughput matrix. The path is the
+same TUN + userspace link emulator as above (`10.201.0.0/24`); no WAN and no
+WireGuard.
+
+```sh
+sudo bench/run_soak.py --quick --name soak-smoke   # ~15 s cells, harness check
+sudo bench/run_soak.py --name soak                 # full cells (minutes per stack)
+bench/run_soak.py --report-only bench/results/2026-09-26-soak
+```
+
+zfbench extras used by the soak:
+
+| flag | meaning |
+|---|---|
+| `--test churn` | for `--secs`, keep `--concurrency` workers doing connect + 1 KiB echo + close |
+| `--pause-after-secs` / `--pause-for-secs` | download stops reading, then resumes (zero-window / persist) |
+| `--idle-hold N` | hold N idle echo connections for the whole test |
+
+Each JSON includes `mem` (process RSS at begin/end/window marks),
+`results.rss_kb_per_sec`, `results.stall` (zero-throughput streaks, pause
+window excluded) and, for zfstack, `stack_stats.budget` (physical/logical
+used, active vs TIME_WAIT). `report.md` and `findings.json` classify
+crashes, correctness failures, stalls on clean paths, failed resume,
+churn wipe-outs and leftover active connections. Confirm a finding against
+the kernel/smoltcp columns before treating it as a zfstack bug.
+
 The default matrix runs the stacks `kernel-cubic`, `smoltcp-cubic` and
 `smoltcp-bbr` at 200 Mbps with these cells:
 
