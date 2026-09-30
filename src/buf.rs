@@ -226,6 +226,30 @@ impl TxBuf {
 /// memory to about (packet size / RX_COPY_BELOW) × charged for per-packet buffers.
 pub const RX_COPY_BELOW: usize = 1024;
 const RX_COPY_BUF: usize = 8 * 1024;
+// The IP parser accepts only ordinary 16-bit IP lengths (no jumbograms).
+// Keep room for the packet that fills an OOO hole, not just the OOO owners.
+const RX_GAP_SLOTS: usize = (u16::MAX as usize).div_ceil(RX_COPY_BUF);
+
+#[cfg(test)]
+pub(crate) fn rx_ooo_payload_failure_budget(payload_len: usize) -> u64 {
+    let slots = (1 + RX_GAP_SLOTS).max(4).next_power_of_two();
+    let index_reservation = (slots * std::mem::size_of::<Bytes>() * 2) as u64;
+    // The future RX index fits, but the following OOO owner misses by one byte.
+    index_reservation + payload_len as u64 + OOO_DESCRIPTOR_BYTES - 1
+}
+
+/// A prepared replacement is unpublished until all payload reservations pass.
+/// Field order releases the allocation before its lease, also on rollback.
+struct RxIndex {
+    items: VecDeque<Bytes>,
+    lease: MemoryLease,
+}
+
+#[cfg(test)]
+thread_local! {
+    // Fail exactly the next descriptor allocation on this test thread.
+    static FAIL_RX_INDEX_ALLOCATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 
 struct ChargedChunk {
     data: Box<[u8]>,
@@ -255,6 +279,10 @@ impl AsRef<[u8]> for ChargedChunk {
 #[derive(Default)]
 pub struct RxQueue {
     q: VecDeque<Bytes>,
+    /// Covers retained descriptor capacity, independently of payload owners.
+    index_lease: Option<MemoryLease>,
+    /// Slots promised to OOO owners at admission, before they can be SACKed.
+    ooo_slots: usize,
     tail: BytesMut,
     charged_tail: Option<ChargedChunk>,
     len: usize,
@@ -267,7 +295,9 @@ impl RxQueue {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    /// Unaccounted standalone helper. Do not mix with charged queue storage.
     pub fn push(&mut self, b: Bytes) {
+        assert!(self.index_lease.is_none(), "use charged RX insertion");
         if b.is_empty() {
             return;
         }
@@ -288,6 +318,7 @@ impl RxQueue {
     /// Copy borrowed ingress into reusable, compact chunks. The caller's IP
     /// buffer can return to its pool immediately after this call.
     pub fn push_borrowed(&mut self, mut data: &[u8]) {
+        assert!(self.index_lease.is_none(), "use charged RX insertion");
         self.seal_charged_tail();
         self.len += data.len();
         while !data.is_empty() {
@@ -318,6 +349,9 @@ impl RxQueue {
             fresh.push_back(ChargedChunk { data: vec![0u8; cap].into_boxed_slice(), len: 0, _lease: lease });
             remaining = remaining.saturating_sub(cap);
         }
+        let Some(slots) = self.retained_slots().checked_add(fresh.len()).and_then(|n| n.checked_add(self.ooo_slots)) else { return false };
+        let Ok(index) = self.prepare_index(slots, budget, peer) else { return false };
+        self.commit_index(index);
         self.seal_tail();
         self.len += data.len();
         while !data.is_empty() {
@@ -337,25 +371,32 @@ impl RxQueue {
     fn seal_charged_tail(&mut self) {
         if let Some(chunk) = self.charged_tail.take() {
             if chunk.len != 0 {
-                self.q.push_back(Bytes::from_owner(chunk));
+                self.push_indexed(Bytes::from_owner(chunk));
             }
         }
     }
 
-    /// Transfer an already accounted owner from the out-of-order queue.
+    /// Standalone owner transfer without descriptor accounting. Production
+    /// OOO transfers use the slots reserved by `insert_charged_for_rx`.
     pub fn push_existing(&mut self, b: Bytes) {
+        assert!(self.index_lease.is_none(), "use reserved OOO transfer");
+        self.push_existing_reserved(b);
+    }
+
+    fn push_existing_reserved(&mut self, b: Bytes) {
         if b.is_empty() {
             return;
         }
         self.seal_tail();
         self.seal_charged_tail();
         self.len += b.len();
-        self.q.push_back(b);
+        self.push_indexed(b);
     }
     /// Move copied bytes into `q` (keeping the tail's spare capacity for later copies).
     fn seal_tail(&mut self) {
         if !self.tail.is_empty() {
-            self.q.push_back(self.tail.split().freeze());
+            let tail = self.tail.split().freeze();
+            self.push_indexed(tail);
         }
     }
     pub fn read(&mut self, dst: &mut [u8]) -> usize {
@@ -399,14 +440,59 @@ impl RxQueue {
     }
     pub fn clear(&mut self) {
         self.q = VecDeque::new();
+        self.index_lease = None;
+        self.ooo_slots = 0;
         self.tail = BytesMut::new();
         self.charged_tail = None;
         self.len = 0;
     }
 
     fn trim_empty_index(&mut self) {
-        if self.q.is_empty() && self.q.capacity() > 8 {
+        if self.retained_slots() == 0 && self.ooo_slots == 0 && self.q.capacity() > 8 {
             self.q = VecDeque::new();
+            self.index_lease = None;
+        }
+    }
+
+    fn retained_slots(&self) -> usize {
+        self.q.len() + usize::from(!self.tail.is_empty()) + usize::from(self.charged_tail.is_some())
+    }
+
+    fn push_indexed(&mut self, b: Bytes) {
+        // Reads and OOO transfer cannot grow RX descriptor backing: slots
+        // were reserved before accepting the bytes. Never consume promises.
+        assert!(self.index_lease.is_none() || self.q.len() + self.ooo_slots < self.q.capacity(), "RX descriptor grew without a reservation");
+        self.q.push_back(b);
+    }
+
+    fn prepare_index(&self, slots: usize, budget: &mut Budget, peer: PeerId) -> Result<Option<RxIndex>, ()> {
+        if slots <= self.q.capacity() && (self.q.capacity() == 0 || self.index_lease.is_some()) {
+            return Ok(None);
+        }
+        let target = slots.max(self.q.capacity()).max(4).checked_next_power_of_two().ok_or(())?;
+        // As with the send scoreboard, reserve allocator slack before the
+        // allocation and check its actual capacity. Both old and replacement
+        // leases remain live until the old descriptor backing is freed.
+        let bytes = target.checked_mul(std::mem::size_of::<Bytes>()).and_then(|n| n.checked_mul(2)).ok_or(())?;
+        let lease = budget.try_allocate_kind(peer, u64::try_from(bytes).map_err(|_| ())?, crate::budget::AllocationKind::RxChunk).ok_or(())?;
+        #[cfg(test)]
+        if FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.replace(false)) {
+            return Err(());
+        }
+        let mut items = VecDeque::new();
+        items.try_reserve_exact(target).map_err(|_| ())?;
+        if items.capacity().checked_mul(std::mem::size_of::<Bytes>()).is_none_or(|actual| actual > bytes) {
+            return Err(());
+        }
+        Ok(Some(RxIndex { items, lease }))
+    }
+
+    fn commit_index(&mut self, index: Option<RxIndex>) {
+        if let Some(mut index) = index {
+            index.items.extend(self.q.drain(..));
+            let old = std::mem::replace(&mut self.q, index.items);
+            drop(old);
+            self.index_lease = Some(index.lease);
         }
     }
 }
@@ -460,6 +546,10 @@ impl OooQueue {
         if gaps.is_empty() {
             return Some(0);
         }
+        self.insert_charged_gaps(off, data, gaps, budget, peer)
+    }
+
+    fn insert_charged_gaps(&mut self, off: u64, data: &[u8], gaps: Vec<(u64, u64)>, budget: &mut Budget, peer: PeerId) -> Option<usize> {
         let total: usize = gaps.iter().map(|(s, e)| (e - s) as usize).sum();
         let descriptors = (gaps.len() as u64).checked_mul(OOO_DESCRIPTOR_BYTES)?;
         let lease = budget.try_allocate_kind(peer, (total as u64).checked_add(descriptors)?, crate::budget::AllocationKind::Ooo)?;
@@ -475,6 +565,25 @@ impl OooQueue {
             let (start, end) = offsets.pop_front().expect("one slice per uncovered range");
             owner.slice(start..end)
         }))
+    }
+
+    /// Production admission also reserves the future RX descriptor slots.
+    /// No OOO owner is published/SACKed until both reservations have passed.
+    pub(crate) fn insert_charged_for_rx(&mut self, off: u64, data: &[u8], budget: &mut Budget, peer: PeerId, rx: &mut RxQueue) -> Option<usize> {
+        debug_assert_eq!(rx.ooo_slots, self.segs.len());
+        let gaps = self.uncovered(off, data.len());
+        if gaps.is_empty() {
+            return Some(0);
+        }
+        let promised = self.segs.len().checked_add(gaps.len())?;
+        let slots = rx.retained_slots().checked_add(promised)?.checked_add(RX_GAP_SLOTS)?;
+        let index = rx.prepare_index(slots, budget, peer).ok()?;
+        // No RX metadata changes until the payload/OOO-descriptor
+        // reservation also succeeds. Reuse the gaps computed above.
+        let added = self.insert_charged_gaps(off, data, gaps, budget, peer)?;
+        rx.commit_index(index);
+        rx.ooo_slots = promised;
+        Some(added)
     }
 
     fn insert_with(&mut self, off: u64, data: &[u8], make_piece: impl Fn(usize, usize) -> Bytes) -> usize {
@@ -545,18 +654,33 @@ impl OooQueue {
     /// Remove and return data contiguous from `off` (the new rcv_nxt).
     /// Returns (new rcv_nxt, bytes discarded because they were below `off`).
     pub fn pop_contiguous(&mut self, off: u64, out: &mut RxQueue) -> (u64, u64) {
+        assert!(out.index_lease.is_none(), "use reserved OOO transfer");
+        self.pop_contiguous_inner(off, out, false)
+    }
+
+    /// All RX slots were promised at OOO admission: no descriptor growth or
+    /// quota failure remains after an in-order receive edge is committed.
+    pub(crate) fn pop_contiguous_reserved(&mut self, off: u64, out: &mut RxQueue) -> (u64, u64) {
+        debug_assert_eq!(out.ooo_slots, self.segs.len());
+        self.pop_contiguous_inner(off, out, true)
+    }
+
+    fn pop_contiguous_inner(&mut self, off: u64, out: &mut RxQueue, reserved: bool) -> (u64, u64) {
         let mut next = off;
         let mut discarded = 0u64;
         while let Some((&s, _)) = self.segs.iter().next() {
             if s > next {
                 break;
             }
+            if reserved {
+                out.ooo_slots -= 1;
+            }
             let b = self.segs.remove(&s).unwrap();
             self.bytes -= b.len();
             let e = s + b.len() as u64;
             if e > next {
                 discarded += next - s;
-                out.push_existing(b.slice((next - s) as usize..));
+                out.push_existing_reserved(b.slice((next - s) as usize..));
                 next = e;
             } else {
                 discarded += b.len() as u64;
@@ -580,6 +704,7 @@ impl OooQueue {
                 self.last = Some((next, le));
             }
         }
+        out.trim_empty_index();
         (next, discarded)
     }
 
@@ -942,7 +1067,8 @@ mod tests {
         budget.set_limits(4096, 4096, 4);
         let mut rx = RxQueue::default();
         assert!(rx.push_charged(&vec![4; 1400], &mut budget, PeerId(1)));
-        assert_eq!(budget.physical_used(), 2048 + CHUNK_METADATA_BYTES);
+        assert!(rx.index_lease.is_some());
+        assert!(budget.physical_used() >= 2048 + CHUNK_METADATA_BYTES + (rx.q.capacity() * std::mem::size_of::<Bytes>()) as u64);
         let one = rx.read_chunk(1).unwrap();
         assert_eq!(one.len(), 1);
         drop(rx);
@@ -1002,5 +1128,270 @@ mod tests {
         let (next, disc) = q.pop_contiguous(199, &mut rx);
         assert_eq!((next, disc), (205, 1));
         assert_eq!(rx.len(), 30 + 6);
+    }
+}
+
+#[cfg(test)]
+mod rx_descriptor_tests {
+    use super::*;
+    use crate::budget::{GlobalBudget, Level};
+
+    fn budget(high: u64) -> (std::sync::Arc<GlobalBudget>, Budget) {
+        let global = GlobalBudget::new(high);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(high, high, 8);
+        (global, budget)
+    }
+
+    #[test]
+    fn retained_rx_descriptor_capacity_remains_funded_after_partial_drain() {
+        let (global, mut budget) = budget(1 << 20);
+        let mut rx = RxQueue::default();
+        for _ in 0..128 {
+            assert!(rx.push_charged(&[7; 64], &mut budget, PeerId(1)));
+        }
+        let cap = rx.q.capacity();
+        let backing = (cap * std::mem::size_of::<Bytes>()) as u64;
+        assert_eq!(backing, 4096);
+        for _ in 0..126 {
+            drop(rx.read_chunk(64).unwrap());
+        }
+        assert_eq!(rx.len(), 128);
+        assert_eq!(rx.q.capacity(), cap);
+        // Payload leases still cover two 64-byte owners and their metadata.
+        let owners = 2 * (64 + CHUNK_METADATA_BYTES);
+        assert!(
+            budget.physical_used() >= owners + backing,
+            "retained descriptor backing is not funded: used={}, owners={owners}, backing={backing}",
+            budget.physical_used()
+        );
+        println!("RX_CAPACITY payload={} actual_backing={} physical_used={} owner_charge={}", rx.len(), backing, budget.physical_used(), owners);
+        assert_eq!(budget.used, 0, "physical metadata is not logical TCP payload");
+        rx.clear();
+        assert_eq!(budget.physical_used(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_growth_rolls_back_at_global_port_and_peer_limits() {
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let high = if level == Level::Global { 4096 } else { 8192 };
+            let global = GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(if level == Level::Port { 4096 } else { high }, 4096, 8);
+            let mut rx = RxQueue::default();
+            for _ in 0..4 {
+                assert!(rx.push_charged(&[3; 64], &mut budget, PeerId(1)));
+            }
+            assert_eq!(rx.q.capacity(), 4);
+            let next_index = 8 * std::mem::size_of::<Bytes>() as u64 * 2;
+            let blocker = budget.try_allocate(PeerId(1), 4096 - budget.physical_used() - 128 - next_index + 1).unwrap();
+            let before = global.reserved();
+            assert!(!rx.push_charged(&[4; 64], &mut budget, PeerId(1)));
+            assert_eq!(rx.len(), 256);
+            assert_eq!(rx.q.capacity(), 4);
+            assert_eq!(rx.charged_tail.as_ref().unwrap().data[0], 3);
+            assert_eq!(global.reserved(), before, "failed growth retained a provisional lease");
+            let index = match level {
+                Level::Global => 0,
+                Level::Port => 1,
+                Level::Peer => 2,
+            };
+            assert_eq!(budget.stats().failures_by_level()[index], 1);
+            drop(blocker);
+            assert!(rx.push_charged(&[4; 64], &mut budget, PeerId(1)));
+            let mut got = Vec::new();
+            while let Some(chunk) = rx.read_chunk(usize::MAX) {
+                got.extend_from_slice(&chunk);
+            }
+            assert_eq!(got, [vec![3; 256], vec![4; 64]].concat());
+            rx.clear();
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn rx_descriptor_allocator_failure_preserves_payload_tail_and_capacity() {
+        let (global, mut budget) = budget(1 << 20);
+        let mut rx = RxQueue::default();
+        for _ in 0..3 {
+            assert!(rx.push_charged(&[8; 64], &mut budget, PeerId(1)));
+        }
+        assert!(rx.push_charged(&[9; 63], &mut budget, PeerId(1)));
+        let before = global.reserved();
+        FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.set(true));
+        assert!(!rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
+        assert_eq!(rx.len(), 255);
+        assert_eq!(rx.q.capacity(), 4);
+        assert_eq!(rx.charged_tail.as_ref().unwrap().len, 63);
+        assert_eq!(global.reserved(), before);
+        assert!(rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
+        let mut got = Vec::new();
+        while let Some(chunk) = rx.read_chunk(usize::MAX) {
+            got.extend_from_slice(&chunk);
+        }
+        assert_eq!(got, [vec![8; 192], vec![9; 63], vec![5; 65]].concat());
+        rx.clear();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_ooo_admission_is_transactional_and_duplicates_allocate_nothing() {
+        let (global, mut budget) = budget(1 << 20);
+        let mut rx = RxQueue::default();
+        let mut ooo = OooQueue::default();
+        FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.set(true));
+        assert_eq!(ooo.insert_charged_for_rx(64, &[2; 64], &mut budget, PeerId(1), &mut rx), None);
+        assert_eq!((ooo.bytes(), ooo.segments(), rx.ooo_slots, rx.q.capacity()), (0, 0, 0, 0));
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(ooo.insert_charged_for_rx(64, &[2; 64], &mut budget, PeerId(1), &mut rx), Some(64));
+        let before = global.reserved();
+        assert_eq!(ooo.insert_charged_for_rx(64, &[9; 64], &mut budget, PeerId(1), &mut rx), Some(0));
+        assert_eq!(global.reserved(), before);
+        assert_eq!(rx.ooo_slots, 1);
+        assert_eq!(ooo.pop_contiguous_reserved(64, &mut rx), (128, 0));
+        assert_eq!(rx.ooo_slots, 0);
+        let owner = rx.read_chunk(1).unwrap();
+        rx.clear();
+        assert_eq!(global.reserved(), 64 + OOO_DESCRIPTOR_BYTES, "OOO payload lease follows the exported slice");
+        assert_eq!(&owner[..], &[2]);
+        drop(owner);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_ooo_payload_failure_rolls_back_prepared_backing() {
+        // Derive the exact failure phase from descriptor and owner charges.
+        let (global, mut budget) = budget(rx_ooo_payload_failure_budget(64));
+        let mut rx = RxQueue::default();
+        let mut ooo = OooQueue::default();
+        assert_eq!(ooo.insert_charged_for_rx(64, &[2; 64], &mut budget, PeerId(1), &mut rx), None);
+        assert_eq!((ooo.bytes(), ooo.segments(), rx.ooo_slots, rx.q.capacity()), (0, 0, 0, 0));
+        assert_eq!(budget.stats().failures().ooo, 1, "OOO payload must be the failed reservation");
+        assert_eq!(budget.stats().failures().rx_chunk, 0, "future RX index must have fitted");
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_ooo_transfer_and_overlap_need_no_space_after_admission() {
+        for overlap in [false, true] {
+            let (global, mut budget) = budget(8192);
+            let mut rx = RxQueue::default();
+            let mut ooo = OooQueue::default();
+            assert!(rx.push_charged(&[1; 63], &mut budget, PeerId(1)));
+            let off = if overlap { 63 } else { 64 };
+            assert_eq!(ooo.insert_charged_for_rx(off, &[2], &mut budget, PeerId(1), &mut rx), Some(1));
+            let capacity = rx.q.capacity();
+            let blocker = budget.try_allocate(PeerId(1), 8192 - global.reserved()).unwrap();
+            assert!(rx.push_charged(&[3], &mut budget, PeerId(1)), "existing tail should fill with no allocation");
+            let end = if overlap { (64, 1) } else { (65, 0) };
+            assert_eq!(ooo.pop_contiguous_reserved(64, &mut rx), end);
+            assert_eq!(rx.q.capacity(), capacity);
+            assert_eq!(rx.ooo_slots, 0);
+            assert_eq!(budget.stats().failures().rx_chunk, 0);
+            let mut got = Vec::new();
+            while let Some(chunk) = rx.read_chunk(usize::MAX) {
+                got.extend_from_slice(&chunk);
+            }
+            let mut expected = vec![1; 63];
+            expected.push(3);
+            if !overlap {
+                expected.push(2);
+            }
+            assert_eq!(got, expected);
+            drop(blocker);
+            rx.clear();
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn rx_descriptor_drain_preserves_ooo_promises_and_max_packet_headroom() {
+        let (global, mut budget) = budget(128 << 10);
+        let mut rx = RxQueue::default();
+        let mut ooo = OooQueue::default();
+        assert!(rx.push_charged(&[7; 64], &mut budget, PeerId(1)));
+        assert_eq!(ooo.insert_charged_for_rx(65599, &[2], &mut budget, PeerId(1), &mut rx), Some(1));
+        drop(rx.read_chunk(64).unwrap());
+        assert!(rx.is_empty());
+        assert_eq!(rx.ooo_slots, 1);
+        assert!(rx.q.capacity() >= 1 + RX_GAP_SLOTS);
+        let capacity = rx.q.capacity();
+        // Keep only the payload capacity available, no descriptor growth room.
+        let payload_charge = 8 * (8192 + CHUNK_METADATA_BYTES);
+        let available = (128 << 10) - global.reserved() - payload_charge;
+        let blocker = budget.try_allocate(PeerId(1), available).unwrap();
+        assert!(rx.push_charged(&vec![3; 65535], &mut budget, PeerId(1)));
+        assert_eq!(ooo.pop_contiguous_reserved(65599, &mut rx), (65600, 0));
+        assert_eq!(rx.q.capacity(), capacity);
+        assert_eq!(rx.ooo_slots, 0);
+        let mut got = Vec::new();
+        while let Some(chunk) = rx.read_chunk(usize::MAX) {
+            got.extend_from_slice(&chunk);
+        }
+        assert_eq!(got, [vec![3; 65535], vec![2]].concat());
+        drop(blocker);
+        rx.clear();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_multi_gap_ooo_admission_counts_each_owner_and_partial_overlap() {
+        let (global, mut budget) = budget(32768);
+        let mut rx = RxQueue::default();
+        let mut ooo = OooQueue::default();
+        assert_eq!(ooo.insert_charged_for_rx(100, &[1; 10], &mut budget, PeerId(1), &mut rx), Some(10));
+        assert_eq!(ooo.insert_charged_for_rx(120, &[2; 10], &mut budget, PeerId(1), &mut rx), Some(10));
+        assert_eq!(ooo.insert_charged_for_rx(90, &[3; 50], &mut budget, PeerId(1), &mut rx), Some(30));
+        assert_eq!((ooo.segments(), rx.ooo_slots), (5, 5));
+        let before = global.reserved();
+        assert_eq!(ooo.insert_charged_for_rx(90, &[9; 50], &mut budget, PeerId(1), &mut rx), Some(0));
+        assert_eq!((ooo.segments(), rx.ooo_slots), (5, 5));
+        assert_eq!(global.reserved(), before);
+        // First owner loses a prefix but must transfer its remaining suffix.
+        assert_eq!(ooo.pop_contiguous_reserved(95, &mut rx), (140, 5));
+        assert_eq!(rx.ooo_slots, 0);
+        assert!(ooo.is_empty());
+        let mut got = Vec::new();
+        while let Some(chunk) = rx.read_chunk(usize::MAX) {
+            got.extend_from_slice(&chunk);
+        }
+        assert_eq!(got, [vec![3; 5], vec![1; 10], vec![3; 10], vec![2; 10], vec![3; 10]].concat());
+        rx.clear();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_admission_respects_each_debt_without_claiming_tx_drain() {
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let (global, mut budget) = budget(1 << 20);
+            let peer = PeerId(1);
+            let debt = budget.admit_debt(peer, level, 4096);
+            let mut rx = RxQueue::default();
+            for _ in 0..128 {
+                assert!(rx.push_charged(&[1; 64], &mut budget, peer));
+            }
+            let owed = budget.admission_debt();
+            assert_eq!(owed.iter().sum::<u64>(), 4096);
+            rx.clear();
+            assert_eq!(debt.released(), 0, "RX descriptor/payload releases are not ACK-releasable TX drain");
+            assert_eq!(global.reserved(), 0);
+            drop(debt);
+            assert_eq!(budget.admission_debt(), [0; 3]);
+        }
+    }
+
+    #[test]
+    fn rx_descriptor_legacy_mutation_is_rejected_before_removing_ooo_data() {
+        let (_, mut budget) = budget(1 << 20);
+        let mut rx = RxQueue::default();
+        assert!(rx.push_charged(&[1], &mut budget, PeerId(1)));
+        let mut ooo = OooQueue::default();
+        ooo.insert(1, Bytes::from_static(b"x"));
+        let before = (rx.len(), ooo.bytes());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ooo.pop_contiguous(1, &mut rx))).is_err());
+        assert_eq!((rx.len(), ooo.bytes()), before);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rx.push(Bytes::from_static(b"x")))).is_err());
+        assert_eq!(rx.len(), before.0);
     }
 }

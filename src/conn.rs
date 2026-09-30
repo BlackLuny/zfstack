@@ -1552,7 +1552,7 @@ impl Conn {
             let had_ooo = self.ooo.as_ref().is_some_and(|o| !o.is_empty());
             if had_ooo {
                 let o = self.ooo.as_mut().unwrap();
-                let (next, discarded) = o.pop_contiguous(self.rcv_nxt, &mut self.rx);
+                let (next, discarded) = o.pop_contiguous_reserved(self.rcv_nxt, &mut self.rx);
                 self.rcv_nxt = next;
                 // Out-of-order bytes overlapped by the in-order segment were charged twice.
                 let rel = discarded.min(self.rcv_charged);
@@ -1595,8 +1595,8 @@ impl Conn {
             }
             let o = self.ooo.get_or_insert_with(Default::default);
             let added = match &payload {
-                IngressPayload::Borrowed(v) => o.insert_charged(off as u64, v, ctx.budget, self.peer),
-                IngressPayload::Owned(v) => o.insert_charged(off as u64, v, ctx.budget, self.peer),
+                IngressPayload::Borrowed(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
+                IngressPayload::Owned(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
             };
             let Some(added) = added else {
                 self.rcv_charged -= len;
@@ -2818,5 +2818,133 @@ impl Conn {
             || self.probe_pending
             || self.tlp.pending
             || (self.state.can_send_data() && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending()))
+    }
+}
+
+#[cfg(test)]
+mod rx_descriptor_tests {
+    use super::*;
+    use crate::budget::GlobalBudget;
+
+    fn exercise(high: u64, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
+        let global = GlobalBudget::new(high);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(high, high, 8);
+        let cfg = StackConfig::default();
+        let mut pool = BlockPool::new(0);
+        let mut events = VecDeque::new();
+        let mut conn = Conn::new_from_cookie(
+            ConnId(1),
+            IfaceId(1),
+            PeerId(1),
+            "10.0.0.1:80".parse().unwrap(),
+            "10.0.0.2:40000".parse().unwrap(),
+            Seq(1),
+            0,
+            1500,
+            Seq(1),
+            &SynParams { mss: Some(1460), wscale: None, sack: true, ts: None },
+            &cfg,
+            Instant::ZERO,
+        );
+        let mut ctx = Ctx { cfg: &cfg, pool: &mut pool, budget: &mut budget, events: &mut events };
+        run(&mut conn, &mut ctx);
+        conn.destroy(&mut ctx);
+        assert_eq!(ctx.budget.used, 0);
+        assert_eq!(ctx.budget.physical_used(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_descriptor_failed_in_order_admission_keeps_receive_edge_and_logical_credit() {
+        exercise(8192, |conn, ctx| {
+            for _ in 0..4 {
+                conn.process_data(Instant::ZERO, conn.rcv_nxt as i64, IngressPayload::Borrowed(&[3; 64]), false, ctx);
+            }
+            assert_eq!((conn.rcv_nxt, conn.rcv_charged, ctx.budget.used), (257, 256, 256));
+            let before_received = conn.stats.bytes_received;
+            let available = 128 + 8 * std::mem::size_of::<Bytes>() as u64 * 2 - 1;
+            let blocker = ctx.budget.try_allocate(conn.peer, 8192 - ctx.budget.physical_used() - available).unwrap();
+            let before_physical = ctx.budget.physical_used();
+            conn.process_data(Instant::ZERO, 257, IngressPayload::Borrowed(&[4; 64]), false, ctx);
+            assert_eq!((conn.rcv_nxt, conn.rcv_charged, ctx.budget.used, conn.rx.len()), (257, 256, 256, 256));
+            assert_eq!(conn.stats.bytes_received, before_received);
+            assert_eq!(conn.stats.dropped_no_mem, 1);
+            assert_eq!(ctx.budget.physical_used(), before_physical);
+            assert_eq!(conn.ack_need, AckNeed::Now);
+            drop(blocker);
+            conn.process_data(Instant::ZERO, 257, IngressPayload::Borrowed(&[4; 64]), false, ctx);
+            assert_eq!((conn.rcv_nxt, conn.rcv_charged, ctx.budget.used), (321, 320, 320));
+        });
+    }
+
+    #[test]
+    fn rx_descriptor_failed_ooo_admission_publishes_no_sack_or_credit() {
+        exercise(crate::buf::rx_ooo_payload_failure_budget(64), |conn, ctx| {
+            conn.process_data(Instant::ZERO, 65, IngressPayload::Borrowed(&[2; 64]), false, ctx);
+            assert_eq!(conn.rcv_nxt, 1);
+            assert_eq!((conn.rcv_charged, ctx.budget.used, ctx.budget.physical_used()), (0, 0, 0));
+            assert!(conn.ooo.is_none());
+            assert_eq!(ctx.budget.stats().failures().ooo, 1);
+            assert_eq!(ctx.budget.stats().failures().rx_chunk, 0);
+            assert_eq!(conn.stats.dropped_no_mem, 1);
+            assert_eq!(conn.ack_need, AckNeed::Now);
+        });
+    }
+
+    #[test]
+    fn rx_descriptor_gap_fill_at_full_quota_handles_overlap_and_fin() {
+        for overlap in [false, true] {
+            exercise(8192, |conn, ctx| {
+                conn.process_data(Instant::ZERO, 1, IngressPayload::Borrowed(&[1; 62]), false, ctx);
+                conn.process_data(Instant::ZERO, 64, IngressPayload::Borrowed(&[2]), false, ctx);
+                assert_eq!(conn.ooo.as_ref().unwrap().segments(), 1);
+                conn.fin_rcvd = Some(65);
+                conn.try_consume_fin(Instant::ZERO, ctx);
+                assert_eq!(conn.state, State::Established);
+                let blocker = ctx.budget.try_allocate(conn.peer, 8192 - ctx.budget.physical_used()).unwrap();
+                let bytes: &[u8] = if overlap { &[3, 3] } else { &[3] };
+                conn.process_data(Instant::ZERO, 63, IngressPayload::Borrowed(bytes), false, ctx);
+                assert_eq!(conn.rcv_nxt, 65);
+                assert!(conn.ooo.is_none());
+                assert_eq!(conn.stats.dropped_no_mem, 0);
+                assert_eq!((conn.rcv_charged, ctx.budget.used), (64, 64), "overlap must release logical credit exactly once");
+                conn.try_consume_fin(Instant::ZERO, ctx);
+                assert_eq!((conn.rcv_nxt, conn.state), (66, State::CloseWait));
+                let mut got = Vec::new();
+                while !conn.rx.is_empty() {
+                    let chunk = conn.read_chunk(64, ctx, Instant::ZERO).unwrap();
+                    got.extend_from_slice(&chunk);
+                }
+                let mut expected = vec![1; 62];
+                expected.extend_from_slice(if overlap { &[3, 3] } else { &[3, 2] });
+                assert_eq!(got, expected);
+                assert_eq!((conn.rcv_charged, ctx.budget.used), (0, 0));
+                assert_eq!(conn.read(&mut [0], ctx, Instant::ZERO), ReadResult::Eof);
+                drop(blocker);
+            });
+        }
+    }
+
+    #[test]
+    fn rx_descriptor_reset_and_cancel_release_both_queues_but_keep_exported_owner() {
+        for reset in [false, true] {
+            exercise(32768, |conn, ctx| {
+                conn.process_data(Instant::ZERO, 1, IngressPayload::Borrowed(&[1; 64]), false, ctx);
+                conn.process_data(Instant::ZERO, 129, IngressPayload::Borrowed(&[2; 64]), false, ctx);
+                let owner = conn.read_chunk_for_adapter(1, ctx, Instant::ZERO).unwrap();
+                assert_eq!(ctx.budget.used, 128);
+                if reset {
+                    conn.set_closed(CloseReason::Reset, ctx);
+                } else {
+                    conn.abort(ctx);
+                }
+                assert_eq!(ctx.budget.used, 0);
+                assert!(conn.rx.is_empty() && conn.ooo.is_none());
+                assert_eq!(ctx.budget.physical_used(), 128, "only exported compact payload owner may remain");
+                drop(owner);
+                assert_eq!(ctx.budget.physical_used(), 0);
+            });
+        }
     }
 }

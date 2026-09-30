@@ -92,6 +92,65 @@ fn send_record_quota_retries_after_physical_memory_release() {
     assert_eq!(global.reserved(), 0);
 }
 
+/// Exercise real data/ACK/retransmission packets after descriptor admission
+/// fails at a tight receiver quota; direct process_data retry tests cannot
+/// prove that the sender retains and retransmits the unacknowledged bytes.
+#[test]
+fn rx_descriptor_quota_drop_recovers_on_wire_retransmission() {
+    let mut s = sim(843, LinkParams::default(), LinkParams::default());
+    let port_limit = 128 << 10;
+    s.b.shard.set_budget_limits(port_limit, port_limit, 8);
+    let client = s.connect(40045, AppConn { read_paused_until: Instant::ZERO + secs(30), ..Default::default() });
+    s.run_until(s.now + Duration::from_millis(100));
+    let server = s.a.accepted[0];
+    let payload: Vec<_> = (0..320).map(pattern_byte).collect();
+    let mut charges = Vec::new();
+    for part in payload[..256].chunks(64) {
+        let before = s.b.shard.budget().physical_used();
+        assert_eq!(s.a.shard.write(server, part), WriteResult::Written(part.len()));
+        s.run_until(s.now + Duration::from_millis(100));
+        charges.push(s.b.shard.budget().physical_used() - before);
+    }
+    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 256);
+    assert_eq!(s.b.conns[&client].received, 0, "slow reader must retain all four owners");
+    let owner_charge = charges[1];
+    assert!(owner_charge >= 64);
+    assert_eq!(&charges[1..], &[owner_charge; 3], "only the first chunk grows the index");
+    // One more compact owner fits, but replacing four descriptor slots with
+    // eight misses by one byte while the old backing remains charged.
+    let replacement_charge = (8 * std::mem::size_of::<Bytes>() * 2) as u64;
+    let room = owner_charge + replacement_charge - 1;
+    let blocker = s.b.shard.memory_handle(PeerId(1)).try_allocate(port_limit - s.b.shard.budget().physical_used() - room).unwrap();
+    let retrans_before = s.a.shard.info(server).unwrap().stats.bytes_retrans;
+    assert_eq!(s.a.shard.write(server, &payload[256..]), WriteResult::Written(64));
+    let failure_deadline = s.now + secs(1);
+    while s.now < failure_deadline && s.b.shard.budget().stats().failures().rx_chunk == 0 {
+        s.run_until(s.now + Duration::from_millis(1));
+    }
+    assert_eq!(s.b.shard.budget().stats().failures().rx_chunk, 1);
+    assert_eq!(s.b.shard.budget().stats().failures().ooo, 0);
+    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 256);
+    // Deliver the duplicate ACK: the receiver did not acknowledge the byte
+    // range whose backing it could not reserve.
+    s.run_until(s.now + Duration::from_millis(30));
+    assert_eq!(s.a.shard.info(server).unwrap().tx_queued, 64);
+    drop(blocker);
+    let recovery_deadline = s.now + secs(3);
+    while s.now < recovery_deadline && s.b.shard.info(client).unwrap().rx_queued < payload.len() {
+        s.run_until(s.now + Duration::from_millis(1));
+    }
+    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, payload.len());
+    assert!(s.a.shard.info(server).unwrap().stats.bytes_retrans >= retrans_before + 64, "recovery must use a wire retransmission");
+    s.b.conns.get_mut(&client).unwrap().read_paused_until = s.now;
+    s.a.shard.shutdown_write(server);
+    s.run_until(s.now + secs(1));
+    assert_download_ok(&s.b.conns[&client], payload.len() as u64);
+    let a_global = s.a.shard.budget().global().clone();
+    let b_global = s.b.shard.budget().global().clone();
+    drop(s);
+    assert_eq!((a_global.reserved(), b_global.reserved()), (0, 0));
+}
+
 /// #664: a sender whose send records are full and cannot grow must still
 /// retransmit lost records in place; their ACKs free the slots new data needs.
 #[test]

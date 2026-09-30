@@ -19,7 +19,7 @@
 - **还账**：这条连接之后准入成功，就把凭据从表里删掉；期限到了对端还没重传，也删掉。凭据析构时扣回欠账并唤醒物理等待者。期限按拒绝它的那个 shard 自己的时钟计算：core 不读时钟，各 driver 的时间零点也不同，不能用一个跨端口的全局时间。shard 的 `next_deadline` 包含最早的到期时间，所以空闲时也会按时醒来。
 - TIME_WAIT 槽申请失败不记欠账：它失败的原因可能是连接数上限，而不是内存。
 - **欠账期间的上限**（每层独立，`D > 0` 时）：
-  - P4 大块：余量从 `H_4` 加到 `H_4 + D`。
+  - P4 大块：余量从 `H_4` 加到 `H_4 + D`。core RX 的 payload 与独立描述符 backing 都属于 `RxChunk` / Bulk，未来 OOO→RX 槽在 OOO 接纳前一并预留，因此同样受欠账限制；它们不是 ACK 可直接释放的 TX `drain`。空 RX 保留的小容量 backing 仍计费，具体生命周期及回滚合同见 0005 §3。
   - P2 TX 块：余量从 `H_2` 加到 `H_2 + min(R_block + D, drain)`。`drain` 是该层 TX 块与发送记录的租约字节数，也就是 ACK 能直接释放的部分；空闲缓存块不算。加上 `R_block` 是因为 P2 平时可以比准入线高出一块。
   - 欠账期间，释放的 TX 块不进空闲缓存，直接归还额度。
   - P0/P1/P3 不变。
@@ -54,9 +54,11 @@ P4 更严格了，P3+P4 ≤ `limit − H_3` 仍然成立。欠账只收紧上限
 - `admission_debt_follows_the_level_that_refused_the_retransmit`：首次被 port 拒、重传被 peer 拒时，欠账迁到 peer，之后准入成功。去掉迁移后失败。
 - `admission_debt_outlasts_backed_off_retransmits`：0、1、3、7s 四次都被拒（期间该层持续释放，空间被发送记录占回），在 3、7、15s 重传前欠账都还在，15s 进来。固定 3s 期限时失败。
 - `admission_debt_is_lifted_when_the_level_stops_releasing`：持有者不释放时，1s 后撤销欠账，其他发送端恢复申请；对端不重传则按期限到期。去掉撤销后失败。
-- `owed_admission_room_does_not_stop_established_streams`：6 条真实流以 128KiB/s 读取，另有任务模拟回填，端口越过准入线后再发起新连接。在新连接被拒、欠账生效的窗口里，每条旧流都至少读到 64KiB，新连接 2.5s 内握手，全部传完，无 RST（5/5 稳定）。
+- `mixed_load_above_admission_line_keeps_streams_progressing`：保留 6 条真实流以 128KiB/s 读取、普通回填任务已经运行时再准入晚到连接的混合负载。先让每条流读到 64KiB，再启动普通回填任务；随后实际观察端口用量超过 `port_limit − headroom(Admit)` 才发起新连接；断言此时六条旧流都活跃、回填任务已经运行且仍活跃。随后无条件观察一秒，要求每条旧流至少再读到 64KiB，回填仍在推进，新连接 2.5s 内握手、全部字节正确传完、无 RST/abort。回填在进展窗口和晚到握手都已观察到之后才停止，并保留 40s 超时保护；不能因启动后固定时间已过而在压力事件前提前撤压。若在任何真实流开始缓存前就启动无限回填，合成 TX 租约会先占住 Bulk 空间，六条应用可能直到回填结束才首次前进；因此用明确的已建立负载事件作为启动条件。这个用量快照与 SYN 真正处理之间可能有 ACK 释放，所以立即准入是合法结果；该测试不把高水位快照冒充确定拒绝的证据。
+- `forced_refusal_debt_does_not_stop_established_streams`：单独覆盖明确拒绝后的推进。在处理所选晚到 SYN 的同一 owner turn 临时申请 filler，断言该 SYN 新增一笔欠账且连接数不变，随即释放 filler，再启动 3.5s 的竞争回填。它保留每条旧流在首次连接到重传握手之间至少读取 64KiB、2.5s 内握手、握手时回填仍活跃且已执行多轮、全部完成和无 RST/abort 的断言。该场景没有声称复现前一个自然压力场景的释放时序。
+- 这两个测试分别证明自然混合压力下的持续推进，以及已观察到拒绝/欠账后的推进。原测试只在发 SYN 前采样压力，却要求 SYN 必然被拒；在合法的中间释放下会报 `the late SYN was never refused`，因此拆开这两个证据，不能仅靠强制拒绝替代混合压力覆盖。
 - 单测：`admission_debt_holds_back_tx_blocks_and_bulk_at_every_level`（三层分别覆盖 P2 与 P4 收紧、P1/P3 不受影响、还账后恢复），`admission_debt_never_holds_back_a_level_without_tx_blocks_or_records`（`drain = 0` 时 P2 不受影响；去掉 `min(drain)` 后失败），`admission_debt_is_capped_and_its_repayment_wakes_waiters`。
-- 0005 的全部测试保持通过（共 114 项）。
+- 0005 的相关推进测试继续纳入完整测试集；测试总数随新增回归变化，以对应提交的 CI 结果为准。
 
 真机（worker 218，候选 v5，2026-09-27，证据在 zfc `tasks/zfstack-664-rerun/evidence/`）：
 
