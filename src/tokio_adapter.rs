@@ -1728,16 +1728,18 @@ mod tests {
         memory: MemoryHandle,
         refilling: Arc<std::sync::atomic::AtomicBool>,
         refill_rounds: Arc<std::sync::atomic::AtomicU64>,
+        stop_refilling: Arc<std::sync::atomic::AtomicBool>,
+        load_ready: Arc<tokio::sync::Notify>,
     }
 
     /// Accepted streams each send `per_conn` bytes over 64 KiB stream queues.
     fn limited_server(global: Arc<GlobalBudget>, profile: Profile) -> LimitedServer {
-        limited_server_with_refused_syn(global, profile, None)
+        limited_server_with_forced_refusal(global, profile, None)
     }
 
     /// Test-only pressure gate: fill the quota in the same owner turn that
     /// processes the selected SYN, then require that SYN to create debt.
-    fn limited_server_with_refused_syn(global: Arc<GlobalBudget>, profile: Profile, refuse_port: Option<u16>) -> LimitedServer {
+    fn limited_server_with_forced_refusal(global: Arc<GlobalBudget>, profile: Profile, refuse_port: Option<u16>) -> LimitedServer {
         let mut refusal_observed = false;
         let refilling = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let ingress_refilling = refilling.clone();
@@ -1785,16 +1787,13 @@ mod tests {
                     if gate {
                         let memory = shard.memory_handle(peer);
                         let mut held = Vec::new();
-                        let mut injected_bytes = 0;
                         for quantum in [crate::buf::TX_BLOCK_CHARGE, 256] {
                             while let Some(lease) = memory.try_allocate_kind(quantum, AllocationKind::TxBlock) {
-                                injected_bytes += quantum;
                                 held.push(lease);
                             }
                         }
                         let before = shard.stats().admission_debts;
                         let conns = shard.conn_count();
-                        let physical = shard.budget().physical_used();
                         // No driver/ACK task can interleave between filling the
                         // quota and this SYN's admission attempt.
                         shard.ingress(now, iface, peer, p);
@@ -1804,10 +1803,6 @@ mod tests {
                         assert!(debt.iter().any(|&n| n > 0));
                         assert_eq!(shard.conn_count(), conns, "refused SYN was admitted");
                         refusal_observed = true;
-                        eprintln!(
-                            "ADMISSION_GATE before={before} after={after} debt={debt:?} held_leases={} physical={physical} injected_bytes={injected_bytes}",
-                            held.len()
-                        );
                         drop(held);
                         // Start competing refills at the observed refusal,
                         // not before the initial six handshakes complete.
@@ -1845,7 +1840,20 @@ mod tests {
                 });
             }
         });
-        LimitedServer { handle, iface: ids[0], ingress, to_client, task, global, profile, memory, refilling, refill_rounds }
+        LimitedServer {
+            handle,
+            iface: ids[0],
+            ingress,
+            to_client,
+            task,
+            global,
+            profile,
+            memory,
+            refilling,
+            refill_rounds,
+            stop_refilling: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            load_ready: Arc::new(tokio::sync::Notify::new()),
+        }
     }
 
     /// Open `conns` client connections, spread over the profile's peers, and
@@ -1864,6 +1872,9 @@ mod tests {
         /// Open the late connection only once the port holds more than this
         /// many physical bytes.
         late_above: u64,
+        /// Start ordinary refills after the established-load threshold, and
+        /// require them to be running before the late pressure trigger.
+        require_refiller: bool,
     }
 
     #[derive(Debug, Default)]
@@ -1878,6 +1889,15 @@ mod tests {
         load_progress: Vec<u64>,
         refills_active_at_late_handshake: bool,
         refill_rounds_at_late_handshake: u64,
+        late_trigger_physical_bytes: u64,
+        loading_at_late_trigger: usize,
+        refills_active_at_late_trigger: bool,
+        refill_rounds_at_late_trigger: u64,
+        /// A fixed progress window also applies when the late SYN succeeds
+        /// immediately, leaving no meaningful refusal interval to measure.
+        progress_after_one_second: Option<Vec<u64>>,
+        refills_active_after_one_second: bool,
+        refill_rounds_after_one_second: u64,
     }
 
     async fn download_with(server: &mut LimitedServer, first_port: u16, conns: u16, limit: std::time::Duration, load: Load) -> Result<LoadReport, String> {
@@ -1902,6 +1922,8 @@ mod tests {
         let mut rounds = 0u64;
         let mut report = LoadReport::default();
         let mut late_started: Option<tokio::time::Instant> = None;
+        let mut late_start_bytes = Vec::new();
+        let mut load_ready_signaled = false;
         loop {
             assert!(server.global.reserved() <= server.global.high(), "global budget exceeded");
             rounds += 1;
@@ -1958,14 +1980,27 @@ mod tests {
                 }
             }
             if let Some(after) = load.late_after {
-                let full = load.late_above == 0 || server.handle.snapshot().await.is_some_and(|s| s.port_physical_bytes > load.late_above);
-                if late_started.is_none() && recvd[..load_n].iter().all(|&n| n >= after) && full {
+                let ready = recvd[..load_n].iter().all(|&n| n >= after);
+                if ready && !load_ready_signaled {
+                    server.load_ready.notify_one();
+                    load_ready_signaled = true;
+                }
+                let refiller_ready = !load.require_refiller
+                    || (server.refilling.load(std::sync::atomic::Ordering::SeqCst) && server.refill_rounds.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+                let physical = if load.late_above > 0 { server.handle.snapshot().await.map_or(0, |s| s.port_physical_bytes) } else { 0 };
+                let full = load.late_above == 0 || physical > load.late_above;
+                if late_started.is_none() && ready && refiller_ready && full {
+                    report.late_trigger_physical_bytes = physical;
+                    report.loading_at_late_trigger = loading(&eof);
+                    report.refills_active_at_late_trigger = server.refilling.load(std::sync::atomic::Ordering::SeqCst);
+                    report.refill_rounds_at_late_trigger = server.refill_rounds.load(std::sync::atomic::Ordering::SeqCst);
                     let port = first_port + conns;
                     ids.push(c.connect(now(), ci, PeerId(9), SocketAddr::from(([10, 0, 0, 2], port)), "10.0.0.1:80".parse().unwrap()));
                     recvd.push(0);
                     eof.push(false);
                     late_started = Some(tokio::time::Instant::now());
-                    report.load_progress = recvd[..load_n].to_vec();
+                    late_start_bytes = recvd[..load_n].to_vec();
+                    report.load_progress = late_start_bytes.clone();
                 }
             }
             for (k, &id) in ids.iter().enumerate() {
@@ -1995,6 +2030,14 @@ mod tests {
                         ReadResult::Closed(r) => return Err(format!("conn {k} closed with {r:?} after {} bytes", recvd[k])),
                     }
                 }
+            }
+            if report.progress_after_one_second.is_none() && late_started.is_some_and(|at| at.elapsed() >= std::time::Duration::from_secs(1)) {
+                report.progress_after_one_second = Some(recvd[..load_n].iter().zip(&late_start_bytes).map(|(n, start)| n - start).collect());
+                report.refills_active_after_one_second = server.refilling.load(std::sync::atomic::Ordering::SeqCst);
+                report.refill_rounds_after_one_second = server.refill_rounds.load(std::sync::atomic::Ordering::SeqCst);
+            }
+            if report.progress_after_one_second.is_some() && report.late_connected.is_some() {
+                server.stop_refilling.store(true, std::sync::atomic::Ordering::SeqCst);
             }
             if eof.iter().all(|&e| e) && (load.late_after.is_none() || late_started.is_some()) {
                 assert!(recvd.iter().all(|&n| n == per_conn), "short stream: {recvd:?}");
@@ -2339,7 +2382,7 @@ mod tests {
         let global = GlobalBudget::new(8 << 20);
         let mut server = limited_server(global.clone(), Profile::zfc_repro(false, 256 << 10));
         let churn = spawn_refilling_senders(server.memory.clone(), 3500);
-        let load = Load { read_rate: 0, late_after: Some(0), late_above: 0 };
+        let load = Load { read_rate: 0, late_after: Some(0), late_above: 0, ..Load::default() };
         let report = download_with(&mut server, 20_000, 0, std::time::Duration::from_secs(20), load).await.expect("new connection");
         churn.await.unwrap();
         let (connect, _) = report.late_connected.expect("never connected");
@@ -2356,10 +2399,19 @@ mod tests {
     }
 
     fn spawn_refilling_senders_counted(memory: MemoryHandle, ms: u64, rounds: Option<Arc<std::sync::atomic::AtomicU64>>) -> tokio::task::JoinHandle<()> {
+        spawn_refilling_senders_until(memory, ms, rounds, None)
+    }
+
+    fn spawn_refilling_senders_until(
+        memory: MemoryHandle,
+        ms: u64,
+        rounds: Option<Arc<std::sync::atomic::AtomicU64>>,
+        stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+    ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let until = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
             let mut held: std::collections::VecDeque<MemoryLease> = std::collections::VecDeque::new();
-            while tokio::time::Instant::now() < until {
+            while tokio::time::Instant::now() < until && !stop.as_ref().is_some_and(|stop| stop.load(std::sync::atomic::Ordering::SeqCst)) {
                 if held.len() > 1 {
                     held.pop_front();
                 }
@@ -2375,27 +2427,69 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn owed_admission_room_does_not_stop_established_streams() {
-        // Six real streams read at 128 KiB/s while refilling senders pin the
-        // share. The debt left by the refused SYN holds refills back; the
-        // real streams must keep moving through that window and all finish.
+    async fn forced_refusal_debt_does_not_stop_established_streams() {
+        // Force one selected late SYN to create debt, then release the filler
+        // and start competing refills. This is an explicit refusal witness;
+        // natural mixed-load admission pressure is covered separately below.
+        let first_port = 20_000;
+        let conns = 6;
         let global = GlobalBudget::new(8 << 20);
-        let mut server = limited_server_with_refused_syn(global, Profile::zfc_repro(false, 1 << 20), Some(20_006));
-        let load = Load { read_rate: 128 << 10, late_after: Some(64 << 10), late_above: 0 };
-        let report = download_with(&mut server, 20_000, 6, std::time::Duration::from_secs(40), load).await.expect("load and late stream");
+        let mut server = limited_server_with_forced_refusal(global, Profile::zfc_repro(false, 1 << 20), Some(first_port + conns));
+        let load = Load { read_rate: 128 << 10, late_after: Some(64 << 10), late_above: 0, ..Load::default() };
+        let report = download_with(&mut server, first_port, conns, std::time::Duration::from_secs(40), load).await.expect("load and late stream");
         let (connect, loading) = report.late_connected.expect("never connected");
         let snap = server.handle.snapshot().await.unwrap();
-        eprintln!(
-            "ADMISSION_PROGRESS connect={connect:?} loading={loading} bytes={:?} refills_active={}",
-            report.load_progress, report.refills_active_at_late_handshake
-        );
-        eprintln!("ADMISSION_REFILLS rounds_at_handshake={}", report.refill_rounds_at_late_handshake);
         assert!(report.refill_rounds_at_late_handshake >= 2, "refiller did not actually execute multiple rounds");
         assert!(report.refills_active_at_late_handshake, "refilling competition ended before the late handshake");
         assert!(snap.stats.admission_debts > 0, "the late SYN was never refused");
         assert!(connect < std::time::Duration::from_millis(2500), "handshake took {connect:?}");
         assert!(loading > 0);
         assert!(report.load_progress.iter().all(|&n| n >= 64 << 10), "a load stream stalled while admission was owed: {:?}", report.load_progress);
+        assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
+        server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mixed_load_above_admission_line_keeps_streams_progressing() {
+        let first_port = 20_000;
+        let conns = 6;
+        let global = GlobalBudget::new(8 << 20);
+        let profile = Profile::zfc_repro(false, 1 << 20);
+        let admit_line = profile.port_bytes - global.headroom(profile.port_bytes, crate::budget::Tier::Admit);
+        // No SYN hook or injected filler: first let all six real streams
+        // read 64 KiB, then start ordinary competing refills. Observe the
+        // admission line only while that preexisting refiller is active.
+        let mut server = limited_server(global, profile);
+        let memory = server.memory.clone();
+        let active = server.refilling.clone();
+        let rounds = server.refill_rounds.clone();
+        let stop = server.stop_refilling.clone();
+        let load_ready = server.load_ready.clone();
+        let churn = tokio::spawn(async move {
+            load_ready.notified().await;
+            active.store(true, std::sync::atomic::Ordering::SeqCst);
+            // Stop on observed progress and handshake, not elapsed startup
+            // time; 40s remains a guard if the scenario cannot make progress.
+            spawn_refilling_senders_until(memory, 40_000, Some(rounds), Some(stop)).await.unwrap();
+            active.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+        let load = Load { read_rate: 128 << 10, late_after: Some(64 << 10), late_above: admit_line, require_refiller: true };
+        let report = download_with(&mut server, first_port, conns, std::time::Duration::from_secs(40), load).await.expect("mixed load and late stream");
+        churn.await.unwrap();
+        let (connect, loading) = report.late_connected.expect("never connected");
+        assert!(report.late_trigger_physical_bytes > admit_line);
+        assert_eq!(report.loading_at_late_trigger, usize::from(conns));
+        assert!(report.refills_active_at_late_trigger && report.refill_rounds_at_late_trigger >= 2);
+        assert!(connect < std::time::Duration::from_millis(2500), "handshake took {connect:?}");
+        assert!(loading > 0);
+        // A snapshot above the admission line does not guarantee refusal:
+        // actual ACK releases may admit the SYN immediately. Progress is
+        // therefore measured over a fixed, unconditional one-second window.
+        let progress = report.progress_after_one_second.expect("progress window was not observed");
+        assert!(report.refills_active_after_one_second, "refills ended before the progress window");
+        assert!(report.refill_rounds_after_one_second > report.refill_rounds_at_late_trigger);
+        assert!(progress.iter().all(|&n| n >= 64 << 10), "a mixed-load stream stalled: {progress:?}");
+        let snap = server.handle.snapshot().await.unwrap();
         assert_eq!(snap.closes.reset + snap.closes.aborted, 0, "{:?}", snap.closes);
         server.task.shutdown_and_join().await.unwrap();
     }

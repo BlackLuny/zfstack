@@ -230,6 +230,14 @@ const RX_COPY_BUF: usize = 8 * 1024;
 // Keep room for the packet that fills an OOO hole, not just the OOO owners.
 const RX_GAP_SLOTS: usize = (u16::MAX as usize).div_ceil(RX_COPY_BUF);
 
+#[cfg(test)]
+pub(crate) fn rx_ooo_payload_failure_budget(payload_len: usize) -> u64 {
+    let slots = (1 + RX_GAP_SLOTS).max(4).next_power_of_two();
+    let index_reservation = (slots * std::mem::size_of::<Bytes>() * 2) as u64;
+    // The future RX index fits, but the following OOO owner misses by one byte.
+    index_reservation + payload_len as u64 + OOO_DESCRIPTOR_BYTES - 1
+}
+
 /// A prepared replacement is unpublished until all payload reservations pass.
 /// Field order releases the allocation before its lease, also on rollback.
 struct RxIndex {
@@ -1253,12 +1261,14 @@ mod rx_descriptor_tests {
 
     #[test]
     fn rx_descriptor_ooo_payload_failure_rolls_back_prepared_backing() {
-        // Index preparation (16 slots ×32×2=1024) fits; payload does not.
-        let (global, mut budget) = budget(1100);
+        // Derive the exact failure phase from descriptor and owner charges.
+        let (global, mut budget) = budget(rx_ooo_payload_failure_budget(64));
         let mut rx = RxQueue::default();
         let mut ooo = OooQueue::default();
         assert_eq!(ooo.insert_charged_for_rx(64, &[2; 64], &mut budget, PeerId(1), &mut rx), None);
         assert_eq!((ooo.bytes(), ooo.segments(), rx.ooo_slots, rx.q.capacity()), (0, 0, 0, 0));
+        assert_eq!(budget.stats().failures().ooo, 1, "OOO payload must be the failed reservation");
+        assert_eq!(budget.stats().failures().rx_chunk, 0, "future RX index must have fitted");
         assert_eq!(global.reserved(), 0);
     }
 

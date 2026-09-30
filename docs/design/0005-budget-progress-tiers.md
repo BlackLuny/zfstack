@@ -14,7 +14,7 @@ global→port→peer 三层物理额度是共享池：adapter TX 队列、core T
 | P1 排空元数据 | 发送记录扩容；adapter RX 描述符扩容 | ACK / 应用读取（只依赖 P0） |
 | P2 搬入 core | core TX 块（含缓存块改归属） | 数据被 ACK（依赖 P1、P0） |
 | P3 准入 | 活跃连接状态、stream 状态、无状态回复、TIME_WAIT 槽、未标注的申请 | —— |
-| P4 大块 | adapter TX 块与描述符、core RX/OOO | —— |
+| P4 大块 | adapter TX 块与描述符、core RX payload 与描述符 backing（`RxChunk`）、OOO owner（`Ooo`） | —— |
 
 在每一层（global、port、peer）上，等级 k 的申请只在 `used + bytes ≤ limit − H_k` 时成功：
 
@@ -57,6 +57,17 @@ zfc 目前的处理是把端口份额抬到 `2·H_4` 并告警。这**改变了�
 - adapter stream 状态：握手完成后 adapter 才接管连接；如果此时再按准入等级申请 stream 状态，一旦失败只能复位这条已建立的连接。真机上 idle 缓存和繁忙的 adapter 队列占满准入额度时，11/16 条新连接就是这样在 25ms 内收到 RST。现在改为在 SYN 准入时，与 core 连接状态一起预留 stream 状态（`Shard::reserve_stream_state`）。租约保存在连接的 `Conn` 里，accept 时交给 adapter。额度不足就丢 SYN，由对端重传；如果额度只是被本 shard 的空闲缓存占着，先就地回收再重试一次。stream 状态的内存照常计费，生命周期不变。
 
 不保证：准入不饥饿（见 §2，由 §8 与 0006 处理）；公平性（等待者按 FIFO 唤醒，但没有吞吐下限）；远端零窗口或宿主停止排出口。零窗口连接持有的 TX 块和 adapter 队列不会释放，并且会继续把应用写入的数据收进缓冲，直到份额用尽，于是同一份额上其他正在读的连接也会停住（本地实验：6 条流中 3 条零窗口，另 3 条在修复前后都会停住）。这需要按连接限制缓冲，另行跟踪，不在本变更范围。
+
+### core RX 描述符的独立计费与失败合同
+
+这里的 core RX 描述符与上文 P1 的 adapter RX 描述符是两个队列。core `RxQueue` 的 `VecDeque<Bytes>` backing 通过独立 `MemoryLease` 按 `AllocationKind::RxChunk` / Bulk（P4）计费；payload owner 的租约仍随最后一个切片释放。部分读取减少逻辑字节数，并不释放仍在使用的描述符容量，因此不能按剩余元素数替代 backing 计费，也不能把它算作 ACK 可释放的 TX `drain`。
+
+- 扩容先为 replacement 预留 `2 × target_slots × size_of::<Bytes>()`，再 fallible 分配并检查实际容量。当前实现 `target_slots` 至少为 4，并向上取整为 2 的幂。实际 backing 不大于租约，租约不大于实际 backing 的两倍；这部分是有界的保守预留。迁移时旧、新 backing 及各自租约短暂同时存活，旧 backing 释放后才还旧租约，不能只按最终容量忽略扩容峰值。
+- 顺序数据在提交接收边界、逻辑信用或保留输入前，先预留新 payload 和所需描述符。任一额度或描述符分配失败就回滚本次准备，保留原队列与接收边界，丢弃未接纳的数据并发送当前 ACK；对端须在额度释放后重传。它仍是 P4 准入，不能靠 P1 排空预留获得新 RX 缓冲。额度始终不足时，不承诺接纳新字节。
+- OOO 接纳每个未覆盖区间前，同时为未来搬入 RX 预留一个描述符槽，并留出普通最大长度 IP 包填洞所需的 `RX_GAP_SLOTS`（当前 8 个 8KiB chunk）空间。只有 payload/OOO owner 与 RX backing 都准备好后才提交 OOO 数据并可能报告 SACK。读取不能撤销这些承诺；连续 OOO 搬入或完全重叠丢弃会消耗相应承诺，搬入不再申请 RX 描述符 backing 或额度。该保证不等于所有对象操作都不可能分配。
+- 空 RX 且没有 tail/OOO 承诺时，大于 8 槽的 backing 会释放；不大于 8 槽的 backing 与租约保留供复用。在本次 64 位布局下，常见 4 槽 backing 为 128B、租约为 256B，8 槽分别为 256B 与 512B。它们是仍计费的物理保留，不是未读 payload；`clear` / drop 全部释放。仍被外部切片持有的 payload owner 继续独立计费。
+
+这些预留让紧预算下的 RX/OOO 更早拒绝输入，是修复物理漏计的代价。`rx_descriptor_quota_drop_recovers_on_wire_retransmission` 覆盖慢读保留四个 chunk、第五个 chunk 的描述符扩容失败、ACK 不前移、撤压后真实重传成功，以及最终完整读取和归还额度；OOO 失败测试分别断言 `Ooo` 失败一次、`RxChunk` 不失败，确保测到的是 backing 已准备后 owner 准入失败的回滚阶段。
 
 ## 4. 压力下的缓存回收
 

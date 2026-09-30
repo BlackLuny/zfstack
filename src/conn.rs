@@ -2880,11 +2880,13 @@ mod rx_descriptor_tests {
 
     #[test]
     fn rx_descriptor_failed_ooo_admission_publishes_no_sack_or_credit() {
-        exercise(1100, |conn, ctx| {
+        exercise(crate::buf::rx_ooo_payload_failure_budget(64), |conn, ctx| {
             conn.process_data(Instant::ZERO, 65, IngressPayload::Borrowed(&[2; 64]), false, ctx);
             assert_eq!(conn.rcv_nxt, 1);
             assert_eq!((conn.rcv_charged, ctx.budget.used, ctx.budget.physical_used()), (0, 0, 0));
             assert!(conn.ooo.is_none());
+            assert_eq!(ctx.budget.stats().failures().ooo, 1);
+            assert_eq!(ctx.budget.stats().failures().rx_chunk, 0);
             assert_eq!(conn.stats.dropped_no_mem, 1);
             assert_eq!(conn.ack_need, AckNeed::Now);
         });
