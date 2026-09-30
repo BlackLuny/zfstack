@@ -1,0 +1,465 @@
+{
+  "config": {
+    "client_cc": "cubic",
+    "concurrency": 64,
+    "conns": 2000,
+    "flows": 8,
+    "kernel_cc": "cubic",
+    "listen_pool": 8,
+    "loss": 0.0,
+    "loss_up": 0.0,
+    "mtu": 1420,
+    "queue_bdp": 0.25,
+    "queue_bytes_down": 500000,
+    "queue_bytes_up": 500000,
+    "rate_mbps": 200.0,
+    "rate_up_mbps": 200.0,
+    "rr_size": 1024,
+    "rtt_ms": 80.0,
+    "secs": 15,
+    "seed": 3,
+    "smol_pacing_backlog_us": null,
+    "smol_timestamps": false,
+    "sock_buf_kb": 4096,
+    "stack": "zfstack-cubic",
+    "test": "down",
+    "warmup": 3
+  },
+  "cpu": {
+    "cpu_sec_per_effective_GB": 3.642364123754514,
+    "kernel_server_threads_active_at_exit": null,
+    "kernel_server_threads_total_sec": null,
+    "link_down_window_sec": 2.8806057670000005,
+    "link_up_window_sec": 0.993516721,
+    "process_window_sec": 5.6245730730000005,
+    "stack_thread_total_sec": 1.3536937900000001,
+    "stack_thread_util": 0.08684242000175951,
+    "stack_thread_window_sec": 1.0421090229999999,
+    "system_busy_sec_per_effective_GB": 17.685637547922703,
+    "system_window": {
+      "busy_sec": 5.06,
+      "idle_sec": 41.57,
+      "irq_sec": 0.0,
+      "softirq_sec": 0.54,
+      "steal_sec": 0.01,
+      "system_sec": 2.54,
+      "user_sec": 1.98
+    },
+    "test_wall_sec": 15.661416527,
+    "window_effective_bytes": 286107865,
+    "window_nominal_sec": 12.0,
+    "window_wall_sec": 11.999999804
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "smoltcp_rev": "8014f8b21e12faf89b3b453ceea32027344721af",
+    "tcp_congestion_control": "cubic",
+    "tcp_rmem": "4096 131072 6291456",
+    "tcp_wmem": "4096 16384 4194304",
+    "zfstack_commit": "940533a"
+  },
+  "errors": [],
+  "label": "down_rtt80_loss0_q0.25_f8__zfstack-cubic__r2",
+  "link": {
+    "down": {
+      "bottleneck_drop_bytes": 1921260,
+      "bottleneck_drops": 1353,
+      "bytes_in": 368674986,
+      "cpu_sec": 3.5637034990000003,
+      "delivered_bytes": 366753726,
+      "delivered_pkts": 258318,
+      "max_delay_line_pkts": 1060,
+      "max_queue_bytes": 499840,
+      "params": {
+        "delay_us": 40000,
+        "loss": 0.0,
+        "queue_limit_bytes": 500000,
+        "rate_bps": 200000000
+      },
+      "pkts_in": 259671,
+      "random_drop_bytes": 0,
+      "random_drops": 0,
+      "sink_errors": 0,
+      "timing_late_hist": {
+        "ge_5000us": 0,
+        "lt_1000us": 6,
+        "lt_100us": 30,
+        "lt_10us": 257393,
+        "lt_200us": 35,
+        "lt_25us": 777,
+        "lt_5000us": 0,
+        "lt_500us": 23,
+        "lt_50us": 54
+      },
+      "timing_late_max_us": 750.455,
+      "timing_late_mean_us": 4.880873156342182,
+      "wakeups": 381538
+    },
+    "softnet_backlog_drops": 0,
+    "tun_a": {
+      "qdisc_drops": 0,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "tun_b": null,
+    "up": {
+      "bottleneck_drop_bytes": 0,
+      "bottleneck_drops": 0,
+      "bytes_in": 6994956,
+      "cpu_sec": 1.2696654500000002,
+      "delivered_bytes": 6994956,
+      "delivered_pkts": 132215,
+      "max_delay_line_pkts": 708,
+      "max_queue_bytes": 884,
+      "params": {
+        "delay_us": 40000,
+        "loss": 0.0,
+        "queue_limit_bytes": 500000,
+        "rate_bps": 200000000
+      },
+      "pkts_in": 132215,
+      "random_drop_bytes": 0,
+      "random_drops": 0,
+      "sink_errors": 0,
+      "timing_late_hist": {
+        "ge_5000us": 0,
+        "lt_1000us": 13,
+        "lt_100us": 96,
+        "lt_10us": 131281,
+        "lt_200us": 132,
+        "lt_25us": 547,
+        "lt_5000us": 11,
+        "lt_500us": 61,
+        "lt_50us": 74
+      },
+      "timing_late_max_us": 1585.193,
+      "timing_late_mean_us": 3.7218541693453844,
+      "wakeups": 261317
+    }
+  },
+  "ok": true,
+  "results": {
+    "agg_mbps_per_sec": [
+      153.480456,
+      175.425728,
+      192.66912,
+      192.680064,
+      192.66912,
+      192.680064,
+      192.680064,
+      192.66912,
+      192.66912,
+      184.511904,
+      192.66912,
+      192.680064,
+      185.5728,
+      192.66912,
+      184.71236
+    ],
+    "direction": "down",
+    "flows": 8,
+    "goodput_mbps_mean": 190.73857666666663,
+    "goodput_mbps_window": 190.73857666666666,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          21.428168,
+          19.496832,
+          21.647232,
+          21.6144,
+          21.581568,
+          21.592512,
+          21.537792,
+          21.745728,
+          21.920832,
+          24.372288,
+          28.760832,
+          30.074112,
+          39.387456,
+          44.301312,
+          43.962632
+        ],
+        "receiver_bytes": 50429330,
+        "total_bytes": 50429330,
+        "zero_secs": 0
+      },
+      {
+        "flow": 1,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          24.357184,
+          28.887424,
+          31.84704,
+          31.650048,
+          31.836096,
+          31.95648,
+          31.781376,
+          31.223232,
+          30.949632,
+          28.189408,
+          26.889408,
+          25.992,
+          20.880584,
+          21.636288,
+          18.287256
+        ],
+        "receiver_bytes": 52046800,
+        "total_bytes": 52046800,
+        "zero_secs": 0
+      },
+      {
+        "flow": 2,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          20.80992,
+          19.527064,
+          21.55968,
+          21.625344,
+          21.483072,
+          21.548736,
+          21.428352,
+          21.712896,
+          21.811392,
+          24.427008,
+          28.804608,
+          30.303936,
+          27.099584,
+          29.242368,
+          33.609024
+        ],
+        "receiver_bytes": 45626859,
+        "total_bytes": 45626859,
+        "zero_secs": 0
+      },
+      {
+        "flow": 3,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          24.3408,
+          29.222176,
+          32.17536,
+          32.131584,
+          32.17536,
+          32.273856,
+          32.022144,
+          31.671936,
+          31.146624,
+          27.455144,
+          27.19584,
+          26.2656,
+          21.714136,
+          21.603456,
+          19.02336
+        ],
+        "receiver_bytes": 52553540,
+        "total_bytes": 52553540,
+        "zero_secs": 0
+      },
+      {
+        "flow": 4,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          28.071928,
+          28.632176,
+          30.938688,
+          31.201344,
+          31.124736,
+          30.829248,
+          31.004352,
+          30.719808,
+          30.26016,
+          26.909704,
+          26.418816,
+          25.543296,
+          19.476456,
+          21.01248,
+          18.207864
+        ],
+        "receiver_bytes": 51295250,
+        "total_bytes": 51295250,
+        "zero_secs": 0
+      },
+      {
+        "flow": 5,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          16.262784,
+          20.833264,
+          23.026176,
+          23.113728,
+          23.03712,
+          22.960512,
+          22.862016,
+          22.938624,
+          23.004288,
+          20.785224,
+          20.552832,
+          20.126016,
+          22.27104,
+          21.154752,
+          22.457088
+        ],
+        "receiver_bytes": 40674551,
+        "total_bytes": 40674551,
+        "zero_secs": 0
+      },
+      {
+        "flow": 6,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          11.398584,
+          15.66116,
+          17.061696,
+          16.919424,
+          16.919424,
+          17.12736,
+          17.641728,
+          17.94816,
+          18.16704,
+          17.00412,
+          18.0576,
+          18.145152,
+          21.100032,
+          20.038464,
+          16.8848
+        ],
+        "receiver_bytes": 32510711,
+        "total_bytes": 32510711,
+        "zero_secs": 0
+      },
+      {
+        "flow": 7,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          6.811088,
+          13.165632,
+          14.413248,
+          14.424192,
+          14.511744,
+          14.39136,
+          14.402304,
+          14.708736,
+          15.409152,
+          15.369008,
+          15.989184,
+          16.229952,
+          13.643512,
+          13.68,
+          12.280336
+        ],
+        "receiver_bytes": 26180049,
+        "total_bytes": 26180049,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "server_app": {
+    "bad_headers": 0,
+    "conns_accepted": 8,
+    "conns_finished": 8,
+    "pattern_errors": 0,
+    "rx_bytes": 0,
+    "tx_bytes": 353914022
+  },
+  "stack_thread": {
+    "deadline_late_max_us": 176.432,
+    "deadline_late_mean_us": 5.723025347222222,
+    "pkts_in": 132215,
+    "pkts_out": 259671,
+    "polls": 136950,
+    "stack_stats": {
+      "cc": "Cubic",
+      "closed": {
+        "bytes_retrans": 1850904,
+        "bytes_sent": 353321210,
+        "conns": 8,
+        "dropped_no_mem": 0,
+        "dsacks": 0,
+        "fast_recoveries": 35,
+        "limited_cwnd_ms": 109243.985748,
+        "limited_pacing_ms": 7519.707757,
+        "limited_rwnd_ms": 1341.314575,
+        "max_cwnd": 480162,
+        "max_rcv_target": 65536,
+        "ooo_segs": 0,
+        "rack_scanned": 937793,
+        "rto": 0,
+        "small_segs": 48,
+        "spurious_rtos": 0,
+        "tlp": 0
+      },
+      "impl": "zfstack",
+      "live": {
+        "bytes_retrans": 0,
+        "bytes_sent": 0,
+        "conns": 0,
+        "dropped_no_mem": 0,
+        "dsacks": 0,
+        "fast_recoveries": 0,
+        "limited_cwnd_ms": 0.0,
+        "limited_pacing_ms": 0.0,
+        "limited_rwnd_ms": 0.0,
+        "max_cwnd": 0,
+        "max_rcv_target": 0,
+        "ooo_segs": 0,
+        "rack_scanned": 0,
+        "rto": 0,
+        "small_segs": 0,
+        "spurious_rtos": 0,
+        "tlp": 0
+      },
+      "live_conns": 0,
+      "max_conns": 8,
+      "pacing": true,
+      "pacing_credit_us": 2000,
+      "shard": {
+        "conns_created": 8,
+        "conns_freed": 8,
+        "idle_rounds": 29540,
+        "pacing_credit_dropped": 3121,
+        "round_budget_exhausted": 0,
+        "rst_sent": 0,
+        "runs": 157530,
+        "rx_dropped_parse": 3,
+        "rx_packets": 132215,
+        "syn_cookies_sent": 0,
+        "syn_dropped": 0,
+        "syn_received": 8,
+        "tx_packets": 259671
+      },
+      "sock_buf": 4194304,
+      "time_ms": {
+        "app": 54.238026000000005,
+        "ingress": 138.832659,
+        "run": 233.975866
+      }
+    },
+    "timer_wakeups": 5760,
+    "wakeups_per_sec_window": 8806.08347716603,
+    "wakeups_total": 136959,
+    "wakeups_window": 105673
+  },
+  "timestamp_unix": 1790518594,
+  "tool": "zfbench",
+  "version": "0.1.0"
+}
