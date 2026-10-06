@@ -450,6 +450,10 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
             TestKind::Up => client::test_up(&o, &view, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &view, &mut mark),
             TestKind::Connect => client::test_connect(&o, &view, &mut mark),
+            TestKind::Idle => {
+                eprintln!("--test idle needs --client-proxy");
+                std::process::exit(2);
+            }
         }
     } else {
         client::TestOutcome { results: json!({ "error": "tunnel not usable" }), errors: Vec::new(), window_bytes: 0, window_secs: 0.0 }

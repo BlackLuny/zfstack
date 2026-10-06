@@ -145,6 +145,12 @@ impl TcpHeader {
 
 /// Parse (and checksum-verify) the TCP segment located by `ip`.
 pub fn parse_tcp(pkt: &[u8], ip: &IpInfo) -> Result<TcpHeader, DropReason> {
+    parse_tcp_with(pkt, ip, true)
+}
+
+/// As [`parse_tcp`]; `verify = false` skips the TCP checksum, for packets
+/// whose checksum the host's device vouches for (see `RxChecksum`).
+pub fn parse_tcp_with(pkt: &[u8], ip: &IpInfo, verify: bool) -> Result<TcpHeader, DropReason> {
     let seg = &pkt[ip.l4_off..ip.l4_off + ip.l4_len];
     if seg.len() < 20 {
         return Err(DropReason::Truncated);
@@ -153,9 +159,11 @@ pub fn parse_tcp(pkt: &[u8], ip: &IpInfo) -> Result<TcpHeader, DropReason> {
     if doff < 20 || doff > seg.len() {
         return Err(DropReason::BadTcpHeader);
     }
-    let sum = pseudo_sum(ip.src, ip.dst, seg.len() as u32);
-    if checksum_fold(sum_bytes(sum, seg)) != 0 {
-        return Err(DropReason::BadTcpChecksum);
+    if verify {
+        let sum = pseudo_sum(ip.src, ip.dst, seg.len() as u32);
+        if checksum_fold(sum_bytes(sum, seg)) != 0 {
+            return Err(DropReason::BadTcpChecksum);
+        }
     }
     let mut opts = TcpOptions::default();
     let mut o = &seg[20..doff];
@@ -211,14 +219,19 @@ pub fn parse_tcp(pkt: &[u8], ip: &IpInfo) -> Result<TcpHeader, DropReason> {
 // ---------------------------------------------------------------------------
 // Checksums
 
+/// Add `data` (starting at an even offset of the summed byte string) to a
+/// big-endian one's-complement accumulator; fold with [`checksum_fold`].
 #[inline]
 pub fn sum_bytes(mut acc: u64, data: &[u8]) -> u64 {
-    // Sum 32-bit big-endian words into a 64-bit accumulator; fold at the end.
-    let mut chunks = data.chunks_exact(4);
-    for c in &mut chunks {
-        acc += u32::from_be_bytes([c[0], c[1], c[2], c[3]]) as u64;
+    let words = data.len() & !3;
+    if words >= 64 {
+        acc += sum_words(&data[..words]);
+    } else {
+        for c in data[..words].chunks_exact(4) {
+            acc += u32::from_be_bytes([c[0], c[1], c[2], c[3]]) as u64;
+        }
     }
-    let rem = chunks.remainder();
+    let rem = &data[words..];
     match rem.len() {
         1 => acc += (rem[0] as u64) << 8,
         2 => acc += u16::from_be_bytes([rem[0], rem[1]]) as u64,
@@ -226,6 +239,61 @@ pub fn sum_bytes(mut acc: u64, data: &[u8]) -> u64 {
         _ => {}
     }
     acc
+}
+
+/// One's-complement sum of a multiple of 4 bytes, folded to 16 bits and
+/// returned in the big-endian domain of [`sum_bytes`].
+///
+/// Native-endian 32-bit words go into independent 64-bit lanes, which the
+/// compiler vectorizes; the one's-complement sum only differs between byte
+/// orders by a final byte swap (RFC 1071 §2(B)). Payload checksums are the
+/// main per-byte cost of TUN-facing hosts, so AVX2 is used when present.
+#[inline]
+fn sum_words(data: &[u8]) -> u64 {
+    #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
+    {
+        if std::is_x86_feature_detected!("avx2") {
+            // SAFETY: the CPU supports AVX2 (checked above).
+            return unsafe { sum_words_avx2(data) };
+        }
+    }
+    sum_words_portable(data)
+}
+
+#[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
+#[target_feature(enable = "avx2")]
+unsafe fn sum_words_avx2(data: &[u8]) -> u64 {
+    sum_words_portable(data)
+}
+
+#[inline(always)]
+fn sum_words_portable(data: &[u8]) -> u64 {
+    debug_assert_eq!(data.len() % 4, 0);
+    let mut lanes = [0u64; 8];
+    let mut blocks = data.chunks_exact(32);
+    for b in &mut blocks {
+        for (i, lane) in lanes.iter_mut().enumerate() {
+            *lane += u32::from_ne_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]) as u64;
+        }
+    }
+    // Each lane holds at most 2^16 · 2^32 for a 64 KiB packet; adding with
+    // end-around carry keeps any length exact.
+    let mut s = lanes.iter().fold(0u64, |a, &l| {
+        let (v, c) = a.overflowing_add(l);
+        v + c as u64
+    });
+    for c in blocks.remainder().chunks_exact(4) {
+        let (v, carry) = s.overflowing_add(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) as u64);
+        s = v + carry as u64;
+    }
+    while s >> 16 != 0 {
+        s = (s & 0xffff) + (s >> 16);
+    }
+    if cfg!(target_endian = "little") {
+        (s as u16).swap_bytes() as u64
+    } else {
+        s
+    }
 }
 
 /// Sum of possibly-odd-length slices treated as one contiguous byte string.
@@ -303,6 +371,10 @@ pub struct EmitParams<'a> {
     pub opts: &'a EmitOptions,
     pub payload: &'a [&'a [u8]],
     pub ttl: u8,
+    /// Leave the TCP checksum partial for the device to complete (TX checksum
+    /// offload): the field holds the folded pseudo-header sum, as Linux
+    /// `CHECKSUM_PARTIAL` expects, and the payload is not summed.
+    pub csum_partial: bool,
 }
 
 fn options_len(o: &EmitOptions) -> usize {
@@ -430,6 +502,12 @@ pub fn emit(buf: &mut [u8; MAX_HEADER], p: &EmitParams) -> usize {
         i += 1;
     }
     let mut acc = pseudo_sum(p.src, p.dst, l4_len as u32);
+    if p.csum_partial {
+        // Not inverted: the device adds the segment and complements.
+        let c = !checksum_fold(acc);
+        t[16..18].copy_from_slice(&c.to_be_bytes());
+        return ip_hlen + tcp_hlen;
+    }
     acc = sum_bytes(acc, t);
     // TCP header length is a multiple of 4, so payload starts at an even offset.
     acc = sum_slices(acc, p.payload);
@@ -471,6 +549,7 @@ mod tests {
                 opts: &opts,
                 payload: &payload,
                 ttl: 64,
+                csum_partial: false,
             },
         );
         let mut pkt = hdr[..hl].to_vec();
@@ -502,6 +581,72 @@ mod tests {
     #[test]
     fn v6_roundtrip() {
         roundtrip("fd00::1".parse().unwrap(), "fd00::2".parse().unwrap());
+    }
+
+    #[test]
+    fn partial_checksum_completes_like_a_device() {
+        for (src, dst) in [("10.0.0.1", "10.0.0.2"), ("fd00::1", "fd00::2")] {
+            let (src, dst): (IpAddr, IpAddr) = (src.parse().unwrap(), dst.parse().unwrap());
+            let opts = EmitOptions { ts: Some((1, 2)), ..Default::default() };
+            let a: &[u8] = &[7u8; 1001];
+            let b: &[u8] = &[9u8; 33];
+            let mut hdr = [0u8; MAX_HEADER];
+            let payload = [a, b];
+            let params = |csum_partial| EmitParams {
+                src,
+                dst,
+                src_port: 443,
+                dst_port: 50000,
+                seq: Seq(5),
+                ack: Seq(6),
+                flags: ACK,
+                window: 100,
+                opts: &opts,
+                payload: &payload,
+                ttl: 64,
+                csum_partial,
+            };
+            let hl = emit(&mut hdr, &params(true));
+            let mut pkt = [&hdr[..hl], a, b].concat();
+            let ip = parse_ip(&pkt).unwrap();
+            assert_eq!(parse_tcp(&pkt, &ip).unwrap_err(), DropReason::BadTcpChecksum);
+            assert!(parse_tcp_with(&pkt, &ip, false).is_ok());
+            // What the device does: sum from csum_start, store the complement.
+            let start = ip.l4_off;
+            let c = checksum_fold(sum_bytes(0, &pkt[start..]));
+            pkt[start + 16..start + 18].copy_from_slice(&c.to_be_bytes());
+            assert!(parse_tcp(&pkt, &ip).is_ok());
+            let full = emit(&mut hdr, &params(false));
+            assert_eq!(&pkt[..full], &hdr[..full]);
+        }
+    }
+
+    #[test]
+    fn vectorized_sum_matches_reference() {
+        fn reference(data: &[u8]) -> u16 {
+            let mut acc = 0u64;
+            for c in data.chunks(2) {
+                acc += if c.len() == 2 { u16::from_be_bytes([c[0], c[1]]) as u64 } else { (c[0] as u64) << 8 };
+            }
+            checksum_fold(acc)
+        }
+        let mut x = 0x9e37_79b9u32;
+        let data: Vec<u8> = (0..70_000)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                (x >> 7) as u8
+            })
+            .collect();
+        for len in (0..200).chain([1459, 1460, 4011, 8947, 65495, 65535, 69_999]) {
+            for off in [0, 1, 3, 4] {
+                let d = &data[off..(off + len).min(data.len())];
+                assert_eq!(checksum_fold(sum_bytes(0, d)), reference(d), "len {len} off {off}");
+            }
+        }
+        assert_eq!(checksum_fold(sum_bytes(0, &[0xff; 4096])), reference(&[0xff; 4096]));
+        assert_eq!(checksum_fold(sum_bytes(0, &[0; 4096])), 0xffff);
     }
 
     #[test]

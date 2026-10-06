@@ -9,6 +9,7 @@ use crate::buf::BlockPool;
 use crate::config::StackConfig;
 use crate::conn::{Conn, Ctx, IngressPayload, Plan, PlanKind, ReadResult, State, SynParams, TimeWaitState, WriteResult};
 use crate::heap::IndexedHeap;
+use crate::pktpool::PacketBuf;
 use crate::seq::Seq;
 use crate::time::Instant;
 use crate::wire::{self, EmitOptions, EmitParams, TcpHeader, ACK, FIN, MAX_HEADER, RST, SYN};
@@ -54,11 +55,35 @@ impl AdmissionPolicy for AcceptAll {
     }
 }
 
+/// What the host's device already established about an ingress packet's TCP
+/// checksum.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum RxChecksum {
+    /// Verify it (the default for `ingress` / `ingress_borrowed`).
+    #[default]
+    Verify,
+    /// Skip verification: the device validated the checksum, or the packet
+    /// never left the host and carries a partial one (a Linux TUN with
+    /// `IFF_VNET_HDR` + `TUN_F_CSUM` reports `VIRTIO_NET_HDR_F_NEEDS_CSUM` or
+    /// `DATA_VALID`). Only for links that cannot corrupt packets; the IP
+    /// header checksum is still checked.
+    Trusted,
+}
+
 /// An outgoing IP packet: header plus up to two payload slices (§4.2).
 pub struct OutPacket<'a> {
     pub peer: PeerId,
     pub header: &'a [u8],
     pub payload: [&'a [u8]; 2],
+    /// The TCP checksum is left partial for the device (the iface has TX
+    /// checksum offload, see [`Shard::set_iface_tx_checksum_offload`]): sum
+    /// from the TCP header (`csum_start` = IP header length) and store the
+    /// complement at offset 16. For a virtio-net header use
+    /// [`crate::offload::VirtioNetHdr::for_packet`].
+    pub csum_partial: bool,
+    /// Non-zero: a TSO super-segment the device must cut into segments of
+    /// this many payload bytes (see [`Shard::set_iface_tso`]).
+    pub gso_size: u16,
 }
 
 impl OutPacket<'_> {
@@ -199,6 +224,10 @@ impl Drr {
 
 struct Iface {
     cfg: IfaceConfig,
+    /// Data segments leave with a partial checksum (`OutPacket::csum_partial`).
+    tx_csum_offload: bool,
+    /// Largest TSO super-segment payload; 0 = off.
+    tso_max: u32,
     full: bool,
     drr: Drr,
     tw_pending: usize,
@@ -226,9 +255,16 @@ struct Slot {
 // tuple/timer/event descriptors. Growing containers need separate accounting.
 pub(crate) const ACTIVE_STATE_BYTES: u64 = std::mem::size_of::<Conn>() as u64 + 1024;
 
-/// Pacing granularity: one quantum clamp(rate × 1 ms, 2 MSS, max_quantum) worth of time.
+/// DRR/pacing quantum clamp(rate × 1 ms, 2 MSS, max_quantum). A jumbo MSS (a
+/// 64 KiB TUN MTU) raises the ceiling to one segment so a quantum always fits one.
+fn quantum_for(rate: u64, mss: usize, max_quantum: usize) -> usize {
+    let hi = max_quantum.max(mss);
+    ((rate / 1000) as usize).clamp((2 * mss).min(hi), hi)
+}
+
+/// Pacing granularity: one quantum worth of time.
 fn pacing_ahead(rate: u64, mss: usize, max_quantum: usize) -> Duration {
-    let pq = ((rate / 1000) as usize).clamp(2 * mss, max_quantum);
+    let pq = quantum_for(rate, mss, max_quantum);
     Duration::from_nanos((pq as u128 * 1_000_000_000 / rate.max(1) as u128).min(u64::MAX as u128) as u64)
 }
 
@@ -394,7 +430,7 @@ impl Shard {
 
     pub fn add_iface(&mut self, cfg: IfaceConfig) -> IfaceId {
         let id = self.ifaces.len();
-        self.ifaces.push(Some(Iface { cfg, full: false, drr: Drr::default(), tw_pending: 0 }));
+        self.ifaces.push(Some(Iface { cfg, tx_csum_offload: false, tso_max: 0, full: false, drr: Drr::default(), tw_pending: 0 }));
         IfaceId(id as u16)
     }
 
@@ -453,17 +489,78 @@ impl Shard {
 
     /// Process one decrypted IP packet from `peer`.
     pub fn ingress(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes) {
-        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()));
+        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), RxChecksum::Verify);
     }
 
     /// Process a packet borrowed from a caller-owned pool. The caller may
     /// recycle its buffer as soon as this returns; retained TCP data is copied
     /// into stack-owned storage only after the packet passes admission checks.
     pub fn ingress_borrowed(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8]) {
-        self.ingress_packet(now, iface, peer, pkt, None);
+        self.ingress_packet(now, iface, peer, pkt, None, RxChecksum::Verify);
     }
 
-    fn ingress_packet(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>) {
+    /// `ingress` with the device's checksum verdict (TUN / virtio-net offload,
+    /// see [`crate::offload`]).
+    pub fn ingress_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes, csum: RxChecksum) {
+        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), csum);
+    }
+
+    /// `ingress_borrowed` with the device's checksum verdict.
+    pub fn ingress_borrowed_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], csum: RxChecksum) {
+        self.ingress_packet(now, iface, peer, pkt, None, csum);
+    }
+
+    /// Zero-copy ingress of a packet read into a pooled, budget-charged
+    /// buffer: the packet is `buf[start..]` (`start` skips a device header).
+    /// An in-order payload filling at least half the buffer is kept as a
+    /// slice of it (the buffer returns to its pool once that slice is
+    /// consumed); anything else is copied as with `ingress_borrowed` and the
+    /// buffer goes back at once.
+    pub fn ingress_buf(&mut self, now: Instant, iface: IfaceId, peer: PeerId, buf: PacketBuf, start: usize, csum: RxChecksum) {
+        let keep = buf.len().saturating_sub(start) * 2 >= buf.capacity();
+        if keep {
+            let pkt = Bytes::from_owner(buf).slice(start..);
+            self.ingress_packet_with(now, iface, peer, &pkt, Some(pkt.clone()), csum, true);
+        } else if start <= buf.len() {
+            self.ingress_packet(now, iface, peer, &buf[start..], None, csum);
+        }
+    }
+
+    /// TX checksum offload for `iface`: data segments leave with a partial
+    /// TCP checksum (`OutPacket::csum_partial`) for the device to complete,
+    /// e.g. a Linux TUN with `IFF_VNET_HDR` and `TUN_F_CSUM`. Control and
+    /// stateless replies keep full checksums.
+    pub fn set_iface_tx_checksum_offload(&mut self, id: IfaceId, on: bool) {
+        if let Some(Some(i)) = self.ifaces.get_mut(id.0 as usize) {
+            i.tx_csum_offload = on;
+            if !on {
+                // A device only segments packets whose checksum it completes.
+                i.tso_max = 0;
+            }
+        }
+    }
+
+    /// TX segmentation offload for `iface`: new data leaves in super-segments
+    /// of up to `max_payload` bytes (whole MSS multiples) with
+    /// `OutPacket::gso_size` = MSS, for a device that segments them (a Linux
+    /// TUN with `TUN_F_TSO4 | TUN_F_TSO6`). Implies TX checksum offload. 0
+    /// turns it off. Retransmissions and probes stay single segments.
+    pub fn set_iface_tso(&mut self, id: IfaceId, max_payload: u32) {
+        if let Some(Some(i)) = self.ifaces.get_mut(id.0 as usize) {
+            // The whole IP packet must fit the 16-bit IPv4 total length.
+            i.tso_max = max_payload.min((u16::MAX as usize - wire::MAX_HEADER) as u32);
+            if i.tso_max > 0 {
+                i.tx_csum_offload = true;
+            }
+        }
+    }
+
+    fn ingress_packet(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum) {
+        self.ingress_packet_with(now, iface, peer, pkt, owner, csum, false)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn ingress_packet_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum, leased: bool) {
         self.stats.rx_packets += 1;
         if self.ifaces.get(iface.0 as usize).is_none_or(|i| i.is_none()) {
             self.stats.rx_dropped_no_iface += 1;
@@ -476,7 +573,7 @@ impl Shard {
                 return;
             }
         };
-        let h = match wire::parse_tcp(&pkt, &ip) {
+        let h = match wire::parse_tcp_with(pkt, &ip, csum == RxChecksum::Verify) {
             Ok(h) => h,
             Err(_) => {
                 self.stats.rx_dropped_parse += 1;
@@ -488,6 +585,7 @@ impl Shard {
         let start = ip.l4_off + h.data_off;
         let end = ip.l4_off + ip.l4_len;
         let payload = match owner {
+            Some(pkt) if leased => IngressPayload::Leased(pkt.slice(start..end)),
             Some(pkt) => IngressPayload::Owned(pkt.slice(start..end)),
             None => IngressPayload::Borrowed(&pkt[start..end]),
         };
@@ -1019,6 +1117,7 @@ impl Shard {
                 opts: &o,
                 payload: &payload,
                 ttl: self.cfg.ttl,
+                csum_partial: false,
             },
         );
         if self.push_stateless(iface, peer, n) {
@@ -1133,6 +1232,7 @@ impl Shard {
                 opts: &o,
                 payload: &payload,
                 ttl: self.cfg.ttl,
+                csum_partial: false,
             },
         );
         if self.push_stateless(iface, peer, n) {
@@ -1369,7 +1469,7 @@ impl Shard {
                 }
                 break;
             }
-            let pkt = OutPacket { peer: s.peer, header: &s.header[..s.len], payload: [&[], &[]] };
+            let pkt = OutPacket { peer: s.peer, header: &s.header[..s.len], payload: [&[], &[]], csum_partial: false, gso_size: 0 };
             match sinks.send(s.iface, &pkt) {
                 SendResult::Accepted => {
                     out.packets += 1;
@@ -1423,9 +1523,10 @@ impl Shard {
                     opts: &opts,
                     payload: &empty,
                     ttl: self.cfg.ttl,
+                    csum_partial: false,
                 },
             );
-            let pkt = OutPacket { peer, header: &self.hdr[..len], payload: [&[], &[]] };
+            let pkt = OutPacket { peer, header: &self.hdr[..len], payload: [&[], &[]], csum_partial: false, gso_size: 0 };
             match sinks.send(iface, &pkt) {
                 SendResult::Accepted => {
                     self.slots[idx as usize].tomb.as_mut().unwrap().pending_ack = false;
@@ -1538,10 +1639,11 @@ impl Shard {
             return (0, true);
         }
         let rate = conn.egress_pacing_rate(&self.cfg);
+        conn.tso_max = iface.tso_max;
         let mss = conn.mss as usize;
         let quantum = match rate {
-            Some(r) => ((r / 1000) as usize).clamp(2 * mss, self.cfg.max_quantum),
-            None => self.cfg.max_quantum,
+            Some(r) => quantum_for(r, mss, self.cfg.max_quantum),
+            None => self.cfg.max_quantum.max(mss),
         }
         .min(round_left.max(mss));
         let credit = self.wake.credit;
@@ -1585,8 +1687,10 @@ impl Shard {
                 }
             }
             let peer = conn.peer;
-            let (hl, payload) = conn.build(&plan, now, &mut self.hdr, self.cfg.ttl);
-            let pkt = OutPacket { peer, header: &self.hdr[..hl], payload };
+            let csum_partial = iface.tx_csum_offload;
+            let gso_size = if plan.len as usize > mss { mss as u16 } else { 0 };
+            let (hl, payload) = conn.build(&plan, now, &mut self.hdr, self.cfg.ttl, csum_partial);
+            let pkt = OutPacket { peer, header: &self.hdr[..hl], payload, csum_partial, gso_size };
             let len = pkt.len();
             match sinks.send(iface_id, &pkt) {
                 SendResult::Accepted => {}
@@ -1681,6 +1785,31 @@ impl Shard {
             self.sync_share_waiter(id.idx() as u32, true);
         }
         result
+    }
+
+    /// Zero-copy `write`: `fill` writes up to `max` bytes directly into the
+    /// connection's send buffer — at most two slices, filled in order like a
+    /// `readv` — and returns how many it wrote. A relay can read its upstream
+    /// socket straight into the buffer, or a proxy decrypt into it. Results
+    /// and Writable arming are as for `write`; an error from `fill` keeps
+    /// nothing and is returned as is. `fill` is not called when the
+    /// connection cannot take any bytes.
+    pub fn write_with<E>(&mut self, id: ConnId, max: usize, fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>) -> Result<WriteResult, E> {
+        let result = self.with_conn(id, |c, ctx| c.write_with(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed));
+        if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
+            self.sync_share_waiter(id.idx() as u32, true);
+        }
+        result
+    }
+
+    #[cfg(feature = "tokio")]
+    pub(crate) fn write_with_for_adapter<E>(
+        &mut self,
+        id: ConnId,
+        max: usize,
+        fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>,
+    ) -> Result<WriteResult, E> {
+        self.with_conn(id, |c, ctx| c.write_with(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed))
     }
 
     fn write_inner(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
@@ -2498,5 +2627,104 @@ mod admission_tests {
         sh.run(Instant::ZERO, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
         assert_eq!(sh.pool.cached(), 1);
         assert_eq!(sh.stats().cache_reclaims, 1);
+    }
+}
+
+#[cfg(test)]
+mod ingress_buf_tests {
+    use super::*;
+    use crate::pktpool::PacketPool;
+
+    /// Move every packet between a test-peer client and a server fed through
+    /// `ingress_buf`; `reorder` holds back each third data packet one round.
+    fn exchange(c: &mut Shard, s: &mut Shard, pool: &PacketPool, now: Instant, held: &mut Vec<Vec<u8>>, reorder: bool) {
+        let mut to_s: Vec<Vec<u8>> = std::mem::take(held);
+        let mut n = 0;
+        c.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| {
+            n += 1;
+            if reorder && n % 3 == 0 && !p.payload[0].is_empty() {
+                held.push(p.to_vec());
+            } else {
+                to_s.push(p.to_vec());
+            }
+            SendResult::Accepted
+        });
+        for p in to_s {
+            let mut b = pool.get().unwrap();
+            let room = b.spare_capacity_mut();
+            for (d, x) in room.iter_mut().zip(&p) {
+                d.write(*x);
+            }
+            unsafe { b.set_len(p.len()) };
+            s.ingress_buf(now, IfaceId(0), PeerId(1), b, 0, RxChecksum::Verify);
+        }
+        let mut to_c = Vec::new();
+        s.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| {
+            to_c.push(Bytes::from(p.to_vec()));
+            SendResult::Accepted
+        });
+        for p in to_c {
+            c.ingress(now, IfaceId(0), PeerId(1), p);
+        }
+    }
+
+    #[test]
+    fn pooled_ingress_keeps_large_payloads_without_copy_and_returns_every_buffer() {
+        for (mtu, reorder) in [(65535u16, false), (65535, true), (9000, false), (1500, false)] {
+            let global = GlobalBudget::new(256 << 20);
+            let mut s = Shard::with_budget(StackConfig::client(), Arc::clone(&global));
+            s.set_budget_limits(global.high(), global.high(), 16);
+            s.add_iface(IfaceConfig { mtu });
+            let pool = PacketPool::new(s.memory_handle(PeerId(1)), mtu as usize, 1024);
+            let mut c = Shard::with_budget(StackConfig::default(), GlobalBudget::new(256 << 20));
+            c.add_iface(IfaceConfig { mtu });
+            let mut now = Instant::from_millis(1);
+            let cid = c.connect(now, IfaceId(0), PeerId(1), "10.0.0.2:4000".parse().unwrap(), "10.9.9.9:443".parse().unwrap());
+            const TOTAL: usize = 4 << 20;
+            let data: Vec<u8> = (0..TOTAL).map(|i| (i % 251) as u8).collect();
+            let (mut sent, mut got, mut sid) = (0usize, Vec::with_capacity(TOTAL), None);
+            let mut held = Vec::new();
+            let mut kept_zero_copy = false;
+            for _ in 0..20_000 {
+                now += Duration::from_micros(200);
+                if sent < TOTAL {
+                    if let WriteResult::Written(n) = c.write(cid, &data[sent..(sent + 256 * 1024).min(TOTAL)]) {
+                        sent += n;
+                    }
+                }
+                exchange(&mut c, &mut s, &pool, now, &mut held, reorder);
+                while let Some(ev) = s.poll_event() {
+                    if let Event::Accepted(id) = ev {
+                        sid = Some(id);
+                    }
+                }
+                while c.poll_event().is_some() {}
+                if let Some(id) = sid {
+                    // A retained jumbo payload pins its pooled buffer until read.
+                    // Unread jumbo payload stays in its pooled buffer.
+                    if s.info(id).is_some_and(|i| i.rx_queued >= 32 * 1024) && pool.in_use() > 0 {
+                        kept_zero_copy = true;
+                    }
+                    while let Ok(b) = s.read_chunk(now, id, usize::MAX) {
+                        got.extend_from_slice(&b);
+                    }
+                }
+                if got.len() == TOTAL {
+                    break;
+                }
+            }
+            assert_eq!(got.len(), TOTAL, "mtu {mtu} reorder {reorder}");
+            assert!(got == data, "byte stream corrupted (mtu {mtu} reorder {reorder})");
+            // Full-size segments fill at least half of an MTU-sized buffer,
+            // so in-order data stays in its buffer at every MTU.
+            assert!(kept_zero_copy, "mtu {mtu} reorder {reorder}");
+            // Once read, every buffer is back; the shard and pool release
+            // the whole budget.
+            assert_eq!(pool.in_use(), 0);
+            s.abort(sid.unwrap());
+            drop(s);
+            drop(pool);
+            assert_eq!(global.reserved(), 0);
+        }
     }
 }

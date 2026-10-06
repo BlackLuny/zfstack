@@ -19,7 +19,8 @@ smoltcp = { git = "https://github.com/BlackLuny/smoltcp", rev = "8014f8b21e12faf
     "socket-tcp-bbr",
     "socket-tcp-reno",
 ] }
-zfstack = { path = "..", optional = true }
+zfstack = { path = "..", optional = true, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "macros", "sync", "time"] }
 bytes = "1"
 crossbeam-channel = "0.5"
 libc = "0.2"

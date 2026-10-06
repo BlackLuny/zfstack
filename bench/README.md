@@ -301,6 +301,44 @@ bench/wan_ab.sh root@<server> <ssh-port> root@<client> <ssh-port> [run_matrix ar
   kernel baseline, are removed at the end of a run and by `--cleanup`. A
   TUN-backed interface vanishes when its process dies.
 
+## Client mode: proxy-client TUN stacks (`src/climode.rs`, `src/tunproxy.rs`)
+
+Compares stacks that terminate the **local OS's** TCP on a TUN device, the way
+a proxy client's TUN inbound does (docs/design/0008). There is no link
+emulator: the hop is the local kernel, so CPU per byte and memory are what
+differ.
+
+```
+kernel TCP client ──▶ 198.18.0.2:5201 ──TUN zfcT──▶ proxy process ──▶ 127.0.0.1:5201 kernel server
+```
+
+The proxy runs as its own process so every implementation is measured the
+same way (utime+stime and VmRSS/VmHWM from `/proc/<pid>`):
+
+| `--client-proxy` | proxy |
+|---|---|
+| `direct` | none: loopback to the server (kernel-only reference) |
+| `zfstack` / `zfstack-client` | `zfbench --tun-proxy` with `StackConfig::default()` / `StackConfig::client()`, tokio runtime, relay task per connection (`--relay-buf-kb`) or `--splice` (`TcpStream::splice`, relay inside the stack driver) |
+| `singbox-go` / `singbox-gvisor` / `singbox-system` | sing-box (`--singbox PATH`) with a TUN inbound (`stack` option) and a direct outbound whose rule overrides the destination to 127.0.0.1 |
+
+Flags: `--tun-mtu` (default 65535, sing-box's Linux default), `--proxy-workers`
+(tokio workers / `GOMAXPROCS`), and for zfstack `--vnet-hdr` (TUN with
+`IFF_VNET_HDR` + checksum offload) and `--tso` (also TSO both ways). Tests:
+`down`, `up`, `mixed`, `connect` as above, plus `idle` (hold `--conns` idle
+connections and report proxy RSS per connection).
+
+```sh
+# sing-box 1.15 with the gvisor build tag
+GOBIN=$PWD go install -tags with_gvisor github.com/sagernet/sing-box/cmd/sing-box@v1.15.0-alpha.10
+B=target/release/zfbench
+$B --client-proxy singbox-go --singbox ./sing-box --test down --secs 8 --warmup 2
+$B --client-proxy zfstack-client --splice --vnet-hdr --test up --secs 8 --warmup 2
+$B --client-proxy zfstack-client --splice --vnet-hdr --test idle --conns 2000
+```
+
+The TUN routes `198.18.0.0/15`; its own address is `172.19.0.1/30` because
+sing-box answers DNS on the device's next address. Needs `ip` (iproute2).
+
 ## Caveats (read before trusting numbers)
 
 - **Timing precision.** Deliveries are about 15–25 µs late on average under

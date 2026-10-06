@@ -51,8 +51,15 @@ impl ServerView for Arc<ServerCounters> {
     }
 }
 
+static SERVER_OVERRIDE: std::sync::OnceLock<SocketAddr> = std::sync::OnceLock::new();
+
+/// Client mode connects to a proxied destination instead of the emulator's server.
+pub fn set_server_addr(a: SocketAddr) {
+    let _ = SERVER_OVERRIDE.set(a);
+}
+
 pub fn server_addr() -> SocketAddr {
-    SocketAddr::new(tun::SERVER_ADDR.parse().unwrap(), tun::SERVER_PORT)
+    SERVER_OVERRIDE.get().copied().unwrap_or_else(|| SocketAddr::new(tun::SERVER_ADDR.parse().unwrap(), tun::SERVER_PORT))
 }
 
 fn connect(o: &TestOpts, timeout: Duration) -> io::Result<TcpStream> {

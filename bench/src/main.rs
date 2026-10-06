@@ -7,10 +7,12 @@
 mod adapters;
 mod app;
 mod client;
+mod climode;
 mod kernel_server;
 mod link;
 mod stack;
 mod tun;
+mod tunproxy;
 mod util;
 mod wg;
 mod wgmode;
@@ -45,6 +47,8 @@ pub enum TestKind {
     Up,
     Mixed,
     Connect,
+    /// Client mode only: hold `--conns` idle connections, report proxy memory.
+    Idle,
 }
 
 #[derive(Parser, Debug)]
@@ -166,6 +170,39 @@ pub struct Args {
     /// Shared secret for the control channel (both sides; required in WG mode).
     #[arg(long, env = "ZFBENCH_TOKEN", hide_env_values = true)]
     token: Option<String>,
+
+    // ---- client mode (proxy-client TUN stacks, see bench/README.md) ----
+    /// Run the client-scenario comparison through this proxy instead of the emulator.
+    #[arg(long, value_enum)]
+    client_proxy: Option<climode::ProxyKind>,
+    /// TUN MTU of the proxy device (sing-box defaults to 65535 on Linux).
+    #[arg(long, default_value_t = 65535)]
+    tun_mtu: u16,
+    /// sing-box binary.
+    #[arg(long)]
+    singbox: Option<String>,
+    /// Proxy runtime worker threads (zfstack tokio workers / sing-box GOMAXPROCS); 0 = default.
+    #[arg(long, default_value_t = 0)]
+    proxy_workers: usize,
+    /// zfstack proxy: relay copy buffer per direction (KiB).
+    #[arg(long, default_value_t = 64)]
+    relay_buf_kb: usize,
+    /// Internal: run the zfstack TUN proxy process.
+    #[arg(long, hide = true)]
+    tun_proxy: bool,
+    #[arg(long, hide = true, default_value = "127.0.0.1:5201")]
+    proxy_upstream: std::net::SocketAddr,
+    #[arg(long, hide = true)]
+    client_profile: bool,
+    /// zfstack proxy: relay with `TcpStream::splice` (in the stack driver) instead of a copy task.
+    #[arg(long)]
+    splice: bool,
+    /// zfstack proxy: TUN with IFF_VNET_HDR + checksum offload.
+    #[arg(long)]
+    vnet_hdr: bool,
+    /// zfstack proxy: also accept TSO super-segments from the kernel (implies --vnet-hdr).
+    #[arg(long)]
+    tso: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -291,6 +328,7 @@ pub fn test_name(t: TestKind) -> &'static str {
         TestKind::Up => "up",
         TestKind::Mixed => "mixed",
         TestKind::Connect => "connect",
+        TestKind::Idle => "idle",
     }
 }
 
@@ -303,6 +341,33 @@ fn main() {
     if a.cleanup {
         tun::cleanup();
         return;
+    }
+    if a.tun_proxy {
+        let workers = if a.proxy_workers == 0 { std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) } else { a.proxy_workers };
+        let o = tunproxy::ProxyOpts {
+            mtu: a.tun_mtu,
+            upstream: a.proxy_upstream,
+            workers,
+            relay_buf: a.relay_buf_kb * 1024,
+            client_profile: a.client_profile,
+            splice: a.splice,
+            vnet_hdr: a.vnet_hdr || a.tso,
+            tso: a.tso,
+        };
+        if let Err(e) = tunproxy::run(o) {
+            eprintln!("zfbench tun-proxy: {e}");
+            std::process::exit(3);
+        }
+        return;
+    }
+    if let Some(kind) = a.client_proxy {
+        install_signal_cleanup();
+        let code = climode::run(&a, kind).unwrap_or_else(|e| {
+            eprintln!("zfbench: client mode: {e}");
+            3
+        });
+        tun::sh_quiet(&format!("ip link del {}", tunproxy::PROXY_TUN));
+        std::process::exit(code);
     }
     if a.serve_wg {
         install_signal_cleanup();
@@ -443,6 +508,10 @@ fn run(a: &Args) -> std::io::Result<i32> {
             TestKind::Up => client::test_up(&o, &counters, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
+            TestKind::Idle => {
+                eprintln!("--test idle needs --client-proxy");
+                std::process::exit(2);
+            }
         }
     };
     let test_secs = t_test.elapsed().as_secs_f64();

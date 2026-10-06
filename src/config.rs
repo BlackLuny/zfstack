@@ -96,6 +96,36 @@ impl Default for StackConfig {
 }
 
 impl StackConfig {
+    /// Proxy-client profile: terminating the local OS's TCP on a TUN device
+    /// (docs/design/0008). The peer is the local kernel, so the path is
+    /// lossless with an RTT of tens of microseconds and any MTU up to 65535;
+    /// the bottleneck is the upstream proxy connection, not this hop.
+    ///
+    /// * No pacing: there is no queue to protect, and pacing at sub-ms RTTs
+    ///   only adds timers.
+    /// * Buffers sized for host scheduling jitter (a few ms at 10 Gbit/s),
+    ///   not a WAN BDP. `prefetch_max` must be bounded: with a 50 µs RTT the
+    ///   time-based prefetch (`rate × prefetch_time`) is effectively unbounded.
+    /// * Delayed ACKs short: a local app with Nagle waits on our ACK.
+    /// * Short TIME_WAIT: the peer is the local stack picking fresh ephemeral
+    ///   ports; tombstones mostly cost memory on devices with many short flows.
+    pub fn client() -> Self {
+        StackConfig {
+            cc: CcAlgo::Cubic,
+            pacing: false,
+            init_rcv_wnd: 256 * 1024,
+            max_rcv_buf: 4 << 20,
+            max_snd_inflight: 2 << 20,
+            min_prefetch: 64 * 1024,
+            prefetch_max: 512 * 1024,
+            delayed_ack: Duration::from_millis(5),
+            time_wait: Duration::from_secs(15),
+            syn_backlog: 1024,
+            accept_backlog: 1024,
+            ..StackConfig::default()
+        }
+    }
+
     /// Window scale needed so that the max receive buffer can be advertised.
     pub fn rcv_wscale(&self) -> u8 {
         let mut ws = 0u8;

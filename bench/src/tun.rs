@@ -26,11 +26,16 @@ struct IfReq {
 /// Create (attach to) a non-persistent TUN device in the calling thread's netns.
 /// The device disappears when the fd is closed. The fd is non-blocking.
 pub fn open_tun(name: &str) -> io::Result<RawFd> {
+    open_tun_flags(name, 0)
+}
+
+/// `open_tun` with extra `IFF_*` flags (e.g. `IFF_VNET_HDR`).
+pub fn open_tun_flags(name: &str, extra: libc::c_short) -> io::Result<RawFd> {
     let fd = unsafe { libc::open(c"/dev/net/tun".as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    let mut req = IfReq { name: [0; libc::IFNAMSIZ], flags: IFF_TUN | IFF_NO_PI, _pad: [0; 22] };
+    let mut req = IfReq { name: [0; libc::IFNAMSIZ], flags: IFF_TUN | IFF_NO_PI | extra, _pad: [0; 22] };
     req.name[..name.len()].copy_from_slice(name.as_bytes());
     if unsafe { libc::ioctl(fd, TUNSETIFF as _, &mut req) } < 0 {
         let e = io::Error::last_os_error();
