@@ -1,7 +1,7 @@
 # zfstack 总体设计 v0.3
 
 > 状态：设计定稿待 S0，未实现。v0.2 已经过一轮外部评审（GPT-6 Pro），本版回灌了评审意见，处理结果见附录 A；待拍板项已全部决定（§18）。
-> 使用方：**仅 zf-worker 的 WG 入站**（`zfw-wireguard`）。zf-client-core 不在范围内。
+> 使用方：**仅 zf-worker 的 WG 入站**（`zfw-wireguard`）。zf-client-core 不在范围内。（2026-10-06：客户端 TUN 入站场景见 [0008](0008-client-profile.md)，以配置与新增 API 开启，不改变本文的服务器路径。）
 > 子文档：[`0002-s0-benchmark-and-falsification.md`](0002-s0-benchmark-and-falsification.md)（S0 基准与证伪实验）。
 
 ## 修订记录

@@ -1174,9 +1174,11 @@ where
                 self.closes.note(reason);
                 self.pump(id);
                 if self.relays.contains_key(&id) {
-                    let result =
-                        if reason == CloseReason::Normal { Ok(()) } else { Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{reason:?}"))) };
-                    self.finish_relay(id, result);
+                    // An orderly close leaves received data readable: the
+                    // relay drains it upstream and finishes on its own.
+                    if reason != CloseReason::Normal {
+                        self.finish_relay(id, Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{reason:?}"))));
+                    }
                     return;
                 }
                 if let Some(sh) = self.streams.get(&id) {
@@ -1455,9 +1457,8 @@ where
             id,
             Relay { sock, pending, pending_len, core_eof, sock_write_shut: false, sock_eof: false, stats: SpliceStats::default(), done: Some(req.done) },
         );
-        if let Some(r) = error {
-            let result = if r == CloseReason::Normal { Ok(()) } else { Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}"))) };
-            self.finish_relay(id, result);
+        if let Some(r) = error.filter(|&r| r != CloseReason::Normal) {
+            self.finish_relay(id, Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}"))));
             return false;
         }
         true
@@ -1482,12 +1483,9 @@ where
                         relay.pending.push_back(b);
                     }
                     Err(ReadResult::Eof) => relay.core_eof = true,
+                    Err(ReadResult::Closed(CloseReason::Normal)) => relay.core_eof = true,
                     Err(ReadResult::Closed(r)) => {
-                        if r != CloseReason::Normal {
-                            failure = Some(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}")));
-                        } else {
-                            relay.core_eof = true;
-                        }
+                        failure = Some(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}")));
                         break 'up;
                     }
                     Err(_) => break,
@@ -1573,7 +1571,9 @@ where
                     sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
                     break;
                 }
-                Ok(WriteResult::Closed) => break,
+                // Closed in order: nothing more can go to the peer; stop
+                // reading (unread upstream bytes reset it when we close).
+                Ok(WriteResult::Closed) => relay.sock_eof = true,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     if relay.sock.poll_read_ready(&mut cx).is_pending() {
                         break;
@@ -2154,6 +2154,75 @@ mod tests {
             peer.step(&h, iface).await;
         }
         assert_eq!(upstream_task.await.unwrap(), b"bye");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn splice_delivers_upload_tail_after_the_connection_closes() {
+        // The peer uploads and FINs at once; upstream half-closes only later
+        // and reads later still. Our FIN then completes the close (LAST_ACK →
+        // Closed(Normal)) while the relay still holds bytes the socket has
+        // not taken. None may be lost. Also with upstream FIN first.
+        for (fin_after, read_after, up_len) in [(300u64, 600u64, 200usize << 10), (0, 400, 6 << 20)] {
+            splice_upload_tail(fin_after, read_after, up_len).await;
+        }
+    }
+
+    async fn splice_upload_tail(fin_after_ms: u64, read_after_ms: u64, up_len: usize) {
+        // Small socket buffers on both ends of the upstream hop keep most of
+        // the upload in the relay until upstream starts reading.
+        let ls = tokio::net::TcpSocket::new_v4().unwrap();
+        ls.set_recv_buffer_size(4096).unwrap();
+        ls.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let up = ls.listen(16).unwrap();
+        let up_addr = up.local_addr().unwrap();
+        let upstream_task = tokio::spawn(async move {
+            let (s, _) = up.accept().await.unwrap();
+            let _ = s.set_nodelay(true);
+            let (mut r, mut w) = s.into_split();
+            tokio::time::sleep(std::time::Duration::from_millis(fin_after_ms)).await;
+            w.shutdown().await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(read_after_ms - fin_after_ms)).await;
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut r, &mut all).await.unwrap();
+            all
+        });
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::client(), 65535);
+        tokio::spawn(async move {
+            let s = acc.accept().await.unwrap();
+            let cs = tokio::net::TcpSocket::new_v4().unwrap();
+            cs.set_send_buffer_size(4096).unwrap();
+            let upstream = cs.connect(up_addr).await.unwrap();
+            let _ = s.splice(upstream).await;
+        });
+        let now = peer.now();
+        let id = peer.c.connect(now, peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let mut buf = vec![0u8; 64 * 1024];
+        let (mut sent, mut shut) = (0usize, false);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !upstream_task.is_finished() {
+            assert!(tokio::time::Instant::now() < deadline, "upstream never got EOF: sent {sent}");
+            peer.step(&h, iface).await;
+            while peer.c.poll_event().is_some() {}
+            let now = peer.now();
+            while let ReadResult::Data(_) = peer.c.read(now, id, &mut buf) {}
+            while sent < up_len {
+                let n = (up_len - sent).min(buf.len());
+                for (k, b) in buf[..n].iter_mut().enumerate() {
+                    *b = pattern_byte((sent + k) as u64);
+                }
+                match peer.c.write(id, &buf[..n]) {
+                    WriteResult::Written(w) => sent += w,
+                    _ => break,
+                }
+            }
+            if sent == up_len && !shut {
+                peer.c.shutdown_write(id);
+                shut = true;
+            }
+        }
+        let got = upstream_task.await.unwrap();
+        assert_eq!(got.len(), up_len, "fin after {fin_after_ms} ms");
+        assert!(got.iter().enumerate().all(|(k, &b)| b == pattern_byte(k as u64)));
     }
 
     #[tokio::test(flavor = "current_thread")]
