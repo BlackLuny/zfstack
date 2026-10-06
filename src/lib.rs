@@ -10,6 +10,8 @@ pub mod cc;
 pub mod config;
 mod conn;
 mod heap;
+pub mod offload;
+pub mod pktpool;
 pub mod rtt;
 pub mod scoreboard;
 pub mod seq;

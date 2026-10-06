@@ -166,12 +166,42 @@ struct Queues {
     /// the core send buffer under its send share; published by the driver on
     /// each pump (docs/design/0007 §2.4). Writes consume it synchronously.
     send_room: usize,
+    /// `TcpStream::splice` hand-over, taken by the driver's next pump.
+    splice: Option<SpliceRequest>,
 }
 
+struct SpliceRequest {
+    upstream: tokio::net::TcpStream,
+    done: oneshot::Sender<io::Result<SpliceStats>>,
+}
+
+/// Bytes moved by a finished [`TcpStream::splice`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpliceStats {
+    /// Stack stream → upstream socket (what the TUN-side peer sent).
+    pub uploaded: u64,
+    /// Upstream socket → stack stream.
+    pub downloaded: u64,
+}
+
+/// Completes when a spliced connection has finished in both directions, or
+/// failed; see [`TcpStream::splice`].
+pub struct Splice {
+    rx: oneshot::Receiver<io::Result<SpliceStats>>,
+}
+
+impl std::future::Future for Splice {
+    type Output = io::Result<SpliceStats>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.rx).poll(cx).map(|r| r.unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::BrokenPipe, "stack driver stopped"))))
+    }
+}
+
+/// `data[head..]` is queued; `data.capacity()` is the charged backing, so a
+/// chunk is filled by appending instead of zeroing it first.
 struct TxChunk {
-    data: Box<[u8]>,
+    data: Vec<u8>,
     head: usize,
-    len: usize,
     _lease: MemoryLease,
 }
 
@@ -194,13 +224,13 @@ impl TxQueue {
         self.len = 0;
     }
     fn front(&self) -> &[u8] {
-        self.chunks.front().map_or(&[], |c| &c.data[c.head..c.len])
+        self.chunks.front().map_or(&[], |c| &c.data[c.head..])
     }
     fn push(&mut self, mut src: &[u8], memory: &MemoryHandle) -> usize {
         let wanted = src.len();
         self.last_failure = None;
         while !src.is_empty() {
-            if self.chunks.back().is_none_or(|c| c.len == c.data.len()) {
+            if self.chunks.back().is_none_or(|c| c.data.len() == c.data.capacity()) {
                 let cap = src.len().min(64 * 1024).next_power_of_two().max(64);
                 let observed = memory.global().release_epoch();
                 if let Err(error) = self.chunks.reserve_one(memory, AllocationKind::AdapterTx) {
@@ -212,12 +242,16 @@ impl TxQueue {
                     self.last_failure = Some((QueueGrowError::Quota(cap as u64 + 64), observed));
                     break;
                 };
-                self.chunks.push_back_reserved(TxChunk { data: vec![0; cap].into_boxed_slice(), head: 0, len: 0, _lease: lease });
+                let mut data = Vec::new();
+                if data.try_reserve_exact(cap).is_err() || data.capacity() > cap {
+                    self.last_failure = Some((QueueGrowError::Allocation, observed));
+                    break;
+                }
+                self.chunks.push_back_reserved(TxChunk { data, head: 0, _lease: lease });
             }
             let chunk = self.chunks.back_mut().unwrap();
-            let n = src.len().min(chunk.data.len() - chunk.len);
-            chunk.data[chunk.len..chunk.len + n].copy_from_slice(&src[..n]);
-            chunk.len += n;
+            let n = src.len().min(chunk.data.capacity() - chunk.data.len());
+            chunk.data.extend_from_slice(&src[..n]);
             self.len += n;
             src = &src[n..];
         }
@@ -226,11 +260,11 @@ impl TxQueue {
     fn consume(&mut self, mut n: usize) {
         while n > 0 {
             let chunk = self.chunks.front_mut().expect("TX bytes present");
-            let take = n.min(chunk.len - chunk.head);
+            let take = n.min(chunk.data.len() - chunk.head);
             chunk.head += take;
             self.len -= take;
             n -= take;
-            if chunk.head == chunk.len {
+            if chunk.head == chunk.data.len() {
                 self.chunks.pop_front();
             }
         }
@@ -300,6 +334,8 @@ struct Ctl {
 struct PendingControl {
     egress_released: HashSet<IfaceId>,
     mtu: HashMap<IfaceId, u16>,
+    tx_csum: HashMap<IfaceId, bool>,
+    tso: HashMap<IfaceId, u32>,
 }
 
 impl Ctl {
@@ -351,6 +387,33 @@ impl TcpStream {
     }
     pub fn local_addr(&self) -> SocketAddr {
         self.meta.local
+    }
+}
+
+impl TcpStream {
+    /// Relay this stream to `upstream` inside the driver task, without a
+    /// relay task or copy buffers (the proxy-client "direct" outbound):
+    /// upstream bytes are read straight into the connection's send buffer
+    /// (`Shard::write_with`), and received segments are written to the socket
+    /// from the stack's own chunks with `writev`. Readiness of both sides
+    /// wakes the driver; nothing is polled.
+    ///
+    /// Bytes already buffered in this handle are kept in order. Each FIN is
+    /// forwarded as a half-close; the stream ends when both directions have
+    /// ended. A reset or socket error on either side resets the other.
+    ///
+    /// The socket is re-registered with the driver's runtime, so a host that
+    /// gives the driver its own current-thread runtime keeps every spliced
+    /// byte on that thread.
+    pub fn splice(self, upstream: tokio::net::TcpStream) -> Splice {
+        let this = std::mem::ManuallyDrop::new(self);
+        // SAFETY: `this` is never used or dropped again; `meta` owns no heap
+        // memory, so moving `sh` out is the only ownership transfer.
+        let sh = unsafe { std::ptr::read(&this.sh) };
+        let (done, rx) = oneshot::channel();
+        sh.q.lock().unwrap().splice = Some(SpliceRequest { upstream, done });
+        sh.ctl.mark(sh.id);
+        Splice { rx }
     }
 }
 
@@ -616,6 +679,16 @@ impl StackHandle {
         self.ctl.pending.lock().unwrap().mtu.insert(iface, mtu);
         self.ctl.notify.notify_one();
     }
+    /// See `Shard::set_iface_tx_checksum_offload`.
+    pub fn set_iface_tx_checksum_offload(&self, iface: IfaceId, on: bool) {
+        self.ctl.pending.lock().unwrap().tx_csum.insert(iface, on);
+        self.ctl.notify.notify_one();
+    }
+    /// See `Shard::set_iface_tso`.
+    pub fn set_iface_tso(&self, iface: IfaceId, max_payload: u32) {
+        self.ctl.pending.lock().unwrap().tso.insert(iface, max_payload);
+        self.ctl.notify.notify_one();
+    }
 }
 
 /// Receives accepted connections.
@@ -801,6 +874,7 @@ where
         epoch: tokio::time::Instant::now(),
         closes: CloseCounts::default(),
         aborts: AbortCounts::default(),
+        relays: HashMap::new(),
     };
     driver.shard.budget().global().register_cache_holder(driver.budget_waiter, &driver.budget_wake);
     let join = tokio::spawn(driver.run());
@@ -826,7 +900,30 @@ struct Driver<E: Egress, I, F> {
     epoch: tokio::time::Instant,
     closes: CloseCounts,
     aborts: AbortCounts,
+    /// Spliced streams: the driver moves their bytes itself.
+    relays: HashMap<ConnId, Relay>,
 }
+
+/// Driver-owned state of a spliced stream.
+struct Relay {
+    sock: tokio::net::TcpStream,
+    /// Chunks taken from the core (not yet consumed) waiting for the socket.
+    pending: VecDeque<Bytes>,
+    pending_len: usize,
+    /// The core delivered EOF; shut the socket's write side once drained.
+    core_eof: bool,
+    sock_write_shut: bool,
+    /// The socket hit EOF; the core's write side is shut.
+    sock_eof: bool,
+    stats: SpliceStats,
+    done: Option<oneshot::Sender<io::Result<SpliceStats>>>,
+}
+
+/// Up to this many bytes are taken from the core per writev batch.
+const RELAY_UP_BATCH: usize = 512 * 1024;
+const RELAY_IOV: usize = 64;
+/// Upper bound of one in-place socket read (two TX block slices at most).
+const RELAY_DOWN_READ: usize = 256 * 1024;
 
 impl<E, I, F> Driver<E, I, F>
 where
@@ -915,6 +1012,12 @@ where
         for (iface, mtu) in pending.mtu {
             self.shard.set_iface_mtu(iface, mtu);
         }
+        for (iface, on) in pending.tx_csum {
+            self.shard.set_iface_tx_checksum_offload(iface, on);
+        }
+        for (iface, max) in pending.tso {
+            self.shard.set_iface_tso(iface, max);
+        }
     }
 
     fn handle_cmd(&mut self, cmd: Cmd) {
@@ -972,7 +1075,13 @@ where
     /// Move data between stream queues and the shard, run the shard, dispatch events.
     fn service(&mut self) -> bool {
         self.expire_orphans();
-        for _ in 0..16 {
+        for round in 0..16 {
+            // Take packets that arrived meanwhile before producing more: a
+            // driver kept busy by bulk egress would otherwise leave ACKs and
+            // other flows' requests queued in the device (RR latency).
+            if round > 0 {
+                self.ingest_ready(16);
+            }
             let dirty = std::mem::take(&mut *self.ctl.dirty.lock().unwrap());
             for id in dirty {
                 self.pump(id);
@@ -991,6 +1100,30 @@ where
             }
         }
         true
+    }
+
+    /// Non-blocking: up to `max` queued ingress items (host source and
+    /// `StackHandle::ingress` batches).
+    fn ingest_ready(&mut self, max: usize) {
+        let now = self.now();
+        for _ in 0..max {
+            let Some(source) = self.input.as_mut() else { break };
+            match source.rx.try_recv() {
+                Ok(item) => (source.handle)(&mut self.shard, now, item),
+                Err(_) => break,
+            }
+        }
+        for _ in 0..max {
+            match self.cmd_rx.try_recv() {
+                Ok(Cmd::Packets(iface, pkts)) => {
+                    for (peer, p) in pkts {
+                        self.shard.ingress(now, iface, peer, p);
+                    }
+                }
+                Ok(cmd) => self.handle_cmd(cmd),
+                Err(_) => break,
+            }
+        }
     }
 
     fn on_event(&mut self, ev: Event) {
@@ -1040,6 +1173,14 @@ where
             Event::Closed(id, reason) => {
                 self.closes.note(reason);
                 self.pump(id);
+                if self.relays.contains_key(&id) {
+                    // An orderly close leaves received data readable: the
+                    // relay drains it upstream and finishes on its own.
+                    if reason != CloseReason::Normal {
+                        self.finish_relay(id, Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{reason:?}"))));
+                    }
+                    return;
+                }
                 if let Some(sh) = self.streams.get(&id) {
                     let mut q = sh.q.lock().unwrap();
                     q.error = Some(reason);
@@ -1116,11 +1257,22 @@ where
 
     /// Exchange data for one stream.
     fn pump(&mut self, id: ConnId) {
+        if !self.relays.is_empty() && self.relays.contains_key(&id) {
+            self.relay_pump(id);
+            return;
+        }
         let Some(sh) = self.streams.get(&id).cloned() else { return };
         let now = self.now();
         let cfg = &self.stream_cfg;
         let consumed = {
             let mut q = sh.q.lock().unwrap();
+            if q.splice.is_some() {
+                drop(q);
+                if self.start_relay(id) {
+                    self.relay_pump(id);
+                }
+                return;
+            }
             std::mem::take(&mut q.rx_consumed_pending)
         };
         if consumed > 0 {
@@ -1259,6 +1411,218 @@ where
         }
         if app_closed {
             self.release_if_done(id);
+        }
+    }
+}
+
+impl<E, I, F> Driver<E, I, F>
+where
+    E: Egress,
+    I: Send + 'static,
+    F: FnMut(&mut Shard, crate::Instant, I) + Send + 'static,
+{
+    /// Take a pending `TcpStream::splice` request for `id`.
+    fn start_relay(&mut self, id: ConnId) -> bool {
+        let Some(sh) = self.streams.get(&id).cloned() else { return false };
+        let mut q = sh.q.lock().unwrap();
+        let Some(req) = q.splice.take() else { return false };
+        // Chunks the adapter already took from the core go out first; they
+        // are consumed (window reopened) only once the socket accepts them.
+        let mut pending = VecDeque::new();
+        while let Some(b) = q.rx.pop_front() {
+            pending.push_back(b);
+        }
+        let pending_len = std::mem::take(&mut q.rx_len);
+        let consumed = std::mem::take(&mut q.rx_consumed_pending);
+        let core_eof = q.rx_eof;
+        let error = q.error;
+        drop(q);
+        let now = self.now();
+        if consumed > 0 {
+            self.shard.consume_adapter(now, id, consumed);
+        }
+        // Move the socket to the driver's own reactor. A host that runs the
+        // driver on a dedicated current-thread runtime then does all relay
+        // I/O on one thread: no readiness wakeups to other workers.
+        let sock = match req.upstream.into_std().and_then(|s| tokio::net::TcpStream::from_std(s)) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = req.done.send(Err(e));
+                self.shard.abort(id);
+                self.remove_stream(id);
+                return false;
+            }
+        };
+        self.relays.insert(
+            id,
+            Relay { sock, pending, pending_len, core_eof, sock_write_shut: false, sock_eof: false, stats: SpliceStats::default(), done: Some(req.done) },
+        );
+        if let Some(r) = error.filter(|&r| r != CloseReason::Normal) {
+            self.finish_relay(id, Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}"))));
+            return false;
+        }
+        true
+    }
+
+    /// Move bytes between a spliced stream and its socket until both sides
+    /// would block; readiness and core events call this again.
+    fn relay_pump(&mut self, id: ConnId) {
+        let Some(sh) = self.streams.get(&id).cloned() else { return };
+        let now = self.now();
+        let waker = sh.driver_wake.clone();
+        let mut cx = Context::from_waker(&waker);
+        let Some(relay) = self.relays.get_mut(&id) else { return };
+        let mut failure: Option<io::Error> = None;
+
+        // Core → socket: zero-copy chunks out with writev.
+        'up: loop {
+            while relay.pending_len < RELAY_UP_BATCH && !relay.core_eof {
+                match self.shard.read_chunk_for_adapter(now, id, RELAY_UP_BATCH - relay.pending_len) {
+                    Ok(b) => {
+                        relay.pending_len += b.len();
+                        relay.pending.push_back(b);
+                    }
+                    Err(ReadResult::Eof) => relay.core_eof = true,
+                    Err(ReadResult::Closed(CloseReason::Normal)) => relay.core_eof = true,
+                    Err(ReadResult::Closed(r)) => {
+                        failure = Some(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}")));
+                        break 'up;
+                    }
+                    Err(_) => break,
+                }
+            }
+            if relay.pending.is_empty() {
+                if relay.core_eof && !relay.sock_write_shut {
+                    // shutdown(SHUT_WR); Pending retries on the next pump.
+                    match Pin::new(&mut relay.sock).poll_shutdown(&mut cx) {
+                        Poll::Ready(Ok(())) => relay.sock_write_shut = true,
+                        Poll::Ready(Err(e)) => failure = Some(e),
+                        Poll::Pending => {}
+                    }
+                }
+                break;
+            }
+            let mut iov = [std::io::IoSlice::new(&[]); RELAY_IOV];
+            let mut n_iov = 0;
+            for b in relay.pending.iter().take(RELAY_IOV) {
+                iov[n_iov] = std::io::IoSlice::new(b);
+                n_iov += 1;
+            }
+            match relay.sock.try_write_vectored(&iov[..n_iov]) {
+                Ok(mut n) => {
+                    relay.stats.uploaded += n as u64;
+                    relay.pending_len -= n;
+                    self.shard.consume_adapter(now, id, n);
+                    while n > 0 {
+                        let front = relay.pending.front_mut().unwrap();
+                        if n >= front.len() {
+                            n -= front.len();
+                            relay.pending.pop_front();
+                        } else {
+                            let _ = front.split_to(n);
+                            n = 0;
+                        }
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if relay.sock.poll_write_ready(&mut cx).is_pending() {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+        }
+
+        // Socket → core: read straight into the send buffer. Bytes the app
+        // wrote into this handle before splicing go first.
+        let mut q = sh.q.lock().unwrap();
+        while failure.is_none() && !q.tx.is_empty() {
+            let n = q.tx.front().len().min(64 * 1024);
+            match self.shard.write_for_adapter(id, &q.tx.front()[..n]) {
+                WriteResult::Written(w) => q.tx.consume(w),
+                _ => break,
+            }
+        }
+        let backlog = !q.tx.is_empty();
+        drop(q);
+        while failure.is_none() && !backlog && !relay.sock_eof {
+            let sock = &relay.sock;
+            let r = self.shard.write_with_for_adapter(id, RELAY_DOWN_READ, |[a, b]| {
+                let mut iov = [std::io::IoSliceMut::new(a), std::io::IoSliceMut::new(b)];
+                sock.try_read_vectored(&mut iov)
+            });
+            match r {
+                Ok(WriteResult::Written(0)) => {
+                    relay.sock_eof = true;
+                    self.shard.shutdown_write(id);
+                }
+                Ok(WriteResult::Written(n)) => relay.stats.downloaded += n as u64,
+                // The core emits Writable once space frees up.
+                Ok(WriteResult::WouldBlock) => break,
+                Ok(WriteResult::QuotaBlocked) => {
+                    let observed = sh.memory.global().release_epoch();
+                    sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake);
+                    break;
+                }
+                Ok(WriteResult::MemoryBlocked) => {
+                    let observed = sh.memory.global().release_epoch();
+                    let charge = self.shard.write_allocation_charge(id, RELAY_DOWN_READ);
+                    sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
+                    break;
+                }
+                // Closed in order: nothing more can go to the peer; stop
+                // reading (unread upstream bytes reset it when we close).
+                Ok(WriteResult::Closed) => relay.sock_eof = true,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if relay.sock.poll_read_ready(&mut cx).is_pending() {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => failure = Some(e),
+            }
+        }
+
+        if let Some(e) = failure {
+            self.finish_relay(id, Err(e));
+        } else if relay.sock_eof && relay.sock_write_shut {
+            self.finish_relay(id, Ok(()));
+        }
+    }
+
+    /// End a spliced stream: an orderly finish closes the core connection
+    /// (pending bytes and FIN still go out); a failure resets both sides.
+    fn finish_relay(&mut self, id: ConnId, result: io::Result<()>) {
+        let Some(mut relay) = self.relays.remove(&id) else { return };
+        let now = self.now();
+        let unconsumed = relay.pending_len;
+        relay.pending.clear();
+        if unconsumed > 0 {
+            self.shard.consume_adapter(now, id, unconsumed);
+        }
+        let ok = result.is_ok();
+        if ok {
+            self.shard.close(now, id);
+        } else {
+            #[allow(deprecated)]
+            let _ = relay.sock.set_linger(Some(std::time::Duration::ZERO));
+            self.shard.abort(id);
+        }
+        if let Some(sh) = self.streams.get(&id) {
+            let mut q = sh.q.lock().unwrap();
+            q.closed_by_app = true;
+            q.tx.clear();
+            q.error.get_or_insert(if ok { CloseReason::Normal } else { CloseReason::Aborted });
+        }
+        self.remove_stream(id);
+        let stats = relay.stats;
+        drop(relay.sock);
+        if let Some(done) = relay.done.take() {
+            let _ = done.send(result.map(|()| stats));
         }
     }
 }
@@ -1576,6 +1940,335 @@ mod tests {
             }
         }
         assert_eq!(recvd, TOTAL);
+    }
+
+    /// The OS side of a TUN: a test-peer shard exchanging packets with a
+    /// spawned stack.
+    struct TunPeer {
+        c: Shard,
+        ci: IfaceId,
+        epoch: tokio::time::Instant,
+        rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    }
+
+    impl TunPeer {
+        fn new(mtu: u16, rx: mpsc::UnboundedReceiver<Vec<u8>>) -> Self {
+            let mut c = Shard::with_budget(StackConfig::default(), GlobalBudget::new(1 << 30));
+            let ci = c.add_iface(IfaceConfig { mtu });
+            TunPeer { c, ci, epoch: tokio::time::Instant::now(), rx }
+        }
+        fn now(&self) -> crate::Instant {
+            crate::Instant::from_nanos(self.epoch.elapsed().as_nanos() as u64 + 1)
+        }
+        /// Send what the peer has to the stack, then take the stack's replies
+        /// (waiting up to 5 ms or the peer's next timer).
+        async fn step(&mut self, h: &StackHandle, iface: IfaceId) {
+            let now = self.now();
+            let mut out: Vec<(PeerId, Bytes)> = Vec::new();
+            let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
+                out.push((PeerId(9), Bytes::from(p.to_vec())));
+                SendResult::Accepted
+            };
+            self.c.run(now, &mut sink);
+            if !out.is_empty() {
+                assert!(h.ingress(iface, out).await);
+            }
+            let wait = self.c.next_deadline().map_or(std::time::Duration::from_millis(5), |d| {
+                std::time::Duration::from_nanos(d.as_nanos().saturating_sub(self.now().as_nanos())).min(std::time::Duration::from_millis(5))
+            });
+            if let Ok(Some(p)) = tokio::time::timeout(wait, self.rx.recv()).await {
+                let (now, ci) = (self.now(), self.ci);
+                self.c.ingress(now, ci, PeerId(9), Bytes::from(p));
+                while let Ok(p) = self.rx.try_recv() {
+                    self.c.ingress(now, ci, PeerId(9), Bytes::from(p));
+                }
+            }
+        }
+    }
+
+    fn splice_stack(cfg: StackConfig, mtu: u16) -> (StackHandle, Acceptor, IfaceId, TunPeer) {
+        splice_stack_with(cfg, mtu, 0).0
+    }
+
+    /// `tso > 0` turns on TX checksum and segmentation offload; the egress
+    /// then completes the partial checksum like a device. The test peer takes
+    /// a super-segment whole, as the Linux stack takes a GSO packet.
+    fn splice_stack_with(cfg: StackConfig, mtu: u16, tso: u32) -> ((StackHandle, Acceptor, IfaceId, TunPeer), Arc<AtomicUsize>) {
+        let (to_client_tx, to_client_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let super_segments = Arc::new(AtomicUsize::new(0));
+        let counter = super_segments.clone();
+        let egress = move |_i: IfaceId, _p: PeerId, pkt: &OutPacket<'_>| {
+            if pkt.gso_size > 0 {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+            let mut v = pkt.to_vec();
+            if pkt.csum_partial {
+                let h = crate::offload::VirtioNetHdr::for_packet(pkt);
+                let start = h.csum_start as usize;
+                let c = crate::wire::checksum_fold(crate::wire::sum_bytes(0, &v[start..]));
+                v[start + 16..start + 18].copy_from_slice(&c.to_be_bytes());
+                assert!(pkt.gso_size == 0 || pkt.len() > pkt.header.len() + pkt.gso_size as usize);
+            }
+            let _ = to_client_tx.send(v);
+            SendResult::Accepted
+        };
+        let (h, acc, ids) = spawn(cfg, StreamConfig::default(), vec![IfaceConfig { mtu }], egress);
+        if tso > 0 {
+            h.set_iface_tso(ids[0], tso);
+        }
+        ((h, acc, ids[0], TunPeer::new(mtu, to_client_rx)), super_segments)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn splice_relays_both_directions_and_half_closes() {
+        for (cfg, mtu, tso) in [(StackConfig::default(), 1420u16, 0u32), (StackConfig::client(), 65535, 0), (StackConfig::client(), 1500, 65_000)] {
+            // Upstream: echo until EOF, then close.
+            let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let up_addr = up.local_addr().unwrap();
+            tokio::spawn(async move {
+                let (s, _) = up.accept().await.unwrap();
+                let (mut r, mut w) = s.into_split();
+                tokio::io::copy(&mut r, &mut w).await.unwrap();
+                w.shutdown().await.unwrap();
+            });
+            let ((h, mut acc, iface, mut peer), super_segments) = splice_stack_with(cfg, mtu, tso);
+            let (stats_tx, stats_rx) = oneshot::channel();
+            tokio::spawn(async move {
+                let mut s = acc.accept().await.unwrap();
+                // Bytes the app writes before splicing go out first; bytes the
+                // peer sends meanwhile wait in the handle and are relayed.
+                s.write_all(b"hi").await.unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let upstream = tokio::net::TcpStream::connect(up_addr).await.unwrap();
+                let _ = stats_tx.send(s.splice(upstream).await);
+            });
+            let now = peer.now();
+            let id = peer.c.connect(now, peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            const TOTAL: u64 = 3 << 20;
+            let (mut sent, mut got, mut eof, mut shut) = (0u64, Vec::new(), false, false);
+            let mut buf = vec![0u8; 64 * 1024];
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+            while !eof {
+                assert!(tokio::time::Instant::now() < deadline, "timed out: mtu {mtu} sent {sent} got {}", got.len());
+                peer.step(&h, iface).await;
+                while peer.c.poll_event().is_some() {}
+                while sent < TOTAL {
+                    let n = ((TOTAL - sent) as usize).min(buf.len());
+                    for (k, b) in buf[..n].iter_mut().enumerate() {
+                        *b = pattern_byte(sent + k as u64);
+                    }
+                    match peer.c.write(id, &buf[..n]) {
+                        WriteResult::Written(w) => sent += w as u64,
+                        _ => break,
+                    }
+                }
+                if sent == TOTAL && !shut {
+                    peer.c.shutdown_write(id);
+                    shut = true;
+                }
+                loop {
+                    let now = peer.now();
+                    match peer.c.read(now, id, &mut buf) {
+                        ReadResult::Data(n) => got.extend_from_slice(&buf[..n]),
+                        ReadResult::Eof => {
+                            eof = true;
+                            break;
+                        }
+                        ReadResult::WouldBlock => break,
+                        ReadResult::Closed(r) => panic!("peer closed: {r:?}"),
+                    }
+                }
+            }
+            assert_eq!(&got[..2], b"hi");
+            assert_eq!(got.len() as u64, TOTAL + 2, "mtu {mtu}");
+            for (k, &b) in got[2..].iter().enumerate() {
+                assert_eq!(b, pattern_byte(k as u64), "echo corrupted at {k} (mtu {mtu})");
+            }
+            let stats = stats_rx.await.unwrap().unwrap();
+            assert_eq!(stats, SpliceStats { uploaded: TOTAL, downloaded: TOTAL });
+            assert_eq!(super_segments.load(Ordering::Relaxed) > 0, tso > 0, "mtu {mtu} tso {tso}");
+            // The stream is released once the orderly close completes.
+            let t = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                peer.step(&h, iface).await;
+                let snap = h.snapshot().await.unwrap();
+                if snap.adapter_streams == 0 {
+                    break;
+                }
+                assert!(tokio::time::Instant::now() < t, "spliced stream not released");
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn splice_upstream_fin_first_then_peer_fin() {
+        const RESP: usize = 700_000;
+        let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up_addr = up.local_addr().unwrap();
+        let upstream_task = tokio::spawn(async move {
+            let (s, _) = up.accept().await.unwrap();
+            let (mut r, mut w) = s.into_split();
+            let resp: Vec<u8> = (0..RESP as u64).map(pattern_byte).collect();
+            w.write_all(&resp).await.unwrap();
+            w.shutdown().await.unwrap();
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut r, &mut all).await.unwrap();
+            all
+        });
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::client(), 9000);
+        tokio::spawn(async move {
+            let s = acc.accept().await.unwrap();
+            let upstream = tokio::net::TcpStream::connect(up_addr).await.unwrap();
+            s.splice(upstream).await.unwrap();
+        });
+        let now = peer.now();
+        let id = peer.c.connect(now, peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let (mut got, mut eof, mut sent) = (Vec::new(), false, false);
+        let mut buf = vec![0u8; 64 * 1024];
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        // Read the whole response (and its FIN) before sending anything.
+        while !(eof && sent) {
+            assert!(tokio::time::Instant::now() < deadline, "timed out: got {}", got.len());
+            peer.step(&h, iface).await;
+            while peer.c.poll_event().is_some() {}
+            loop {
+                let now = peer.now();
+                match peer.c.read(now, id, &mut buf) {
+                    ReadResult::Data(n) => got.extend_from_slice(&buf[..n]),
+                    ReadResult::Eof => {
+                        eof = true;
+                        break;
+                    }
+                    ReadResult::WouldBlock => break,
+                    ReadResult::Closed(r) => panic!("peer closed: {r:?}"),
+                }
+            }
+            if eof && !sent {
+                assert!(matches!(peer.c.write(id, b"bye"), WriteResult::Written(3)));
+                peer.c.shutdown_write(id);
+                sent = true;
+            }
+        }
+        assert_eq!(got.len(), RESP);
+        assert!(got.iter().enumerate().all(|(k, &b)| b == pattern_byte(k as u64)));
+        // The peer's FIN reaches upstream as EOF after its last bytes.
+        while !upstream_task.is_finished() {
+            assert!(tokio::time::Instant::now() < deadline, "upstream never saw EOF");
+            peer.step(&h, iface).await;
+        }
+        assert_eq!(upstream_task.await.unwrap(), b"bye");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn splice_delivers_upload_tail_after_the_connection_closes() {
+        // The peer uploads and FINs at once; upstream half-closes only later
+        // and reads later still. Our FIN then completes the close (LAST_ACK →
+        // Closed(Normal)) while the relay still holds bytes the socket has
+        // not taken. None may be lost. Also with upstream FIN first.
+        for (fin_after, read_after, up_len) in [(300u64, 600u64, 200usize << 10), (0, 400, 6 << 20)] {
+            splice_upload_tail(fin_after, read_after, up_len).await;
+        }
+    }
+
+    async fn splice_upload_tail(fin_after_ms: u64, read_after_ms: u64, up_len: usize) {
+        // Small socket buffers on both ends of the upstream hop keep most of
+        // the upload in the relay until upstream starts reading.
+        let ls = tokio::net::TcpSocket::new_v4().unwrap();
+        ls.set_recv_buffer_size(4096).unwrap();
+        ls.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let up = ls.listen(16).unwrap();
+        let up_addr = up.local_addr().unwrap();
+        let upstream_task = tokio::spawn(async move {
+            let (s, _) = up.accept().await.unwrap();
+            let _ = s.set_nodelay(true);
+            let (mut r, mut w) = s.into_split();
+            tokio::time::sleep(std::time::Duration::from_millis(fin_after_ms)).await;
+            w.shutdown().await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(read_after_ms - fin_after_ms)).await;
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut r, &mut all).await.unwrap();
+            all
+        });
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::client(), 65535);
+        tokio::spawn(async move {
+            let s = acc.accept().await.unwrap();
+            let cs = tokio::net::TcpSocket::new_v4().unwrap();
+            cs.set_send_buffer_size(4096).unwrap();
+            let upstream = cs.connect(up_addr).await.unwrap();
+            let _ = s.splice(upstream).await;
+        });
+        let now = peer.now();
+        let id = peer.c.connect(now, peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let mut buf = vec![0u8; 64 * 1024];
+        let (mut sent, mut shut) = (0usize, false);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !upstream_task.is_finished() {
+            assert!(tokio::time::Instant::now() < deadline, "upstream never got EOF: sent {sent}");
+            peer.step(&h, iface).await;
+            while peer.c.poll_event().is_some() {}
+            let now = peer.now();
+            while let ReadResult::Data(_) = peer.c.read(now, id, &mut buf) {}
+            while sent < up_len {
+                let n = (up_len - sent).min(buf.len());
+                for (k, b) in buf[..n].iter_mut().enumerate() {
+                    *b = pattern_byte((sent + k) as u64);
+                }
+                match peer.c.write(id, &buf[..n]) {
+                    WriteResult::Written(w) => sent += w,
+                    _ => break,
+                }
+            }
+            if sent == up_len && !shut {
+                peer.c.shutdown_write(id);
+                shut = true;
+            }
+        }
+        let got = upstream_task.await.unwrap();
+        assert_eq!(got.len(), up_len, "fin after {fin_after_ms} ms");
+        assert!(got.iter().enumerate().all(|(k, &b)| b == pattern_byte(k as u64)));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn splice_upstream_reset_resets_the_peer() {
+        let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up_addr = up.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = up.accept().await.unwrap();
+            let mut b = [0u8; 4];
+            tokio::io::AsyncReadExt::read_exact(&mut s, &mut b).await.unwrap();
+            #[allow(deprecated)]
+            s.set_linger(Some(std::time::Duration::ZERO)).unwrap();
+            drop(s);
+        });
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::client(), 65535);
+        let (res_tx, res_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let s = acc.accept().await.unwrap();
+            let upstream = tokio::net::TcpStream::connect(up_addr).await.unwrap();
+            let _ = res_tx.send(s.splice(upstream).await);
+        });
+        let now = peer.now();
+        let id = peer.c.connect(now, peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let mut wrote = false;
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        let reason = loop {
+            assert!(tokio::time::Instant::now() < deadline, "peer was never reset");
+            peer.step(&h, iface).await;
+            let mut closed = None;
+            while let Some(ev) = peer.c.poll_event() {
+                if let Event::Closed(_, r) = ev {
+                    closed = Some(r);
+                }
+            }
+            if let Some(r) = closed {
+                break r;
+            }
+            if !wrote && matches!(peer.c.write(id, b"ping"), WriteResult::Written(4)) {
+                wrote = true;
+            }
+        };
+        assert_eq!(reason, CloseReason::Reset);
+        assert!(res_rx.await.unwrap().is_err());
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -205,7 +205,7 @@ impl Bbr {
 
     fn send_quantum(&self) -> u64 {
         let q = self.pacing_rate / 1000; // 1 ms
-        q.clamp(2 * self.mss, 64 * 1024)
+        q.clamp((2 * self.mss).min((64 * 1024).max(self.mss)), (64 * 1024).max(self.mss))
     }
 
     fn inflight_with_headroom(&self) -> u64 {

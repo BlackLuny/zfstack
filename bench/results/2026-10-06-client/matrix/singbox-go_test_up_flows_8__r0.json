@@ -1,0 +1,290 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": false,
+    "flows": 8,
+    "legacy": false,
+    "proxy": "singbox-go",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 10,
+    "splice": false,
+    "test": "up",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": false,
+    "warmup": 3
+  },
+  "cpu": {
+    "harness_process_sec": 3.7402260000000003,
+    "system_busy_sec_per_GB": 1.5417450160654376,
+    "system_window": {
+      "busy_sec": 11.96,
+      "idle_sec": 16.06,
+      "irq_sec": 0.0,
+      "softirq_sec": 3.9,
+      "steal_sec": 0.6,
+      "system_sec": 6.4,
+      "user_sec": 1.66
+    },
+    "window_effective_bytes": 7757443595,
+    "window_wall_sec": 7.000023872
+  },
+  "env": {
+    "kernel": "6.18.44-fc-v70",
+    "nproc": 4,
+    "zfstack_commit": "69849d0"
+  },
+  "errors": [],
+  "label": "",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": 0.8868901095761046,
+    "cpu_util": 0.9828537910449001,
+    "cpu_window_sec": 6.880000000000001,
+    "hwm_kb": 44360,
+    "pid": 17283,
+    "rss_kb_end": 44360,
+    "rss_kb_idle": 37760
+  },
+  "results": {
+    "agg_mbps_per_sec": [
+      9526.653432,
+      8558.367016,
+      9081.18244,
+      9108.423368,
+      9142.998392,
+      8656.328736,
+      8970.647136,
+      8360.86944,
+      8936.072112,
+      8884.209576
+    ],
+    "direction": "up",
+    "flows": 8,
+    "goodput_mbps_mean": 8865.649822857142,
+    "goodput_mbps_window": 8865.649822857142,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "cwnd_at_end": 20,
+          "data_segs_out": 20686,
+          "drain_ms": 10.340238999999999,
+          "sent_bytes": 1353007008,
+          "server_count": 1353007008,
+          "srtt_us_at_end": 9667,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1142.302624,
+          979.62568,
+          1089.63712,
+          1174.503088,
+          1126.831464,
+          1107.448496,
+          1093.828032,
+          1023.630256,
+          1044.584816,
+          1015.248432
+        ],
+        "receiver_bytes": 1353007008,
+        "total_bytes": 1353007008,
+        "zero_secs": 0
+      },
+      {
+        "flow": 1,
+        "info": {
+          "cwnd_at_end": 4,
+          "data_segs_out": 21185,
+          "drain_ms": 7.163437,
+          "sent_bytes": 1385689049,
+          "server_count": 1385689049,
+          "srtt_us_at_end": 13203,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1183.435064,
+          1056.109824,
+          1083.350752,
+          1099.066672,
+          1093.828032,
+          1154.596256,
+          1067.634832,
+          1054.014368,
+          1150.405344,
+          1109.543952
+        ],
+        "receiver_bytes": 1385689049,
+        "total_bytes": 1385689049,
+        "zero_secs": 0
+      },
+      {
+        "flow": 2,
+        "info": {
+          "cwnd_at_end": 24,
+          "data_segs_out": 21468,
+          "drain_ms": 4.797287,
+          "sent_bytes": 1403985112,
+          "server_count": 1403985112,
+          "srtt_us_at_end": 8853,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1261.223568,
+          1084.39848,
+          1159.311032,
+          1087.541664,
+          1104.305312,
+          994.293872,
+          1123.164416,
+          1038.298448,
+          1138.880336,
+          1206.458792
+        ],
+        "receiver_bytes": 1403985112,
+        "total_bytes": 1403985112,
+        "zero_secs": 0
+      },
+      {
+        "flow": 3,
+        "info": {
+          "cwnd_at_end": 18,
+          "data_segs_out": 21980,
+          "drain_ms": 11.839139,
+          "sent_bytes": 1437564488,
+          "server_count": 1437564488,
+          "srtt_us_at_end": 9752,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1279.293856,
+          1045.632544,
+          1231.604264,
+          1127.355328,
+          1123.164416,
+          1088.589392,
+          1240.509952,
+          1081.255296,
+          1137.832608,
+          1121.06896
+        ],
+        "receiver_bytes": 1437564488,
+        "total_bytes": 1437564488,
+        "zero_secs": 0
+      },
+      {
+        "flow": 4,
+        "info": {
+          "cwnd_at_end": 4,
+          "data_segs_out": 21610,
+          "drain_ms": 54.710578000000005,
+          "sent_bytes": 1413068298,
+          "server_count": 1413068298,
+          "srtt_us_at_end": 8904,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1179.76704,
+          1085.97092,
+          1098.018944,
+          1138.880336,
+          1126.3076,
+          1040.393904,
+          1178.694,
+          1113.734864,
+          1249.939504,
+          1066.587104
+        ],
+        "receiver_bytes": 1413068298,
+        "total_bytes": 1413068298,
+        "zero_secs": 0
+      },
+      {
+        "flow": 5,
+        "info": {
+          "cwnd_at_end": 20,
+          "data_segs_out": 21265,
+          "drain_ms": 12.899147999999999,
+          "sent_bytes": 1390858765,
+          "server_count": 1390858765,
+          "srtt_us_at_end": 9745,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1115.332744,
+          1135.737152,
+          1133.117832,
+          1164.549672,
+          1225.84176,
+          1021.5348,
+          1111.639408,
+          1024.677984,
+          1077.064384,
+          1092.780304
+        ],
+        "receiver_bytes": 1390858765,
+        "total_bytes": 1390858765,
+        "zero_secs": 0
+      },
+      {
+        "flow": 6,
+        "info": {
+          "cwnd_at_end": 4,
+          "data_segs_out": 21550,
+          "drain_ms": 54.0801,
+          "sent_bytes": 1410125236,
+          "server_count": 1410125236,
+          "srtt_us_at_end": 9854,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1165.099824,
+          1102.209856,
+          1159.834896,
+          1143.071248,
+          1120.021232,
+          1188.123552,
+          1048.775728,
+          1052.96664,
+          1098.018944,
+          1173.45536
+        ],
+        "receiver_bytes": 1410125236,
+        "total_bytes": 1410125236,
+        "zero_secs": 0
+      },
+      {
+        "flow": 7,
+        "info": {
+          "cwnd_at_end": 4,
+          "data_segs_out": 21210,
+          "drain_ms": 7.545062,
+          "sent_bytes": 1387653539,
+          "server_count": 1387653539,
+          "srtt_us_at_end": 13891,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          1200.198712,
+          1068.68256,
+          1126.3076,
+          1173.45536,
+          1222.698576,
+          1061.348464,
+          1106.400768,
+          972.291584,
+          1039.346176,
+          1099.066672
+        ],
+        "receiver_bytes": 1387653539,
+        "total_bytes": 1387653539,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "tool": "zfbench"
+}

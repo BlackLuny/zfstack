@@ -17,11 +17,21 @@ pub struct KernelServer {
 }
 
 pub fn start(counters: Arc<ServerCounters>, stop: Arc<AtomicBool>, cc: Option<String>, netns: Option<&'static str>) -> io::Result<KernelServer> {
+    start_at(counters, stop, cc, netns, std::net::SocketAddr::new(tun::SERVER_ADDR.parse().unwrap(), tun::SERVER_PORT))
+}
+
+pub fn start_at(
+    counters: Arc<ServerCounters>,
+    stop: Arc<AtomicBool>,
+    cc: Option<String>,
+    netns: Option<&'static str>,
+    bind: std::net::SocketAddr,
+) -> io::Result<KernelServer> {
     let (tx, rx) = std::sync::mpsc::channel::<io::Result<()>>();
     let active = Arc::new(AtomicUsize::new(0));
     let active2 = active.clone();
     std::thread::Builder::new().name("ksrv-accept".into()).spawn(move || {
-        let listener = match netns.map_or(Ok(()), tun::enter_netns).and_then(|_| TcpListener::bind((tun::SERVER_ADDR, tun::SERVER_PORT))) {
+        let listener = match netns.map_or(Ok(()), tun::enter_netns).and_then(|_| TcpListener::bind(bind)) {
             Ok(l) => {
                 let _ = tx.send(Ok(()));
                 l

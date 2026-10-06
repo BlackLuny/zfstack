@@ -27,13 +27,15 @@ use std::net::SocketAddr;
 pub(crate) enum IngressPayload<'a> {
     Borrowed(&'a [u8]),
     Owned(Bytes),
+    /// A slice of a budget-charged `PacketBuf`: in-order data is kept as is.
+    Leased(Bytes),
 }
 
 impl IngressPayload<'_> {
     pub(crate) fn len(&self) -> usize {
         match self {
             Self::Borrowed(v) => v.len(),
-            Self::Owned(v) => v.len(),
+            Self::Owned(v) | Self::Leased(v) => v.len(),
         }
     }
 
@@ -45,13 +47,14 @@ impl IngressPayload<'_> {
         match self {
             Self::Borrowed(v) => Self::Borrowed(&v[start..]),
             Self::Owned(v) => Self::Owned(v.slice(start..)),
+            Self::Leased(v) => Self::Leased(v.slice(start..)),
         }
     }
 
     fn truncate(&mut self, len: usize) {
         match self {
             Self::Borrowed(v) => *v = &v[..len],
-            Self::Owned(v) => v.truncate(len),
+            Self::Owned(v) | Self::Leased(v) => v.truncate(len),
         }
     }
 }
@@ -243,6 +246,12 @@ pub struct Conn {
     fin_off: Option<u64>,
     sb: Scoreboard,
     pub mss: u32,
+    /// Largest new-data segment the iface's device segments for us (TSO);
+    /// 0 = one MSS per packet. Refreshed by the shard before planning.
+    pub(crate) tso_max: u32,
+    /// Some record is a TSO super-segment: SACK processing reserves room to
+    /// cut it on its segment grid.
+    sent_tso: bool,
     rtt: RttEstimator,
     cc: Box<dyn CongestionControl>,
     recovery: Option<Recovery>,
@@ -497,6 +506,8 @@ impl Conn {
             fin_off: None,
             sb: Scoreboard::default(),
             mss,
+            tso_max: 0,
+            sent_tso: false,
             rtt: RttEstimator::new(cfg.init_rto, cfg.min_rto, cfg.max_rto),
             cc: new_cc(cfg.cc, mss, cfg.init_cwnd_segs),
             recovery: None,
@@ -1064,12 +1075,15 @@ impl Conn {
         self.tx.write_allocation_charge(bytes.min(self.send_space(cfg, budget)))
     }
 
-    pub fn write(&mut self, src: &[u8], ctx: &mut Ctx) -> WriteResult {
+    /// Send-space and budget admission shared by `write` and `write_with`:
+    /// the bytes reserved (at most `want`), or why none can be accepted, with
+    /// `want_write` armed for the matching wakeup.
+    fn admit_write(&mut self, want: usize, ctx: &mut Ctx) -> Result<usize, WriteResult> {
         if !matches!(self.state, State::Established | State::CloseWait | State::SynReceived) || self.fin_off.is_some() {
-            return WriteResult::Closed;
+            return Err(WriteResult::Closed);
         }
         let space = self.send_space(ctx.cfg, ctx.budget);
-        let n = space.min(src.len());
+        let n = space.min(want);
         if n == 0 {
             self.want_write = true;
             // A share-bound connection waits for any budget release or sender
@@ -1077,14 +1091,22 @@ impl Conn {
             // (docs/design/0007 §2.3).
             if ctx.budget.send_share(self.peer) < self.sndbuf_limit(ctx.cfg) {
                 ctx.budget.stats().note_share_blocked();
-                return WriteResult::QuotaBlocked;
+                return Err(WriteResult::QuotaBlocked);
             }
-            return WriteResult::WouldBlock;
+            return Err(WriteResult::WouldBlock);
         }
         if !ctx.budget.try_reserve(self.peer, n as u64, false) {
             self.want_write = true;
-            return WriteResult::QuotaBlocked;
+            return Err(WriteResult::QuotaBlocked);
         }
+        Ok(n)
+    }
+
+    pub fn write(&mut self, src: &[u8], ctx: &mut Ctx) -> WriteResult {
+        let n = match self.admit_write(src.len(), ctx) {
+            Ok(n) => n,
+            Err(r) => return r,
+        };
         if !self.tx.push(ctx.pool, ctx.budget, self.peer, &src[..n]) {
             ctx.budget.cancel_reserve(self.peer, n as u64);
             self.want_write = true;
@@ -1096,6 +1118,39 @@ impl Conn {
             self.want_write = true;
         }
         WriteResult::Written(n)
+    }
+
+    /// `write` without a source buffer: `fill` writes up to `max` bytes in
+    /// place into the send buffer (at most two slices, see `TxBuf::write_with`)
+    /// and returns how many. Space, share and budget rules match `write`.
+    /// `fill` is not called when nothing could be accepted.
+    pub fn write_with<E>(&mut self, max: usize, ctx: &mut Ctx, fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>) -> Result<WriteResult, E> {
+        let n = match self.admit_write(max, ctx) {
+            Ok(n) => n,
+            Err(r) => return Ok(r),
+        };
+        let filled = match self.tx.write_with(ctx.pool, ctx.budget, self.peer, n, fill) {
+            Ok(Some(k)) => k,
+            Ok(None) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                self.want_write = true;
+                return Ok(WriteResult::MemoryBlocked);
+            }
+            Err(e) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                return Err(e);
+            }
+        };
+        if filled < n {
+            ctx.budget.cancel_reserve(self.peer, (n - filled) as u64);
+        }
+        self.tx_charged += filled as u64;
+        self.sync_sender(ctx);
+        if filled == n && n < max {
+            // Out of send space with more to write: ask for Writable.
+            self.want_write = true;
+        }
+        Ok(WriteResult::Written(filled))
     }
 
     pub fn shutdown_write(&mut self) {
@@ -1539,6 +1594,7 @@ impl Conn {
             let retained = match &payload {
                 IngressPayload::Borrowed(v) => self.rx.push_charged(v, ctx.budget, self.peer),
                 IngressPayload::Owned(v) => self.rx.push_charged(v, ctx.budget, self.peer),
+                IngressPayload::Leased(v) => self.rx.push_leased(v.clone(), ctx.budget, self.peer),
             };
             if !retained {
                 ctx.budget.release(self.peer, len);
@@ -1596,7 +1652,7 @@ impl Conn {
             let o = self.ooo.get_or_insert_with(Default::default);
             let added = match &payload {
                 IngressPayload::Borrowed(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
-                IngressPayload::Owned(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
+                IngressPayload::Owned(v) | IngressPayload::Leased(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
             };
             let Some(added) = added else {
                 self.rcv_charged -= len;
@@ -1703,6 +1759,11 @@ impl Conn {
         let mut dsack_seen = false;
         let mut newly_sacked = 0u64;
         if self.sack_ok && h.opts.sack_n > 0 {
+            if self.sent_tso {
+                // Each block may cut a super-segment record twice. Without
+                // room the blocks still apply to whole records.
+                let _ = self.sb.try_reserve(2 * h.opts.sack_n as usize, ctx.budget, self.peer);
+            }
             for (i, &(l, r)) in h.opts.sack_blocks().iter().enumerate() {
                 let lo = self.tx_sp.off(l, self.snd_una);
                 let hi = self.tx_sp.off(r, self.snd_una);
@@ -2251,10 +2312,11 @@ impl Conn {
             self.tlp.pending = false;
         }
 
-        // 3. New data.
+        // 3. New data. With TSO one packet carries whole MSS multiples.
         if unsent > 0 {
             let wnd_room = wnd_right.saturating_sub(self.snd_nxt);
-            let len = unsent.min(mss).min(wnd_room);
+            let seg_max = if self.tso_max as u64 > mss { self.tso_max as u64 / mss * mss } else { mss };
+            let mut len = unsent.min(seg_max).min(wnd_room);
             if len == 0 {
                 self.set_limit(now, LIM_RWND);
                 return None;
@@ -2264,6 +2326,10 @@ impl Conn {
             if len < mss && len < unsent && len < self.max_snd_wnd / 2 && self.pipe() > 0 {
                 self.set_limit(now, LIM_RWND);
                 return None;
+            }
+            if len > room && len > mss && room >= mss {
+                // A super-segment shrinks to the MSS multiples cwnd allows.
+                len = room / mss * mss;
             }
             if len > room {
                 self.set_limit(now, LIM_CWND);
@@ -2293,7 +2359,7 @@ impl Conn {
     }
 
     /// Serialize the planned segment. Returns header length and payload slices.
-    pub(crate) fn build(&mut self, p: &Plan, now: Instant, hdr: &mut [u8; MAX_HEADER], ttl: u8) -> (usize, [&[u8]; 2]) {
+    pub(crate) fn build(&mut self, p: &Plan, now: Instant, hdr: &mut [u8; MAX_HEADER], ttl: u8, csum_partial: bool) -> (usize, [&[u8]; 2]) {
         let mut o = EmitOptions::default();
         let is_syn = p.flags & SYN != 0;
         if is_syn {
@@ -2354,6 +2420,7 @@ impl Conn {
                 opts: &o,
                 payload: &payload,
                 ttl,
+                csum_partial,
             },
         );
         (n, payload)
@@ -2432,6 +2499,7 @@ impl Conn {
             lost_at_send: self.dl.lost_total,
             flags: 0,
             app_limited: self.dl.app_limited != 0,
+            seg: 0,
         }
     }
 
@@ -2447,6 +2515,11 @@ impl Conn {
         let mut r = self.snapshot_rec(now);
         r.start = p.seq_off;
         r.end = end;
+        if p.len > self.mss {
+            // A TSO super-segment: the device cuts it every MSS.
+            r.seg = self.mss as u16;
+            self.sent_tso = true;
+        }
         r.tx_in_flight += end - p.seq_off;
         if fin {
             r.flags |= F_FIN;

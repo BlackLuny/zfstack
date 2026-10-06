@@ -38,6 +38,9 @@ pub struct Rec {
     pub lost_at_send: u64,
     pub flags: u8,
     pub app_limited: bool,
+    /// Non-zero for a TSO super-segment: the device cut it into segments of
+    /// this many bytes from `start`, so SACK edges may fall on that grid.
+    pub seg: u16,
 }
 
 impl Rec {
@@ -104,25 +107,38 @@ impl Scoreboard {
     /// a separate deque so the old and new backing are both charged while the
     /// records move. Charge twice the requested size to cover allocator slack.
     pub fn try_reserve_one(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
-        if self.recs.len() < self.recs.capacity() {
-            return true;
+        self.try_reserve(1, budget, peer)
+    }
+
+    /// Room for `n` more records, growing the backing as `try_reserve_one`.
+    pub fn try_reserve(&mut self, n: usize, budget: &mut Budget, peer: PeerId) -> bool {
+        while self.recs.capacity() - self.recs.len() < n {
+            let Some((target, bytes)) = self.next_allocation() else {
+                return false;
+            };
+            let Some(lease) = budget.try_allocate_kind(peer, bytes, crate::budget::AllocationKind::SendRecord) else { return false };
+            let mut next = VecDeque::new();
+            if next.try_reserve_exact(target).is_err() {
+                return false;
+            }
+            if next.capacity().checked_mul(std::mem::size_of::<Rec>()).is_none_or(|n| n as u64 > bytes) {
+                return false;
+            }
+            next.extend(self.recs.drain(..));
+            let old = std::mem::replace(&mut self.recs, next);
+            drop(old);
+            self.backing = Some(lease);
         }
-        let Some((target, bytes)) = self.next_allocation() else {
-            return false;
-        };
-        let Some(lease) = budget.try_allocate_kind(peer, bytes, crate::budget::AllocationKind::SendRecord) else { return false };
-        let mut next = VecDeque::new();
-        if next.try_reserve_exact(target).is_err() {
-            return false;
-        }
-        if next.capacity().checked_mul(std::mem::size_of::<Rec>()).is_none_or(|n| n as u64 > bytes) {
-            return false;
-        }
-        next.extend(self.recs.drain(..));
-        let old = std::mem::replace(&mut self.recs, next);
-        drop(old);
-        self.backing = Some(lease);
         true
+    }
+
+    /// Records that can be inserted without growing a charged backing.
+    fn spare(&self) -> usize {
+        if self.backing.is_none() {
+            usize::MAX
+        } else {
+            self.recs.capacity() - self.recs.len()
+        }
     }
 
     /// Index of the record containing `off`, if any.
@@ -211,20 +227,51 @@ impl Scoreboard {
     }
 
     /// Mark records fully inside `[l, r)` as sacked. Calls `f` for each newly sacked record.
-    /// Returns the number of bytes newly sacked. Records are never split on SACK
-    /// edges: legitimate blocks align with segment boundaries, and splitting on
-    /// arbitrary edges would let a peer fragment the scoreboard (like Linux, which
-    /// only splits at MSS multiples).
+    /// Returns the number of bytes newly sacked. Records are not split on
+    /// arbitrary SACK edges: legitimate blocks align with segment boundaries,
+    /// and splitting anywhere would let a peer fragment the scoreboard (Linux
+    /// likewise only splits at MSS multiples). A TSO super-segment (`seg > 0`)
+    /// is one record for several wire segments, so a block that covers part
+    /// of it is cut on its segment grid — at most one record per segment, as
+    /// if each had been sent alone — while spare capacity lasts (reserve it
+    /// with `try_reserve`); without room the block stays unrecorded for that
+    /// record, as before.
     pub fn sack(&mut self, l: u64, r: u64, mut f: impl FnMut(&Rec)) -> u64 {
-        let mut i = self.recs.partition_point(|x| x.start < l);
+        let mut i = self.recs.partition_point(|x| x.end <= l);
         let mut n = 0;
         while i < self.recs.len() {
             let rec = self.recs[i];
+            if rec.start >= r {
+                break;
+            }
             // A FIN occupies one sequence number after the data; accept blocks that
             // cover all of the record's data even if they stop before the FIN.
             let data_end = rec.end - rec.has(F_FIN) as u64;
-            if data_end > r || rec.start >= r {
-                break;
+            if rec.start < l || data_end > r {
+                let cut = (rec.seg > 0 && !rec.has(F_SACKED)).then(|| {
+                    let seg = rec.seg as u64;
+                    let a = if rec.start < l { rec.start + (l - rec.start).div_ceil(seg) * seg } else { rec.start };
+                    let b = if data_end > r { rec.start + (r - rec.start) / seg * seg } else { rec.end };
+                    (a, b)
+                });
+                match cut {
+                    Some((a, b)) if a < b && self.spare() >= usize::from(a > rec.start) + usize::from(b < rec.end) => {
+                        if a > rec.start {
+                            self.split(i, a);
+                            i += 1;
+                        }
+                        if b < self.recs[i].end {
+                            self.split(i, b);
+                        }
+                        // recs[i] is now [a, b): fully covered.
+                        continue;
+                    }
+                    _ if data_end > r => break,
+                    _ => {
+                        i += 1;
+                        continue;
+                    }
+                }
             }
             if !rec.has(F_SACKED) {
                 self.unaccount(&rec);
@@ -390,7 +437,31 @@ mod tests {
             lost_at_send: 0,
             flags: 0,
             app_limited: false,
+            seg: 0,
         }
+    }
+
+    #[test]
+    fn sack_cuts_tso_records_only_on_their_segment_grid() {
+        let mut sb = Scoreboard::default();
+        // One 10-segment TSO record (seg 100), then an ordinary one.
+        sb.push(Rec { seg: 100, ..rec(0, 1000) });
+        sb.push(rec(1000, 1100));
+        // Segment 2 (200..300) lost: the peer SACKs 300..1100.
+        assert_eq!(sb.sack(300, 1100, |_| {}), 800);
+        let spans: Vec<(u64, u64, bool)> = sb.recs.iter().map(|r| (r.start, r.end, r.has(F_SACKED))).collect();
+        assert_eq!(spans, vec![(0, 300, false), (300, 1000, true), (1000, 1100, true)]);
+        // A block inside the first part, off the grid: only whole segments.
+        assert_eq!(sb.sack(50, 260, |_| {}), 100);
+        let spans: Vec<(u64, u64, bool)> = sb.recs.iter().map(|r| (r.start, r.end, r.has(F_SACKED))).collect();
+        assert_eq!(spans[..3], [(0, 100, false), (100, 200, true), (200, 300, false)]);
+        assert_eq!(sb.sacked, 900);
+        sb.check();
+        // An ordinary record is never cut, whatever the block.
+        let mut sb = Scoreboard::default();
+        sb.push(rec(0, 1000));
+        assert_eq!(sb.sack(300, 1000, |_| {}), 0);
+        assert_eq!(sb.recs.len(), 1);
     }
 
     #[test]

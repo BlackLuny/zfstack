@@ -144,6 +144,63 @@ impl TxBuf {
         true
     }
 
+    /// Let `fill` write up to `max` bytes in place at the tail and return how
+    /// many it wrote. It gets the rest of the last block and, when that is
+    /// short, one fresh block, so a socket `readv` lands directly in the send
+    /// buffer. Returns `Ok(None)` when no block could be allocated; a fresh
+    /// block that `fill` leaves empty goes straight back to the pool.
+    pub fn write_with<E>(
+        &mut self,
+        pool: &mut BlockPool,
+        budget: &mut Budget,
+        peer: PeerId,
+        max: usize,
+        fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>,
+    ) -> Result<Option<usize>, E> {
+        const SECOND_BELOW: usize = TX_BLOCK;
+        if max == 0 {
+            return fill([&mut [], &mut []]).map(|_| Some(0));
+        }
+        let before = self.blocks.len();
+        let end = self.head + self.len;
+        let spare = self.allocated().saturating_sub(end);
+        if spare < max.min(SECOND_BELOW) {
+            let size = if self.blocks.is_empty() && max <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK };
+            match pool.get(budget, peer, size) {
+                Some(block) => self.blocks.push_back(block),
+                None if spare == 0 => {
+                    self.trim_empty_index();
+                    return Ok(None);
+                }
+                None => {}
+            }
+        }
+        // `end` lies inside the old tail block, or at the start of the fresh one.
+        let (bi, pos) = self.position(end);
+        let mut it = self.blocks.range_mut(bi..);
+        let a = it.next().map_or(&mut [][..], |blk| &mut blk[pos..]);
+        let b = it.next().map_or(&mut [][..], |blk| &mut blk[..]);
+        // Bytes land in `a` first, then `b` (readv order); `b` is offered
+        // only when `a` is offered whole, so filled bytes stay contiguous.
+        let la = a.len().min(max);
+        let lb = b.len().min(max - la);
+        let result = fill([&mut a[..la], &mut b[..lb]]);
+        let n = *result.as_ref().unwrap_or(&0);
+        assert!(n <= la + lb, "write_with filled more than offered");
+        self.len += n;
+        while self.blocks.len() > before && self.head + self.len <= self.allocated() - self.blocks.back().map_or(0, |b| b.len()) {
+            pool.put(self.blocks.pop_back().unwrap());
+        }
+        if self.len == 0 {
+            while let Some(block) = self.blocks.pop_back() {
+                pool.put(block);
+            }
+            self.head = 0;
+            self.trim_empty_index();
+        }
+        result.map(Some)
+    }
+
     /// Drop `n` bytes from the front (acknowledged).
     pub fn consume(&mut self, pool: &mut BlockPool, n: usize) {
         let n = n.min(self.len);
@@ -226,6 +283,8 @@ impl TxBuf {
 /// memory to about (packet size / RX_COPY_BELOW) × charged for per-packet buffers.
 pub const RX_COPY_BELOW: usize = 1024;
 const RX_COPY_BUF: usize = 8 * 1024;
+/// Largest single RX chunk: a maximum-size IP payload fits one.
+const RX_JUMBO_CHUNK: usize = 64 * 1024;
 // The IP parser accepts only ordinary 16-bit IP lengths (no jumbograms).
 // Keep room for the packet that fills an OOO hole, not just the OOO owners.
 const RX_GAP_SLOTS: usize = (u16::MAX as usize).div_ceil(RX_COPY_BUF);
@@ -251,10 +310,17 @@ thread_local! {
     static FAIL_RX_INDEX_ALLOCATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// Filled bytes are `data[..]`; `data.capacity()` is the charged backing, so
+/// a fresh chunk is never zero-filled before the copy overwrites it.
 struct ChargedChunk {
-    data: Box<[u8]>,
-    len: usize,
+    data: Vec<u8>,
     _lease: MemoryLease,
+}
+
+impl ChargedChunk {
+    fn free(&self) -> usize {
+        self.data.capacity() - self.data.len()
+    }
 }
 
 struct ChargedPayload {
@@ -270,7 +336,7 @@ impl AsRef<[u8]> for ChargedPayload {
 
 impl AsRef<[u8]> for ChargedChunk {
     fn as_ref(&self) -> &[u8] {
-        &self.data[..self.len]
+        &self.data
     }
 }
 
@@ -338,15 +404,21 @@ impl RxQueue {
         if data.is_empty() {
             return true;
         }
-        let current_free = self.charged_tail.as_ref().map_or(0, |c| c.data.len() - c.len);
+        let current_free = self.charged_tail.as_ref().map_or(0, ChargedChunk::free);
         let mut remaining = data.len().saturating_sub(current_free);
         let mut fresh = VecDeque::new();
         while remaining > 0 {
             // A driver may transfer each MSS to the adapter immediately. A
             // fixed 8 KiB chunk would then pin 8 KiB for ~1.4 KiB payload.
-            let cap = remaining.min(RX_COPY_BUF).next_power_of_two().max(64);
+            // A jumbo segment (64 KiB TUN MTU) gets one chunk of its own size
+            // rather than eight small allocations and leases.
+            let cap = if remaining > RX_COPY_BUF { remaining.min(RX_JUMBO_CHUNK) } else { remaining.next_power_of_two().max(64) };
             let Some(lease) = budget.try_allocate_kind(peer, cap as u64 + CHUNK_METADATA_BYTES, crate::budget::AllocationKind::RxChunk) else { return false };
-            fresh.push_back(ChargedChunk { data: vec![0u8; cap].into_boxed_slice(), len: 0, _lease: lease });
+            let mut data = Vec::new();
+            if data.try_reserve_exact(cap).is_err() || data.capacity() > cap {
+                return false;
+            }
+            fresh.push_back(ChargedChunk { data, _lease: lease });
             remaining = remaining.saturating_sub(cap);
         }
         let Some(slots) = self.retained_slots().checked_add(fresh.len()).and_then(|n| n.checked_add(self.ooo_slots)) else { return false };
@@ -355,22 +427,35 @@ impl RxQueue {
         self.seal_tail();
         self.len += data.len();
         while !data.is_empty() {
-            if self.charged_tail.as_ref().is_none_or(|c| c.len == c.data.len()) {
+            if self.charged_tail.as_ref().is_none_or(|c| c.free() == 0) {
                 self.seal_charged_tail();
                 self.charged_tail = fresh.pop_front();
             }
             let chunk = self.charged_tail.as_mut().expect("pre-reserved RX chunk");
-            let n = data.len().min(chunk.data.len() - chunk.len);
-            chunk.data[chunk.len..chunk.len + n].copy_from_slice(&data[..n]);
-            chunk.len += n;
+            let n = data.len().min(chunk.free());
+            chunk.data.extend_from_slice(&data[..n]);
             data = &data[n..];
         }
         true
     }
 
+    /// Keep `b` itself: its owner already holds a lease for its whole
+    /// backing (a `PacketBuf`). Only the descriptor slot is reserved, so a
+    /// failure leaves the queue and the receive edge as they were.
+    pub fn push_leased(&mut self, b: Bytes, budget: &mut Budget, peer: PeerId) -> bool {
+        if b.is_empty() {
+            return true;
+        }
+        let Some(slots) = self.retained_slots().checked_add(1).and_then(|n| n.checked_add(self.ooo_slots)) else { return false };
+        let Ok(index) = self.prepare_index(slots, budget, peer) else { return false };
+        self.commit_index(index);
+        self.push_existing_reserved(b);
+        true
+    }
+
     fn seal_charged_tail(&mut self) {
         if let Some(chunk) = self.charged_tail.take() {
-            if chunk.len != 0 {
+            if !chunk.data.is_empty() {
                 self.push_indexed(Bytes::from_owner(chunk));
             }
         }
@@ -960,6 +1045,74 @@ mod tests {
     }
 
     #[test]
+    fn tx_write_with_fills_in_place_and_keeps_layout() {
+        let global = crate::budget::GlobalBudget::new(4 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(4);
+        let mut tx = TxBuf::default();
+        let data: Vec<u8> = (0..600_000u32).map(|i| (i % 251) as u8).collect();
+        let mut written = 0usize;
+        let mut acked = 0usize;
+        // Mix in-place fills of odd sizes (as a socket readv returns them)
+        // with plain pushes, partial fills and acknowledgements.
+        let sizes = [1usize, 700, 2048, 2049, 65_535, 65_536, 100_000, 3, 40_000, 70_000];
+        for (round, &want) in sizes.iter().cycle().take(30).enumerate() {
+            if round % 4 == 3 {
+                let n = want.min(data.len() - written).min(5000);
+                assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[written..written + n]));
+                written += n;
+                continue;
+            }
+            let want = want.min(data.len() - written);
+            let fill_to = if round % 5 == 1 { want / 2 } else { want };
+            let n = tx
+                .write_with(&mut pool, &mut budget, PeerId(1), want, |[a, b]| -> Result<usize, ()> {
+                    assert!(a.len() + b.len() <= want);
+                    let mut src = &data[written..written + fill_to];
+                    let mut n = 0;
+                    for s in [a, b] {
+                        let k = s.len().min(src.len());
+                        s[..k].copy_from_slice(&src[..k]);
+                        src = &src[k..];
+                        n += k;
+                    }
+                    Ok(n)
+                })
+                .unwrap()
+                .unwrap();
+            assert!(n <= fill_to);
+            assert!(n > 0 || want == 0);
+            written += n;
+            assert_eq!(tx.len(), written - acked);
+            // Every byte reads back through the two-slice segment view.
+            let mut off = 0;
+            while off < tx.len() {
+                let len = (tx.len() - off).min(TX_BLOCK);
+                let [a, b] = tx.slices(off, len);
+                assert_eq!([a, b].concat(), &data[acked + off..acked + off + len]);
+                off += len;
+            }
+            if round % 3 == 2 {
+                let n = tx.len() / 2 + 1;
+                tx.consume(&mut pool, n.min(tx.len()));
+                acked += n.min(written - acked);
+            }
+            // No allocated block beyond the one holding the tail.
+            assert!(tx.allocated() < tx.head + tx.len + TX_BLOCK || tx.is_empty());
+        }
+        // A fill that writes nothing leaves no block behind.
+        tx.consume(&mut pool, tx.len());
+        let n = tx.write_with(&mut pool, &mut budget, PeerId(1), 10_000, |_| -> Result<usize, ()> { Ok(0) }).unwrap();
+        assert_eq!(n, Some(0));
+        assert_eq!(tx.allocated(), 0);
+        assert!(tx.write_with(&mut pool, &mut budget, PeerId(1), 10, |_| Err::<usize, _>("io")).is_err());
+        assert_eq!(tx.allocated(), 0);
+        tx.release_all(&mut pool);
+        pool.reclaim();
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
     fn tx_block_capacity_stays_charged_in_pool_and_changes_peer() {
         let block_charge = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
         let global = crate::budget::GlobalBudget::new(4 * TX_BLOCK as u64);
@@ -1223,7 +1376,7 @@ mod rx_descriptor_tests {
         assert!(!rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
         assert_eq!(rx.len(), 255);
         assert_eq!(rx.q.capacity(), 4);
-        assert_eq!(rx.charged_tail.as_ref().unwrap().len, 63);
+        assert_eq!(rx.charged_tail.as_ref().unwrap().data.len(), 63);
         assert_eq!(global.reserved(), before);
         assert!(rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
         let mut got = Vec::new();
