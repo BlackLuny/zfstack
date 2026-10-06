@@ -1493,9 +1493,12 @@ where
             }
             if relay.pending.is_empty() {
                 if relay.core_eof && !relay.sock_write_shut {
-                    relay.sock_write_shut = true;
-                    // Completes synchronously: shutdown(SHUT_WR).
-                    let _ = Pin::new(&mut relay.sock).poll_shutdown(&mut cx);
+                    // shutdown(SHUT_WR); Pending retries on the next pump.
+                    match Pin::new(&mut relay.sock).poll_shutdown(&mut cx) {
+                        Poll::Ready(Ok(())) => relay.sock_write_shut = true,
+                        Poll::Ready(Err(e)) => failure = Some(e),
+                        Poll::Pending => {}
+                    }
                 }
                 break;
             }

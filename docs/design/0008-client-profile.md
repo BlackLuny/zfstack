@@ -60,7 +60,7 @@ zfstack 改动前（原 tokio 适配器 + 中继任务 + 默认配置）：
 - **向量化求和**（`wire::sum_words`）：按本机字节序把 32 位字累加到 8 条 64 位通道（编译器向量化），最后折叠并交换字节序（RFC 1071 §2(B)）；x86_64 运行时检测 AVX2。基线 x86-64 从 12.3 提到 24.3 GB/s，AVX2 下 49 GB/s。与逐字参考实现的等价性有测试。**服务器也受益**。
 - **RX**：`RxChecksum { Verify, Trusted }`，新增 `ingress_with` / `ingress_borrowed_with` / `ingress_buf`。`Trusted` 只跳过 TCP 校验和（IP 头仍校验），用于本机 TUN：vnet 头带 `NEEDS_CSUM`（校验和根本没算，只有伪首部和）或 `DATA_VALID`，或宿主像 sing-box 一样信任无卸载的本机 TUN。原 `ingress` / `ingress_borrowed` 语义不变。
 - **TX**：`Shard::set_iface_tx_checksum_offload`：数据段以部分校验和发出（字段为伪首部折叠和，与 Linux `CHECKSUM_PARTIAL` 一致），`OutPacket::csum_partial` 告知宿主；控制段和无状态回复仍是完整校验和。
-- **TSO**：`Shard::set_iface_tso(max)`：新数据按 MSS 整数倍组成最多约 64 KiB 的超级段，`OutPacket::gso_size = MSS`，由设备切分；cwnd 不够整段时缩到 cwnd 允许的 MSS 整数倍；重传、TLP 仍按单个 MSS。发送记录按超级段一条，丢包后按既有逻辑拆分。开启 TSO 隐含 TX 校验和卸载。
+- **TSO**：`Shard::set_iface_tso(max)`：新数据按 MSS 整数倍组成最多约 64 KiB 的超级段，`OutPacket::gso_size = MSS`，由设备切分；cwnd 不够整段时缩到 cwnd 允许的 MSS 整数倍；重传、TLP 仍按单个 MSS。发送记录按超级段一条，记下段大小（`Rec::seg`）。设备切分后若中间某段丢失，对端的 SACK 边界会落在超级段内部：SACK 处理在处理前为每个块预留两条记录的余量，然后**只在段网格上**切开这条记录（每段至多一条记录，与逐段发送时一样，对端无法借此把记分板切得更碎），只重传缺的那一段。回归测试 `lost_segment_inside_a_tso_super_segment_is_recovered_by_sack` 让设备切分后分别丢首段、中段、尾段：修复前首段丢失要 TLP + 重传 2 段，中段丢失重传超级段剩余的 5 段；修复后三种都只做一次快速恢复、重传 1 段，没有 TLP/RTO。余量申请失败时退回原行为（块对这条记录不生效）。开启 TSO 隐含 TX 校验和卸载。
 - `offload::VirtioNetHdr`：10 字节 `virtio_net_hdr` 的编解码，`rx_checksum()` 与 `for_packet()`（含 GSO 类型/大小/头长）。
 
 开了 `TUN_F_CSUM` 之后，本机内核在写入 TUN 时不再计算校验和、从 TUN 收包时也不再校验，我们也不算——这一跳上**两端都不再扫描负载**。sing-box 在默认 MTU 65535 下不开 vnet 头，这是我们相对它的结构性优势。
@@ -80,12 +80,12 @@ zfstack 改动前（原 tokio 适配器 + 中继任务 + 默认配置）：
 
 ### 4.5 零拷贝收：`PacketPool` + `ingress_buf`
 
-0004 §2 规定：owned 入包若不能核验 backing 容量，必须保守复制。新增 `pktpool::PacketPool`：宿主从池里拿 `PacketBuf`（**整块容量在分配时就向预算申请 lease**，缓存中的块也一直计费），把 TUN 包直接读进去，交给 `Shard::ingress_buf(buf, start, csum)`：
+0004 §2 规定：owned 入包若不能核验 backing 容量，必须保守复制。新增 `pktpool::PacketPool`：宿主从池里拿 `PacketBuf`（**先按 `buf_size` 向预算申请 lease 再分配**；分配器实际给出的容量若超过 lease 则拒绝，与其他计费容器规则一致；缓存中的块也一直计费），把 TUN 包直接读进去，交给 `Shard::ingress_buf(buf, start, csum)`：
 
 - 有序负载 ≥ 缓冲容量一半：以缓冲切片直接挂进 RX 队列（`IngressPayload::Leased` → `RxQueue::push_leased`，只预留描述符槽），不拷贝；最后一个切片释放时缓冲回池。
 - 其余（ACK、小包、乱序段）：照旧复制进计费块，缓冲立即回池。
 
-物理计费精确：被钉住的缓冲按整块容量计费，最坏放大 2 倍（负载恰好半块）。池有上限（`max_cached`），`in_use()` 可用于诊断被应用未读数据钉住的缓冲数。
+物理计费覆盖整块：被钉住的缓冲按整块容量计费，最坏放大 2 倍（负载恰好半块）。池有上限（`max_cached`），`in_use()` 可用于诊断被应用未读数据钉住的缓冲数。
 
 ### 4.6 驱动内中继：`TcpStream::splice`
 

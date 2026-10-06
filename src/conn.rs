@@ -249,6 +249,9 @@ pub struct Conn {
     /// Largest new-data segment the iface's device segments for us (TSO);
     /// 0 = one MSS per packet. Refreshed by the shard before planning.
     pub(crate) tso_max: u32,
+    /// Some record is a TSO super-segment: SACK processing reserves room to
+    /// cut it on its segment grid.
+    sent_tso: bool,
     rtt: RttEstimator,
     cc: Box<dyn CongestionControl>,
     recovery: Option<Recovery>,
@@ -504,6 +507,7 @@ impl Conn {
             sb: Scoreboard::default(),
             mss,
             tso_max: 0,
+            sent_tso: false,
             rtt: RttEstimator::new(cfg.init_rto, cfg.min_rto, cfg.max_rto),
             cc: new_cc(cfg.cc, mss, cfg.init_cwnd_segs),
             recovery: None,
@@ -1755,6 +1759,11 @@ impl Conn {
         let mut dsack_seen = false;
         let mut newly_sacked = 0u64;
         if self.sack_ok && h.opts.sack_n > 0 {
+            if self.sent_tso {
+                // Each block may cut a super-segment record twice. Without
+                // room the blocks still apply to whole records.
+                let _ = self.sb.try_reserve(2 * h.opts.sack_n as usize, ctx.budget, self.peer);
+            }
             for (i, &(l, r)) in h.opts.sack_blocks().iter().enumerate() {
                 let lo = self.tx_sp.off(l, self.snd_una);
                 let hi = self.tx_sp.off(r, self.snd_una);
@@ -2490,6 +2499,7 @@ impl Conn {
             lost_at_send: self.dl.lost_total,
             flags: 0,
             app_limited: self.dl.app_limited != 0,
+            seg: 0,
         }
     }
 
@@ -2505,6 +2515,11 @@ impl Conn {
         let mut r = self.snapshot_rec(now);
         r.start = p.seq_off;
         r.end = end;
+        if p.len > self.mss {
+            // A TSO super-segment: the device cuts it every MSS.
+            r.seg = self.mss as u16;
+            self.sent_tso = true;
+        }
         r.tx_in_flight += end - p.seq_off;
         if fin {
             r.flags |= F_FIN;

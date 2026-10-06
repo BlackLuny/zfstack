@@ -2728,3 +2728,134 @@ mod ingress_buf_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod tso_loss_tests {
+    use super::*;
+    use crate::wire::{checksum_fold, parse_ip, pseudo_sum, sum_bytes, FIN, PSH};
+    use crate::ConnStats;
+
+    /// Cut a packet into the segments a device would put on the wire for it
+    /// (GSO): sequence numbers advance by `gso_size`, FIN/PSH stay on the last
+    /// segment, and every checksum is completed.
+    fn device_segments(p: &OutPacket<'_>) -> Vec<Vec<u8>> {
+        let pkt = p.to_vec();
+        let hl = p.header.len();
+        let ip = parse_ip(&pkt).unwrap();
+        let l4 = ip.l4_off;
+        let payload = &pkt[hl..];
+        let seg = if p.gso_size > 0 { p.gso_size as usize } else { payload.len().max(1) };
+        let chunks: Vec<&[u8]> = if payload.is_empty() { vec![&[][..]] } else { payload.chunks(seg).collect() };
+        let seq0 = u32::from_be_bytes(pkt[l4 + 4..l4 + 8].try_into().unwrap());
+        let n = chunks.len();
+        chunks
+            .iter()
+            .enumerate()
+            .map(|(k, c)| {
+                let mut v = pkt[..hl].to_vec();
+                v[l4 + 4..l4 + 8].copy_from_slice(&seq0.wrapping_add((k * seg) as u32).to_be_bytes());
+                if k + 1 < n {
+                    v[l4 + 13] &= !(FIN | PSH);
+                }
+                if l4 == 20 {
+                    v[2..4].copy_from_slice(&((hl + c.len()) as u16).to_be_bytes());
+                    v[10..12].copy_from_slice(&[0, 0]);
+                    let ipc = checksum_fold(sum_bytes(0, &v[..20]));
+                    v[10..12].copy_from_slice(&ipc.to_be_bytes());
+                } else {
+                    v[4..6].copy_from_slice(&((hl - 40 + c.len()) as u16).to_be_bytes());
+                }
+                v.extend_from_slice(c);
+                v[l4 + 16..l4 + 18].copy_from_slice(&[0, 0]);
+                let sum = pseudo_sum(ip.src, ip.dst, (v.len() - l4) as u32);
+                let tc = checksum_fold(sum_bytes(sum, &v[l4..]));
+                v[l4 + 16..l4 + 18].copy_from_slice(&tc.to_be_bytes());
+                v
+            })
+            .collect()
+    }
+
+    /// A TSO super-segment loses one of its segments on the wire (first,
+    /// middle or last). The peer SACKs the rest; recovery must retransmit only
+    /// the missing segment, without an RTO.
+    fn lose_one_segment_of_a_super_segment(which: usize) -> ConnStats {
+        let global = GlobalBudget::new(256 << 20);
+        let mut s = Shard::with_budget(StackConfig::client(), Arc::clone(&global));
+        s.set_budget_limits(global.high(), global.high(), 16);
+        let si = s.add_iface(IfaceConfig { mtu: 1500 });
+        s.set_iface_tso(si, 65_000);
+        let mut c = Shard::with_budget(StackConfig::default(), GlobalBudget::new(256 << 20));
+        let ci = c.add_iface(IfaceConfig { mtu: 1500 });
+        let mut now = Instant::from_millis(1);
+        let cid = c.connect(now, ci, PeerId(1), "10.0.0.2:4000".parse().unwrap(), "10.9.9.9:443".parse().unwrap());
+        const TOTAL: usize = 2 << 20;
+        let data: Vec<u8> = (0..TOTAL).map(|i| (i % 251) as u8).collect();
+        let (mut sent, mut got, mut sid, mut dropped) = (0usize, Vec::with_capacity(TOTAL), None, false);
+        let mut buf = vec![0u8; 256 * 1024];
+        for _ in 0..20_000 {
+            now += Duration::from_millis(1);
+            let mut to_s = Vec::new();
+            c.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| {
+                to_s.push(Bytes::from(p.to_vec()));
+                SendResult::Accepted
+            });
+            for p in to_s {
+                s.ingress(now, si, PeerId(1), p);
+            }
+            while let Some(ev) = s.poll_event() {
+                if let Event::Accepted(id) = ev {
+                    sid = Some(id);
+                }
+            }
+            if let Some(id) = sid {
+                if sent < TOTAL {
+                    if let WriteResult::Written(n) = s.write(id, &data[sent..(sent + 256 * 1024).min(TOTAL)]) {
+                        sent += n;
+                    }
+                }
+            }
+            let mut to_c = Vec::new();
+            s.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| {
+                let mut segs = device_segments(p);
+                if !dropped && p.gso_size > 0 && segs.len() >= 3 {
+                    let k = match which {
+                        0 => 0,
+                        1 => segs.len() / 2,
+                        _ => segs.len() - 1,
+                    };
+                    segs.remove(k);
+                    dropped = true;
+                }
+                to_c.extend(segs.into_iter().map(Bytes::from));
+                SendResult::Accepted
+            });
+            for p in to_c {
+                c.ingress(now, ci, PeerId(1), p);
+            }
+            while c.poll_event().is_some() {}
+            while let ReadResult::Data(n) = c.read(now, cid, &mut buf) {
+                got.extend_from_slice(&buf[..n]);
+            }
+            if got.len() == TOTAL {
+                break;
+            }
+        }
+        assert!(dropped, "no super-segment was sent");
+        assert_eq!(got.len(), TOTAL, "transfer stalled (segment {which})");
+        assert!(got == data, "byte stream corrupted");
+        s.info(sid.unwrap()).unwrap().stats
+    }
+
+    #[test]
+    fn lost_segment_inside_a_tso_super_segment_is_recovered_by_sack() {
+        // Before SACK blocks could cut a super-segment record, a lost first
+        // segment cost a TLP and two segments, a lost middle one the whole
+        // rest of the super-segment.
+        for which in 0..3 {
+            let st = lose_one_segment_of_a_super_segment(which);
+            assert_eq!((st.rto_count, st.tlp_count, st.fast_recoveries), (0, 0, 1), "segment {which}: {st:?}");
+            // Exactly the missing segment (MSS 1448 with timestamps).
+            assert_eq!(st.bytes_retrans, 1448, "segment {which}");
+        }
+    }
+}

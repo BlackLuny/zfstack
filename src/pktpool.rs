@@ -57,8 +57,9 @@ impl PacketPool {
         self.inner.in_use.load(Ordering::Relaxed)
     }
 
-    /// An empty buffer, or `None` when the budget has no room for another
-    /// (the caller should stop reading the device until memory is released).
+    /// An empty buffer, or `None` when the budget has no room for another or
+    /// the allocation failed (the caller should stop reading the device until
+    /// memory is released). A buffer's capacity never exceeds its charge.
     pub fn get(&self) -> Option<PacketBuf> {
         let cached = self.inner.free.lock().unwrap().pop();
         let (data, lease) = match cached {
@@ -70,6 +71,12 @@ impl PacketPool {
                 let lease = self.inner.memory.try_allocate_kind(self.inner.buf_size as u64, AllocationKind::RxChunk)?;
                 let mut data = Vec::new();
                 data.try_reserve_exact(self.inner.buf_size).ok()?;
+                // The lease covers `buf_size`; an allocation that came back
+                // larger would be uncharged backing (as for the other
+                // charged containers, refuse rather than under-count).
+                if data.capacity() > self.inner.buf_size {
+                    return None;
+                }
                 (data, lease)
             }
         };
