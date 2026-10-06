@@ -126,6 +126,12 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
             if a.tso {
                 c.arg("--tso");
             }
+            if a.driver_thread {
+                c.arg("--driver-thread");
+            }
+            if a.legacy {
+                c.arg("--legacy");
+            }
             c.stdin(Stdio::null()).spawn()?
         }
         ProxyKind::SingboxGo | ProxyKind::SingboxGvisor | ProxyKind::SingboxSystem => {
@@ -312,6 +318,8 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             "splice": a.splice,
             "vnet_hdr": a.vnet_hdr || a.tso,
             "tso": a.tso,
+            "driver_thread": a.driver_thread,
+            "legacy": a.legacy,
         },
         "env": {
             "kernel": tun::sh_output("uname -r").trim(),

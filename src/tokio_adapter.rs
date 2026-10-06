@@ -401,6 +401,10 @@ impl TcpStream {
     /// Bytes already buffered in this handle are kept in order. Each FIN is
     /// forwarded as a half-close; the stream ends when both directions have
     /// ended. A reset or socket error on either side resets the other.
+    ///
+    /// The socket is re-registered with the driver's runtime, so a host that
+    /// gives the driver its own current-thread runtime keeps every spliced
+    /// byte on that thread.
     pub fn splice(self, upstream: tokio::net::TcpStream) -> Splice {
         let this = std::mem::ManuallyDrop::new(self);
         // SAFETY: `this` is never used or dropped again; `meta` owns no heap
@@ -1071,7 +1075,13 @@ where
     /// Move data between stream queues and the shard, run the shard, dispatch events.
     fn service(&mut self) -> bool {
         self.expire_orphans();
-        for _ in 0..16 {
+        for round in 0..16 {
+            // Take packets that arrived meanwhile before producing more: a
+            // driver kept busy by bulk egress would otherwise leave ACKs and
+            // other flows' requests queued in the device (RR latency).
+            if round > 0 {
+                self.ingest_ready(16);
+            }
             let dirty = std::mem::take(&mut *self.ctl.dirty.lock().unwrap());
             for id in dirty {
                 self.pump(id);
@@ -1090,6 +1100,30 @@ where
             }
         }
         true
+    }
+
+    /// Non-blocking: up to `max` queued ingress items (host source and
+    /// `StackHandle::ingress` batches).
+    fn ingest_ready(&mut self, max: usize) {
+        let now = self.now();
+        for _ in 0..max {
+            let Some(source) = self.input.as_mut() else { break };
+            match source.rx.try_recv() {
+                Ok(item) => (source.handle)(&mut self.shard, now, item),
+                Err(_) => break,
+            }
+        }
+        for _ in 0..max {
+            match self.cmd_rx.try_recv() {
+                Ok(Cmd::Packets(iface, pkts)) => {
+                    for (peer, p) in pkts {
+                        self.shard.ingress(now, iface, peer, p);
+                    }
+                }
+                Ok(cmd) => self.handle_cmd(cmd),
+                Err(_) => break,
+            }
+        }
     }
 
     fn on_event(&mut self, ev: Event) {
@@ -1405,18 +1439,21 @@ where
         if consumed > 0 {
             self.shard.consume_adapter(now, id, consumed);
         }
+        // Move the socket to the driver's own reactor. A host that runs the
+        // driver on a dedicated current-thread runtime then does all relay
+        // I/O on one thread: no readiness wakeups to other workers.
+        let sock = match req.upstream.into_std().and_then(|s| tokio::net::TcpStream::from_std(s)) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = req.done.send(Err(e));
+                self.shard.abort(id);
+                self.remove_stream(id);
+                return false;
+            }
+        };
         self.relays.insert(
             id,
-            Relay {
-                sock: req.upstream,
-                pending,
-                pending_len,
-                core_eof,
-                sock_write_shut: false,
-                sock_eof: false,
-                stats: SpliceStats::default(),
-                done: Some(req.done),
-            },
+            Relay { sock, pending, pending_len, core_eof, sock_write_shut: false, sock_eof: false, stats: SpliceStats::default(), done: Some(req.done) },
         );
         if let Some(r) = error {
             let result = if r == CloseReason::Normal { Ok(()) } else { Err(io::Error::new(io::ErrorKind::ConnectionReset, format!("{r:?}"))) };

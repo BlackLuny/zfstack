@@ -157,7 +157,7 @@ impl TxBuf {
         max: usize,
         fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>,
     ) -> Result<Option<usize>, E> {
-        const SECOND_BELOW: usize = 16 * 1024;
+        const SECOND_BELOW: usize = TX_BLOCK;
         if max == 0 {
             return fill([&mut [], &mut []]).map(|_| Some(0));
         }

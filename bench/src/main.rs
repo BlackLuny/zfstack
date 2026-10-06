@@ -13,6 +13,7 @@ mod link;
 mod stack;
 mod tun;
 mod tunproxy;
+mod tunproxy_legacy;
 mod util;
 mod wg;
 mod wgmode;
@@ -203,6 +204,13 @@ pub struct Args {
     /// zfstack proxy: also accept TSO super-segments from the kernel (implies --vnet-hdr).
     #[arg(long)]
     tso: bool,
+    /// zfstack proxy: run the stack driver on a dedicated current-thread runtime.
+    #[arg(long)]
+    driver_thread: bool,
+    /// zfstack proxy: only library APIs that predate the client profile
+    /// (A/B of the tokio adapter's server path across library revisions).
+    #[arg(long)]
+    legacy: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -353,8 +361,10 @@ fn main() {
             splice: a.splice,
             vnet_hdr: a.vnet_hdr || a.tso,
             tso: a.tso,
+            driver_thread: a.driver_thread,
         };
-        if let Err(e) = tunproxy::run(o) {
+        let r = if a.legacy { tunproxy_legacy::run(o) } else { tunproxy::run(o) };
+        if let Err(e) = r {
             eprintln!("zfbench tun-proxy: {e}");
             std::process::exit(3);
         }

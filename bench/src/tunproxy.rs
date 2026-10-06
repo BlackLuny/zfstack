@@ -50,6 +50,8 @@ pub struct ProxyOpts {
     /// virtio-net header + checksum offload (+ TSO receive when `tso`).
     pub vnet_hdr: bool,
     pub tso: bool,
+    /// Run the stack driver on its own current-thread runtime.
+    pub driver_thread: bool,
 }
 
 fn write_packet(fd: RawFd, p: &OutPacket<'_>, vnet: bool) -> SendResult {
@@ -160,54 +162,79 @@ fn open_proxy_tun(vnet: bool, tso: bool) -> io::Result<RawFd> {
     Ok(fd)
 }
 
+struct Stack {
+    acceptor: tokio_adapter::Acceptor,
+    // Dropping these stops the driver.
+    _handle: tokio_adapter::StackHandle,
+    _task: tokio_adapter::DriverTask,
+}
+
+/// Spawn the stack driver on the current runtime and start the TUN reader.
+fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
+    let (mtu, vnet, tso) = (o.mtu, o.vnet_hdr, o.tso);
+    // TSO super-segments can exceed the MTU (up to 64 KiB of IP packet).
+    let max_pkt = if tso { 65535 } else { mtu as usize };
+    // Without a vnet header the client profile trusts the local kernel's
+    // checksums like sing-box does; with one, the header says per packet.
+    let trust = o.client_profile && !vnet;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Batch>(BATCH_QUEUE);
+    let global = zfstack::budget::GlobalBudget::from_system();
+    let high = global.high();
+    let limits = ResourceLimits { port_bytes: high, peer_bytes: high, peer_max_connections: u32::MAX };
+    let egress = move |_: IfaceId, _: PeerId, p: &OutPacket<'_>| write_packet(fd, p, vnet);
+    let (handle, acceptor, ids, task, memory) = tokio_adapter::spawn_with_source_factory(
+        client_config(o.client_profile),
+        StreamConfig::default(),
+        vec![IfaceConfig { mtu }],
+        move |shard| (egress, shard.memory_handle(PeerId(0))),
+        global,
+        limits,
+        rx,
+        move |shard, now, batch: Batch| {
+            for (b, start, csum) in batch {
+                shard.ingress_buf(now, IfaceId(0), PeerId(0), b, start, csum);
+            }
+        },
+    );
+    let pool = PacketPool::new(memory, max_pkt + if vnet { VIRTIO_NET_HDR_LEN } else { 0 }, POOL_CACHED);
+    assert_eq!(ids[0], IfaceId(0));
+    if vnet {
+        handle.set_iface_tx_checksum_offload(ids[0], true);
+    }
+    if tso {
+        handle.set_iface_tso(ids[0], 65_000);
+    }
+    std::thread::Builder::new().name("zfc-tun-rx".into()).spawn(move || reader(fd, pool, vnet, trust, tx)).unwrap();
+    Stack { acceptor, _handle: handle, _task: task }
+}
+
 pub fn run(o: ProxyOpts) -> io::Result<()> {
     tun::sh_quiet(&format!("ip link del {PROXY_TUN}"));
     let fd = open_proxy_tun(o.vnet_hdr, o.tso)?;
     tun::sh(&format!("ip addr add {PROXY_TUN_ADDR} dev {PROXY_TUN}"))?;
-    tun::sh(&format!("ip link set {PROXY_TUN} mtu {} txqueuelen 10000 up", o.mtu))?;
+    tun::sh(&format!("ip link set {PROXY_TUN} mtu {} txqueuelen 500 up", o.mtu))?;
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(o.workers).enable_all().build()?;
-    let mtu = o.mtu;
-    let upstream = o.upstream;
-    let relay_buf = o.relay_buf;
-    let splice = o.splice;
-    let vnet = o.vnet_hdr;
-    let tso = o.tso;
-    // TSO super-segments can exceed the MTU (up to 64 KiB of IP packet).
-    let max_pkt = if o.tso { 65535 } else { mtu as usize };
-    // Without a vnet header the client profile trusts the local kernel's
-    // checksums like sing-box does; with one, the header says per packet.
-    let trust = o.client_profile && !vnet;
-    let cfg = client_config(o.client_profile);
+    let (upstream, relay_buf, splice) = (o.upstream, o.relay_buf, o.splice);
+    let stack = if o.driver_thread {
+        // The driver gets a current-thread runtime of its own; spliced
+        // sockets move to its reactor, so relay I/O never leaves that thread.
+        let (stx, srx) = std::sync::mpsc::channel();
+        std::thread::Builder::new().name("zfc-driver".into()).spawn(move || {
+            let drt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            drt.block_on(async move {
+                let stack = start_stack(&o, fd);
+                let _ = stx.send(stack);
+                std::future::pending::<()>().await
+            })
+        })?;
+        srx.recv().map_err(|_| io::Error::other("driver thread failed"))?
+    } else {
+        let _g = rt.enter();
+        start_stack(&o, fd)
+    };
+    let mut acceptor = stack.acceptor;
+    eprintln!("zfbench tun-proxy: ready on {PROXY_TUN} splice {splice} -> {upstream}");
     rt.block_on(async move {
-        let (tx, rx) = tokio::sync::mpsc::channel::<Batch>(BATCH_QUEUE);
-        let global = zfstack::budget::GlobalBudget::from_system();
-        let high = global.high();
-        let limits = ResourceLimits { port_bytes: high, peer_bytes: high, peer_max_connections: u32::MAX };
-        let egress = move |_: IfaceId, _: PeerId, p: &OutPacket<'_>| write_packet(fd, p, vnet);
-        let (handle, mut acceptor, ids, _task, memory) = tokio_adapter::spawn_with_source_factory(
-            cfg,
-            StreamConfig::default(),
-            vec![IfaceConfig { mtu }],
-            move |shard| (egress, shard.memory_handle(PeerId(0))),
-            global,
-            limits,
-            rx,
-            move |shard, now, batch: Batch| {
-                for (b, start, csum) in batch {
-                    shard.ingress_buf(now, IfaceId(0), PeerId(0), b, start, csum);
-                }
-            },
-        );
-        let pool = PacketPool::new(memory, max_pkt + if vnet { VIRTIO_NET_HDR_LEN } else { 0 }, POOL_CACHED);
-        assert_eq!(ids[0], IfaceId(0));
-        if vnet {
-            handle.set_iface_tx_checksum_offload(ids[0], true);
-        }
-        if tso {
-            handle.set_iface_tso(ids[0], 65_000);
-        }
-        std::thread::Builder::new().name("zfc-tun-rx".into()).spawn(move || reader(fd, pool, vnet, trust, tx)).unwrap();
-        eprintln!("zfbench tun-proxy: ready on {PROXY_TUN} mtu {mtu} vnet_hdr {vnet} splice {splice} -> {upstream}");
         while let Some(mut down) = acceptor.accept().await {
             tokio::spawn(async move {
                 let Ok(mut up) = tokio::net::TcpStream::connect(upstream).await else {
