@@ -406,7 +406,11 @@ impl RxQueue {
         }
         let current_free = self.charged_tail.as_ref().map_or(0, ChargedChunk::free);
         let mut remaining = data.len().saturating_sub(current_free);
-        let mut fresh = VecDeque::new();
+        // Ordinary IP payloads need at most one new chunk. Keep that chunk
+        // inline; larger public-API inputs use the overflow deque. Declaring
+        // overflow first preserves first-to-last release order on rollback.
+        let mut overflow = VecDeque::new();
+        let mut first = None;
         while remaining > 0 {
             // A driver may transfer each MSS to the adapter immediately. A
             // fixed 8 KiB chunk would then pin 8 KiB for ~1.4 KiB payload.
@@ -418,10 +422,22 @@ impl RxQueue {
             if data.try_reserve_exact(cap).is_err() || data.capacity() > cap {
                 return false;
             }
-            fresh.push_back(ChargedChunk { data, _lease: lease });
+            let chunk = ChargedChunk { data, _lease: lease };
+            if first.is_none() {
+                first = Some(chunk);
+            } else {
+                overflow.push_back(chunk);
+            }
             remaining = remaining.saturating_sub(cap);
         }
-        let Some(slots) = self.retained_slots().checked_add(fresh.len()).and_then(|n| n.checked_add(self.ooo_slots)) else { return false };
+        let Some(slots) = self
+            .retained_slots()
+            .checked_add(usize::from(first.is_some()))
+            .and_then(|n| n.checked_add(overflow.len()))
+            .and_then(|n| n.checked_add(self.ooo_slots))
+        else {
+            return false;
+        };
         let Ok(index) = self.prepare_index(slots, budget, peer) else { return false };
         self.commit_index(index);
         self.seal_tail();
@@ -429,7 +445,7 @@ impl RxQueue {
         while !data.is_empty() {
             if self.charged_tail.as_ref().is_none_or(|c| c.free() == 0) {
                 self.seal_charged_tail();
-                self.charged_tail = fresh.pop_front();
+                self.charged_tail = first.take().or_else(|| overflow.pop_front());
             }
             let chunk = self.charged_tail.as_mut().expect("pre-reserved RX chunk");
             let n = data.len().min(chunk.free());
@@ -1297,6 +1313,74 @@ mod rx_descriptor_tests {
     }
 
     #[test]
+    fn rx_staged_chunks_preserve_tail_order_and_exported_owner_charge() {
+        for chunks in 1..=3 {
+            let (global, mut budget) = budget(1 << 20);
+            let mut rx = RxQueue::default();
+            let prefix = [0xa5; 63];
+            assert!(rx.push_charged(&prefix, &mut budget, PeerId(1)));
+            // Fill the old tail's final byte, then stage one, two or three
+            // chunks. Larger inputs exercise the public API beyond IP MTU.
+            let payload: Vec<u8> = (0..1 + (chunks - 1) * RX_JUMBO_CHUNK + 1379).map(|i| (i % 251) as u8).collect();
+            assert!(rx.push_charged(&payload, &mut budget, PeerId(1)));
+            let owner = rx.read_chunk(17).unwrap();
+            let mut got = owner.to_vec();
+            while let Some(chunk) = rx.read_chunk(997) {
+                got.extend_from_slice(&chunk);
+            }
+            let mut expected = prefix.to_vec();
+            expected.extend_from_slice(&payload);
+            assert_eq!(got, expected);
+            assert_eq!(rx.len(), 0);
+            rx.clear();
+            assert_eq!(global.reserved(), 64 + CHUNK_METADATA_BYTES, "the exported prefix retains its whole owner");
+            drop(owner);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn rx_second_staged_chunk_quota_failure_rolls_back_at_every_level() {
+        const LIMIT: u64 = 1 << 20;
+        for (level, (high, port, peer)) in [(Level::Global, (LIMIT, LIMIT, LIMIT)), (Level::Port, (2 * LIMIT, LIMIT, LIMIT)), (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT))] {
+            let global = GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, peer, 8);
+            let mut rx = RxQueue::default();
+            assert!(rx.push_charged(&[7; 63], &mut budget, PeerId(1)));
+            let first_charge = RX_JUMBO_CHUNK as u64 + CHUNK_METADATA_BYTES;
+            let second_charge = 64 + CHUNK_METADATA_BYTES;
+            let ceiling = LIMIT - global.headroom(LIMIT, crate::budget::Tier::Bulk);
+            // The first provisional chunk fits; the second misses by one.
+            let blocker = budget
+                .try_allocate_kind(PeerId(1), ceiling - budget.physical_used() - first_charge - second_charge + 1, crate::budget::AllocationKind::RxChunk)
+                .unwrap();
+            let before = global.reserved();
+            let payload: Vec<u8> = (0..1 + RX_JUMBO_CHUNK + 32).map(|i| (i % 251) as u8).collect();
+            assert!(!rx.push_charged(&payload, &mut budget, PeerId(1)));
+            assert_eq!(rx.len(), 63);
+            assert_eq!(rx.q.capacity(), 4);
+            assert_eq!(rx.charged_tail.as_ref().unwrap().data, [7; 63]);
+            assert_eq!(global.reserved(), before, "failed staging must release every provisional owner");
+            assert_eq!(budget.stats().failures().rx_chunk, 1);
+            let mut failures = [0; 3];
+            failures[level as usize] = 1;
+            assert_eq!(budget.stats().failures_by_level(), failures);
+            drop(blocker);
+            assert!(rx.push_charged(&payload, &mut budget, PeerId(1)));
+            let mut got = Vec::new();
+            while let Some(chunk) = rx.read_chunk(usize::MAX) {
+                got.extend_from_slice(&chunk);
+            }
+            let mut expected = vec![7; 63];
+            expected.extend_from_slice(&payload);
+            assert_eq!(got, expected);
+            rx.clear();
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
     fn retained_rx_descriptor_capacity_remains_funded_after_partial_drain() {
         let (global, mut budget) = budget(1 << 20);
         let mut rx = RxQueue::default();
@@ -1365,27 +1449,30 @@ mod rx_descriptor_tests {
 
     #[test]
     fn rx_descriptor_allocator_failure_preserves_payload_tail_and_capacity() {
-        let (global, mut budget) = budget(1 << 20);
-        let mut rx = RxQueue::default();
-        for _ in 0..3 {
-            assert!(rx.push_charged(&[8; 64], &mut budget, PeerId(1)));
+        for len in [65, RX_JUMBO_CHUNK + 65, 2 * RX_JUMBO_CHUNK + 65] {
+            let (global, mut budget) = budget(1 << 20);
+            let mut rx = RxQueue::default();
+            for _ in 0..3 {
+                assert!(rx.push_charged(&[8; 64], &mut budget, PeerId(1)));
+            }
+            assert!(rx.push_charged(&[9; 63], &mut budget, PeerId(1)));
+            let before = global.reserved();
+            let payload = vec![5; len];
+            FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.set(true));
+            assert!(!rx.push_charged(&payload, &mut budget, PeerId(1)));
+            assert_eq!(rx.len(), 255);
+            assert_eq!(rx.q.capacity(), 4);
+            assert_eq!(rx.charged_tail.as_ref().unwrap().data.len(), 63);
+            assert_eq!(global.reserved(), before);
+            assert!(rx.push_charged(&payload, &mut budget, PeerId(1)));
+            let mut got = Vec::new();
+            while let Some(chunk) = rx.read_chunk(usize::MAX) {
+                got.extend_from_slice(&chunk);
+            }
+            assert_eq!(got, [vec![8; 192], vec![9; 63], payload].concat());
+            rx.clear();
+            assert_eq!(global.reserved(), 0);
         }
-        assert!(rx.push_charged(&[9; 63], &mut budget, PeerId(1)));
-        let before = global.reserved();
-        FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.set(true));
-        assert!(!rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
-        assert_eq!(rx.len(), 255);
-        assert_eq!(rx.q.capacity(), 4);
-        assert_eq!(rx.charged_tail.as_ref().unwrap().data.len(), 63);
-        assert_eq!(global.reserved(), before);
-        assert!(rx.push_charged(&[5; 65], &mut budget, PeerId(1)));
-        let mut got = Vec::new();
-        while let Some(chunk) = rx.read_chunk(usize::MAX) {
-            got.extend_from_slice(&chunk);
-        }
-        assert_eq!(got, [vec![8; 192], vec![9; 63], vec![5; 65]].concat());
-        rx.clear();
-        assert_eq!(global.reserved(), 0);
     }
 
     #[test]

@@ -45,6 +45,9 @@ impl IndexedHeap {
         } else {
             let p = p as usize;
             let old = self.heap[p].0;
+            if key == old {
+                return;
+            }
             self.heap[p].0 = key;
             if key < old {
                 self.up(p);
@@ -146,5 +149,35 @@ mod tests {
         }
         assert_eq!(out, vec![5, 3, 7, 0, 6, 2, 8, 4, 9]);
         assert!(h.len() == 0);
+    }
+
+    #[test]
+    fn equal_deadlines_preserve_order_and_still_allow_key_changes() {
+        let mut h = IndexedHeap::default();
+        for i in 0..32u32 {
+            h.set(i, Instant::from_nanos((i as u64 + 1) * 10));
+        }
+        let heap = h.heap.clone();
+        let positions = h.pos.clone();
+        for _ in 0..100 {
+            for i in 0..32u32 {
+                h.set(i, Instant::from_nanos((i as u64 + 1) * 10));
+            }
+        }
+        assert_eq!(h.heap, heap);
+        assert_eq!(h.pos, positions);
+        assert_eq!(h.pop_due(Instant::from_nanos(9)), None);
+
+        // Both directions of a real key change still repair the heap after
+        // any number of unchanged re-arms.
+        h.set(31, Instant::from_nanos(5));
+        assert_eq!(h.pop_due(Instant::from_nanos(5)), Some(31));
+        h.set(0, Instant::from_nanos(400));
+        for i in 1..31u32 {
+            assert_eq!(h.pop_due(Instant::from_nanos((i as u64 + 1) * 10)), Some(i));
+        }
+        assert_eq!(h.pop_due(Instant::from_nanos(399)), None);
+        assert_eq!(h.pop_due(Instant::from_nanos(400)), Some(0));
+        assert_eq!(h.pop_due(Instant::MAX), None);
     }
 }

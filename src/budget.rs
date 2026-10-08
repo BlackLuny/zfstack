@@ -1007,7 +1007,7 @@ impl Budget {
     }
 
     pub fn try_allocate_kind(&mut self, peer: PeerId, bytes: u64, kind: AllocationKind) -> Option<MemoryLease> {
-        self.memory_handle(peer).try_allocate_kind(bytes, kind)
+        self.memory_handle(peer).into_allocation(bytes, kind).ok()
     }
 
     pub fn note_reserve_failure(&self, kind: AllocationKind) {
@@ -1259,12 +1259,7 @@ impl MemoryHandle {
 
     /// Like [`Self::try_allocate_kind`], but reports the level that refused.
     pub fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
-        if let Some(level) = self.reserve(bytes, kind) {
-            self.stats.note(kind, Some(level));
-            // Idle cached blocks may hold the share this allocation needs.
-            self.global.request_cache_reclaim();
-            return Err(level);
-        }
+        self.check_allocation(bytes, kind)?;
         Ok(MemoryLease {
             global: Arc::clone(&self.global),
             port: Arc::clone(&self.port),
@@ -1274,6 +1269,31 @@ impl MemoryHandle {
             cached: false,
             drain: kind.drains(),
         })
+    }
+
+    /// Core allocations create a temporary handle. Move its counter owners
+    /// into the lease instead of cloning and immediately dropping them.
+    fn into_allocation(self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
+        self.check_allocation(bytes, kind)?;
+        Ok(MemoryLease {
+            global: self.global,
+            port: self.port,
+            peer: Some(self.peer),
+            bytes,
+            peer_limit: self.peer_limit,
+            cached: false,
+            drain: kind.drains(),
+        })
+    }
+
+    fn check_allocation(&self, bytes: u64, kind: AllocationKind) -> Result<(), Level> {
+        if let Some(level) = self.reserve(bytes, kind) {
+            self.stats.note(kind, Some(level));
+            // Idle cached blocks may hold the share this allocation needs.
+            self.global.request_cache_reclaim();
+            return Err(level);
+        }
+        Ok(())
     }
 
     fn reserve(&self, bytes: u64, kind: AllocationKind) -> Option<Level> {
@@ -1549,6 +1569,50 @@ mod tests {
         assert_eq!(port_a.physical_used(), 0);
         assert_eq!(port_b.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn temporary_and_retained_handles_preserve_quota_rollback_and_release_wakes() {
+        for owned in [false, true] {
+            for kind in [AllocationKind::RxChunk, AllocationKind::TxBlock] {
+                for (level, (high, port, peer)) in [(Level::Global, (512, 512, 512)), (Level::Port, (1024, 512, 512)), (Level::Peer, (1024, 1024, 512))] {
+                    let global = GlobalBudget::new(high);
+                    let mut budget = Budget::new(global.clone());
+                    budget.set_limits(port, peer, 4);
+                    let memory = budget.memory_handle(PeerId(1));
+                    let held = if owned { budget.try_allocate_kind(PeerId(1), 512, kind) } else { memory.try_allocate_kind(512, kind) }.unwrap();
+                    let observed = global.release_epoch();
+                    let rejected = if owned { budget.try_allocate_kind(PeerId(1), 1, kind) } else { memory.try_allocate_kind(1, kind) };
+                    assert!(rejected.is_none());
+                    assert_eq!(global.reserved(), 512);
+                    assert_eq!(budget.physical_used(), 512);
+                    assert_eq!(memory.peer.used.load(Ordering::Relaxed), 512);
+                    assert_eq!(global.release_epoch(), observed, "an uncommitted reservation must not notify");
+                    let mut failures = [0; 3];
+                    failures[level as usize] = 1;
+                    assert_eq!(budget.stats().failures_by_level(), failures);
+                    assert_eq!(*budget.stats().failures().get_mut(kind), 1);
+
+                    let wake = Arc::new(CountWake(AtomicUsize::new(0)));
+                    let id = global.new_waiter_id();
+                    global.register_physical_waiter(id, observed, &Waker::from(wake.clone()), &memory, 1, kind);
+                    assert_eq!(wake.0.load(Ordering::Relaxed), 0);
+                    drop(held);
+                    assert_eq!(wake.0.load(Ordering::Relaxed), 1);
+                    assert_eq!(global.reserved(), 0);
+                    assert_eq!(budget.physical_used(), 0);
+                    assert_eq!(memory.peer.used.load(Ordering::Relaxed), 0);
+                    let drained = if kind.drains() { 512 } else { 0 };
+                    for counter in [&global.drain, &memory.port.drain, &memory.peer.drain] {
+                        assert_eq!(counter.load(Ordering::Relaxed), 0);
+                    }
+                    for counter in [&global.drained, &memory.port.drained, &memory.peer.drained] {
+                        assert_eq!(counter.load(Ordering::Relaxed), drained);
+                    }
+                    global.remove_waiter(id);
+                }
+            }
+        }
     }
 
     #[test]
