@@ -1,0 +1,4838 @@
+{
+  "base_sha": "71feaedafca7ce53e1823490a59b37bd8afcd028",
+  "note": "Core summaries. Complete summaries and raw runs are preserved in evidence.tar.gz.",
+  "combined_v1": {
+    "input_sha256": "52923b2a4a6ca7696fc73e0b19d308d04c0dab010c9de57aae48ded9b397e0dd",
+    "binary_sha256": {
+      "baseline": [
+        "75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378"
+      ],
+      "candidate": [
+        "ca10f13f43daaae0cae455e0a8e0254d44a8e39213ef7719f55d56ffe33282f5"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 32,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "budget_1400_p1",
+        "n_pairs": 6,
+        "workload": {
+          "case": "budget",
+          "iterations": 5000000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 2112,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 6,
+            "median": 169.567269,
+            "min": 167.7098492,
+            "max": 170.797083
+          },
+          "candidate": {
+            "n": 6,
+            "median": 131.712486,
+            "min": 131.2067884,
+            "max": 133.1290182
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -22.01845867592285,
+            "min": -22.849535785104713,
+            "max": -21.217026548164164,
+            "values": [
+              -21.75508426419257,
+              -22.271313856210327,
+              -21.76560349563538,
+              -21.217026548164164,
+              -22.849535785104713,
+              -22.779191062620473
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -22.814363423862595,
+              -21.486055406178366
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -22.32434550797654,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                5000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                10560000000
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1021952.0,
+            "candidate": 1011712.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 2112.0,
+            "candidate": 2112.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          }
+        }
+      },
+      {
+        "name": "budget_handle_control_p1",
+        "n_pairs": 6,
+        "workload": {
+          "case": "budget-handle",
+          "iterations": 5000000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 2112,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 6,
+            "median": 114.3380789,
+            "min": 110.4709894,
+            "max": 116.6543744
+          },
+          "candidate": {
+            "n": 6,
+            "median": 112.12737849999999,
+            "min": 109.7557344,
+            "max": 116.4933362
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -1.27594903166941,
+            "min": -3.5478188132681554,
+            "max": 1.562373581940113,
+            "values": [
+              -3.5478188132681554,
+              -0.20903408488825992,
+              -1.9044384869516096,
+              -0.6474595763872104,
+              1.562373581940113,
+              -1.9976586493099413
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -2.7727387312890484,
+              0.6766697485259265
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -1.9334769494714799,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                5000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                10560000000
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1032192.0,
+            "candidate": 1013760.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 2112.0,
+            "candidate": 2112.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          }
+        }
+      },
+      {
+        "name": "rx_64_p1",
+        "n_pairs": 6,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 1500000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 64,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 4.801297515625,
+            "min": 4.760495552083333,
+            "max": 5.12115675
+          },
+          "candidate": {
+            "n": 6,
+            "median": 3.9137608489583333,
+            "min": 3.7020047604166666,
+            "max": 4.6756998125
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -18.479212738901104,
+            "min": -26.15689926214071,
+            "max": -1.83870617165951,
+            "values": [
+              -1.83870617165951,
+              -11.717382625517182,
+              -20.46240511642463,
+              -17.64894530973542,
+              -19.309480168066784,
+              -26.15689926214071
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -23.30965218928267,
+              -6.778044398588346
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -18.485350340784567,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 1.6662390650310295,
+            "min": 1.560364958392452,
+            "max": 1.680388048861396
+          },
+          "candidate": {
+            "n": 6,
+            "median": 2.0439694985672867,
+            "min": 1.710755646382424,
+            "max": 2.1606833957991216
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 22.678876646415006,
+            "min": 1.8622595427130406,
+            "max": 35.41543237393232,
+            "values": [
+              1.8622595427130406,
+              13.337842629753549,
+              25.72030516248831,
+              21.42924125405883,
+              23.928512038771178,
+              35.41543237393232
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              7.600051086233295,
+              30.567868768210314
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 22.66964215781504,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3024000000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3024000000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                96000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1017856.0,
+            "candidate": 1015808.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 384.0,
+            "candidate": 384.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256.0,
+            "candidate": 256.0
+          }
+        }
+      },
+      {
+        "name": "rx_1400_p8",
+        "n_pairs": 6,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 1500000,
+          "flows": 8,
+          "peers": 8,
+          "payload_bytes": 1400,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 0.4962748495238095,
+            "min": 0.43872474523809524,
+            "max": 0.5461014538095238
+          },
+          "candidate": {
+            "n": 6,
+            "median": 0.43376905238095237,
+            "min": 0.39953798142857144,
+            "max": 0.4855749057142857
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -11.820252050210522,
+            "min": -16.080392518986876,
+            "max": -8.931970269481193,
+            "values": [
+              -8.931970269481193,
+              -11.083388933139393,
+              -16.080392518986876,
+              -12.50382872987591,
+              -12.798252209683113,
+              -11.136675370545134
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -14.439322364334995,
+              -10.007679601310294
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -12.594995938809571,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 16.11494730819515,
+            "min": 14.448064893483469,
+            "max": 18.232734296015987
+          },
+          "candidate": {
+            "n": 6,
+            "median": 18.415709165688853,
+            "min": 16.33883915677457,
+            "max": 20.0213765138492
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 13.689005744510553,
+            "min": 9.810060239972064,
+            "max": 21.46042839321851,
+            "values": [
+              9.810060239972064,
+              13.086695534873316,
+              21.46042839321851,
+              14.291315954147787,
+              14.461957661454349,
+              12.489895889813173
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              11.149978064892618,
+              17.961193027336428
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 14.277191314945647,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                250972500000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                250972500000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                2100000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1034240.0,
+            "candidate": 1009664.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 4160.0,
+            "candidate": 4160.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 2048.0,
+            "candidate": 2048.0
+          }
+        }
+      },
+      {
+        "name": "rx_65535_p1",
+        "n_pairs": 6,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 75000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 65535,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 0.24477682235955345,
+            "min": 0.22581381267007453,
+            "max": 0.26403282480099693
+          },
+          "candidate": {
+            "n": 6,
+            "median": 0.24230735271229115,
+            "min": 0.22781149451946797,
+            "max": 0.27242705099056486
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 1.3228020032022725,
+            "min": -6.649060263052653,
+            "max": 5.03694834147097,
+            "values": [
+              3.4919774602320652,
+              0.7558382155760102,
+              -6.649060263052653,
+              1.7609451692092382,
+              5.03694834147097,
+              0.8846588371953068
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -2.9466110237383214,
+              4.264462900851518
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -1.0088658000612871,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 32.83228023152138,
+            "min": 30.296502767687347,
+            "max": 35.42575255662402
+          },
+          "candidate": {
+            "n": 6,
+            "median": 33.024378714461285,
+            "min": 29.35282299269084,
+            "max": 35.11543801726668
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -1.3006743084686079,
+            "min": -4.797311129978443,
+            "max": 7.130561253584045,
+            "values": [
+              -3.3561727872240654,
+              -0.6580708816720904,
+              7.130561253584045,
+              -1.7253911087337315,
+              -4.797311129978443,
+              -0.8759575082034843
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -4.076741958601254,
+              3.236245185955977
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 0.585090287927903,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                614186325000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                614186325000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                75000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4915125000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2482176.0,
+            "candidate": 2480128.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 65855.0,
+            "candidate": 65855.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256.0,
+            "candidate": 256.0
+          }
+        }
+      },
+      {
+        "name": "rx_tail_1400",
+        "n_pairs": 6,
+        "workload": {
+          "case": "rx-tail",
+          "iterations": 500000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 1400,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 0.54447141,
+            "min": 0.5412643842857143,
+            "max": 0.5488684221428571
+          },
+          "candidate": {
+            "n": 6,
+            "median": 0.46346178214285716,
+            "min": 0.45738116714285715,
+            "max": 0.4738341407142857
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -14.597753201844888,
+            "min": -16.35826612001522,
+            "max": -12.964217952764812,
+            "values": [
+              -14.315044252951026,
+              -14.535292099356923,
+              -14.660214304332852,
+              -16.35826612001522,
+              -16.14650989626313,
+              -12.964217952764812
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -16.252388008139175,
+              -13.63963110285792
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -14.878582487396875,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 14.692039850726912,
+            "min": 14.57335045544134,
+            "max": 14.779341891951693
+          },
+          "candidate": {
+            "n": 6,
+            "median": 17.258159080709888,
+            "min": 16.880586273010188,
+            "max": 17.48984654286839
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 17.08032639182796,
+            "min": 14.884377667759052,
+            "max": 19.56664764410576,
+            "values": [
+              16.70015789695942,
+              16.981097456622997,
+              17.179555327032926,
+              19.56664764410576,
+              19.25634025129741,
+              14.884377667759052
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              15.792267782359236,
+              19.411493947701587
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 17.46605138602324,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                172933000000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                172933000000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1400000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1017856.0,
+            "candidate": 1030144.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 4032.0,
+            "candidate": 4032.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256.0,
+            "candidate": 256.0
+          }
+        }
+      },
+      {
+        "name": "heap_equal_4096",
+        "n_pairs": 6,
+        "workload": {
+          "case": "heap-equal",
+          "iterations": 30000000,
+          "flows": 4096,
+          "peers": 4096,
+          "payload_bytes": 0,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 6,
+            "median": 10.140204050000001,
+            "min": 9.925033766666667,
+            "max": 14.371349866666666
+          },
+          "candidate": {
+            "n": 6,
+            "median": 8.36750975,
+            "min": 8.155672166666667,
+            "max": 11.244617766666666
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -17.89900525574637,
+            "min": -21.75670433890302,
+            "max": -14.105185458029833,
+            "values": [
+              -14.561681105011049,
+              -17.2697739146926,
+              -19.630906624680257,
+              -18.52823659680014,
+              -14.105185458029833,
+              -21.75670433890302
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -20.69380548179164,
+              -14.333433281520442
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -17.481840515822768,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238458880
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238458880
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                30000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2371584.0,
+            "candidate": 2320384.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          }
+        }
+      },
+      {
+        "name": "heap_mixed_4096",
+        "n_pairs": 6,
+        "workload": {
+          "case": "heap-mixed",
+          "iterations": 30000000,
+          "flows": 4096,
+          "peers": 4096,
+          "payload_bytes": 0,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 6,
+            "median": 11.588996733333332,
+            "min": 10.795226266666667,
+            "max": 12.990536533333334
+          },
+          "candidate": {
+            "n": 6,
+            "median": 10.504148066666666,
+            "min": 9.645073533333333,
+            "max": 12.753582633333334
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -7.0479758094438685,
+            "min": -17.93327740686077,
+            "max": -1.8240501413623877,
+            "values": [
+              -7.528541452737414,
+              -1.8240501413623877,
+              -17.93327740686077,
+              -2.4392187433728285,
+              -10.654271665289293,
+              -6.567410166150323
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -14.293774536075032,
+              -2.1316344423676084
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -9.361023146605307,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4634673746
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4634673746
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                30000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2387968.0,
+            "candidate": 2342912.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          }
+        }
+      },
+      {
+        "name": "down_1_paced",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-down",
+          "iterations": 4,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 67108864,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.7521754652261734,
+            "min": 1.4912530481815338,
+            "max": 1.8612140007317066
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.5870342701673508,
+            "min": 1.4865095764398575,
+            "max": 1.945937104523182
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -3.2988689883485023,
+            "min": -15.643779572884586,
+            "max": 5.647663498556454,
+            "values": [
+              -0.31808630650985714,
+              -15.643779572884586,
+              5.647663498556454,
+              4.818434845177411,
+              -10.524012637671698,
+              -6.279651670187148
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -13.083896105278143,
+              5.2330491718669325
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -9.424923378749972,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 4.566643415482293,
+            "min": 4.2957527400224915,
+            "max": 5.363492721066809
+          },
+          "candidate": {
+            "n": 6,
+            "median": 5.04017221343442,
+            "min": 4.1087584375671105,
+            "max": 5.380644222886216
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 3.504087568008396,
+            "min": -5.346466417335494,
+            "max": 18.590325501798844,
+            "values": [
+              0.31978232676701523,
+              18.590325501798844,
+              -5.346466417335494,
+              -4.631057554967888,
+              11.78357178548286,
+              6.688392809249777
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -4.98876198615169,
+              15.186948643640852
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 10.369296546052208,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                197336
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278696992
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1160
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                57600000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554431004
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554431004
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 69957632.0,
+            "candidate": 70021120.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67369408.0,
+            "candidate": 67369408.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1050368.0,
+            "candidate": 1050368.0
+          }
+        }
+      },
+      {
+        "name": "up_1_paced",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-up",
+          "iterations": 4,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 67108864,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.8367163930088282,
+            "min": 1.745258443057537,
+            "max": 1.9427518509328365
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.756518840789795,
+            "min": 1.6707523353397846,
+            "max": 1.788496419787407
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -6.470082602819183,
+            "min": -9.019858278401538,
+            "max": -0.4935698372690367,
+            "values": [
+              -2.3253563700696533,
+              -8.926846453076498,
+              -8.671106487479442,
+              -9.019858278401538,
+              -0.4935698372690367,
+              -4.269058718158925
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -8.973352365739018,
+              -1.409463103669345
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -4.36635468188189,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 4.354498719119825,
+            "min": 4.114343423095803,
+            "max": 4.582815945300834
+          },
+          "candidate": {
+            "n": 6,
+            "median": 4.552101564868611,
+            "min": 4.448862305273109,
+            "max": 4.787537378383558
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 6.985888909626681,
+            "min": -0.017360121172727006,
+            "max": 9.918523031581827,
+            "values": [
+              2.4000536450625054,
+              9.87259452062823,
+              9.504624097039338,
+              9.918523031581827,
+              -0.017360121172727006,
+              4.467153722214023
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              1.1913467619448892,
+              9.895558776105029
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 4.537901110893605,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                197332
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278696784
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1160
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                57600000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554431004
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554431004
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 70019072.0,
+            "candidate": 70039552.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67369408.0,
+            "candidate": 67369408.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1050368.0,
+            "candidate": 1050368.0
+          }
+        }
+      },
+      {
+        "name": "up_8_peers_paced",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-up",
+          "iterations": 4,
+          "flows": 8,
+          "peers": 8,
+          "payload_bytes": 8388608,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.6880495697259903,
+            "min": 1.6637354157865047,
+            "max": 1.7905914261937141
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.6133767329156399,
+            "min": 1.5041877254843712,
+            "max": 1.6175034120678902
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -5.5442181341324615,
+            "min": -10.999326186495162,
+            "max": -2.778807452190901,
+            "values": [
+              -4.396971237498059,
+              -10.679627898431098,
+              -6.691465030766864,
+              -2.778807452190901,
+              -10.999326186495162,
+              -3.9966614820635793
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -10.83947704246313,
+              -3.38773446712724
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -4.423616352834447,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 4.738593990010431,
+            "min": 4.434598295178754,
+            "max": 4.807502998001845
+          },
+          "candidate": {
+            "n": 6,
+            "median": 4.95801380146561,
+            "min": 4.944517550182354,
+            "max": 5.316445154642753
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 6.612818751992155,
+            "min": 2.8500149087261395,
+            "max": 12.772665519331628,
+            "values": [
+              4.598347106956724,
+              12.772665519331628,
+              8.627290397027586,
+              2.8500149087261395,
+              12.335309479090384,
+              4.1795339393908115
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              3.5147744240584755,
+              12.553987499211006
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 4.630483470787827,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                200648
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278869664
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1096
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                54400000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                32
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 70135808.0,
+            "candidate": 70111232.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67567424.0,
+            "candidate": 67567424.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1055744.0,
+            "candidate": 1055744.0
+          }
+        }
+      },
+      {
+        "name": "bidi_8_one_peer",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-bidi",
+          "iterations": 4,
+          "flows": 8,
+          "peers": 1,
+          "payload_bytes": 4194304,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.7007282935082912,
+            "min": 1.6678391359746456,
+            "max": 1.7493389621376991
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.615237159654498,
+            "min": 1.6014116145670414,
+            "max": 1.6519079059362411
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -4.302424044877512,
+            "min": -8.456185494770551,
+            "max": -3.1238399563875197,
+            "values": [
+              -3.629215140604891,
+              -4.975632949150133,
+              -3.1238399563875197,
+              -8.456185494770551,
+              -3.439256191263673,
+              -6.273298003575601
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -7.364741749173076,
+              -3.281548073825596
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -5.026736732734694,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 4.70278053036819,
+            "min": 4.446946863519128,
+            "max": 4.795982580152908
+          },
+          "candidate": {
+            "n": 6,
+            "median": 4.952055886349483,
+            "min": 4.8404904103508475,
+            "max": 4.992235713689896
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 5.234263400410355,
+            "min": 3.220483130642915,
+            "max": 9.210432122984402,
+            "values": [
+              3.77489919950571,
+              8.849747004179086,
+              3.220483130642915,
+              9.210432122984402,
+              3.5114243329283257,
+              6.693627601315
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              3.3659537317856203,
+              9.030089563581743
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 5.3005951345506785,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                196396
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278648560
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                568
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                28000000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33553959744
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33553959744
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                32
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 70526976.0,
+            "candidate": 70408192.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67868800.0,
+            "candidate": 67868800.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 2105344.0,
+            "candidate": 2105344.0
+          }
+        }
+      },
+      {
+        "name": "up_64_peers_paced",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-up",
+          "iterations": 2,
+          "flows": 64,
+          "peers": 64,
+          "payload_bytes": 2097152,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.5584256164729595,
+            "min": 1.5361103266477585,
+            "max": 1.624583549797535
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.4918974302709103,
+            "min": 1.465857569128275,
+            "max": 1.5412535034120083
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -4.2688717492251005,
+            "min": -9.150479395617628,
+            "max": -0.5458880003669231,
+            "values": [
+              -7.190579943775932,
+              -0.5458880003669231,
+              -4.243154413552396,
+              -4.2945890848978046,
+              -3.5220713272204662,
+              -9.150479395617628
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -8.17052966969678,
+              -2.0339796637936947
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -4.268935616742253,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 5.132219985943187,
+            "min": 4.923404986329566,
+            "max": 5.2070306743675445
+          },
+          "candidate": {
+            "n": 6,
+            "median": 5.3610609268079905,
+            "min": 5.188881052954366,
+            "max": 5.456147900372171
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 4.45898322394439,
+            "min": 0.5338926880969153,
+            "max": 10.072281717652443,
+            "values": [
+              7.738738406548995,
+              0.5338926880969153,
+              4.42890057558305,
+              4.489065872305731,
+              3.608915329619422,
+              10.072281717652443
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              2.0714040088581687,
+              8.905510062100719
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 4.458907480419461,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                201182
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278898968
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1072
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                53400000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33553818368
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33553818368
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                2
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                128
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 137730048.0,
+            "candidate": 137728000.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 135178304.0,
+            "candidate": 135178304.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1098752.0,
+            "candidate": 1098752.0
+          }
+        }
+      },
+      {
+        "name": "up_8_owned_control",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-up",
+          "iterations": 4,
+          "flows": 8,
+          "peers": 8,
+          "payload_bytes": 8388608,
+          "server_ingress": "owned_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.4632740505039692,
+            "min": 1.4499751590192318,
+            "max": 1.4947954267263412
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.4143860638141632,
+            "min": 1.4033455029129982,
+            "max": 1.436277400702238
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -3.640103380491111,
+            "min": -5.139604795285213,
+            "max": -2.070920244656693,
+            "values": [
+              -2.070920244656693,
+              -2.581267972776502,
+              -5.139604795285213,
+              -3.9147849249351663,
+              -3.6906712309116685,
+              -3.5895355300705534
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -4.52719486011019,
+              -2.326094108716598
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -3.3410000452730237,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 5.465980009900818,
+            "min": 5.350859868798309,
+            "max": 5.515852922164065
+          },
+          "candidate": {
+            "n": 6,
+            "median": 5.655284279612431,
+            "min": 5.569427470996911,
+            "max": 5.699684437587325
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 3.785810059925321,
+            "min": 2.1186448135553926,
+            "max": 5.422111943790697,
+            "values": [
+              2.1186448135553926,
+              2.647917527138488,
+              5.422111943790697,
+              4.084719233129319,
+              3.844454585194401,
+              3.7271655346562405
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              2.3832811703469403,
+              4.753415588460008
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 3.4633180027866306,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                200648
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278869664
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1096
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                54400000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                32
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 70094848.0,
+            "candidate": 70178816.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67567424.0,
+            "candidate": 67567424.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1055744.0,
+            "candidate": 1055744.0
+          }
+        }
+      },
+      {
+        "name": "down_8_unpaced",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-down",
+          "iterations": 4,
+          "flows": 8,
+          "peers": 8,
+          "payload_bytes": 8388608,
+          "server_ingress": "borrowed_verify",
+          "pacing": false,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 1.4580824859440327,
+            "min": 1.4268248304724693,
+            "max": 1.6846373528242111
+          },
+          "candidate": {
+            "n": 6,
+            "median": 1.386105466634035,
+            "min": 1.3520832434296608,
+            "max": 1.721016127616167
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -4.93322764719789,
+            "min": -6.750430543672592,
+            "max": 2.1594424895642117,
+            "values": [
+              -4.377814581074501,
+              -6.106834455813869,
+              -4.636037223032707,
+              2.1594424895642117,
+              -6.750430543672592,
+              -5.230418071363074
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -6.42863249974323,
+              -1.1091860457551448
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -4.9364161495565995,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 5.486107884336082,
+            "min": 4.748197694249683,
+            "max": 5.606353444306891
+          },
+          "candidate": {
+            "n": 6,
+            "median": 5.770675944128651,
+            "min": 4.647852805945363,
+            "max": 5.915744344138275
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 5.190552397303138,
+            "min": -2.113325829416135,
+            "max": 7.2395225620068615,
+            "values": [
+              4.569314640804789,
+              6.508055083456288,
+              4.863995256330655,
+              -2.113325829416135,
+              7.2395225620068615,
+              5.517109538275622
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              1.227994405694327,
+              6.873788822731575
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 5.187066419256281,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                200672
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                278870912
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1100
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                54600000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                33554242496
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                268435456
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                32
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 70213632.0,
+            "candidate": 70193152.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67567424.0,
+            "candidate": 67567424.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1055744.0,
+            "candidate": 1055744.0
+          }
+        }
+      },
+      {
+        "name": "short_64x4096",
+        "n_pairs": 6,
+        "workload": {
+          "case": "pump-bidi",
+          "iterations": 50,
+          "flows": 64,
+          "peers": 64,
+          "payload_bytes": 4096,
+          "server_ingress": "borrowed_verify",
+          "pacing": false,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 6,
+            "median": 3.3227082824707033,
+            "min": 3.23958553314209,
+            "max": 3.693816032409668
+          },
+          "candidate": {
+            "n": 6,
+            "median": 3.5399538612365724,
+            "min": 3.1714365768432615,
+            "max": 3.747398490905762
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": 5.544060146965279,
+            "min": -9.159496419179503,
+            "max": 11.441360117324283,
+            "values": [
+              9.642116659629574,
+              -9.159496419179503,
+              -4.490165671961144,
+              11.441360117324283,
+              8.955634376366595,
+              2.1324859175639643
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -6.824831045570323,
+              10.54173838847693
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 6.538208000743584,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 6,
+            "median": 2.4046251325174217,
+            "min": 2.162712844839653,
+            "max": 2.4666227905448697
+          },
+          "candidate": {
+            "n": 6,
+            "median": 2.2570459342845517,
+            "min": 2.131003155607071,
+            "max": 2.51954660626953
+          },
+          "paired_change_pct": {
+            "n": 6,
+            "median": -5.154634717585904,
+            "min": -10.300747193224124,
+            "max": 10.099571584375866,
+            "values": [
+              -8.787424607186868,
+              10.099571584375866,
+              4.69358895655545,
+              -10.300747193224124,
+              -8.22066554433577,
+              -2.0886038908360383
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -9.544085900205495,
+              7.396580270465658
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -6.137305821068595,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                28850
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                27765800
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                400
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                15000000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3233024000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3233024000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                50
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                26214400
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3200
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 11685888.0,
+            "candidate": 11669504.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 8844416.0,
+            "candidate": 8844416.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 2148352.0,
+            "candidate": 2148352.0
+          }
+        }
+      }
+    ]
+  },
+  "focused_v1": {
+    "input_sha256": "e78448188fb2f44992a63ac55b4e43edb78b50c157a2ad0b6ba8f6aa17ea9b31",
+    "binary_sha256": {
+      "baseline": [
+        "75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378"
+      ],
+      "candidate": [
+        "ca10f13f43daaae0cae455e0a8e0254d44a8e39213ef7719f55d56ffe33282f5"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 6,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "short_64x4096_confirm",
+        "n_pairs": 12,
+        "workload": {
+          "case": "pump-bidi",
+          "iterations": 1000,
+          "flows": 64,
+          "peers": 64,
+          "payload_bytes": 4096,
+          "server_ingress": "borrowed_verify",
+          "pacing": false,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 12,
+            "median": 3.614708613395691,
+            "min": 3.3734348907470704,
+            "max": 4.2194051284790035
+          },
+          "candidate": {
+            "n": 12,
+            "median": 3.6152156410217287,
+            "min": 3.260954532623291,
+            "max": 4.126558559417725
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": -3.1109993792412194,
+            "min": -20.19819789207108,
+            "max": 9.378609217621925,
+            "values": [
+              -3.664387229640864,
+              -3.466768863979608,
+              -2.2377708430103227,
+              -8.169846658298185,
+              -20.19819789207108,
+              -3.1955508008770894,
+              8.829705997041138,
+              -2.200465853222011,
+              -2.0892563333457015,
+              -3.0264479576053493,
+              -5.831093296457679,
+              9.378609217621925
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -4.7477402630492715,
+              -2.1448610932838563
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 0.014026791098986635,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 12,
+            "median": 2.2107924863126596,
+            "min": 1.8936919305101914,
+            "max": 2.3689510082178495
+          },
+          "candidate": {
+            "n": 12,
+            "median": 2.2224503556971333,
+            "min": 1.9322783436564532,
+            "max": 2.4504876099957977
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": 3.167802561856725,
+            "min": -8.610930494558943,
+            "max": 25.388829300440598,
+            "values": [
+              3.8065904269000583,
+              3.590408921579402,
+              2.2773233643895274,
+              8.88549710759543,
+              25.388829300440598,
+              3.2882163592920177,
+              -8.13387641263763,
+              2.0376288521156694,
+              1.9695191445633808,
+              3.0473887644214326,
+              6.228345762566989,
+              -8.610930494558943
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              2.003573998339525,
+              5.017468094733523
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 0.5273163110807166,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                577000
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                555316000
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                8000
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                300000000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                64660480000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                64660480000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                524288000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                64000
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 11859968.0,
+            "candidate": 11814912.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 8844416.0,
+            "candidate": 8844416.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 2148352.0,
+            "candidate": 2148352.0
+          }
+        }
+      },
+      {
+        "name": "down_1_paced_confirm",
+        "n_pairs": 12,
+        "workload": {
+          "case": "pump-down",
+          "iterations": 24,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 67108864,
+          "server_ingress": "borrowed_verify",
+          "pacing": true,
+          "timing_scope": "both_shards_packet_materialization_app_scan_byte_verification_and_handshake_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 12,
+            "median": 1.5455376959095397,
+            "min": 1.4855733904987574,
+            "max": 1.8237734778473775
+          },
+          "candidate": {
+            "n": 12,
+            "median": 1.4926883367200694,
+            "min": 1.4699740558862686,
+            "max": 1.7730232458561659
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": -3.449631003044723,
+            "min": -5.152103933418539,
+            "max": 11.0501892977664,
+            "values": [
+              -4.403141949792245,
+              -3.48544214544545,
+              5.636308141072921,
+              -3.2549361273507826,
+              11.0501892977664,
+              -5.152103933418539,
+              -3.9034152106353526,
+              -0.9320352256002473,
+              -4.000703504648251,
+              -3.4138198606439962,
+              -3.636936865200846,
+              -1.0500547944825245
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -3.9520593576418017,
+              -0.9910450100413859
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -3.4194804390305644,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 12,
+            "median": 5.175897048028556,
+            "min": 4.384787094531018,
+            "max": 5.384573138161792
+          },
+          "candidate": {
+            "n": 12,
+            "median": 5.356252994677954,
+            "min": 4.510392648635636,
+            "max": 5.441769041403777
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": 3.5725544492065886,
+            "min": -9.975511255359415,
+            "max": 5.504515974476631,
+            "values": [
+              4.605883740024064,
+              3.6106259070707747,
+              -5.392226517328568,
+              3.250852829192885,
+              -9.975511255359415,
+              5.504515974476631,
+              4.057261169754955,
+              0.9390947703237007,
+              4.166226268076523,
+              3.5344829913424025,
+              3.7755766587323825,
+              1.062217965554657
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              1.000656367939179,
+              4.111743718915739
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 3.4845350472744174,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1184016
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1672181952
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                6960
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                345600000
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                201326586024
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                201326586024
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                24
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1610612736
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                24
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 69992448.0,
+            "candidate": 69988352.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 67369408.0,
+            "candidate": 67369408.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 1050368.0,
+            "candidate": 1050368.0
+          }
+        }
+      },
+      {
+        "name": "rx_65535_p1_confirm",
+        "n_pairs": 12,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 225000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 65535,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 12,
+            "median": 0.23343479101074066,
+            "min": 0.2259748633045955,
+            "max": 0.3548299694650017
+          },
+          "candidate": {
+            "n": 12,
+            "median": 0.24736624745047175,
+            "min": 0.22973388225121436,
+            "max": 0.40005204655697124
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": 0.2248297142736555,
+            "min": -2.123004909913173,
+            "max": 35.01047381581384,
+            "values": [
+              3.4728871038999243,
+              -2.123004909913173,
+              -0.00556947888352699,
+              12.474431989995004,
+              0.16126620756231613,
+              -1.2476678016279386,
+              11.667385622069437,
+              0.28171399857659374,
+              6.804163234876848,
+              35.01047381581384,
+              0.16794542997071726,
+              -0.731026649113653
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -0.36829806399859,
+              9.235774428473142
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 5.968029178259937,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 12,
+            "median": 34.26930651733735,
+            "min": 22.469601545168914,
+            "max": 35.40028901638264
+          },
+          "candidate": {
+            "n": 12,
+            "median": 32.42715810182857,
+            "min": 19.318690474855096,
+            "max": 34.82124638490319
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": -0.22564166081946446,
+            "min": -27.81178282874458,
+            "max": 2.4082428924576904,
+            "values": [
+              -3.355828825534257,
+              2.4082428924576904,
+              -0.010606629515197419,
+              -11.149537153838851,
+              -0.16185565825715953,
+              1.2616249203145635,
+              -10.45769388997777,
+              -0.28155782924005335,
+              -7.162795401818234,
+              -27.81178282874458,
+              -0.16972549239887558,
+              0.7356912310632291
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              -8.810244645898003,
+              0.36254230077401584
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": -5.375505379943457,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1842558975000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1842558975000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                225000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                14745375000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2465792.0,
+            "candidate": 2484224.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 65855.0,
+            "candidate": 65855.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256.0,
+            "candidate": 256.0
+          }
+        }
+      }
+    ]
+  },
+  "heap_changing_v2": {
+    "input_sha256": "48695ce7ec747b296d14794b67d96b843548cac3276d2c3378ed96a31b0ab9bf",
+    "binary_sha256": {
+      "baseline": [
+        "f7950baf2a897e0622c859579551f84fd4cc62ea8dfa5db8a0790362082b5851"
+      ],
+      "candidate": [
+        "394dd8838936a8bad0e0daf819418c6814406c2037e771bc106823ce87578da8"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 2,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "heap_changing_4096",
+        "n_pairs": 12,
+        "workload": {
+          "case": "heap-changing",
+          "iterations": 100000000,
+          "flows": 4096,
+          "peers": 4096,
+          "payload_bytes": 0,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "heap_updates_loop_only_final_order_key_and_uniqueness_validation_outside_work_timing",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 12,
+            "median": 11.568576315000001,
+            "min": 10.04984417,
+            "max": 16.6217114
+          },
+          "candidate": {
+            "n": 12,
+            "median": 13.45056215,
+            "min": 10.38221385,
+            "max": 17.1838064
+          },
+          "paired_change_pct": {
+            "n": 12,
+            "median": 2.5589633131849587,
+            "min": -13.203392340468955,
+            "max": 58.02939390253252,
+            "values": [
+              3.4954730818283153,
+              0.39735011305459533,
+              -13.203392340468955,
+              0.9014651898879178,
+              0.19645154714156288,
+              -4.864776940242976,
+              6.911715858387657,
+              1.9778695802585178,
+              3.1400570461113997,
+              4.139200669657472,
+              3.173047364257675,
+              58.02939390253252
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": [
+              0.2969008300980791,
+              3.817336875742894
+            ],
+            "bootstrap_replicates": 20000
+          },
+          "ratio_of_medians_change_pct": 16.26808505865831,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238460928
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238460928
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                100000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2367488.0,
+            "candidate": 2336768.0
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0.0,
+            "candidate": 0.0
+          }
+        }
+      }
+    ]
+  },
+  "screen-budget": {
+    "input_sha256": "887639f2f8f0d1a2c72f248fd01d4ab60546f403c954ffabfbddacc355e5060e",
+    "binary_sha256": {
+      "baseline": [
+        "75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378"
+      ],
+      "candidate": [
+        "9f61a1f8388279c9f70cae2f12f95feff5f5c057012c70939aef04e96729cc9d"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 4,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "budget_1400_p1",
+        "n_pairs": 3,
+        "workload": {
+          "case": "budget",
+          "iterations": 5000000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 2112,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 3,
+            "median": 170.296492,
+            "min": 168.4995798,
+            "max": 171.0606598
+          },
+          "candidate": {
+            "n": 3,
+            "median": 130.846435,
+            "min": 129.3137408,
+            "max": 132.6256754
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -23.16551359143675,
+            "min": -23.255748795641797,
+            "max": -22.46862864023631,
+            "values": [
+              -23.16551359143675,
+              -23.255748795641797,
+              -22.46862864023631
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -23.16551359143675,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                5000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                10560000000
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1015808,
+            "candidate": 1032192
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 2112,
+            "candidate": 2112
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0,
+            "candidate": 0
+          }
+        }
+      },
+      {
+        "name": "budget_handle_control_p1",
+        "n_pairs": 3,
+        "workload": {
+          "case": "budget-handle",
+          "iterations": 5000000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 2112,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 3,
+            "median": 114.911521,
+            "min": 111.2783966,
+            "max": 117.4249062
+          },
+          "candidate": {
+            "n": 3,
+            "median": 114.7303812,
+            "min": 109.726842,
+            "max": 117.0713126
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -1.3942999246989385,
+            "min": -2.29467928670144,
+            "max": 1.8795257265805443,
+            "values": [
+              -1.3942999246989385,
+              1.8795257265805443,
+              -2.29467928670144
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -0.1576341505391765,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                5000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                10560000000
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1011712,
+            "candidate": 1032192
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 2112,
+            "candidate": 2112
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0,
+            "candidate": 0
+          }
+        }
+      }
+    ]
+  },
+  "screen-rxstage": {
+    "input_sha256": "6cf5b5c7b313e496321ab3b29736d869bfafc0764bfea4993f88d31462af29c4",
+    "binary_sha256": {
+      "baseline": [
+        "75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378"
+      ],
+      "candidate": [
+        "cbff769c66e7ebfa1addaec940379b6333412eab87d673e8a7ab78ae300020bc"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 8,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "rx_64_p1",
+        "n_pairs": 3,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 1500000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 64,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 3,
+            "median": 4.6897715,
+            "min": 4.67808153125,
+            "max": 4.760514239583333
+          },
+          "candidate": {
+            "n": 3,
+            "median": 4.38676903125,
+            "min": 4.3676289270833335,
+            "max": 4.416088770833333
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -6.869046240667942,
+            "min": -7.85094192609842,
+            "max": -5.600431686932595,
+            "values": [
+              -7.85094192609842,
+              -6.869046240667942,
+              -5.600431686932595
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -6.460921790112795,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 3,
+            "median": 1.7057904135031863,
+            "min": 1.6801374898511383,
+            "max": 1.7098755483112245
+          },
+          "candidate": {
+            "n": 3,
+            "median": 1.8236660794461892,
+            "min": 1.8114126582761907,
+            "max": 1.8314302825213478
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": 7.365492737184187,
+            "min": 5.938274868323035,
+            "max": 8.542669303079942,
+            "values": [
+              8.542669303079942,
+              7.365492737184187,
+              5.938274868323035
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": 6.910325266802353,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3024000000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                3024000000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                96000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1015808,
+            "candidate": 1007616
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 384,
+            "candidate": 384
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256,
+            "candidate": 256
+          }
+        }
+      },
+      {
+        "name": "rx_1400_p8",
+        "n_pairs": 3,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 1500000,
+          "flows": 8,
+          "peers": 8,
+          "payload_bytes": 1400,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 3,
+            "median": 0.47100527238095236,
+            "min": 0.46025265285714284,
+            "max": 0.49086369095238097
+          },
+          "candidate": {
+            "n": 3,
+            "median": 0.4353709419047619,
+            "min": 0.4244344776190476,
+            "max": 0.4756919214285714
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -7.5655905710051545,
+            "min": -7.782285450337811,
+            "max": -3.0908314881414545,
+            "values": [
+              -7.5655905710051545,
+              -7.782285450337811,
+              -3.0908314881414545
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -7.5655905710051545,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 3,
+            "median": 16.95942966245637,
+            "min": 16.288376791263943,
+            "max": 17.381152333423373
+          },
+          "candidate": {
+            "n": 3,
+            "median": 18.3691194449991,
+            "min": 16.80912569114685,
+            "max": 18.847405516248102
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": 8.312129656478984,
+            "min": 3.1970582861406083,
+            "max": 8.435880168918231,
+            "values": [
+              8.312129656478984,
+              8.435880168918231,
+              3.1970582861406083
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": 8.312129656478984,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                250972500000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                250972500000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                2100000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1019904,
+            "candidate": 1040384
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 4160,
+            "candidate": 4160
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 2048,
+            "candidate": 2048
+          }
+        }
+      },
+      {
+        "name": "rx_65535_p1",
+        "n_pairs": 3,
+        "workload": {
+          "case": "rx-chunk",
+          "iterations": 75000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 65535,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 3,
+            "median": 0.2788230175224435,
+            "min": 0.26331160062053355,
+            "max": 0.31834860191755043
+          },
+          "candidate": {
+            "n": 3,
+            "median": 0.26392467617812365,
+            "min": 0.26333307372650744,
+            "max": 0.2696349508913812
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -5.555475273733168,
+            "min": -15.301983653374318,
+            "max": 0.2328327184010437,
+            "values": [
+              -15.301983653374318,
+              0.2328327184010437,
+              -5.555475273733168
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -5.343296789735308,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 3,
+            "median": 28.610806326215783,
+            "min": 24.998942817017287,
+            "max": 30.35575136438665
+          },
+          "candidate": {
+            "n": 3,
+            "median": 30.30366786051758,
+            "min": 29.663070563459158,
+            "max": 30.368748409113294
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": 6.144329044256014,
+            "min": -0.17157705386324773,
+            "max": 18.65729995296803,
+            "values": [
+              18.65729995296803,
+              -0.17157705386324773,
+              6.144329044256014
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": 5.91686062601684,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                614186325000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                614186325000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                75000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4915125000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2465792,
+            "candidate": 2494464
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 65855,
+            "candidate": 65855
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256,
+            "candidate": 256
+          }
+        }
+      },
+      {
+        "name": "rx_tail_1400",
+        "n_pairs": 3,
+        "workload": {
+          "case": "rx-tail",
+          "iterations": 500000,
+          "flows": 1,
+          "peers": 1,
+          "payload_bytes": 1400,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU seconds / effective GB",
+          "baseline": {
+            "n": 3,
+            "median": 0.6311389014285714,
+            "min": 0.63008072,
+            "max": 0.6382046792857143
+          },
+          "candidate": {
+            "n": 3,
+            "median": 0.5905448757142857,
+            "min": 0.5570747007142857,
+            "max": 0.6058020435714285
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -6.274726877171277,
+            "min": -12.712219324720442,
+            "max": -4.014466197503175,
+            "values": [
+              -6.274726877171277,
+              -4.014466197503175,
+              -12.712219324720442
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -6.431868741160129,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 3,
+            "median": 12.671031361052645,
+            "min": 12.52979462100392,
+            "max": 12.693287718734588
+          },
+          "candidate": {
+            "n": 3,
+            "median": 13.517388117550114,
+            "min": 13.20321347967368,
+            "max": 14.356399041853928
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": 6.49241092675461,
+            "min": 4.199990541076404,
+            "max": 14.578087479487012,
+            "values": [
+              6.49241092675461,
+              4.199990541076404,
+              14.578087479487012
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": 6.67946225039695,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                172933000000
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                172933000000
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                500000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                1400000000
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 1028096,
+            "candidate": 1028096
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 4032,
+            "candidate": 4032
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 256,
+            "candidate": 256
+          }
+        }
+      }
+    ]
+  },
+  "screen-heap": {
+    "input_sha256": "b11a40763c7f809509e1df24827b462c9aa42f4c92b35d2e54b335b341b0fa52",
+    "binary_sha256": {
+      "baseline": [
+        "75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378"
+      ],
+      "candidate": [
+        "b197f86fc162e33aea01471f6d6c16dc52ef26bedba2337b55c6c1a77e6da940"
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "complete": true,
+      "allow_partial": false,
+      "warmup_records_ignored": 4,
+      "rejected_records": [],
+      "excluded_pairs": [],
+      "missing_cases": [],
+      "missing_or_unexpected_pairs": {}
+    },
+    "cases": [
+      {
+        "name": "heap_equal_4096",
+        "n_pairs": 3,
+        "workload": {
+          "case": "heap-equal",
+          "iterations": 30000000,
+          "flows": 4096,
+          "peers": 4096,
+          "payload_bytes": 0,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 3,
+            "median": 9.950828566666667,
+            "min": 9.941756933333334,
+            "max": 10.356973333333332
+          },
+          "candidate": {
+            "n": 3,
+            "median": 7.992669233333333,
+            "min": 7.873394066666667,
+            "max": 8.3840969
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -19.605062898540393,
+            "min": -20.87700020236506,
+            "max": -19.04877390177053,
+            "values": [
+              -19.04877390177053,
+              -19.605062898540393,
+              -20.87700020236506
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -19.67835462358165,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238458880
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4238458880
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                30000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2371584,
+            "candidate": 2375680
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 0,
+            "candidate": 0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0,
+            "candidate": 0
+          }
+        }
+      },
+      {
+        "name": "heap_mixed_4096",
+        "n_pairs": 3,
+        "workload": {
+          "case": "heap-mixed",
+          "iterations": 30000000,
+          "flows": 4096,
+          "peers": 4096,
+          "payload_bytes": 0,
+          "server_ingress": null,
+          "pacing": null,
+          "timing_scope": "microprobe_work_loop_includes_validation_excludes_setup_and_cleanup",
+          "cpu_clock": "CLOCK_PROCESS_CPUTIME_ID_user_plus_system",
+          "real_network_io": false,
+          "virtual_clock_used_for_rate": false
+        },
+        "cpu": {
+          "unit": "CPU ns / operation",
+          "baseline": {
+            "n": 3,
+            "median": 10.677191033333333,
+            "min": 10.6050637,
+            "max": 10.970011
+          },
+          "candidate": {
+            "n": 3,
+            "median": 9.610573966666667,
+            "min": 9.3891766,
+            "max": 9.655689866666666
+          },
+          "paired_change_pct": {
+            "n": 3,
+            "median": -9.989678589965967,
+            "min": -14.41050879529655,
+            "max": -8.952080441849064,
+            "values": [
+              -14.41050879529655,
+              -8.952080441849064,
+              -9.989678589965967
+            ],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": -9.989678589965967,
+          "improvement_direction": "negative percent change is less CPU per unit of work"
+        },
+        "wall_processing_rate": {
+          "unit": "Gbit/s using actual work wall time",
+          "baseline": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "candidate": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "paired_change_pct": {
+            "n": 0,
+            "median": null,
+            "min": null,
+            "max": null,
+            "values": [],
+            "definition": "100 * (candidate / baseline - 1), paired before aggregation",
+            "bootstrap95_descriptive_ci": null,
+            "bootstrap_note": "Not computed for this metric, fewer than six complete pairs, or a zero/missing baseline."
+          },
+          "ratio_of_medians_change_pct": null,
+          "improvement_direction": "positive percent change is faster processing"
+        },
+        "consistency": {
+          "all_pair_protocol_counters_equal": true,
+          "pair_protocol_mismatches": [],
+          "across_all_runs": {
+            "wire_packets": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "wire_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "driver_rounds_including_cleanup": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "virtual_work_ns": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                null
+              ]
+            },
+            "checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4634673746
+              ]
+            },
+            "expected_checksum_u64": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                4634673746
+              ]
+            },
+            "operations": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                30000000
+              ]
+            },
+            "effective_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "allocation_requested_bytes": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            },
+            "connections_checked": {
+              "constant_across_all_runs": true,
+              "distinct_values": [
+                0
+              ]
+            }
+          },
+          "all_accepted_runs_ok_checksums_match_and_final_reserved_zero": true
+        },
+        "memory_medians": {
+          "process_lifetime_peak_rss_bytes": {
+            "baseline": 2326528,
+            "candidate": 2367488
+          },
+          "sampled_peak_reserved_bytes": {
+            "baseline": 0,
+            "candidate": 0
+          },
+          "retained_reserved_bytes_before_drop": {
+            "baseline": 0,
+            "candidate": 0
+          }
+        }
+      }
+    ]
+  }
+}
