@@ -1,0 +1,205 @@
+[
+  {
+    "name": "budget_1400_p1",
+    "args": [
+      "budget",
+      "--iterations",
+      "5000000",
+      "--flows",
+      "1",
+      "--payload",
+      "2112"
+    ]
+  },
+  {
+    "name": "budget_handle_control_p1",
+    "args": [
+      "budget-handle",
+      "--iterations",
+      "5000000",
+      "--flows",
+      "1",
+      "--payload",
+      "2112"
+    ]
+  },
+  {
+    "name": "rx_64_p1",
+    "args": [
+      "rx-chunk",
+      "--iterations",
+      "1500000",
+      "--flows",
+      "1",
+      "--payload",
+      "64"
+    ]
+  },
+  {
+    "name": "rx_1400_p8",
+    "args": [
+      "rx-chunk",
+      "--iterations",
+      "1500000",
+      "--flows",
+      "8",
+      "--payload",
+      "1400"
+    ]
+  },
+  {
+    "name": "rx_65535_p1",
+    "args": [
+      "rx-chunk",
+      "--iterations",
+      "75000",
+      "--flows",
+      "1",
+      "--payload",
+      "65535"
+    ]
+  },
+  {
+    "name": "rx_tail_1400",
+    "args": [
+      "rx-tail",
+      "--iterations",
+      "500000",
+      "--flows",
+      "1",
+      "--payload",
+      "1400"
+    ]
+  },
+  {
+    "name": "heap_equal_4096",
+    "args": [
+      "heap-equal",
+      "--iterations",
+      "30000000",
+      "--flows",
+      "4096"
+    ]
+  },
+  {
+    "name": "heap_mixed_4096",
+    "args": [
+      "heap-mixed",
+      "--iterations",
+      "30000000",
+      "--flows",
+      "4096"
+    ]
+  },
+  {
+    "name": "down_1_paced",
+    "args": [
+      "pump-down",
+      "--iterations",
+      "4",
+      "--flows",
+      "1",
+      "--payload",
+      "67108864"
+    ]
+  },
+  {
+    "name": "up_1_paced",
+    "args": [
+      "pump-up",
+      "--iterations",
+      "4",
+      "--flows",
+      "1",
+      "--payload",
+      "67108864"
+    ]
+  },
+  {
+    "name": "up_8_peers_paced",
+    "args": [
+      "pump-up",
+      "--iterations",
+      "4",
+      "--flows",
+      "8",
+      "--peers",
+      "8",
+      "--payload",
+      "8388608"
+    ]
+  },
+  {
+    "name": "bidi_8_one_peer",
+    "args": [
+      "pump-bidi",
+      "--iterations",
+      "4",
+      "--flows",
+      "8",
+      "--peers",
+      "1",
+      "--payload",
+      "4194304"
+    ]
+  },
+  {
+    "name": "up_64_peers_paced",
+    "args": [
+      "pump-up",
+      "--iterations",
+      "2",
+      "--flows",
+      "64",
+      "--peers",
+      "64",
+      "--payload",
+      "2097152"
+    ]
+  },
+  {
+    "name": "up_8_owned_control",
+    "args": [
+      "pump-up",
+      "--iterations",
+      "4",
+      "--flows",
+      "8",
+      "--peers",
+      "8",
+      "--payload",
+      "8388608",
+      "--owned-server"
+    ]
+  },
+  {
+    "name": "down_8_unpaced",
+    "args": [
+      "pump-down",
+      "--iterations",
+      "4",
+      "--flows",
+      "8",
+      "--peers",
+      "8",
+      "--payload",
+      "8388608",
+      "--no-pacing"
+    ]
+  },
+  {
+    "name": "short_64x4096",
+    "args": [
+      "pump-bidi",
+      "--iterations",
+      "50",
+      "--flows",
+      "64",
+      "--peers",
+      "64",
+      "--payload",
+      "4096",
+      "--no-pacing"
+    ]
+  }
+]

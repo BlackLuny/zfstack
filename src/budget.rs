@@ -1275,15 +1275,7 @@ impl MemoryHandle {
     /// into the lease instead of cloning and immediately dropping them.
     fn into_allocation(self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
         self.check_allocation(bytes, kind)?;
-        Ok(MemoryLease {
-            global: self.global,
-            port: self.port,
-            peer: Some(self.peer),
-            bytes,
-            peer_limit: self.peer_limit,
-            cached: false,
-            drain: kind.drains(),
-        })
+        Ok(MemoryLease { global: self.global, port: self.port, peer: Some(self.peer), bytes, peer_limit: self.peer_limit, cached: false, drain: kind.drains() })
     }
 
     fn check_allocation(&self, bytes: u64, kind: AllocationKind) -> Result<(), Level> {

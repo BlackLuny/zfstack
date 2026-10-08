@@ -1342,7 +1342,9 @@ mod rx_descriptor_tests {
     #[test]
     fn rx_second_staged_chunk_quota_failure_rolls_back_at_every_level() {
         const LIMIT: u64 = 1 << 20;
-        for (level, (high, port, peer)) in [(Level::Global, (LIMIT, LIMIT, LIMIT)), (Level::Port, (2 * LIMIT, LIMIT, LIMIT)), (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT))] {
+        for (level, (high, port, peer)) in
+            [(Level::Global, (LIMIT, LIMIT, LIMIT)), (Level::Port, (2 * LIMIT, LIMIT, LIMIT)), (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT))]
+        {
             let global = GlobalBudget::new(high);
             let mut budget = Budget::new(global.clone());
             budget.set_limits(port, peer, 8);

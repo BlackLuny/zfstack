@@ -61,7 +61,13 @@ impl Args {
             iterations: if is_pump { 1 } else { 1_000_000 },
             flows: if is_heap { 64 } else { 1 },
             peers: 0,
-            payload: if is_pump { 16 << 20 } else if is_heap { 0 } else { 1400 },
+            payload: if is_pump {
+                16 << 20
+            } else if is_heap {
+                0
+            } else {
+                1400
+            },
             borrowed_server: true,
             pacing: true,
         };
@@ -378,7 +384,13 @@ fn heap_probe(a: &Args) -> ProbeResult<ResultRow> {
             // 60% equal, 20% decrease, 20% increase. Every index changes operation
             // class between passes, even when flows is a multiple of ten.
             let class = ((i / a.flows as u64) + idx as u64) % 10;
-            let key = if mixed && class >= 8 { old.saturating_add(193) } else if mixed && class >= 6 { old.saturating_sub(127) } else { old };
+            let key = if mixed && class >= 8 {
+                old.saturating_add(193)
+            } else if mixed && class >= 6 {
+                old.saturating_sub(127)
+            } else {
+                old
+            };
             keys[idx] = key;
             black_box(&mut h).set(black_box(idx as u32), black_box(time::Instant::from_nanos(key)));
         }
