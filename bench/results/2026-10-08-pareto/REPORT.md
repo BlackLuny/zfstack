@@ -164,3 +164,5 @@ python3 bench/pareto/analyze.py "$PARETO_REVIEW_DIR/evidence/heap-changing-v2"
 精确 v1 原库二进制 SHA256：`75800bdb65fba8cbcc6dd7330ed77cf94034716bac93e83dd8479ea9d6a08378`。
 组合候选二进制 SHA256：`ca10f13f43daaae0cae455e0a8e0254d44a8e39213ef7719f55d56ffe33282f5`。
 这两个二进制在初轮和针对性确认间没有重编译。完整构建输入在 `build-manifest-v1.json`；v2 单独见 `build-manifest-v2.json`。最终源码中仅有已说明的 formatter 排版变化和 harness 新 case / 元数据修正，不能把新 harness 的 hash 当成 v1 实测 hash。
+
+精确性能锁文件为包内 `evidence/probe/Cargo.lock`，SHA256：`a6a32b2ec5e297ff608cf4487f83f4e00781836f6e5d630338a8fe41bd44b02b`。`evidence/base/Cargo.lock` 属于首次功能回归副本，仅多一个末尾空行，依赖条目和版本相同；两份原文分别保留。
