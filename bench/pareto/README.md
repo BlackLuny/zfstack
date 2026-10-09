@@ -15,7 +15,7 @@
 
 ## 测量范围
 
-需要 Linux、Python 3 标准库、`taskset` 和同一套固定版本的 Rust/Cargo。probe 不需要 root 或 TUN 权限。
+需要 Linux、Python 3 标准库、`taskset` 和同一套固定版本的 Rust/Cargo。probe 不需要 root 或 TUN 权限。probe 本身也可在 macOS 上运行（进程 CPU 时钟用 `CLOCK_PROCESS_CPUTIME_ID`），但 `run_ab.py` 依赖 `taskset` 与 `/proc`，只适用于 Linux；macOS 无法绑核。
 
 `pump-*` 在一台真实机器上运行两份 `Shard`，生成并解析原始 IP/TCP 包，逐字节比较应用接收数据，并检查正常关闭和资源释放。合成时钟只驱动 TCP 的协议时间、pacing 与定时器；速率分母使用机器实际 wall time 或 `CLOCK_PROCESS_CPUTIME_ID`。整个 probe 包含两个端点、包 materialization、应用遍历、握手和数据校验的 CPU 成本。
 
@@ -63,6 +63,10 @@ probe 内部通过相对路径包含各 worktree 自己的 `src/heap.rs`，因�
 ```bash
 export CARGO_BUILD_JOBS=4
 export CARGO_INCREMENTAL=0
+# 与生产（zfc release profile）一致，并消除 codegen-unit 划分带来的构建间差异，见下文。
+export CARGO_PROFILE_RELEASE_LTO=fat
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+export CARGO_PROFILE_RELEASE_PANIC=abort
 rustc -Vv > "$PARETO_RUNROOT/manifest/rustc.txt"
 cargo -V > "$PARETO_RUNROOT/manifest/cargo.txt"
 uname -a > "$PARETO_RUNROOT/manifest/uname.txt"
@@ -94,7 +98,14 @@ sha256sum "$PARETO_RUNROOT/manifest/candidate.patch" \
   "$PARETO_RUNROOT/manifest/analyze.py" > "$PARETO_RUNROOT/manifest/input-sha256.txt"
 ```
 
-两份 release 二进制使用同一 Rust 版本、target、feature、profile 和编译环境；构建期间不要切换 toolchain 或 flags。不要为其中一边单独使用 `target-cpu=native`、LTO 或不同 allocator。`bin/` 中的副本固定后，测量期间不再覆盖它们。runner 也会在 `metadata.json` 和逐次记录中保存二进制 SHA256。
+两份 release 二进制使用同一 Rust 版本、target、feature、profile 和编译环境；构建期间不要切换 toolchain 或 flags。不要为其中一边单独使用 `target-cpu=native`、不同 LTO 设置或不同 allocator。
+
+**必须用 fat LTO + `codegen-units=1` 构建两边。** 仓库默认 release profile（16 个 codegen unit、无 LTO）下，函数如何划分到各 unit 取决于 crate 元数据哈希，而该哈希包含源码路径。2026-10-09 在 Apple M1 Max 上的 A/A 实验：同一份基线源码只换一个 worktree 路径重新构建，pump 场景 CPU 在 12/12 对中一致偏差 +5%～+7%，退休指令数偏差最多 +52%（`rx_65535_p1`）、−16%（`heap_equal_4096`）。这与待测改动的量级相同，默认 profile 下的 pump 差异无法归因到代码。改用 `CARGO_PROFILE_RELEASE_LTO=fat`、`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1` 后，同一 A/A 的退休指令数差异降到 ±0.5% 左右（`down_1_paced` 为 ±0.75%）。
+
+建议每轮额外做两项检查：
+
+- **A/A 对照**：把基线源码放在另一个路径重新构建一份，与基线做同样的 AB/BA，作为本轮"构建噪声"的下界。
+- **退休指令数**：用 `perf stat -e instructions`（Linux）或 `/usr/bin/time -l` 的 `instructions retired`（macOS）对两边各跑几次。指令数基本不受负载和频率影响；它与 CPU 时间方向一致时结论更可靠。即使在 LTO 下，CPU 时间仍可能有约 1% 的纯布局差异（同一函数体代码完全相同，CPU 仍差约 1%），小于这个量级的单项结论应结合指令数判断。`bin/` 中的副本固定后，测量期间不再覆盖它们。runner 也会在 `metadata.json` 和逐次记录中保存二进制 SHA256。
 
 ### 离线实验环境的特殊处理
 

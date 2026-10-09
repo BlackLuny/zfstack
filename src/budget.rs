@@ -1259,7 +1259,14 @@ impl MemoryHandle {
 
     /// Like [`Self::try_allocate_kind`], but reports the level that refused.
     pub fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
-        self.check_allocation(bytes, kind)?;
+        // Keep this body separate from `into_allocation`: sharing the refusal
+        // path as a call added ~1% instructions to retained-handle allocation.
+        if let Some(level) = self.reserve(bytes, kind) {
+            self.stats.note(kind, Some(level));
+            // Idle cached blocks may hold the share this allocation needs.
+            self.global.request_cache_reclaim();
+            return Err(level);
+        }
         Ok(MemoryLease {
             global: Arc::clone(&self.global),
             port: Arc::clone(&self.port),
