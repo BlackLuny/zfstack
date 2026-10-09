@@ -113,7 +113,7 @@ fn parse_number(value: Option<String>, flag: &str) -> ProbeResult<u64> {
     value.ok_or_else(|| format!("missing value for {flag}"))?.parse().map_err(|_| format!("invalid positive integer for {flag}"))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod cpu_clock {
     use std::os::raw::{c_int, c_long};
 
@@ -126,7 +126,10 @@ mod cpu_clock {
         fn clock_gettime(clock_id: c_int, result: *mut Timespec) -> c_int;
         fn clock_getres(clock_id: c_int, result: *mut Timespec) -> c_int;
     }
+    #[cfg(target_os = "linux")]
     const CLOCK_PROCESS_CPUTIME_ID: c_int = 2;
+    #[cfg(target_os = "macos")]
+    const CLOCK_PROCESS_CPUTIME_ID: c_int = 12;
 
     pub fn now_ns() -> u64 {
         let mut t = Timespec { tv_sec: 0, tv_nsec: 0 };
@@ -142,7 +145,7 @@ mod cpu_clock {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 mod cpu_clock {
     pub fn now_ns() -> u64 {
         panic!("pareto_probe CPU clock currently requires Linux")
