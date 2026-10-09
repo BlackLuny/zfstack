@@ -205,6 +205,8 @@ pub struct ConnStats {
     pub dropped_no_mem: u64,
     pub paws_drops: u64,
     pub challenge_acks: u64,
+    /// ACKs not sent in reply to dropped pure ACKs / probes ([`OOW_ACK_INTERVAL`]).
+    pub oow_acks_limited: u64,
     pub zero_window_probes: u64,
     /// New-data segments shorter than the MSS.
     pub small_segs: u64,
@@ -332,6 +334,8 @@ pub struct Conn {
     life_at: Option<Instant>,
     challenge_ack_ts: Instant,
     challenge_acks_this_sec: u32,
+    /// Last ACK sent under [`OOW_ACK_INTERVAL`].
+    oow_ack_ts: Option<Instant>,
 
     // ---- application interface ----
     pub accepted: bool,
@@ -428,6 +432,11 @@ const DEFAULT_MSS_V6: u32 = 1220;
 const TS_VALID_FOR: Duration = Duration::from_secs(24 * 24 * 3600);
 /// Desync detection: evidence in this many consecutive stall epochs resets the connection.
 const DESYNC_EPOCHS: u32 = 3;
+/// Replies to segments without data that fall outside our window or that probe
+/// us (keepalive / zero-window) go out at most this often per connection (Linux
+/// `tcp_invalid_ratelimit`): two ends that disagree on the sequence space would
+/// otherwise ACK each other's ACKs in a loop. Data segments are always answered.
+const OOW_ACK_INTERVAL: Duration = Duration::from_millis(500);
 const LIM_NONE: u8 = 0;
 const LIM_RWND: u8 = 1;
 const LIM_CWND: u8 = 2;
@@ -571,6 +580,7 @@ impl Conn {
             life_at: None,
             challenge_ack_ts: now,
             challenge_acks_this_sec: 0,
+            oow_ack_ts: None,
             accepted: false,
             app_closed: false,
             want_read: true,
@@ -1316,6 +1326,16 @@ impl Conn {
         }
     }
 
+    /// ACK a dropped or probing segment without data, rate-limited ([`OOW_ACK_INTERVAL`]).
+    fn oow_ack(&mut self, now: Instant) {
+        if self.oow_ack_ts.is_some_and(|t| now.saturating_since(t) < OOW_ACK_INTERVAL) {
+            self.stats.oow_acks_limited += 1;
+            return;
+        }
+        self.oow_ack_ts = Some(now);
+        self.ack_need = AckNeed::Now;
+    }
+
     fn input_sync(&mut self, now: Instant, h: &TcpHeader, mut payload: IngressPayload<'_>, ctx: &mut Ctx, syn_rcvd: bool) {
         let seg_off = self.rx_sp.off(h.seq, self.rcv_nxt);
         let mut seg_len = payload.len() as i64 + h.has(SYN) as i64 + h.has(FIN) as i64;
@@ -1357,7 +1377,9 @@ impl Conn {
             // Zero window: still process the ACK of an in-sequence segment.
             if seg_off == rcv_nxt {
                 // The data is dropped, so a FIN riding on it must be ignored too.
+                // A data zero-window probe still gets our ACK and window.
                 payload = IngressPayload::Borrowed(&[]);
+                self.ack_need = AckNeed::Now;
                 seg_len = 0;
                 fin_dropped = true;
                 true
@@ -1374,7 +1396,11 @@ impl Conn {
                     // Entirely old duplicate: report with D-SACK (RFC 2883).
                     self.dsack = Some((seg_off.max(0) as u64, (seg_off + seg_len) as u64));
                 }
-                self.ack_need = AckNeed::Now;
+                if seg_len == 0 {
+                    self.oow_ack(now);
+                } else {
+                    self.ack_need = AckNeed::Now;
+                }
             }
             return;
         }
@@ -1398,6 +1424,13 @@ impl Conn {
         if !h.has(ACK) {
             return;
         }
+        // A zero-window or keepalive probe (seq = RCV.NXT - 1, no data) is only
+        // accepted above so its ACK field is still processed; it must be answered
+        // with our current ACK/window like any unacceptable segment would be
+        // (RFC 9293 §3.8.6.1), or a lost window update / idle keepalive never recovers.
+        if seg_len == 0 && seg_off == rcv_nxt - 1 {
+            self.oow_ack(now);
+        }
 
         self.last_recv = now;
         self.keepalive_sent = 0;
@@ -1411,7 +1444,9 @@ impl Conn {
         if !syn_rcvd {
             // Both are impossible from a synchronized peer's fresh segment.
             if ack_off > self.snd_max as i64 {
-                self.ack_need = AckNeed::Now;
+                // RFC 5961 §5.2: rate-limited, or two ends that disagree on what
+                // was sent ACK each other in a loop.
+                self.challenge_ack(now);
                 self.note_desync(h, fresh, ctx);
                 return;
             }

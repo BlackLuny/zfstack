@@ -526,10 +526,53 @@ fn execution_gap_pacing_keeps_rate() {
 fn deterministic_replay() {
     let run = || {
         let mut s = sim(123, LinkParams { loss: 0.02, reorder: 0.02, ..Default::default() }, LinkParams::default());
+        s.enable_trace();
         let (_, c) = download(&mut s, 2 << 20, secs(60));
-        (c.received, s.steps, s.ab.stats.random_drops, s.now)
+        (c.received, s.steps, s.ab.stats.random_drops, s.now, s.trace_digest())
     };
     assert_eq!(run(), run());
+}
+
+#[test]
+fn same_seed_replays_identical_packets() {
+    // zfstack#13: ISN, timestamp offsets and app/waiter ordering are all seeded,
+    // so every packet (contents and send time) replays, across many connections
+    // with loss, reordering and duplication on both directions.
+    let run = |seed: u64| {
+        let p = LinkParams { rate_bps: 50_000_000, loss: 0.01, reorder: 0.02, duplicate: 0.01, ..Default::default() };
+        let mut s = sim(seed, p.clone(), p);
+        s.enable_trace();
+        s.a.accept_template = AppConn { to_send: 256 << 10, fin_after_send: true, ..Default::default() };
+        for i in 0..8 {
+            s.connect_as(PeerId(1 + i % 2), 46000 + i as u16, AppConn { to_send: 64 << 10, fin_after_send: true, ..Default::default() });
+        }
+        s.run_until(s.now + secs(10));
+        assert!(s.b.conns.values().all(|c| c.eof && c.received == 256 << 10 && !c.corrupt));
+        (s.trace_digest().unwrap(), s.steps, s.now)
+    };
+    assert_eq!(run(7), run(7));
+    assert_ne!(run(7).0, run(8).0, "the seed must reach the packets");
+}
+
+#[test]
+fn desynced_ends_do_not_ack_storm() {
+    // Forged segments can leave the ends disagreeing on the sequence space (a
+    // forged FIN / data / TSval / ACK). Replies to what we drop must then be
+    // rate-limited, or the ends ACK each other at link rate until the user
+    // timeout. 5023: probe-shaped ACKs vs. an out-of-window reply; 5109: ACK
+    // beyond SND.MAX; 5110: PAWS vs. ACK beyond SND.MAX; the rest stormed before
+    // either limit.
+    for seed in [5005, 5023, 5028, 5044, 5109, 5110, 5122, 5145] {
+        let (_, _, steps) = fuzz_run(seed, seed + 900, false);
+        // A storm runs millions of steps (tens of thousands per virtual second).
+        assert!(steps < 50_000, "seed {seed}: {steps} sim steps, ACK storm");
+    }
+}
+
+#[test]
+fn fuzz_replays_identically() {
+    // Mutated and garbage ingress replays too (zfstack#13).
+    assert_eq!(fuzz_run(5100, 6000, false), fuzz_run(5100, 6000, false));
 }
 
 #[test]
@@ -638,11 +681,12 @@ fn fuzz_without_rst() {
     }
 }
 
-fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) {
+fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) -> (u64, u64, u64) {
     // Capture real segments of a transfer, then replay mutated copies and random
     // garbage into a live server while the transfer continues. No panics, invariants
     // hold, and the transfer still completes.
     let mut s = sim(sim_seed, LinkParams::default(), LinkParams::default());
+    s.enable_trace();
     s.a.accept_template = AppConn { to_send: 4 << 20, fin_after_send: true, ..Default::default() };
     let id = s.connect(45000, AppConn::default());
     let mut rng = Rng::new(fuzz_seed);
@@ -718,7 +762,8 @@ fn fuzz_run(sim_seed: u64, fuzz_seed: u64, allow_rst: bool) {
         assert_eq!(s.a.shard.conn_count(), 0, "server connection not released");
         assert_eq!(s.a.shard.budget().used, 0, "budget not released");
     }
-    let _ = allow_rst;
+    let (ab, ba) = s.trace_digest().unwrap();
+    (ab, ba, s.steps)
 }
 
 /// Recompute IPv4 header and TCP checksums so mutated packets reach the state machine.
@@ -1014,4 +1059,177 @@ fn assert_share_growth_writable(read_before_run: bool) {
     assert!(s.a.shard.budget_wait_epoch().is_some());
     s.a.shard.abort(x);
     assert!(s.a.shard.budget_wait_epoch().is_none());
+}
+
+#[test]
+fn lost_window_update_is_recovered_by_persist() {
+    // zfstack#15: the receiver reopens its window with one pure ACK; when that
+    // ACK is lost, the sender's persist probe must fetch the window again.
+    for cc in [CcAlgo::Cubic, CcAlgo::Bbr] {
+        let p = LinkParams { rate_bps: 50_000_000, delay: Duration::from_millis(40), queue_bytes: 128 << 10, ..Default::default() };
+        let mut cfg = StackConfig::default();
+        cfg.cc = cc;
+        let mut s = Sim::new(10021, cfg, StackConfig::default(), p.clone(), p);
+        let start = s.now;
+        s.a.accept_template = AppConn { to_send: 512 << 10, fin_after_send: true, ..Default::default() };
+        let id = s.connect(40000, AppConn { to_send: 512 << 10, fin_after_send: true, read_paused_until: start + secs(2), ..Default::default() });
+        s.run_until(start + Duration::from_millis(1900));
+        let server = s.a.accepted[0];
+        assert_eq!(s.a.shard.info(server).unwrap().snd_wnd, 0);
+        s.run_until(start + secs(2));
+        // Drop only the pure ACK which announces the reopened receive window.
+        let before = s.ba.inflight.len();
+        s.ba.inflight.retain(|_, (_, packet)| {
+            let ip = crate::wire::parse_ip(packet).unwrap();
+            let tcp = crate::wire::parse_tcp(packet, &ip).unwrap();
+            !(tcp.window > 0 && tcp.flags == crate::wire::ACK && ip.l4_len == tcp.data_off)
+        });
+        assert_eq!(before - s.ba.inflight.len(), 1, "{cc:?}");
+        s.run_until(start + secs(15));
+        assert_download_ok(&s.b.conns[&id], 512 << 10);
+        assert_download_ok(&s.a.conns[&server], 512 << 10);
+    }
+}
+
+#[test]
+fn keepalive_probe_is_answered_with_open_window() {
+    // A keepalive probe (seq = SND.UNA - 1, no data) must be ACKed while the
+    // receive window is open, or a peer that probes (e.g. a kernel client with
+    // SO_KEEPALIVE) resets an idle but healthy connection.
+    let mut quiet = StackConfig::default();
+    quiet.keepalive_idle = Duration::from_secs(3600);
+    let mut prober = StackConfig::default();
+    prober.keepalive_idle = Duration::from_secs(5);
+    prober.keepalive_interval = Duration::from_secs(5);
+    prober.keepalive_probes = 2;
+    let mut s = Sim::new(42, quiet, prober, LinkParams::default(), LinkParams::default());
+    let id = s.connect(40001, AppConn::default());
+    s.run_until(s.now + secs(60));
+    let client = &s.b.conns[&id];
+    assert_eq!(client.closed, None, "idle connection was reset by unanswered keepalives");
+    let server = s.a.accepted[0];
+    assert_eq!(s.a.conns[&server].closed, None);
+    assert!(s.b.shard.info(id).is_some());
+}
+
+#[test]
+fn unseeded_shards_keep_random_isn() {
+    // Seeding is simulator-only: production shards still draw secret keys.
+    let first_syn = || {
+        let mut sh = Shard::with_budget(StackConfig::default(), crate::budget::GlobalBudget::new(1 << 30));
+        let iface = sh.add_iface(Default::default());
+        let now = Instant::from_millis(1000);
+        sh.connect(now, iface, PeerId(1), addr("10.0.0.2:40000"), addr("10.0.0.1:80"));
+        let mut syn = Vec::new();
+        sh.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            syn.push(pkt.to_vec());
+            SendResult::Accepted
+        });
+        syn.remove(0)
+    };
+    let syns: Vec<Vec<u8>> = (0..4).map(|_| first_syn()).collect();
+    assert!(syns.iter().any(|p| p != &syns[0]), "unseeded shards produced identical SYNs");
+}
+
+/// Soak shape of zfstack#15: lossy, reordering long-RTT link, a server that only
+/// runs every 5 ms, several bidirectional flows and one reader that pauses 2 s.
+/// `ZFSTACK_SOAK_SEEDS=a..b` widens the seed range (default: the reported seeds).
+#[test]
+#[ignore]
+fn soak_paused_reader_lossy_multiflow() {
+    let seeds: Vec<u64> = match std::env::var("ZFSTACK_SOAK_SEEDS") {
+        Ok(r) => {
+            let (a, b) = r.split_once("..").expect("a..b");
+            (a.parse().unwrap()..b.parse().unwrap()).collect()
+        }
+        Err(_) => vec![10021, 10033, 10047],
+    };
+    let mut failed = Vec::new();
+    for &seed in &seeds {
+        for cc in [CcAlgo::Cubic, CcAlgo::Bbr] {
+            let t = std::time::Instant::now();
+            let p = LinkParams {
+                rate_bps: 50_000_000,
+                delay: Duration::from_millis(40),
+                queue_bytes: 256 << 10,
+                loss: 0.01,
+                reorder: 0.01,
+                duplicate: 0.01,
+                ..Default::default()
+            };
+            let mut cfg = StackConfig::default();
+            cfg.cc = cc;
+            let mut s = Sim::new(seed, cfg, StackConfig::default(), p.clone(), p);
+            s.gap_a = Duration::from_millis(5);
+            s.check_invariants = false;
+            let start = s.now;
+            let n = 4u64;
+            s.a.accept_template = AppConn { to_send: 512 << 10, fin_after_send: true, ..Default::default() };
+            let ids: Vec<ConnId> = (0..n)
+                .map(|i| {
+                    let paused = if i == seed % n { start + secs(2) } else { start };
+                    s.connect(47000 + i as u16, AppConn { to_send: 512 << 10, fin_after_send: true, read_paused_until: paused, ..Default::default() })
+                })
+                .collect();
+            s.run_until(start + secs(60));
+            let ok = ids.iter().all(|id| {
+                let c = &s.b.conns[id];
+                !c.corrupt && c.eof && c.received == 512 << 10 && c.closed != Some(CloseReason::Reset)
+            }) && s.a.conns.values().all(|c| !c.corrupt && c.eof && c.received == 512 << 10);
+            eprintln!("soak seed={seed} cc={cc:?} ok={ok} wall={:?}", t.elapsed());
+            if !ok {
+                failed.push((seed, cc));
+            }
+        }
+    }
+    assert!(failed.is_empty(), "failed: {failed:?}");
+}
+
+#[test]
+fn zero_window_data_probe_is_answered() {
+    // Some stacks probe a zero window with one byte of new data at RCV.NXT. The
+    // byte is dropped, but the probe must still be ACKed (with the current
+    // window), or a lost window update is never repaired for those peers.
+    let mut cfg_b = StackConfig::default();
+    cfg_b.max_rcv_buf = 64 * 1024;
+    cfg_b.init_rcv_wnd = 32 * 1024;
+    let mut s = Sim::new(43, StackConfig::default(), cfg_b, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 1 << 20, ..Default::default() };
+    let id = s.connect(40004, AppConn::default());
+    s.b.conns.get_mut(&id).unwrap().read_paused_until = s.now + secs(60);
+    s.run_until(s.now + secs(2));
+    let srv = s.a.accepted[0];
+    assert_eq!(s.a.shard.info(srv).unwrap().snd_wnd, 0, "window should be closed");
+    // The server's own persist probe is a pure ACK at SND.UNA - 1; turn it into
+    // a one-byte data probe at SND.UNA.
+    let probe = loop {
+        let found = s.ab.inflight.values().map(|(_, p)| p).find(|p| {
+            let ip = crate::wire::parse_ip(p).unwrap();
+            ip.l4_len == crate::wire::parse_tcp(p, &ip).unwrap().data_off
+        });
+        if let Some(p) = found {
+            break p.to_vec();
+        }
+        s.run_until(s.now + Duration::from_millis(10));
+    };
+    let t = tcp_off(&probe);
+    let mut pkt = probe.clone();
+    let seq = u32::from_be_bytes(pkt[t + 4..t + 8].try_into().unwrap()).wrapping_add(1);
+    pkt[t + 4..t + 8].copy_from_slice(&seq.to_be_bytes());
+    pkt.push(0);
+    let total = pkt.len() as u16;
+    pkt[2..4].copy_from_slice(&total.to_be_bytes());
+    fix_checksums(&mut pkt);
+    s.ab.inflight.clear();
+    let now = s.now;
+    s.b.shard.ingress(now, s.b.iface, PeerId(1), Bytes::from(pkt));
+    let mut acks = Vec::new();
+    s.b.shard.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| {
+        let p = p.to_vec();
+        let ip = crate::wire::parse_ip(&p).unwrap();
+        let tcp = crate::wire::parse_tcp(&p, &ip).unwrap();
+        acks.push((tcp.ack.0, tcp.window));
+        SendResult::Accepted
+    });
+    assert_eq!(acks, vec![(seq, 0)], "data probe into a zero window was not ACKed");
 }

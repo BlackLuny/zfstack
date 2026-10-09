@@ -18,9 +18,33 @@ use bytes::Bytes;
 use core::time::Duration;
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+/// Keys for the shard's keyed hashes: ISN / timestamp secret, SYN cookie keys
+/// and the waiter sets whose iteration order drives scheduling. Random per
+/// instance in production; derived from the simulator seed under test so a run
+/// replays exactly (zfstack#13) without weakening production secrets.
+#[derive(Clone)]
+enum Keys {
+    Random(RandomState),
+    Seeded(u64),
+}
+
+impl BuildHasher for Keys {
+    type Hasher = DefaultHasher;
+    fn build_hasher(&self) -> DefaultHasher {
+        match self {
+            Keys::Random(s) => s.build_hasher(),
+            Keys::Seeded(k) => {
+                let mut h = DefaultHasher::new();
+                h.write_u64(*k);
+                h
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct IfaceConfig {
@@ -312,11 +336,11 @@ pub struct Shard {
     budget: Budget,
     /// Connections waiting for a send-record backing allocation. A release
     /// epoch change retries each once; ingress ACKs can also reschedule them.
-    budget_blocked: HashSet<(u32, u32)>,
+    budget_blocked: HashSet<(u32, u32), Keys>,
     budget_wait_epoch: Option<u64>,
     /// Share-bound application writers, keyed by slot generation to prevent
     /// a released slot from waking a replacement connection.
-    share_blocked: HashSet<(u32, u32)>,
+    share_blocked: HashSet<(u32, u32), Keys>,
     share_wait_epoch: Option<u64>,
     /// Last cache reclaim request this shard has served.
     cache_reclaim_seen: u64,
@@ -326,8 +350,10 @@ pub struct Shard {
     pending_admissions: VecDeque<PendingAdmission>,
     admission: Box<dyn AdmissionPolicy>,
     stateless: VecDeque<Stateless>,
-    hasher: RandomState,
-    cookie_key: [RandomState; 2],
+    hasher: Keys,
+    cookie_key: [Keys; 2],
+    /// Key stream of a seeded (simulator) shard; `None` draws random keys.
+    key_seed: Option<u64>,
     cookie_gen: u64,
     half_open: usize,
     time_wait_n: usize,
@@ -369,17 +395,18 @@ impl Shard {
             // so adding WG ports does not strand 16 MiB per idle port.
             pool: BlockPool::new(16),
             budget: Budget::new(global),
-            budget_blocked: HashSet::new(),
+            budget_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
             budget_wait_epoch: None,
-            share_blocked: HashSet::new(),
+            share_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
             share_wait_epoch: None,
             cache_reclaim_seen,
             stream_state_bytes: 0,
             pending_admissions: VecDeque::new(),
             admission: Box::new(AcceptAll),
             stateless: VecDeque::new(),
-            hasher: RandomState::new(),
-            cookie_key: [RandomState::new(), RandomState::new()],
+            hasher: Keys::Random(RandomState::new()),
+            cookie_key: [Keys::Random(RandomState::new()), Keys::Random(RandomState::new())],
+            key_seed: None,
             cookie_gen: 0,
             half_open: 0,
             time_wait_n: 0,
@@ -388,6 +415,33 @@ impl Shard {
             hdr: [0; MAX_HEADER],
             stats: ShardStats::default(),
             retained_metadata,
+        }
+    }
+
+    /// A shard whose keyed hashes (ISN, timestamp offsets, SYN cookies, waiter
+    /// order) all derive from `seed`: identical inputs replay identically.
+    #[cfg(any(test, feature = "test-peer"))]
+    pub fn with_budget_seeded(cfg: StackConfig, global: Arc<GlobalBudget>, seed: u64) -> Self {
+        let mut s = Self::with_budget(cfg, global);
+        s.key_seed = Some(seed);
+        s.hasher = s.next_keys();
+        s.cookie_key = [s.next_keys(), s.next_keys()];
+        s.budget_blocked = HashSet::with_hasher(s.next_keys());
+        s.share_blocked = HashSet::with_hasher(s.next_keys());
+        s
+    }
+
+    fn next_keys(&mut self) -> Keys {
+        match self.key_seed.as_mut() {
+            None => Keys::Random(RandomState::new()),
+            Some(state) => {
+                // splitmix64
+                *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                let mut z = *state;
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                Keys::Seeded(z ^ (z >> 31))
+            }
         }
     }
 
@@ -452,7 +506,9 @@ impl Shard {
     pub fn remove_iface(&mut self, id: IfaceId) {
         self.stateless.retain(|reply| reply.iface != id);
         self.shrink_stateless_queue();
-        let idxs: Vec<u32> = self.table.iter().filter(|(k, _)| k.0 == id).map(|(_, &v)| v).collect();
+        let mut idxs: Vec<u32> = self.table.iter().filter(|(k, _)| k.0 == id).map(|(_, &v)| v).collect();
+        // Close events in slot order, not hash order (replayable).
+        idxs.sort_unstable();
         for idx in idxs {
             if let Some(c) = self.slots[idx as usize].conn.as_mut() {
                 let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
@@ -1063,9 +1119,9 @@ impl Shard {
         let gen = now.as_millis() / 1000 / COOKIE_PERIOD_S;
         if gen > self.cookie_gen {
             if gen == self.cookie_gen + 1 {
-                self.cookie_key[(gen & 1) as usize] = RandomState::new();
+                self.cookie_key[(gen & 1) as usize] = self.next_keys();
             } else {
-                self.cookie_key = [RandomState::new(), RandomState::new()];
+                self.cookie_key = [self.next_keys(), self.next_keys()];
             }
             self.cookie_gen = gen;
         }
@@ -1422,7 +1478,8 @@ impl Shard {
 
         if self.budget_wait_epoch.is_some_and(|e| self.budget.global().release_epoch() != e) {
             self.budget_wait_epoch = None;
-            for (idx, gen) in std::mem::take(&mut self.budget_blocked) {
+            let keys = self.budget_blocked.hasher().clone();
+            for (idx, gen) in std::mem::replace(&mut self.budget_blocked, HashSet::with_hasher(keys)) {
                 let retry = self.slots.get(idx as usize).filter(|s| s.gen == gen).and_then(|s| s.conn.as_ref()).is_some_and(|conn| {
                     !conn.needs_record_spare()
                         || conn.has_record_spare()

@@ -8,7 +8,8 @@ use crate::time::Instant;
 use crate::{ConnId, Event, IfaceId, PeerId, ReadResult, Shard, WriteResult};
 use bytes::Bytes;
 use core::time::Duration;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
+use std::hash::{DefaultHasher, Hasher};
 use std::net::SocketAddr;
 
 /// xorshift64* — tiny deterministic RNG.
@@ -89,6 +90,8 @@ pub struct Link {
     seq: u64,
     in_burst: bool,
     pub stats: LinkStats,
+    /// Opt-in digest of every packet offered to the link, in order (replay checks).
+    pub trace: Option<DefaultHasher>,
 }
 
 impl Link {
@@ -102,11 +105,16 @@ impl Link {
             seq: 0,
             in_burst: false,
             stats: LinkStats::default(),
+            trace: None,
         }
     }
 
     pub fn enqueue(&mut self, now: Instant, peer: PeerId, pkt: Bytes, rng: &mut Rng) {
         self.stats.sent += 1;
+        if let Some(t) = self.trace.as_mut() {
+            t.write_u64(now.as_nanos());
+            t.write(&pkt);
+        }
         while let Some(&(dep, n)) = self.queued.front() {
             if dep <= now {
                 self.queued.pop_front();
@@ -197,7 +205,26 @@ impl EgressSinks for LinkSink<'_> {
 }
 
 pub fn pattern_byte(i: u64) -> u8 {
-    (i % 251) as u8
+    (i % PATTERN_PERIOD) as u8
+}
+
+const PATTERN_PERIOD: u64 = 251;
+/// Largest single application write of the simulated app.
+const APP_CHUNK: usize = 64 * 1024;
+/// Largest single application read of the simulated app.
+const READ_CHUNK: usize = 256 * 1024;
+
+/// The test byte stream from offset `off`, `len ≤ READ_CHUNK` bytes, as a slice
+/// of a pattern buffer built once: the app offers every write without
+/// regenerating it, so a writer that is refused (full queue, closed window)
+/// costs nothing per attempt (zfstack#14).
+fn pattern_at(pattern: &[u8], off: u64, len: usize) -> &[u8] {
+    let start = (off % PATTERN_PERIOD) as usize;
+    &pattern[start..start + len]
+}
+
+fn pattern_buffer() -> Vec<u8> {
+    (0..(READ_CHUNK as u64 + PATTERN_PERIOD)).map(pattern_byte).collect()
 }
 
 /// Per-connection application behaviour.
@@ -223,7 +250,8 @@ pub struct AppConn {
 pub struct Side {
     pub shard: Shard,
     pub iface: IfaceId,
-    pub conns: HashMap<ConnId, AppConn>,
+    /// Ordered so the apps are pumped in the same order on every replay.
+    pub conns: BTreeMap<ConnId, AppConn>,
     /// Default behaviour for connections accepted on this side.
     pub accept_template: AppConn,
     pub accepted: Vec<ConnId>,
@@ -235,6 +263,7 @@ pub struct Side {
     egress_last: Instant,
     egress_full: bool,
     buf: Vec<u8>,
+    pattern: Vec<u8>,
 }
 
 impl Side {
@@ -242,7 +271,7 @@ impl Side {
         Side {
             shard,
             iface,
-            conns: HashMap::new(),
+            conns: BTreeMap::new(),
             accept_template: AppConn::default(),
             accepted: Vec::new(),
             events: Vec::new(),
@@ -251,7 +280,8 @@ impl Side {
             egress_tokens: 0.0,
             egress_last: Instant::ZERO,
             egress_full: false,
-            buf: vec![0u8; 256 * 1024],
+            buf: vec![0u8; READ_CHUNK],
+            pattern: pattern_buffer(),
         }
     }
 
@@ -294,10 +324,8 @@ impl Side {
             loop {
                 match self.shard.read(now, id, &mut self.buf) {
                     ReadResult::Data(n) => {
-                        for (k, &b) in self.buf[..n].iter().enumerate() {
-                            if b != pattern_byte(c.received + k as u64) {
-                                c.corrupt = true;
-                            }
+                        if self.buf[..n] != *pattern_at(&self.pattern, c.received, n) {
+                            c.corrupt = true;
                         }
                         c.received += n as u64;
                     }
@@ -326,11 +354,8 @@ impl Side {
         }
         // Write.
         while c.sent < c.to_send {
-            let n = ((c.to_send - c.sent) as usize).min(64 * 1024);
-            for (k, b) in self.buf[..n].iter_mut().enumerate() {
-                *b = pattern_byte(c.sent + k as u64);
-            }
-            match self.shard.write(id, &self.buf[..n]) {
+            let n = ((c.to_send - c.sent) as usize).min(APP_CHUNK);
+            match self.shard.write(id, pattern_at(&self.pattern, c.sent, n)) {
                 WriteResult::Written(w) => c.sent += w as u64,
                 _ => break,
             }
@@ -370,9 +395,9 @@ pub fn addr(s: &str) -> SocketAddr {
 
 impl Sim {
     pub fn new(seed: u64, cfg_a: crate::StackConfig, cfg_b: crate::StackConfig, down: LinkParams, up: LinkParams) -> Self {
-        let mut sa = Shard::with_budget(cfg_a, crate::budget::GlobalBudget::new(1 << 30));
+        let mut sa = Shard::with_budget_seeded(cfg_a, crate::budget::GlobalBudget::new(1 << 30), seed ^ 0xA5A5_0000_0000_000A);
         let ia = sa.add_iface(Default::default());
-        let mut sb = Shard::with_budget(cfg_b, crate::budget::GlobalBudget::new(1 << 30));
+        let mut sb = Shard::with_budget_seeded(cfg_b, crate::budget::GlobalBudget::new(1 << 30), seed ^ 0x5A5A_0000_0000_000B);
         let ib = sb.add_iface(Default::default());
         Sim {
             now: Instant::from_millis(1000),
@@ -386,6 +411,17 @@ impl Sim {
             borrowed_server_ingress: false,
             steps: 0,
         }
+    }
+
+    /// Start digesting every packet both links carry (see [`Self::trace_digest`]).
+    pub fn enable_trace(&mut self) {
+        self.ab.trace = Some(DefaultHasher::new());
+        self.ba.trace = Some(DefaultHasher::new());
+    }
+
+    /// Digest of all packets (with send times) since [`Self::enable_trace`].
+    pub fn trace_digest(&self) -> Option<(u64, u64)> {
+        Some((self.ab.trace.as_ref()?.finish(), self.ba.trace.as_ref()?.finish()))
     }
 
     /// Open a connection from B (client) to A (server).
