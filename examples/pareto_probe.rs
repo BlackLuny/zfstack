@@ -25,7 +25,7 @@ use std::hint::black_box;
 use std::time::Instant as WallInstant;
 
 use zfstack::budget::{AllocationKind, Budget, GlobalBudget};
-use zfstack::buf::RxQueue;
+use zfstack::buf::{BlockPool, RxQueue, TxBuf};
 use zfstack::PeerId;
 
 // This intentionally compiles the exact heap source of each compared tree.
@@ -52,7 +52,7 @@ impl Args {
     fn parse() -> ProbeResult<Self> {
         let mut argv = std::env::args().skip(1);
         let case = argv.next().ok_or_else(|| {
-            "expected case: budget, budget-handle, rx, rx-chunk, rx-tail, heap-equal, heap-mixed, heap-changing, pump-down, pump-up, pump-bidi".to_string()
+            "expected case: budget, budget-handle, rx, rx-chunk, rx-tail, tx-alloc, heap-equal, heap-mixed, heap-changing, heap-pop, pump-down, pump-up, pump-bidi".to_string()
         })?;
         let is_pump = case.starts_with("pump-");
         let is_heap = case.starts_with("heap-");
@@ -360,6 +360,56 @@ fn rx_probe(a: &Args) -> ProbeResult<ResultRow> {
     Ok(r)
 }
 
+fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
+    let global = GlobalBudget::new(1 << 30);
+    let mut budget = Budget::new(global.clone());
+    // No idle cache: every iteration allocates a fresh block (the memset path).
+    let mut pool = BlockPool::new(0);
+    let mut tx = TxBuf::default();
+    let src = pattern(a.payload);
+    if !tx.push(&mut pool, &mut budget, PeerId(1), &src) {
+        return Err("TX warmup allocation failed".into());
+    }
+    let [s0, s1] = tx.slices(0, src.len());
+    let mut warmup_sum = 0u64;
+    verify(s0, &src[..s0.len()], &mut warmup_sum)?;
+    if !s1.is_empty() {
+        verify(s1, &src[s0.len()..], &mut warmup_sum)?;
+    }
+    tx.consume(&mut pool, src.len());
+    let mut checksum = 0u64;
+    let timer = Timer::start();
+    for _ in 0..a.iterations {
+        if !black_box(&mut tx).push(black_box(&mut pool), black_box(&mut budget), PeerId(1), black_box(&src)) {
+            return Err("TX allocation failed during measured work".into());
+        }
+        let [s0, s1] = tx.slices(0, src.len());
+        verify(s0, &src[..s0.len()], &mut checksum)?;
+        if !s1.is_empty() {
+            verify(s1, &src[s0.len()..], &mut checksum)?;
+        }
+        tx.consume(&mut pool, src.len());
+    }
+    let (work_wall_ns, work_cpu_ns) = timer.stop();
+    drop(tx);
+    drop(pool);
+    if budget.physical_used() != 0 || global.reserved() != 0 {
+        return Err("TX block lease survived drop".into());
+    }
+    Ok(ResultRow {
+        operations: a.iterations,
+        effective_bytes: a.payload as u64 * a.iterations,
+        allocation_requested_bytes: a.payload as u64 * a.iterations,
+        checksum,
+        expected_checksum: pattern_sum(a.payload as u64).wrapping_mul(a.iterations),
+        work_wall_ns,
+        work_cpu_ns,
+        sampled_peak_reserved_bytes: a.payload as u64 + 64,
+        final_reserved_bytes: global.reserved(),
+        ..Default::default()
+    })
+}
+
 fn heap_probe(a: &Args) -> ProbeResult<ResultRow> {
     let mut h = heap::IndexedHeap::default();
     let mut keys: Vec<u64> = (0..a.flows).map(|i| 1_000_000 + i as u64 * 17).collect();
@@ -367,7 +417,22 @@ fn heap_probe(a: &Args) -> ProbeResult<ResultRow> {
         h.set(i as u32, time::Instant::from_nanos(key));
     }
     let mixed = a.case == "heap-mixed";
-    let (work_wall_ns, work_cpu_ns) = if a.case == "heap-changing" {
+    let (work_wall_ns, work_cpu_ns) = if a.case == "heap-pop" {
+        let timer = Timer::start();
+        for _ in 0..a.iterations {
+            let mut n = 0;
+            while black_box(&mut h).pop_due(black_box(time::Instant::MAX)).is_some() {
+                n += 1;
+            }
+            if n != a.flows {
+                return Err("heap-pop drained the wrong number of entries".into());
+            }
+            for (i, &key) in keys.iter().enumerate() {
+                black_box(&mut h).set(black_box(i as u32), black_box(time::Instant::from_nanos(key)));
+            }
+        }
+        timer.stop()
+    } else if a.case == "heap-changing" {
         let timer = Timer::start();
         for i in 0..a.iterations {
             let idx = (i % a.flows as u64) as usize;
@@ -735,7 +800,8 @@ fn run() -> ProbeResult<()> {
     let result = match args.case.as_str() {
         "budget" | "budget-handle" => budget_probe(&args)?,
         "rx" | "rx-chunk" | "rx-tail" => rx_probe(&args)?,
-        "heap-equal" | "heap-mixed" | "heap-changing" => heap_probe(&args)?,
+        "tx-alloc" => tx_alloc_probe(&args)?,
+        "heap-equal" | "heap-mixed" | "heap-changing" | "heap-pop" => heap_probe(&args)?,
         "pump-down" | "pump-up" | "pump-bidi" => {
             #[cfg(feature = "test-peer")]
             {

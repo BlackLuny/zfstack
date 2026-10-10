@@ -1626,10 +1626,10 @@ impl Conn {
         }
         if in_order {
             let was_empty = self.rx.is_empty();
-            let retained = match &payload {
+            let retained = match payload {
                 IngressPayload::Borrowed(v) => self.rx.push_charged(v, ctx.budget, self.peer),
-                IngressPayload::Owned(v) => self.rx.push_charged(v, ctx.budget, self.peer),
-                IngressPayload::Leased(v) => self.rx.push_leased(v.clone(), ctx.budget, self.peer),
+                IngressPayload::Owned(v) => self.rx.push_charged(&v, ctx.budget, self.peer),
+                IngressPayload::Leased(v) => self.rx.push_leased(v, ctx.budget, self.peer),
             };
             if !retained {
                 ctx.budget.release(self.peer, len);
@@ -1685,9 +1685,9 @@ impl Conn {
                 return;
             }
             let o = self.ooo.get_or_insert_with(Default::default);
-            let added = match &payload {
+            let added = match payload {
                 IngressPayload::Borrowed(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
-                IngressPayload::Owned(v) | IngressPayload::Leased(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
+                IngressPayload::Owned(v) | IngressPayload::Leased(v) => o.insert_charged_for_rx(off as u64, &v, ctx.budget, self.peer, &mut self.rx),
             };
             let Some(added) = added else {
                 self.rcv_charged -= len;
