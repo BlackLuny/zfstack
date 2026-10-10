@@ -18,6 +18,17 @@ use std::ops::{Deref, DerefMut};
 pub const TX_BLOCK: usize = 64 * 1024;
 const SMALL_TX_BLOCK: usize = 2048;
 const BLOCK_METADATA_BYTES: u64 = 64;
+
+/// Allocate a TX block without zeroing. `TxBuf` only reads bytes that `push` /
+/// `write_with` have written (`slices` asserts `off + len <= self.len`). Recycled
+/// blocks already contain stale payload; new blocks need not be zeroed either.
+fn alloc_tx_block(size: usize) -> Box<[u8]> {
+    let buf = Box::<[u8]>::new_uninit_slice(size);
+    // SAFETY: every byte later read through `TxBuf::slices` was written first.
+    // `write_with` exposes the unwritten tail as `&mut [u8]` for a fill callback
+    // that stores into it (copy / readv), the same contract as a spare `Vec`.
+    unsafe { buf.assume_init() }
+}
 pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
 const CHUNK_METADATA_BYTES: u64 = 64;
 const OOO_DESCRIPTOR_BYTES: u64 = 128;
@@ -62,7 +73,7 @@ impl BlockPool {
             return None;
         }
         let lease = budget.try_allocate_kind(peer, size as u64 + BLOCK_METADATA_BYTES, crate::budget::AllocationKind::TxBlock)?;
-        Some(Block { data: vec![0u8; size].into_boxed_slice(), lease })
+        Some(Block { data: alloc_tx_block(size), lease })
     }
     fn put(&mut self, mut b: Block) {
         // A previous short-flow phase must not pin every cache slot and force
@@ -917,6 +928,23 @@ mod tests {
         }
         assert_eq!(got, expect);
         assert!(q.read_chunk(10).is_none());
+    }
+
+    #[test]
+    fn new_full_tx_block_returns_written_bytes_without_zero_fill() {
+        let mut pool = BlockPool::new(0);
+        let global = crate::budget::GlobalBudget::new(2 << 20);
+        let mut budget = Budget::new(global);
+        let mut tx = TxBuf::default();
+        let src: Vec<u8> = (0..TX_BLOCK).map(|n| (n % 251) as u8).collect();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &src));
+        let [a, b] = tx.slices(0, src.len());
+        let mut out = Vec::with_capacity(src.len());
+        out.extend_from_slice(a);
+        out.extend_from_slice(b);
+        assert_eq!(out, src);
+        tx.consume(&mut pool, src.len());
+        assert_eq!(tx.len(), 0);
     }
 
     #[test]

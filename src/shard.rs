@@ -545,25 +545,25 @@ impl Shard {
 
     /// Process one decrypted IP packet from `peer`.
     pub fn ingress(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes) {
-        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), RxChecksum::Verify);
+        self.ingress_with(now, iface, peer, pkt, RxChecksum::Verify);
     }
 
     /// Process a packet borrowed from a caller-owned pool. The caller may
     /// recycle its buffer as soon as this returns; retained TCP data is copied
     /// into stack-owned storage only after the packet passes admission checks.
     pub fn ingress_borrowed(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8]) {
-        self.ingress_packet(now, iface, peer, pkt, None, RxChecksum::Verify);
+        self.ingress_borrowed_with(now, iface, peer, pkt, RxChecksum::Verify);
     }
 
     /// `ingress` with the device's checksum verdict (TUN / virtio-net offload,
     /// see [`crate::offload`]).
     pub fn ingress_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes, csum: RxChecksum) {
-        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), csum);
+        self.ingress_owned(now, iface, peer, pkt, csum, false);
     }
 
     /// `ingress_borrowed` with the device's checksum verdict.
     pub fn ingress_borrowed_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], csum: RxChecksum) {
-        self.ingress_packet(now, iface, peer, pkt, None, csum);
+        self.ingress_slice(now, iface, peer, pkt, csum);
     }
 
     /// Zero-copy ingress of a packet read into a pooled, budget-charged
@@ -575,10 +575,9 @@ impl Shard {
     pub fn ingress_buf(&mut self, now: Instant, iface: IfaceId, peer: PeerId, buf: PacketBuf, start: usize, csum: RxChecksum) {
         let keep = buf.len().saturating_sub(start) * 2 >= buf.capacity();
         if keep {
-            let pkt = Bytes::from_owner(buf).slice(start..);
-            self.ingress_packet_with(now, iface, peer, &pkt, Some(pkt.clone()), csum, true);
+            self.ingress_owned(now, iface, peer, Bytes::from_owner(buf).slice(start..), csum, true);
         } else if start <= buf.len() {
-            self.ingress_packet(now, iface, peer, &buf[start..], None, csum);
+            self.ingress_slice(now, iface, peer, &buf[start..], csum);
         }
     }
 
@@ -611,40 +610,60 @@ impl Shard {
         }
     }
 
-    fn ingress_packet(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum) {
-        self.ingress_packet_with(now, iface, peer, pkt, owner, csum, false)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn ingress_packet_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum, leased: bool) {
+    fn parse_ingress(&mut self, pkt: &[u8], iface: IfaceId, csum: RxChecksum) -> Option<(wire::IpInfo, TcpHeader)> {
         self.stats.rx_packets += 1;
         if self.ifaces.get(iface.0 as usize).is_none_or(|i| i.is_none()) {
             self.stats.rx_dropped_no_iface += 1;
-            return;
+            return None;
         }
-        let ip = match wire::parse_ip(&pkt) {
+        let ip = match wire::parse_ip(pkt) {
             Ok(ip) => ip,
             Err(_) => {
                 self.stats.rx_dropped_parse += 1;
-                return;
+                return None;
             }
         };
-        let h = match wire::parse_tcp_with(pkt, &ip, csum == RxChecksum::Verify) {
-            Ok(h) => h,
+        match wire::parse_tcp_with(pkt, &ip, csum == RxChecksum::Verify) {
+            Ok(h) => Some((ip, h)),
             Err(_) => {
                 self.stats.rx_dropped_parse += 1;
-                return;
+                None
             }
-        };
-        let remote = SocketAddr::new(ip.src, h.src_port);
-        let local = SocketAddr::new(ip.dst, h.dst_port);
+        }
+    }
+
+    /// Owned / leased ingress: parse from a borrow, then slice the same `Bytes`
+    /// once. The previous call sites cloned the whole packet so parse could
+    /// keep a `&[u8]` while the owner moved.
+    fn ingress_owned(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes, csum: RxChecksum, leased: bool) {
+        let Some((ip, h)) = self.parse_ingress(pkt.as_ref(), iface, csum) else { return };
         let start = ip.l4_off + h.data_off;
         let end = ip.l4_off + ip.l4_len;
-        let payload = match owner {
-            Some(pkt) if leased => IngressPayload::Leased(pkt.slice(start..end)),
-            Some(pkt) => IngressPayload::Owned(pkt.slice(start..end)),
-            None => IngressPayload::Borrowed(&pkt[start..end]),
-        };
+        let remote = SocketAddr::new(ip.src, h.src_port);
+        let local = SocketAddr::new(ip.dst, h.dst_port);
+        let payload = if leased { IngressPayload::Leased(pkt.slice(start..end)) } else { IngressPayload::Owned(pkt.slice(start..end)) };
+        self.dispatch_ingress(now, iface, peer, remote, local, h, payload);
+    }
+
+    fn ingress_slice(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], csum: RxChecksum) {
+        let Some((ip, h)) = self.parse_ingress(pkt, iface, csum) else { return };
+        let start = ip.l4_off + h.data_off;
+        let end = ip.l4_off + ip.l4_len;
+        let remote = SocketAddr::new(ip.src, h.src_port);
+        let local = SocketAddr::new(ip.dst, h.dst_port);
+        self.dispatch_ingress(now, iface, peer, remote, local, h, IngressPayload::Borrowed(&pkt[start..end]));
+    }
+
+    fn dispatch_ingress(
+        &mut self,
+        now: Instant,
+        iface: IfaceId,
+        peer: PeerId,
+        remote: SocketAddr,
+        local: SocketAddr,
+        h: TcpHeader,
+        payload: IngressPayload<'_>,
+    ) {
         let key = (iface, remote, local);
         if let Some(&idx) = self.table.get(&key) {
             self.input_existing(now, idx, peer, &h, payload);

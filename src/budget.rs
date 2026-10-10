@@ -581,6 +581,39 @@ fn reserve_amount(count: &AtomicU64, limit: u64, amount: u64) -> bool {
     }
 }
 
+/// Hierarchical physical reserve used by both a retained [`MemoryHandle`] and a
+/// temporary core allocation. Returns the level that refused, if any.
+fn reserve_physical(
+    global: &GlobalBudget,
+    port: &LevelUse,
+    peer: &LevelUse,
+    port_limit: u64,
+    peer_limit: u64,
+    bytes: u64,
+    kind: AllocationKind,
+) -> Option<Level> {
+    let tier = kind.tier();
+    let _allocation = global.allocation_lock.lock().unwrap();
+    if !global.try_reserve(bytes, tier) {
+        return Some(Level::Global);
+    }
+    if !reserve_amount(&port.used, port.limit(global, port_limit, tier), bytes) {
+        global.release_uncommitted(bytes);
+        return Some(Level::Port);
+    }
+    if !reserve_amount(&peer.used, peer.limit(global, peer_limit, tier), bytes) {
+        port.used.fetch_sub(bytes, Ordering::AcqRel);
+        global.release_uncommitted(bytes);
+        return Some(Level::Peer);
+    }
+    if kind.drains() {
+        global.drain.fetch_add(bytes, Ordering::AcqRel);
+        port.drain.fetch_add(bytes, Ordering::AcqRel);
+        peer.drain.fetch_add(bytes, Ordering::AcqRel);
+    }
+    None
+}
+
 /// Reservation for one live TCP state. Its TIME_WAIT share remains reserved
 /// until the state is removed; a later compact tombstone can retain that share
 /// while releasing the active share.
@@ -1007,7 +1040,25 @@ impl Budget {
     }
 
     pub fn try_allocate_kind(&mut self, peer: PeerId, bytes: u64, kind: AllocationKind) -> Option<MemoryLease> {
-        self.memory_handle(peer).into_allocation(bytes, kind).ok()
+        // Temporary core allocations used to build a full MemoryHandle, which
+        // cloned `stats` and then dropped it on success. Reserve in place and
+        // clone only the three counter owners the lease keeps. The retained
+        // handle path (`MemoryHandle::try_allocate_level`) is unchanged.
+        let peer = self.physical_peers.entry(peer).or_default();
+        if let Some(level) = reserve_physical(&self.global, &self.physical_port, peer, self.port_limit, self.peer_limit, bytes, kind) {
+            self.stats.note(kind, Some(level));
+            self.global.request_cache_reclaim();
+            return None;
+        }
+        Some(MemoryLease {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.physical_port),
+            peer: Some(Arc::clone(peer)),
+            bytes,
+            peer_limit: self.peer_limit,
+            cached: false,
+            drain: kind.drains(),
+        })
     }
 
     pub fn note_reserve_failure(&self, kind: AllocationKind) {
@@ -1259,8 +1310,8 @@ impl MemoryHandle {
 
     /// Like [`Self::try_allocate_kind`], but reports the level that refused.
     pub fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
-        // Keep this body separate from `into_allocation`: sharing the refusal
-        // path as a call added ~1% instructions to retained-handle allocation.
+        // Keep this body separate from the temporary core-allocation constructor:
+        // sharing the refusal path as a call added ~1% instructions to retained-handle allocation.
         if let Some(level) = self.reserve(bytes, kind) {
             self.stats.note(kind, Some(level));
             // Idle cached blocks may hold the share this allocation needs.
@@ -1278,45 +1329,8 @@ impl MemoryHandle {
         })
     }
 
-    /// Core allocations create a temporary handle. Move its counter owners
-    /// into the lease instead of cloning and immediately dropping them.
-    fn into_allocation(self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
-        self.check_allocation(bytes, kind)?;
-        Ok(MemoryLease { global: self.global, port: self.port, peer: Some(self.peer), bytes, peer_limit: self.peer_limit, cached: false, drain: kind.drains() })
-    }
-
-    fn check_allocation(&self, bytes: u64, kind: AllocationKind) -> Result<(), Level> {
-        if let Some(level) = self.reserve(bytes, kind) {
-            self.stats.note(kind, Some(level));
-            // Idle cached blocks may hold the share this allocation needs.
-            self.global.request_cache_reclaim();
-            return Err(level);
-        }
-        Ok(())
-    }
-
     fn reserve(&self, bytes: u64, kind: AllocationKind) -> Option<Level> {
-        let global = &self.global;
-        let tier = kind.tier();
-        let _allocation = global.allocation_lock.lock().unwrap();
-        if !global.try_reserve(bytes, tier) {
-            return Some(Level::Global);
-        }
-        if !reserve_amount(&self.port.used, self.port.limit(global, self.port_limit, tier), bytes) {
-            global.release_uncommitted(bytes);
-            return Some(Level::Port);
-        }
-        if !reserve_amount(&self.peer.used, self.peer.limit(global, self.peer_limit, tier), bytes) {
-            self.port.used.fetch_sub(bytes, Ordering::AcqRel);
-            global.release_uncommitted(bytes);
-            return Some(Level::Peer);
-        }
-        if kind.drains() {
-            global.drain.fetch_add(bytes, Ordering::AcqRel);
-            self.port.drain.fetch_add(bytes, Ordering::AcqRel);
-            self.peer.drain.fetch_add(bytes, Ordering::AcqRel);
-        }
-        None
+        reserve_physical(&self.global, &self.port, &self.peer, self.port_limit, self.peer_limit, bytes, kind)
     }
 
     pub fn global(&self) -> &Arc<GlobalBudget> {
