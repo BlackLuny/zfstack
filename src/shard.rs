@@ -1366,8 +1366,9 @@ impl Shard {
             return;
         }
         self.cache_reclaim_seen = epoch;
-        let (blocks, bytes) = self.pool.reclaim();
-        if blocks != 0 {
+        let (_, pool_bytes) = self.pool.reclaim();
+        let bytes = pool_bytes + self.reclaim_idle_tx_indexes();
+        if bytes != 0 {
             self.stats.cache_reclaims += 1;
             self.stats.cache_reclaimed_bytes += bytes;
         }
@@ -1443,13 +1444,18 @@ impl Shard {
     }
 
     fn reclaim_own_cache(&mut self) -> bool {
-        let (blocks, bytes) = self.pool.reclaim();
-        if blocks == 0 {
+        let (_, pool_bytes) = self.pool.reclaim();
+        let bytes = pool_bytes + self.reclaim_idle_tx_indexes();
+        if bytes == 0 {
             return false;
         }
         self.stats.cache_reclaims += 1;
         self.stats.cache_reclaimed_bytes += bytes;
         true
+    }
+
+    fn reclaim_idle_tx_indexes(&mut self) -> u64 {
+        self.slots.iter_mut().filter_map(|slot| slot.conn.as_mut()).map(|conn| conn.reclaim_idle_tx_index()).sum()
     }
 
     fn try_admit_memory(&mut self, peer: PeerId) -> Result<(MemoryLease, Option<MemoryLease>), Level> {
@@ -2659,6 +2665,115 @@ mod admission_tests {
         }
     }
 
+    #[test]
+    fn metadata_only_pool_reclaim_reports_bytes_and_wakes_waiter() {
+        use crate::budget::{AllocationKind, Tier};
+        use crate::buf::TxBuf;
+        let global = GlobalBudget::new(8 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        sh.set_budget_limits(819_200, 819_200, 64);
+        let mut first = TxBuf::default();
+        assert!(first.push(&mut sh.pool, &mut sh.budget, PeerId(1), &[1]));
+        first.release_all(&mut sh.pool);
+        let mut second = TxBuf::default();
+        assert!(second.push(&mut sh.pool, &mut sh.budget, PeerId(1), &[2]));
+        drop((first, second));
+        assert_eq!(sh.pool.cached(), 0);
+        let bytes = sh.pool.descriptor_bytes();
+        assert!(bytes > 0);
+        assert_eq!(global.cached_bytes(), bytes);
+        let memory = sh.memory_handle(PeerId(2));
+        let ceiling = 819_200 - global.headroom(819_200, Tier::Block);
+        let blocker = memory.try_allocate_kind(ceiling - sh.budget.physical_used(), AllocationKind::TxIndex).unwrap();
+        let wake = Arc::new(CountWake(Default::default()));
+        let waiter = global.new_waiter_id();
+        let observed = global.release_epoch();
+        assert!(memory.try_allocate_kind(1, AllocationKind::TxIndex).is_none());
+        global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, 1, AllocationKind::TxIndex);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert!(sh.reclaim_own_cache(), "zero payload blocks still retain descriptor bytes");
+        assert_eq!(sh.stats().cache_reclaimed_bytes, bytes);
+        assert_eq!(global.cached_bytes(), 0);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let lease = memory.try_allocate_kind(1, AllocationKind::TxIndex).unwrap();
+        global.remove_waiter(waiter);
+        drop((lease, blocker, sh));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn reclaim_epoch_releases_idle_connection_tx_index() {
+        use crate::budget::{AllocationKind, Tier};
+        let mut r = AdmitRig::new(819_200, 819_200);
+        r.syn(0, 1, 40000);
+        let id = r.sh.conn_ids()[0];
+        assert_eq!(r.sh.write(id, &[1]), WriteResult::Written(1));
+        // Keep the connection in its slot after its send side has emptied.
+        r.sh.with_conn(id, |conn, ctx| conn.destroy(ctx)).unwrap();
+        r.sh.pool.reclaim();
+        let bytes = r.global.cached_bytes();
+        assert!(bytes > 0);
+        let memory = r.sh.memory_handle(PeerId(2));
+        let ceiling = 819_200 - r.global.headroom(819_200, Tier::Block);
+        let blocker = memory.try_allocate_kind(ceiling - r.sh.budget.physical_used(), AllocationKind::TxIndex).unwrap();
+        let wake = Arc::new(CountWake(Default::default()));
+        let waiter = r.global.new_waiter_id();
+        let observed = r.global.release_epoch();
+        assert!(memory.try_allocate_kind(1, AllocationKind::TxIndex).is_none());
+        r.global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, 1, AllocationKind::TxIndex);
+        r.sh.reclaim_cache_if_requested();
+        assert_eq!(r.global.cached_bytes(), 0);
+        assert_eq!(r.sh.stats().cache_reclaims, 1);
+        assert_eq!(r.sh.stats().cache_reclaimed_bytes, bytes);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let lease = memory.try_allocate_kind(1, AllocationKind::TxIndex).unwrap();
+        r.global.remove_waiter(waiter);
+        drop((lease, blocker, r));
+    }
+
+    #[test]
+    fn peer_pressure_reclaims_descriptor_only_cache_without_busy_wake() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        const PEER: u64 = 819_200;
+        let mut r = AdmitRig::new(2 * PEER, PEER);
+        r.syn(0, 1, 40000);
+        let id = r.sh.conn_ids()[0];
+        assert_eq!(r.sh.write(id, &[1]), WriteResult::Written(1));
+        r.sh.with_conn(id, |conn, ctx| conn.destroy(ctx)).unwrap();
+        r.sh.pool.reclaim();
+        assert_eq!((r.sh.pool.cached(), r.sh.pool.descriptor_bytes()), (0, 0));
+        let bytes = r.global.cached_bytes();
+        assert!(bytes > 0, "empty TX backing must stay charged and reclaimable");
+        let memory = r.sh.memory_handle(PeerId(1));
+        let ceiling = PEER - r.global.headroom(PEER, Tier::Block);
+        let blocker = memory.try_allocate_kind(ceiling - r.sh.budget.physical_used(), AllocationKind::TxIndex).unwrap();
+        let held = r.sh.budget.physical_used();
+        let epoch = r.global.cache_reclaim_epoch();
+        let observed = r.global.release_epoch();
+        let failures = r.sh.budget.stats().failures_by_level()[Level::Peer as usize];
+        assert!(memory.try_allocate_kind(1, AllocationKind::TxIndex).is_none());
+        assert_eq!(r.sh.budget.physical_used(), held, "refusal must retain the old index charge");
+        assert_eq!(r.sh.budget.stats().failures_by_level()[Level::Peer as usize], failures + 1);
+        assert!(r.global.cache_reclaim_epoch() > epoch);
+        let wake = Arc::new(CountWake(Default::default()));
+        let waiter = r.global.new_waiter_id();
+        r.global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, 1, AllocationKind::TxIndex);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+        r.sh.reclaim_cache_if_requested();
+        assert_eq!(r.global.cached_bytes(), 0);
+        assert_eq!(r.sh.budget.physical_used(), held - bytes);
+        assert_eq!(r.sh.stats().cache_reclaimed_bytes, bytes);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let retry = memory.try_allocate_kind(1, AllocationKind::TxIndex).expect("same peer must fit after descriptor-only reclaim");
+        for _ in 0..3 { r.sh.reclaim_cache_if_requested(); }
+        assert_eq!(r.sh.stats().cache_reclaims, 1);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1, "no repeated wake without another release");
+        r.global.remove_waiter(waiter);
+        let global = r.global.clone();
+        drop((retry, blocker, r));
+        assert_eq!(global.reserved(), 0);
+    }
+
     /// #664: idle TX blocks fill the port share, so an admission allocation
     /// fails. The failure must ask the shard to drop its cache; the release
     /// then wakes the parked allocator and the same allocation succeeds.
@@ -2677,7 +2792,9 @@ mod admission_tests {
             tx.consume(&mut sh.pool, crate::buf::TX_BLOCK);
         }
         assert_eq!(sh.pool.cached(), 12);
-        assert_eq!(global.cached_bytes(), 12 * TX_BLOCK_CHARGE);
+        drop(bufs);
+        let cached = 12 * TX_BLOCK_CHARGE + sh.pool.descriptor_bytes();
+        assert_eq!(global.cached_bytes(), cached);
 
         let memory = sh.memory_handle(PeerId(2));
         let wake = Arc::new(CountWake(Default::default()));
@@ -2690,7 +2807,7 @@ mod admission_tests {
         sh.run(Instant::ZERO, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
         assert_eq!(global.cached_bytes(), 0);
         assert_eq!(sh.stats().cache_reclaims, 1);
-        assert_eq!(sh.stats().cache_reclaimed_bytes, 12 * TX_BLOCK_CHARGE);
+        assert_eq!(sh.stats().cache_reclaimed_bytes, cached);
         assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1, "reclaim must wake the parked allocator");
         let lease = memory.try_allocate_kind(65_600, AllocationKind::AdapterTx).expect("share freed by reclaim");
         global.remove_waiter(waiter);

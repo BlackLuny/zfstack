@@ -1085,6 +1085,10 @@ impl Conn {
         self.tx.write_allocation_charge(bytes.min(self.send_space(cfg, budget)))
     }
 
+    pub(crate) fn reclaim_idle_tx_index(&mut self) -> u64 {
+        self.tx.reclaim_idle_index()
+    }
+
     /// Send-space and budget admission shared by `write` and `write_with`:
     /// the bytes reserved (at most `want`), or why none can be accepted, with
     /// `want_write` armed for the matching wakeup.
