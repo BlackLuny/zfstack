@@ -224,7 +224,8 @@ python3 "$PARETO_EXTRACT/manifest/analyze.py" "$PARETO_RAW_RUNS" \
 | `effective_bytes * 8 / work_wall_ns` | Gbit/s 形式的真实 wall 包/缓冲处理速率，非网络吞吐；双向数据在各接收端各计一次 |
 | `virtual_work_ns` | 合成协议时钟的工作量一致性信息，不是性能分母 |
 | `wire_packets` / `wire_bytes` | pump 生成及交付的包计数，包含 cleanup；不能除以排除 cleanup 的 work 时间派生严格窗口 pps |
-| `sampled_peak_reserved_bytes` | 受管额度占用的采样峰值，是下界，不是完整 allocator/RSS 峰值 |
+| `sampled_peak_reserved_bytes` | 受管额度占用的采样峰值，是下界，不是完整 allocator/RSS 峰值；v2 `tx-alloc` 未采样工作峰值，输出 `null` |
+| `warmup_reserved_bytes` / `warmup_reserved_scope` | v2 `tx-alloc` 在 warmup push 后、consume 前读取 `global.reserved()`；计时外的已提交账本快照，包含 payload 档位和描述符容量，不含临时预留，不是工作峰值、allocator 或 RSS；其他 case 为 `null` |
 | `retained_reserved_bytes_before_drop` | 队列或 Shard 析构前仍正常持有的 index/cache/metadata 等额度；是否残留要结合最终释放检查 |
 | `process_lifetime_peak_rss_bytes` | 进程生命周期 VmHWM，包含初始化与校验/清理，不能视为稳态每连接内存 |
 | `final_reserved_bytes == 0` | probe 持有的预算 lease 在对象销毁后已全部归还，不等于所有动态容器的账本已完整覆盖 |
@@ -239,3 +240,11 @@ python3 "$PARETO_EXTRACT/manifest/analyze.py" "$PARETO_RAW_RUNS" \
 原 v1 probe 对所有 microprobe 使用 `microprobe_work_loop_includes_validation_excludes_setup_and_cleanup`。实际 heap 的完整 pop/order/key/uniqueness 校验在 `timer.stop()` 后执行，**heap 更新循环计时不包含最终校验**；RX 的逐字节验证则包含在 work 时间内。旧 JSON 的这项描述不能按字面外推到 heap。若以后修正 probe 元数据或代码，必须将同一新 probe 复制到 A/B 两侧，记录新的 probe 和二进制 hash，不混合新旧实验。
 
 heap-mixed 为 60% 等 key、20% 减小、20% 增大的配置。等 key 早退在实际 key 变化时增加一次等值判断，因此该组结果不能证明 100% key 变化的负载也严格改善。RX 首项内联只增加短期栈上暂存和判断，不增加连接或队列的常驻字段；多 chunk 输入仍有 overflow 临时容器。
+
+### v2 TX 账本快照及消费兼容
+
+v1 `tx-alloc.sampled_peak_reserved_bytes` 使用硬编码 `payload + 64`，没有读取账本；小输入也漏掉 2 KiB payload 档位。v2 改为上述 warmup 快照，将 TX 的旧峰值字段及 `peak_reserved_is_sampled_lower_bound` 设为 `null`，schema_version 升为 2。计时循环保持不变，不在循环中添加账本采样。warmup 快照不证明计时期间的峰值。
+
+`run_ab.py` 原样保留 v1/v2 JSON，无需修改。`analyze.py` 接受旧记录和可空峰值，单独汇总/显示 warmup ledger；旧 TX 估算被标为缺失值并说明原因，不能与快照混算，也不填零。旧记录没有 warmup 样本，不派生相应的成对百分比。历史证据文件保持原样；新实验仍必须向 A/B 两侧复制同一 probe 并记录 hash。
+
+消费回归只使用模拟记录和 mock 子进程，不运行 A/B 测量：`python3 -m unittest discover -s bench/pareto -p 'test_*.py'`。

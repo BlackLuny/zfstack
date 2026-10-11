@@ -19,7 +19,9 @@
 //! and both endpoints; they are not a standalone stack or network throughput.
 //! Virtual elapsed time is only a protocol-workload descriptor, NEVER a rate
 //! denominator. Peak charged memory is a sampling lower bound; VmHWM is the
-//! process lifetime peak, including setup and verification.
+//! process lifetime peak, including setup and verification. TX allocation reports
+//! one ledger sample after its warmup push, outside the work timer. It does not
+//! sample a work-loop peak or transient pre-reservations, allocator usage, or RSS.
 
 use std::hint::black_box;
 use std::time::Instant as WallInstant;
@@ -183,6 +185,7 @@ struct ResultRow {
     cleanup_cpu_ns: u64,
     virtual_work_ns: u64,
     sampled_peak_reserved_bytes: u64,
+    warmup_reserved_bytes: Option<u64>,
     retained_reserved_bytes_before_drop: u64,
     final_reserved_bytes: u64,
     peak_packet_queue_bytes: u64,
@@ -363,13 +366,16 @@ fn rx_probe(a: &Args) -> ProbeResult<ResultRow> {
 fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
     let global = GlobalBudget::new(1 << 30);
     let mut budget = Budget::new(global.clone());
-    // No idle cache: every iteration allocates a fresh block (the memset path).
+    // No idle payload cache: each iteration allocates fresh payload blocks.
     let mut pool = BlockPool::new(0);
     let mut tx = TxBuf::default();
     let src = pattern(a.payload);
     if !tx.push(&mut pool, &mut budget, PeerId(1), &src) {
         return Err("TX warmup allocation failed".into());
     }
+    // Observe committed ledger charges, including size classes and descriptor
+    // backing. Sampling here leaves the measured allocation loop unchanged.
+    let warmup_reserved_bytes = global.reserved();
     let [s0, s1] = tx.slices(0, src.len());
     let mut warmup_sum = 0u64;
     verify(s0, &src[..s0.len()], &mut warmup_sum)?;
@@ -404,7 +410,7 @@ fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
         expected_checksum: pattern_sum(a.payload as u64).wrapping_mul(a.iterations),
         work_wall_ns,
         work_cpu_ns,
-        sampled_peak_reserved_bytes: a.payload as u64 + 64,
+        warmup_reserved_bytes: Some(warmup_reserved_bytes),
         final_reserved_bytes: global.reserved(),
         ..Default::default()
     })
@@ -832,7 +838,7 @@ fn run() -> ProbeResult<()> {
     };
     let fields = vec![
         ("tool", quote("zfstack-pareto-probe")),
-        ("schema_version", "1".into()),
+        ("schema_version", "2".into()),
         ("ok", "true".into()),
         ("case", quote(&args.case)),
         ("iterations", args.iterations.to_string()),
@@ -868,8 +874,13 @@ fn run() -> ProbeResult<()> {
         ("wire_bytes", result.wire_bytes.to_string()),
         ("driver_rounds_including_cleanup", result.driver_rounds.to_string()),
         ("connections_checked", result.connections_checked.to_string()),
-        ("sampled_peak_reserved_bytes", result.sampled_peak_reserved_bytes.to_string()),
-        ("peak_reserved_is_sampled_lower_bound", "true".into()),
+        ("sampled_peak_reserved_bytes", if args.case == "tx-alloc" { "null".into() } else { result.sampled_peak_reserved_bytes.to_string() }),
+        ("peak_reserved_is_sampled_lower_bound", if args.case == "tx-alloc" { "null".into() } else { "true".into() }),
+        ("warmup_reserved_bytes", result.warmup_reserved_bytes.map_or_else(|| "null".into(), |n| n.to_string())),
+        (
+            "warmup_reserved_scope",
+            if args.case == "tx-alloc" { quote("ledger_after_warmup_push_before_consume_excludes_transient_reservations") } else { "null".into() },
+        ),
         ("retained_reserved_bytes_before_drop", result.retained_reserved_bytes_before_drop.to_string()),
         ("final_reserved_bytes", result.final_reserved_bytes.to_string()),
         ("all_budget_leases_released", "true".into()),
@@ -892,4 +903,36 @@ fn main() {
     };
     println!("{{\"tool\":\"zfstack-pareto-probe\",\"ok\":false,\"error\":{}}}", quote(&error));
     std::process::exit(1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zfstack::buf::TX_BLOCK;
+
+    #[test]
+    fn tx_alloc_reports_observed_warmup_ledger_across_payload_classes() {
+        for payload in [1, 2048, 2049, TX_BLOCK, TX_BLOCK + 1] {
+            let global = GlobalBudget::new(1 << 30);
+            let mut budget = Budget::new(global.clone());
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &pattern(payload)));
+            let observed = global.reserved();
+            assert_eq!(observed, budget.physical_used());
+            assert!(observed > payload as u64, "backing includes size-class slack or descriptors");
+            drop(tx);
+            drop(pool);
+            assert_eq!(global.reserved(), 0);
+
+            let args = Args { case: "tx-alloc".into(), iterations: 1, flows: 1, peers: 1, payload, borrowed_server: true, pacing: true };
+            let row = tx_alloc_probe(&args).expect("one-iteration functional probe");
+            assert_eq!(row.warmup_reserved_bytes, Some(observed), "payload={payload}");
+            assert_eq!(row.sampled_peak_reserved_bytes, 0, "work peak was not sampled");
+            assert_eq!(row.operations, 1);
+            assert_eq!(row.effective_bytes, payload as u64);
+            assert_eq!(row.checksum, row.expected_checksum);
+            assert_eq!(row.final_reserved_bytes, 0);
+        }
+    }
 }
