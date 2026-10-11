@@ -1,0 +1,386 @@
+diff --git a/src/budget.rs b/src/budget.rs
+index 794e7e3..501e0d9 100644
+--- a/src/budget.rs
++++ b/src/budget.rs
+@@ -581,6 +581,39 @@ fn reserve_amount(count: &AtomicU64, limit: u64, amount: u64) -> bool {
+     }
+ }
+ 
++/// Hierarchical physical reserve used by both a retained [`MemoryHandle`] and a
++/// temporary core allocation. Returns the level that refused, if any.
++fn reserve_physical(
++    global: &GlobalBudget,
++    port: &LevelUse,
++    peer: &LevelUse,
++    port_limit: u64,
++    peer_limit: u64,
++    bytes: u64,
++    kind: AllocationKind,
++) -> Option<Level> {
++    let tier = kind.tier();
++    let _allocation = global.allocation_lock.lock().unwrap();
++    if !global.try_reserve(bytes, tier) {
++        return Some(Level::Global);
++    }
++    if !reserve_amount(&port.used, port.limit(global, port_limit, tier), bytes) {
++        global.release_uncommitted(bytes);
++        return Some(Level::Port);
++    }
++    if !reserve_amount(&peer.used, peer.limit(global, peer_limit, tier), bytes) {
++        port.used.fetch_sub(bytes, Ordering::AcqRel);
++        global.release_uncommitted(bytes);
++        return Some(Level::Peer);
++    }
++    if kind.drains() {
++        global.drain.fetch_add(bytes, Ordering::AcqRel);
++        port.drain.fetch_add(bytes, Ordering::AcqRel);
++        peer.drain.fetch_add(bytes, Ordering::AcqRel);
++    }
++    None
++}
++
+ /// Reservation for one live TCP state. Its TIME_WAIT share remains reserved
+ /// until the state is removed; a later compact tombstone can retain that share
+ /// while releasing the active share.
+@@ -1007,7 +1040,25 @@ impl Budget {
+     }
+ 
+     pub fn try_allocate_kind(&mut self, peer: PeerId, bytes: u64, kind: AllocationKind) -> Option<MemoryLease> {
+-        self.memory_handle(peer).into_allocation(bytes, kind).ok()
++        // Temporary core allocations used to build a full MemoryHandle, which
++        // cloned `stats` and then dropped it on success. Reserve in place and
++        // clone only the three counter owners the lease keeps. The retained
++        // handle path (`MemoryHandle::try_allocate_level`) is unchanged.
++        let peer = self.physical_peers.entry(peer).or_default();
++        if let Some(level) = reserve_physical(&self.global, &self.physical_port, peer, self.port_limit, self.peer_limit, bytes, kind) {
++            self.stats.note(kind, Some(level));
++            self.global.request_cache_reclaim();
++            return None;
++        }
++        Some(MemoryLease {
++            global: Arc::clone(&self.global),
++            port: Arc::clone(&self.physical_port),
++            peer: Some(Arc::clone(peer)),
++            bytes,
++            peer_limit: self.peer_limit,
++            cached: false,
++            drain: kind.drains(),
++        })
+     }
+ 
+     pub fn note_reserve_failure(&self, kind: AllocationKind) {
+@@ -1259,8 +1310,8 @@ impl MemoryHandle {
+ 
+     /// Like [`Self::try_allocate_kind`], but reports the level that refused.
+     pub fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
+-        // Keep this body separate from `into_allocation`: sharing the refusal
+-        // path as a call added ~1% instructions to retained-handle allocation.
++        // Keep this body separate from the temporary core-allocation constructor:
++        // sharing the refusal path as a call added ~1% instructions to retained-handle allocation.
+         if let Some(level) = self.reserve(bytes, kind) {
+             self.stats.note(kind, Some(level));
+             // Idle cached blocks may hold the share this allocation needs.
+@@ -1278,45 +1329,8 @@ impl MemoryHandle {
+         })
+     }
+ 
+-    /// Core allocations create a temporary handle. Move its counter owners
+-    /// into the lease instead of cloning and immediately dropping them.
+-    fn into_allocation(self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
+-        self.check_allocation(bytes, kind)?;
+-        Ok(MemoryLease { global: self.global, port: self.port, peer: Some(self.peer), bytes, peer_limit: self.peer_limit, cached: false, drain: kind.drains() })
+-    }
+-
+-    fn check_allocation(&self, bytes: u64, kind: AllocationKind) -> Result<(), Level> {
+-        if let Some(level) = self.reserve(bytes, kind) {
+-            self.stats.note(kind, Some(level));
+-            // Idle cached blocks may hold the share this allocation needs.
+-            self.global.request_cache_reclaim();
+-            return Err(level);
+-        }
+-        Ok(())
+-    }
+-
+     fn reserve(&self, bytes: u64, kind: AllocationKind) -> Option<Level> {
+-        let global = &self.global;
+-        let tier = kind.tier();
+-        let _allocation = global.allocation_lock.lock().unwrap();
+-        if !global.try_reserve(bytes, tier) {
+-            return Some(Level::Global);
+-        }
+-        if !reserve_amount(&self.port.used, self.port.limit(global, self.port_limit, tier), bytes) {
+-            global.release_uncommitted(bytes);
+-            return Some(Level::Port);
+-        }
+-        if !reserve_amount(&self.peer.used, self.peer.limit(global, self.peer_limit, tier), bytes) {
+-            self.port.used.fetch_sub(bytes, Ordering::AcqRel);
+-            global.release_uncommitted(bytes);
+-            return Some(Level::Peer);
+-        }
+-        if kind.drains() {
+-            global.drain.fetch_add(bytes, Ordering::AcqRel);
+-            self.port.drain.fetch_add(bytes, Ordering::AcqRel);
+-            self.peer.drain.fetch_add(bytes, Ordering::AcqRel);
+-        }
+-        None
++        reserve_physical(&self.global, &self.port, &self.peer, self.port_limit, self.peer_limit, bytes, kind)
+     }
+ 
+     pub fn global(&self) -> &Arc<GlobalBudget> {
+diff --git a/src/buf.rs b/src/buf.rs
+index 2478036..0d40341 100644
+--- a/src/buf.rs
++++ b/src/buf.rs
+@@ -18,6 +18,17 @@ use std::ops::{Deref, DerefMut};
+ pub const TX_BLOCK: usize = 64 * 1024;
+ const SMALL_TX_BLOCK: usize = 2048;
+ const BLOCK_METADATA_BYTES: u64 = 64;
++
++/// Allocate a TX block without zeroing. `TxBuf` only reads bytes that `push` /
++/// `write_with` have written (`slices` asserts `off + len <= self.len`). Recycled
++/// blocks already contain stale payload; new blocks need not be zeroed either.
++fn alloc_tx_block(size: usize) -> Box<[u8]> {
++    let buf = Box::<[u8]>::new_uninit_slice(size);
++    // SAFETY: every byte later read through `TxBuf::slices` was written first.
++    // `write_with` exposes the unwritten tail as `&mut [u8]` for a fill callback
++    // that stores into it (copy / readv), the same contract as a spare `Vec`.
++    unsafe { buf.assume_init() }
++}
+ pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+ const CHUNK_METADATA_BYTES: u64 = 64;
+ const OOO_DESCRIPTOR_BYTES: u64 = 128;
+@@ -62,7 +73,7 @@ impl BlockPool {
+             return None;
+         }
+         let lease = budget.try_allocate_kind(peer, size as u64 + BLOCK_METADATA_BYTES, crate::budget::AllocationKind::TxBlock)?;
+-        Some(Block { data: vec![0u8; size].into_boxed_slice(), lease })
++        Some(Block { data: alloc_tx_block(size), lease })
+     }
+     fn put(&mut self, mut b: Block) {
+         // A previous short-flow phase must not pin every cache slot and force
+@@ -919,6 +930,23 @@ mod tests {
+         assert!(q.read_chunk(10).is_none());
+     }
+ 
++    #[test]
++    fn new_full_tx_block_returns_written_bytes_without_zero_fill() {
++        let mut pool = BlockPool::new(0);
++        let global = crate::budget::GlobalBudget::new(2 << 20);
++        let mut budget = Budget::new(global);
++        let mut tx = TxBuf::default();
++        let src: Vec<u8> = (0..TX_BLOCK).map(|n| (n % 251) as u8).collect();
++        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &src));
++        let [a, b] = tx.slices(0, src.len());
++        let mut out = Vec::with_capacity(src.len());
++        out.extend_from_slice(a);
++        out.extend_from_slice(b);
++        assert_eq!(out, src);
++        tx.consume(&mut pool, src.len());
++        assert_eq!(tx.len(), 0);
++    }
++
+     #[test]
+     fn small_first_block_crosses_into_full_blocks_and_survives_partial_ack() {
+         let mut pool = BlockPool::new(4);
+diff --git a/src/conn.rs b/src/conn.rs
+index 6d5909b..9aa155d 100644
+--- a/src/conn.rs
++++ b/src/conn.rs
+@@ -1626,10 +1626,10 @@ impl Conn {
+         }
+         if in_order {
+             let was_empty = self.rx.is_empty();
+-            let retained = match &payload {
++            let retained = match payload {
+                 IngressPayload::Borrowed(v) => self.rx.push_charged(v, ctx.budget, self.peer),
+-                IngressPayload::Owned(v) => self.rx.push_charged(v, ctx.budget, self.peer),
+-                IngressPayload::Leased(v) => self.rx.push_leased(v.clone(), ctx.budget, self.peer),
++                IngressPayload::Owned(v) => self.rx.push_charged(&v, ctx.budget, self.peer),
++                IngressPayload::Leased(v) => self.rx.push_leased(v, ctx.budget, self.peer),
+             };
+             if !retained {
+                 ctx.budget.release(self.peer, len);
+@@ -1685,9 +1685,9 @@ impl Conn {
+                 return;
+             }
+             let o = self.ooo.get_or_insert_with(Default::default);
+-            let added = match &payload {
++            let added = match payload {
+                 IngressPayload::Borrowed(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
+-                IngressPayload::Owned(v) | IngressPayload::Leased(v) => o.insert_charged_for_rx(off as u64, v, ctx.budget, self.peer, &mut self.rx),
++                IngressPayload::Owned(v) | IngressPayload::Leased(v) => o.insert_charged_for_rx(off as u64, &v, ctx.budget, self.peer, &mut self.rx),
+             };
+             let Some(added) = added else {
+                 self.rcv_charged -= len;
+diff --git a/src/heap.rs b/src/heap.rs
+index 9780456..69f48f9 100644
+--- a/src/heap.rs
++++ b/src/heap.rs
+@@ -80,7 +80,15 @@ impl IndexedHeap {
+         if k > now {
+             return None;
+         }
+-        self.remove(idx);
++        let last = self.heap.len() - 1;
++        if last != 0 {
++            self.swap(0, last);
++        }
++        self.heap.pop();
++        self.pos[idx as usize] = NONE;
++        if !self.heap.is_empty() {
++            self.down(0);
++        }
+         Some(idx)
+     }
+ 
+@@ -180,4 +188,24 @@ mod tests {
+         assert_eq!(h.pop_due(Instant::from_nanos(400)), Some(0));
+         assert_eq!(h.pop_due(Instant::MAX), None);
+     }
++
++    #[test]
++    fn pop_due_removes_root_without_up_and_keeps_heap_order() {
++        let mut h = IndexedHeap::default();
++        let keys = [40u64, 10, 70, 30, 90, 20, 60, 5, 80, 15, 50, 25];
++        for (i, &k) in keys.iter().enumerate() {
++            h.set(i as u32, Instant::from_nanos(k));
++        }
++        let mut out = Vec::new();
++        while let Some(i) = h.pop_due(Instant::from_nanos(45)) {
++            out.push(keys[i as usize]);
++        }
++        assert_eq!(out, vec![5, 10, 15, 20, 25, 30, 40]);
++        let mut rest = Vec::new();
++        while let Some(i) = h.pop_due(Instant::MAX) {
++            rest.push(keys[i as usize]);
++        }
++        assert_eq!(rest, vec![50, 60, 70, 80, 90]);
++        assert_eq!(h.len(), 0);
++    }
+ }
+diff --git a/src/shard.rs b/src/shard.rs
+index fb6df52..77e92ed 100644
+--- a/src/shard.rs
++++ b/src/shard.rs
+@@ -545,25 +545,25 @@ impl Shard {
+ 
+     /// Process one decrypted IP packet from `peer`.
+     pub fn ingress(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes) {
+-        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), RxChecksum::Verify);
++        self.ingress_with(now, iface, peer, pkt, RxChecksum::Verify);
+     }
+ 
+     /// Process a packet borrowed from a caller-owned pool. The caller may
+     /// recycle its buffer as soon as this returns; retained TCP data is copied
+     /// into stack-owned storage only after the packet passes admission checks.
+     pub fn ingress_borrowed(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8]) {
+-        self.ingress_packet(now, iface, peer, pkt, None, RxChecksum::Verify);
++        self.ingress_borrowed_with(now, iface, peer, pkt, RxChecksum::Verify);
+     }
+ 
+     /// `ingress` with the device's checksum verdict (TUN / virtio-net offload,
+     /// see [`crate::offload`]).
+     pub fn ingress_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes, csum: RxChecksum) {
+-        self.ingress_packet(now, iface, peer, &pkt, Some(pkt.clone()), csum);
++        self.ingress_owned(now, iface, peer, pkt, csum, false);
+     }
+ 
+     /// `ingress_borrowed` with the device's checksum verdict.
+     pub fn ingress_borrowed_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], csum: RxChecksum) {
+-        self.ingress_packet(now, iface, peer, pkt, None, csum);
++        self.ingress_slice(now, iface, peer, pkt, csum);
+     }
+ 
+     /// Zero-copy ingress of a packet read into a pooled, budget-charged
+@@ -575,10 +575,9 @@ impl Shard {
+     pub fn ingress_buf(&mut self, now: Instant, iface: IfaceId, peer: PeerId, buf: PacketBuf, start: usize, csum: RxChecksum) {
+         let keep = buf.len().saturating_sub(start) * 2 >= buf.capacity();
+         if keep {
+-            let pkt = Bytes::from_owner(buf).slice(start..);
+-            self.ingress_packet_with(now, iface, peer, &pkt, Some(pkt.clone()), csum, true);
++            self.ingress_owned(now, iface, peer, Bytes::from_owner(buf).slice(start..), csum, true);
+         } else if start <= buf.len() {
+-            self.ingress_packet(now, iface, peer, &buf[start..], None, csum);
++            self.ingress_slice(now, iface, peer, &buf[start..], csum);
+         }
+     }
+ 
+@@ -611,40 +610,60 @@ impl Shard {
+         }
+     }
+ 
+-    fn ingress_packet(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum) {
+-        self.ingress_packet_with(now, iface, peer, pkt, owner, csum, false)
+-    }
+-
+-    #[allow(clippy::too_many_arguments)]
+-    fn ingress_packet_with(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], owner: Option<Bytes>, csum: RxChecksum, leased: bool) {
++    fn parse_ingress(&mut self, pkt: &[u8], iface: IfaceId, csum: RxChecksum) -> Option<(wire::IpInfo, TcpHeader)> {
+         self.stats.rx_packets += 1;
+         if self.ifaces.get(iface.0 as usize).is_none_or(|i| i.is_none()) {
+             self.stats.rx_dropped_no_iface += 1;
+-            return;
++            return None;
+         }
+-        let ip = match wire::parse_ip(&pkt) {
++        let ip = match wire::parse_ip(pkt) {
+             Ok(ip) => ip,
+             Err(_) => {
+                 self.stats.rx_dropped_parse += 1;
+-                return;
++                return None;
+             }
+         };
+-        let h = match wire::parse_tcp_with(pkt, &ip, csum == RxChecksum::Verify) {
+-            Ok(h) => h,
++        match wire::parse_tcp_with(pkt, &ip, csum == RxChecksum::Verify) {
++            Ok(h) => Some((ip, h)),
+             Err(_) => {
+                 self.stats.rx_dropped_parse += 1;
+-                return;
++                None
+             }
+-        };
++        }
++    }
++
++    /// Owned / leased ingress: parse from a borrow, then slice the same `Bytes`
++    /// once. The previous call sites cloned the whole packet so parse could
++    /// keep a `&[u8]` while the owner moved.
++    fn ingress_owned(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: Bytes, csum: RxChecksum, leased: bool) {
++        let Some((ip, h)) = self.parse_ingress(pkt.as_ref(), iface, csum) else { return };
++        let start = ip.l4_off + h.data_off;
++        let end = ip.l4_off + ip.l4_len;
+         let remote = SocketAddr::new(ip.src, h.src_port);
+         let local = SocketAddr::new(ip.dst, h.dst_port);
++        let payload = if leased { IngressPayload::Leased(pkt.slice(start..end)) } else { IngressPayload::Owned(pkt.slice(start..end)) };
++        self.dispatch_ingress(now, iface, peer, remote, local, h, payload);
++    }
++
++    fn ingress_slice(&mut self, now: Instant, iface: IfaceId, peer: PeerId, pkt: &[u8], csum: RxChecksum) {
++        let Some((ip, h)) = self.parse_ingress(pkt, iface, csum) else { return };
+         let start = ip.l4_off + h.data_off;
+         let end = ip.l4_off + ip.l4_len;
+-        let payload = match owner {
+-            Some(pkt) if leased => IngressPayload::Leased(pkt.slice(start..end)),
+-            Some(pkt) => IngressPayload::Owned(pkt.slice(start..end)),
+-            None => IngressPayload::Borrowed(&pkt[start..end]),
+-        };
++        let remote = SocketAddr::new(ip.src, h.src_port);
++        let local = SocketAddr::new(ip.dst, h.dst_port);
++        self.dispatch_ingress(now, iface, peer, remote, local, h, IngressPayload::Borrowed(&pkt[start..end]));
++    }
++
++    fn dispatch_ingress(
++        &mut self,
++        now: Instant,
++        iface: IfaceId,
++        peer: PeerId,
++        remote: SocketAddr,
++        local: SocketAddr,
++        h: TcpHeader,
++        payload: IngressPayload<'_>,
++    ) {
+         let key = (iface, remote, local);
+         if let Some(&idx) = self.table.get(&key) {
+             self.input_existing(now, idx, peer, &h, payload);

@@ -80,7 +80,15 @@ impl IndexedHeap {
         if k > now {
             return None;
         }
-        self.remove(idx);
+        let last = self.heap.len() - 1;
+        if last != 0 {
+            self.swap(0, last);
+        }
+        self.heap.pop();
+        self.pos[idx as usize] = NONE;
+        if !self.heap.is_empty() {
+            self.down(0);
+        }
         Some(idx)
     }
 
@@ -179,5 +187,25 @@ mod tests {
         assert_eq!(h.pop_due(Instant::from_nanos(399)), None);
         assert_eq!(h.pop_due(Instant::from_nanos(400)), Some(0));
         assert_eq!(h.pop_due(Instant::MAX), None);
+    }
+
+    #[test]
+    fn pop_due_removes_root_without_up_and_keeps_heap_order() {
+        let mut h = IndexedHeap::default();
+        let keys = [40u64, 10, 70, 30, 90, 20, 60, 5, 80, 15, 50, 25];
+        for (i, &k) in keys.iter().enumerate() {
+            h.set(i as u32, Instant::from_nanos(k));
+        }
+        let mut out = Vec::new();
+        while let Some(i) = h.pop_due(Instant::from_nanos(45)) {
+            out.push(keys[i as usize]);
+        }
+        assert_eq!(out, vec![5, 10, 15, 20, 25, 30, 40]);
+        let mut rest = Vec::new();
+        while let Some(i) = h.pop_due(Instant::MAX) {
+            rest.push(keys[i as usize]);
+        }
+        assert_eq!(rest, vec![50, 60, 70, 80, 90]);
+        assert_eq!(h.len(), 0);
     }
 }

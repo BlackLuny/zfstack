@@ -13,30 +13,79 @@ use crate::budget::{Budget, MemoryLease};
 use crate::PeerId;
 use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
-use std::ops::{Deref, DerefMut};
+use std::mem::MaybeUninit;
 
 pub const TX_BLOCK: usize = 64 * 1024;
 const SMALL_TX_BLOCK: usize = 2048;
 const BLOCK_METADATA_BYTES: u64 = 64;
+
 pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
 const CHUNK_METADATA_BYTES: u64 = 64;
 const OOO_DESCRIPTOR_BYTES: u64 = 128;
 
+/// A TX block. Storage starts uninitialized: a short write into a fresh 64 KiB
+/// block touches only the pages it writes (no memset, no fault-in of the rest).
+/// `[..init]` is initialized; it only grows, so a recycled block keeps its
+/// prefix and is never zeroed again. Every `&[u8]` / `&mut [u8]` view lies
+/// inside `[..init]` (bounds-checked, also in release), so a bad offset panics
+/// instead of reading uninitialized heap.
 struct Block {
-    data: Box<[u8]>,
+    data: Box<[MaybeUninit<u8>]>,
+    init: usize,
     lease: MemoryLease,
 }
 
-impl Deref for Block {
-    type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        &self.data
+impl Block {
+    fn new(size: usize, lease: MemoryLease) -> Self {
+        Block { data: Box::new_uninit_slice(size), init: 0, lease }
     }
-}
 
-impl DerefMut for Block {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    #[cfg(test)]
+    fn as_ptr(&self) -> *const u8 {
+        self.data.as_ptr().cast()
+    }
+
+    /// Initialized bytes `[start, end)`.
+    #[inline(always)]
+    fn bytes(&self, start: usize, end: usize) -> &[u8] {
+        let s = &self.data[..self.init][start..end];
+        // SAFETY: `[..init]` is initialized.
+        unsafe { &*(s as *const [MaybeUninit<u8>] as *const [u8]) }
+    }
+
+    /// Copy `src` to `pos`.
+    #[inline(always)]
+    fn write(&mut self, pos: usize, src: &[u8]) {
+        let end = pos + src.len();
+        let dst = &mut self.data[pos..end];
+        // SAFETY: `dst` is in bounds and exactly `src.len()` long; `src` is a
+        // shared borrow, so the two cannot overlap.
+        unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr().cast::<u8>(), src.len()) };
+        if end > self.init {
+            if pos > self.init {
+                self.data[self.init..pos].fill(MaybeUninit::new(0));
+            }
+            self.init = end;
+        }
+    }
+
+    /// `[start, end)` as writable bytes for a caller-supplied fill. Bytes that
+    /// were never initialized are zeroed first (once per block lifetime), so a
+    /// fill callback never sees uninitialized memory.
+    #[inline(always)]
+    fn spare_mut(&mut self, start: usize, end: usize) -> &mut [u8] {
+        if end > self.init {
+            self.data[self.init..end].fill(MaybeUninit::new(0));
+            self.init = end;
+        }
+        let s = &mut self.data[start..end];
+        // SAFETY: `[..end]` is initialized after the fill above.
+        unsafe { &mut *(s as *mut [MaybeUninit<u8>] as *mut [u8]) }
     }
 }
 
@@ -62,7 +111,7 @@ impl BlockPool {
             return None;
         }
         let lease = budget.try_allocate_kind(peer, size as u64 + BLOCK_METADATA_BYTES, crate::budget::AllocationKind::TxBlock)?;
-        Some(Block { data: vec![0u8; size].into_boxed_slice(), lease })
+        Some(Block::new(size, lease))
     }
     fn put(&mut self, mut b: Block) {
         // A previous short-flow phase must not pin every cache slot and force
@@ -137,7 +186,7 @@ impl TxBuf {
             let end = self.head + self.len;
             let (bi, pos) = self.position(end);
             let n = (self.blocks[bi].len() - pos).min(src.len());
-            self.blocks[bi][pos..pos + n].copy_from_slice(&src[..n]);
+            self.blocks[bi].write(pos, &src[..n]);
             self.len += n;
             src = &src[n..];
         }
@@ -178,13 +227,19 @@ impl TxBuf {
         // `end` lies inside the old tail block, or at the start of the fresh one.
         let (bi, pos) = self.position(end);
         let mut it = self.blocks.range_mut(bi..);
-        let a = it.next().map_or(&mut [][..], |blk| &mut blk[pos..]);
-        let b = it.next().map_or(&mut [][..], |blk| &mut blk[..]);
         // Bytes land in `a` first, then `b` (readv order); `b` is offered
         // only when `a` is offered whole, so filled bytes stay contiguous.
-        let la = a.len().min(max);
-        let lb = b.len().min(max - la);
-        let result = fill([&mut a[..la], &mut b[..lb]]);
+        let a = it.next().map_or(&mut [][..], |blk| {
+            let la = (blk.len() - pos).min(max);
+            blk.spare_mut(pos, pos + la)
+        });
+        let la = a.len();
+        let b = it.next().map_or(&mut [][..], |blk| {
+            let lb = blk.len().min(max - la);
+            blk.spare_mut(0, lb)
+        });
+        let lb = b.len();
+        let result = fill([a, b]);
         let n = *result.as_ref().unwrap_or(&0);
         assert!(n <= la + lb, "write_with filled more than offered");
         self.len += n;
@@ -266,12 +321,12 @@ impl TxBuf {
         let abs = self.head + off;
         let (bi, pos) = self.position(abs);
         let first = (self.blocks[bi].len() - pos).min(len);
-        let a = &self.blocks[bi][pos..pos + first];
+        let a = self.blocks[bi].bytes(pos, pos + first);
         if first == len {
             [a, &[]]
         } else {
             debug_assert!(len - first <= TX_BLOCK);
-            [a, &self.blocks[bi + 1][..len - first]]
+            [a, self.blocks[bi + 1].bytes(0, len - first)]
         }
     }
 }
@@ -917,6 +972,60 @@ mod tests {
         }
         assert_eq!(got, expect);
         assert!(q.read_chunk(10).is_none());
+    }
+
+    #[test]
+    fn new_full_tx_block_returns_written_bytes_without_zero_fill() {
+        let mut pool = BlockPool::new(0);
+        let global = crate::budget::GlobalBudget::new(2 << 20);
+        let mut budget = Budget::new(global);
+        let mut tx = TxBuf::default();
+        let src: Vec<u8> = (0..TX_BLOCK).map(|n| (n % 251) as u8).collect();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &src));
+        let [a, b] = tx.slices(0, src.len());
+        let mut out = Vec::with_capacity(src.len());
+        out.extend_from_slice(a);
+        out.extend_from_slice(b);
+        assert_eq!(out, src);
+        tx.consume(&mut pool, src.len());
+        assert_eq!(tx.len(), 0);
+    }
+
+    #[test]
+    fn write_with_never_offers_uninitialized_bytes() {
+        let mut pool = BlockPool::new(1);
+        let global = crate::budget::GlobalBudget::new(4 << 20);
+        let mut budget = Budget::new(global);
+        let mut tx = TxBuf::default();
+        // Fresh blocks: the offered region reads as zeros.
+        let n = tx
+            .write_with(&mut pool, &mut budget, PeerId(1), TX_BLOCK + 100, |[a, b]| -> Result<usize, ()> {
+                assert!(a.iter().chain(b.iter()).all(|&x| x == 0));
+                a[..3].copy_from_slice(b"abc");
+                Ok(3)
+            })
+            .unwrap();
+        assert_eq!(n, Some(3));
+        assert_eq!(tx.slices(0, 3)[0], b"abc");
+        tx.consume(&mut pool, 3);
+        // A recycled block keeps its initialized prefix and is not zeroed again.
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), b"x"));
+        assert_eq!(tx.slices(0, 1)[0], b"x");
+        tx.consume(&mut pool, 1);
+    }
+
+    #[test]
+    fn block_views_stop_at_initialized_prefix() {
+        let global = crate::budget::GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global);
+        let lease = budget.try_allocate_kind(PeerId(1), 64, crate::budget::AllocationKind::TxBlock).unwrap();
+        let mut b = Block::new(SMALL_TX_BLOCK, lease);
+        b.write(0, b"hello");
+        assert_eq!(b.bytes(0, 5), b"hello");
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.bytes(0, 6).len())).is_err());
+        // A write past the prefix zero-fills the gap.
+        b.write(10, b"z");
+        assert_eq!(b.bytes(5, 11), b"\0\0\0\0\0z");
     }
 
     #[test]
