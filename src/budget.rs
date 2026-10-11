@@ -220,7 +220,7 @@ impl GlobalBudget {
     pub fn headroom(&self, limit: u64, tier: Tier) -> u64 {
         let egress = self.egress_reserve.load(Ordering::Relaxed);
         let drain = egress.saturating_add(META_RESERVE);
-        let block = drain.saturating_add(crate::buf::TX_BLOCK_CHARGE);
+        let block = drain.saturating_add(crate::buf::TX_FIRST_WRITE_CHARGE);
         let admit = block.saturating_add(self.admit_reserve.load(Ordering::Relaxed));
         if limit / 2 < admit {
             return 0;
@@ -250,7 +250,7 @@ impl GlobalBudget {
         } else {
             match tier {
                 Tier::Bulk => debt,
-                Tier::Block => crate::buf::TX_BLOCK_CHARGE.saturating_add(debt).min(drain),
+                Tier::Block => crate::buf::TX_FIRST_WRITE_CHARGE.saturating_add(debt).min(drain),
                 Tier::Egress | Tier::Drain | Tier::Admit => 0,
             }
         };
@@ -873,6 +873,8 @@ pub enum Tier {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AllocationKind {
     TxBlock,
+    /// TX descriptor capacity is not necessarily released by an ACK.
+    TxIndex,
     RxChunk,
     Ooo,
     SendRecord,
@@ -891,7 +893,7 @@ impl AllocationKind {
         match self {
             AllocationKind::Egress => Tier::Egress,
             AllocationKind::SendRecord | AllocationKind::AdapterRx => Tier::Drain,
-            AllocationKind::TxBlock => Tier::Block,
+            AllocationKind::TxBlock | AllocationKind::TxIndex => Tier::Block,
             AllocationKind::ActiveState | AllocationKind::Logical | AllocationKind::Other | AllocationKind::StreamState | AllocationKind::Stateless => {
                 Tier::Admit
             }
@@ -927,7 +929,7 @@ pub type ReserveFailures = KindCounts;
 impl KindCounts {
     fn get_mut(&mut self, kind: AllocationKind) -> &mut u64 {
         match kind {
-            AllocationKind::TxBlock => &mut self.tx_block,
+            AllocationKind::TxBlock | AllocationKind::TxIndex => &mut self.tx_block,
             AllocationKind::RxChunk => &mut self.rx_chunk,
             AllocationKind::Ooo => &mut self.ooo,
             AllocationKind::SendRecord => &mut self.send_record,
@@ -1110,6 +1112,15 @@ impl Budget {
         }
     }
 
+    pub(crate) fn port_memory_handle(&self) -> PortMemoryHandle {
+        PortMemoryHandle {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.physical_port),
+            port_limit: self.port_limit,
+            stats: Arc::clone(&self.stats),
+        }
+    }
+
     pub fn physical_used(&self) -> u64 {
         self.physical_port.used.load(Ordering::Relaxed)
     }
@@ -1189,9 +1200,9 @@ impl Budget {
     /// Per-connection send share in bytes (docs/design/0007 §2.2). Both the
     /// port and the peer level constrain; within a level the share splits per
     /// sender, always leaving one share for the next connection. The share is
-    /// counted in whole TX blocks against the physical charge, with one block
+    /// counted in whole TX payload blocks, with one block
     /// per sender reserved for the partial-buffer-plus-partial-queue
-    /// transient, so honoured shares also fit the physical limit. The floor
+    /// transient. Descriptor reservations separately enforce physical limits. The floor
     /// keeps a minimal in-flight quantum no matter the sender count.
     pub fn send_share(&self, peer: PeerId) -> u64 {
         let hi = self.port_limit.min(self.peer_limit);
@@ -1290,6 +1301,53 @@ impl Budget {
     }
 }
 
+/// Pool backing belongs to its shard's port, never to the last caching peer.
+pub(crate) struct PortMemoryHandle {
+    global: Arc<GlobalBudget>,
+    port: Arc<LevelUse>,
+    port_limit: u64,
+    stats: Arc<PortStats>,
+}
+
+impl PortMemoryHandle {
+    pub(crate) fn matches(&self, budget: &Budget) -> bool {
+        Arc::ptr_eq(&self.global, &budget.global) && Arc::ptr_eq(&self.port, &budget.physical_port)
+    }
+
+    pub(crate) fn owns(&self, lease: &MemoryLease) -> bool {
+        Arc::ptr_eq(&self.global, &lease.global) && Arc::ptr_eq(&self.port, &lease.port)
+    }
+
+    pub(crate) fn try_allocate_cached_index(&self, bytes: u64) -> Option<MemoryLease> {
+        if self.global.has_waiters() || self.global.admission_debt() != 0 || self.port.debt.load(Ordering::Acquire) != 0 {
+            return None;
+        }
+        let refused = {
+            let _allocation = self.global.allocation_lock.lock().unwrap();
+            if !self.global.try_reserve(bytes, Tier::Block) {
+                Some(Level::Global)
+            } else if !reserve_amount(&self.port.used, self.port.limit(&self.global, self.port_limit, Tier::Block), bytes) {
+                self.global.release_uncommitted(bytes);
+                Some(Level::Port)
+            } else {
+                None
+            }
+        };
+        if let Some(level) = refused {
+            self.stats.note(AllocationKind::TxIndex, Some(level));
+            self.global.request_cache_reclaim();
+            return None;
+        }
+        let mut lease =
+            MemoryLease { global: Arc::clone(&self.global), port: Arc::clone(&self.port), peer: None, bytes, peer_limit: 0, cached: false, drain: false };
+        if !self.global.try_cache(bytes) {
+            return None;
+        }
+        lease.cached = true;
+        Some(lease)
+    }
+}
+
 #[derive(Clone)]
 pub struct MemoryHandle {
     global: Arc<GlobalBudget>,
@@ -1354,7 +1412,107 @@ pub struct MemoryLease {
     drain: bool,
 }
 
+/// A peer-only reservation keeps the old index owner until the write commits.
+pub(crate) struct IndexPeerReservation {
+    global: Arc<GlobalBudget>,
+    peer: Option<Arc<LevelUse>>,
+    bytes: u64,
+    peer_limit: u64,
+}
+
+impl Drop for IndexPeerReservation {
+    fn drop(&mut self) {
+        if let Some(peer) = self.peer.take() {
+            peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
+            self.global.wake_waiters();
+        }
+    }
+}
+
 impl MemoryLease {
+    pub(crate) fn belongs_to(&self, budget: &Budget) -> bool {
+        Arc::ptr_eq(&self.global, &budget.global) && Arc::ptr_eq(&self.port, &budget.physical_port)
+    }
+
+    pub(crate) fn can_reuse_index(&self, budget: &Budget, peer: PeerId, empty: bool) -> bool {
+        self.belongs_to(budget)
+            && (empty || budget.physical_peers.get(&peer).is_some_and(|counter| self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))))
+    }
+
+    /// Prepare peer capacity before a new payload becomes drain. The old
+    /// owner stays charged until commit; dropping the token rolls back only
+    /// the new peer reservation, without reporting ACK-released bytes.
+    pub(crate) fn prepare_index_peer(&self, budget: &mut Budget, peer: PeerId, empty: bool) -> Result<Option<IndexPeerReservation>, ()> {
+        debug_assert!(!self.drain && self.peer.is_some());
+        if !self.belongs_to(budget) {
+            return Err(());
+        }
+        if budget.physical_peers.get(&peer).is_some_and(|counter| self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))) {
+            return Ok(None);
+        }
+        if !empty {
+            return Err(());
+        }
+        let counter = budget.physical_peers.entry(peer).or_default().clone();
+        let reserved = {
+            let _allocation = self.global.allocation_lock.lock().unwrap();
+            reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes)
+        };
+        if !reserved {
+            budget.stats.note(AllocationKind::TxIndex, Some(Level::Peer));
+            self.global.request_cache_reclaim();
+            return Err(());
+        }
+        Ok(Some(IndexPeerReservation { global: Arc::clone(&self.global), peer: Some(counter), bytes: self.bytes, peer_limit: budget.peer_limit }))
+    }
+
+    pub(crate) fn commit_index_peer(&mut self, mut reservation: IndexPeerReservation) {
+        debug_assert!(Arc::ptr_eq(&self.global, &reservation.global) && self.bytes == reservation.bytes);
+        let old = self.peer.replace(reservation.peer.take().expect("prepared index peer")).expect("TX index has a peer");
+        self.peer_limit = reservation.peer_limit;
+        old.used.fetch_sub(self.bytes, Ordering::AcqRel);
+        self.global.wake_waiters();
+    }
+
+    /// Empty TX indexes remain peer-owned; only their reclaimability is cached.
+    pub(crate) fn park_index(&mut self) -> bool {
+        debug_assert!(!self.drain && self.peer.is_some());
+        if self.cached {
+            return true;
+        }
+        let owed = self.global.admission_debt() != 0 || self.port.debt.load(Ordering::Acquire) != 0;
+        if owed || self.global.has_waiters() || !self.global.try_cache(self.bytes) {
+            return false;
+        }
+        self.cached = true;
+        true
+    }
+
+    pub(crate) fn activate_index(&mut self) {
+        debug_assert!(!self.drain && self.peer.is_some());
+        if std::mem::take(&mut self.cached) {
+            self.global.release_cache(self.bytes);
+        }
+    }
+
+    /// Release preallocation slack only after checking the actual backing size.
+    pub(crate) fn shrink_index_to(&mut self, bytes: u64) {
+        assert!(!self.drain && bytes <= self.bytes);
+        let released = self.bytes - bytes;
+        self.bytes = bytes;
+        if released == 0 {
+            return;
+        }
+        if self.cached {
+            self.global.release_cache(released);
+        }
+        if let Some(peer) = &self.peer {
+            peer.used.fetch_sub(released, Ordering::AcqRel);
+        }
+        self.port.used.fetch_sub(released, Ordering::AcqRel);
+        self.global.release(released);
+    }
+
     /// Keep an idle block for reuse. While any allocator is parked, the block
     /// is released instead: a cached block would pin the share it waits for
     /// without a failure left to request its reclaim.
@@ -1375,9 +1533,13 @@ impl MemoryLease {
 
     pub fn assign(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
         debug_assert!(self.peer.is_none());
+        if !self.belongs_to(budget) {
+            return false;
+        }
         let counter = budget.physical_peers.entry(peer).or_default().clone();
         if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
             budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+            self.global.request_cache_reclaim();
             return false;
         }
         for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
@@ -1479,7 +1641,7 @@ mod tests {
         let mut b = Budget::new(global);
         b.set_limits(819_200, 819_200, 128);
         let block = crate::buf::TX_BLOCK as u64;
-        // The level holds 819_200 / 65_600 = 12 blocks (docs/design/0007 §2.2).
+        // The level holds 819_200 / 65_536 = 12 payload blocks (docs/design/0007 §2.2).
         assert_eq!(b.send_share(PeerId(1)), 11 * block, "no senders: (12 − 1)/1");
         b.sender_add(PeerId(1));
         assert_eq!(b.send_share(PeerId(1)), 5 * block, "one sender: (12 − 2)/2");
@@ -2020,7 +2182,7 @@ mod tests {
             let h4 = global.headroom(L, Tier::Bulk);
             assert_eq!(h1, 8192);
             assert_eq!(h2, h1 + META_RESERVE);
-            assert_eq!(h3, h2 + crate::buf::TX_BLOCK_CHARGE);
+            assert_eq!(h3, h2 + crate::buf::TX_FIRST_WRITE_CHARGE);
             assert_eq!(h4, h3 + DEFAULT_ADMIT_RESERVE);
             let memory = budget.memory_handle(PeerId(1));
             let bulk = memory.try_allocate_kind(L - h4, AllocationKind::AdapterTx).unwrap();

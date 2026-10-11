@@ -12,7 +12,7 @@ global→port→peer 三层物理额度是共享池：adapter TX 队列、core T
 |---|---|---|
 | P0 出口 | 宿主出口包（zfc TCP/UDP 回程 `EgressPacket`） | 宿主发出即释放，不再申请任何额度 |
 | P1 排空元数据 | 发送记录扩容；adapter RX 描述符扩容 | ACK / 应用读取（只依赖 P0） |
-| P2 搬入 core | core TX 块（含缓存块改归属） | 数据被 ACK（依赖 P1、P0） |
+| P2 搬入 core | core TX payload 块（含缓存块改归属）、TX 描述符 backing | payload 被 ACK；描述符由空队列回收或 drop 释放 |
 | P3 准入 | 活跃连接状态、stream 状态、无状态回复、TIME_WAIT 槽、未标注的申请 | —— |
 | P4 大块 | adapter TX 块与描述符、core RX payload 与描述符 backing（`RxChunk`）、OOO owner（`Ooo`） | —— |
 
@@ -22,7 +22,7 @@ global→port→peer 三层物理额度是共享池：adapter TX 队列、core T
 H_0 = 0
 H_1 = R_egress                 出口包预留，只增不减：默认 8KiB；zfc 抬到 2×max(MTU, 2048)
 H_2 = H_1 + R_meta             max(最小发送记录扩容, 最小 RX 描述符扩容)
-H_3 = H_2 + R_block            TX_BLOCK_CHARGE
+H_3 = H_2 + R_block            TX_FIRST_WRITE_CHARGE（payload + 首次描述符扩容预留）
 H_4 = H_3 + R_admit            ADMIT_BURST(4) × (core 连接状态 + adapter stream 状态)
 ```
 
@@ -52,7 +52,7 @@ zfc 目前的处理是把端口份额抬到 `2·H_4` 并告警。这**改变了�
 
 - 发送记录：记录只在累计 ACK 时释放槽位，而丢包重传是累计 ACK 前进的前提。所以记录满、又需要重传时，扩容失败不能挡住重传：core 改为原地重传不超过一个 MSS 的丢失记录，复用它原来的槽位，不插入新记录；新数据、TLP 探测和拆分记录则等待槽位（`Conn::plan_in_place`）。被阻塞的连接只要有待重传的丢失字节，shard 仍会调度它。记录全部确认后 backing 会被释放，下次需要时申请最小容量，这一申请在 P1 预留之内。
 - adapter RX 描述符：队列满说明已有 chunk 在等应用读取，应用每读一个就空出一个槽位，不需要扩容；队列读空后 backing 被释放，下一次只申请最小容量（在 P1 预留之内）。
-- TX 块：pump 每次最多写 64KiB。core TX 为空时 head 回到 0，只需要一块新块，正好是 `R_block`。
+- TX 块：pump 每次最多写 64KiB。core TX 为空时 head 回到 0，只需要一块新块，加上首次描述符扩容的预留，不超过 `R_block`。
 - 例外：MTU 变小后，比新 MSS 长的丢失记录必须先拆分，拆分需要新槽位。它只能等别处释放，本变更不处理这种情况。
 - adapter stream 状态：握手完成后 adapter 才接管连接；如果此时再按准入等级申请 stream 状态，一旦失败只能复位这条已建立的连接。真机上 idle 缓存和繁忙的 adapter 队列占满准入额度时，11/16 条新连接就是这样在 25ms 内收到 RST。现在改为在 SYN 准入时，与 core 连接状态一起预留 stream 状态（`Shard::reserve_stream_state`）。租约保存在连接的 `Conn` 里，accept 时交给 adapter。额度不足就丢 SYN，由对端重传；如果额度只是被本 shard 的空闲缓存占着，先就地回收再重试一次。stream 状态的内存照常计费，生命周期不变。
 
@@ -102,3 +102,13 @@ zfc 目前的处理是把端口份额抬到 `2·H_4` 并告警。这**改变了�
 ## 8. 未解决：受压时的新连接准入
 
 见 §2。已拍板的方向是：内存紧张时限制缓冲，给新连接的状态腾出空间（方案 B）。设计与验收见 0006：准入失败在拒绝它的那一层留下欠账，欠账期间 TX 块与大块缓冲不回填这段空间，直到新连接进来或欠账到期。
+
+### core TX 描述符容量账本
+
+`TxBuf.blocks` 的 `VecDeque<Block>` 与 `BlockPool.free/small` 的两个 Vec 按实际 capacity 分别持有非 drain 的 `TxIndex` 租约。TX payload 按 Box 长度持有 `TxBlock` 租约，不再逐块附加固定 64B。前者在元素减少或缓存块取回后仍保留，不能计成 ACK 已释放的 drain，也不由 `ACTIVE_STATE_BYTES` 的固定余量替代。
+
+扩容先在 global→port→peer（pool 只 global→port）预留 `2 × target_slots × size_of::<Block>()`，再 fallible 分配。分配完成后若实际 capacity 超过预留，则不发布新容器并释放新 backing / 租约，保留旧容器；否则保留完整的新 backing 预留直到本次 payload 申请成功，提交时才将租约收敛到实际 backing 字节。这个分配后检查不证明标准容器的分配调用期间绝无瞬时超额，allocator 实际请求及峰值仍未测量。搬迁期间旧、新 backing 同时计费，旧 backing drop 后才归还旧租约。TX 数据、长度及原 backing 在预算或分配拒绝时保留；pool 归还时扩容失败只丢弃待缓存块，ACK 不因缓存失败受阻。
+
+空 TX 队列保留至多 8 槽，仍计入原 peer、port 和 global；其租约可标为空闲缓存但不解除 peer 归属。复用至其他 peer 只允许空队列：先为新 peer 预留 descriptor 额度，保持旧 peer 费用；再准备 payload，最后提交归属。失败令预留 token 回滚新 peer 费用，不报告 drain 释放。这样未发布的 payload 不会先改变 drain，再令 descriptor 被自身 admission debt 拒绝。pool backing 由端口持有，不归最后一个缓存 peer。所有空闲 backing 参与缓存上限；预算失败的既有回收慢路径同时回收 pool 和连接内空 TX backing，按字节记录回收，即使 payload 块数为零也须释放和唤醒。健康写入不逐次遍历连接。
+
+`TX_FIRST_WRITE_CHARGE = TX_BLOCK + 8 × size_of::<Block>()` 为首次 4 槽 backing 的两倍预留与一个完整 payload 留出推进空间；writer waiter 使用 payload + 完整 replacement 预留的相同费用，该预留在 payload 就绪前不收敛，避免可重试峰值低于 waiter 声明而漏唤醒；更大的扩容可等待其他释放。发送逻辑份额仍按完整 payload 块划分，物理 backing 独立申请，份额不能代替物理准入。测试检查 ledger 与 capacity 的对应，不声称覆盖 allocator rounding、分配器峰值、RSS 或吞吐。

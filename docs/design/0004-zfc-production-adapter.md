@@ -47,7 +47,7 @@ Tokio Driver 的 `streams` 索引在短连接突发退潮后按稀疏阈值重�
 
 宿主仅在启用诊断 env 时定时请求快照；当前快照只有当适配器已接收流不超过 4 条时，才读取这些流的 core TCP 状态和适配器 TX/RX 待处理量，不保存报文，也不在每包路径遍历连接。它用于区分尾部慢流的拥塞/重传、核心待发送、适配器积压与应用供数空档，不能替代 per-flow 逐包 trace 或 24 小时 RSS 验收。
 
-Core 的 RX `VecDeque<Bytes>` 与 TX `VecDeque<Block>` 在排空后若曾超过 8 个槽位，释放描述符高水位 backing；TX 分配失败回滚时也执行同样清理。归还 payload lease 不代表描述符已经释放，两者分别检查。活跃期描述符、乱序树、计时器等动态容器仍须按 P4 的物理容量账本与 RSS 对账。
+Core 的 RX `VecDeque<Bytes>` 与 TX `VecDeque<Block>` 在排空后若曾超过 8 个槽位，释放描述符高水位 backing；TX 分配失败回滚时也执行同样清理。归还 payload lease 不代表描述符已经释放，两者分别检查。TX 活跃及保留描述符按 `capacity × size_of::<Block>()` 独立计费，pool 两个 Vec 的 backing 也包括取空后保留的容量；payload 租约只计 Box 长度，撤去旧的逐块固定 64B 元数据估算，避免重复计费。TX 扩容在旧 backing 仍计费时预留新 backing，分配失败不接纳新数据；空闲 backing 参与缓存上限和受压回收。RX 活跃期描述符、乱序树、计时器等其他动态容器仍须分别对账；allocator rounding 和 RSS 不是精确 ledger。
 
 ## 4. 端口与 peer 份额
 

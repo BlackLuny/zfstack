@@ -9,7 +9,7 @@
 //!   charged compact chunks so packet-pool owners return immediately (§5).
 //! * [`OooQueue`]: out-of-order ranges, allocated only when reordering happens (§6.1).
 
-use crate::budget::{Budget, MemoryLease};
+use crate::budget::{Budget, MemoryLease, PortMemoryHandle};
 use crate::PeerId;
 use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
@@ -17,9 +17,9 @@ use std::mem::MaybeUninit;
 
 pub const TX_BLOCK: usize = 64 * 1024;
 const SMALL_TX_BLOCK: usize = 2048;
-const BLOCK_METADATA_BYTES: u64 = 64;
-
-pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+// Payload and descriptor backing have separate leases.
+pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64;
+pub(crate) const TX_FIRST_WRITE_CHARGE: u64 = TX_BLOCK_CHARGE + 8 * std::mem::size_of::<Block>() as u64;
 const CHUNK_METADATA_BYTES: u64 = 64;
 const OOO_DESCRIPTOR_BYTES: u64 = 128;
 
@@ -33,6 +33,42 @@ struct Block {
     data: Box<[MaybeUninit<u8>]>,
     init: usize,
     lease: MemoryLease,
+}
+
+struct TxIndex {
+    blocks: VecDeque<Block>,
+    lease: MemoryLease,
+}
+
+fn tx_index_allocation(slots: usize, capacity: usize) -> Option<(usize, u64)> {
+    let target = slots.max(capacity).max(4).checked_next_power_of_two()?;
+    let bytes = target.checked_mul(std::mem::size_of::<Block>())?.checked_mul(2)?;
+    Some((target, u64::try_from(bytes).ok()?))
+}
+
+#[cfg(test)]
+thread_local! {
+    // 1: allocation refusal; 2: reported capacity exceeds the pre-reservation.
+    static TX_INDEX_FAULT: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+fn tx_index_fault() -> u8 {
+    #[cfg(test)]
+    {
+        TX_INDEX_FAULT.with(|fault| fault.replace(0))
+    }
+    #[cfg(not(test))]
+    {
+        0
+    }
+}
+
+fn tx_index_bytes(capacity: usize, reserved: u64, fault: u8) -> Result<u64, ()> {
+    let actual = capacity.checked_mul(std::mem::size_of::<Block>()).and_then(|n| u64::try_from(n).ok()).ok_or(())?;
+    if fault == 2 || actual > reserved {
+        return Err(());
+    }
+    Ok(actual)
 }
 
 impl Block {
@@ -94,14 +130,23 @@ impl Block {
 pub struct BlockPool {
     free: Vec<Block>,
     small: Vec<Block>,
+    free_lease: Option<MemoryLease>,
+    small_lease: Option<MemoryLease>,
+    memory: Option<PortMemoryHandle>,
     pub max_cached: usize,
 }
 
 impl BlockPool {
     pub fn new(max_cached: usize) -> Self {
-        BlockPool { free: Vec::new(), small: Vec::new(), max_cached }
+        BlockPool { max_cached, ..Self::default() }
     }
     fn get(&mut self, budget: &mut Budget, peer: PeerId, size: usize) -> Option<Block> {
+        if self.memory.as_ref().is_some_and(|memory| !memory.matches(budget)) {
+            return None;
+        }
+        if self.memory.is_none() {
+            self.memory = Some(budget.port_memory_handle());
+        }
         let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
         if let Some(mut block) = free.pop() {
             if block.lease.assign(budget, peer) {
@@ -110,10 +155,13 @@ impl BlockPool {
             free.push(block);
             return None;
         }
-        let lease = budget.try_allocate_kind(peer, size as u64 + BLOCK_METADATA_BYTES, crate::budget::AllocationKind::TxBlock)?;
+        let lease = budget.try_allocate_kind(peer, size as u64, crate::budget::AllocationKind::TxBlock)?;
         Some(Block::new(size, lease))
     }
     fn put(&mut self, mut b: Block) {
+        if self.memory.as_ref().is_none_or(|memory| !memory.owns(&b.lease)) {
+            return;
+        }
         // A previous short-flow phase must not pin every cache slot and force
         // subsequent bulk transfers to allocate a full block on every write.
         if self.cached() == self.max_cached {
@@ -124,12 +172,41 @@ impl BlockPool {
             }
         }
         if self.cached() < self.max_cached && b.lease.park_cached() {
-            if b.len() == SMALL_TX_BLOCK {
-                self.small.push(b);
-            } else {
-                self.free.push(b);
+            let memory = self.memory.as_ref().unwrap();
+            let (free, lease) = if b.len() == SMALL_TX_BLOCK { (&mut self.small, &mut self.small_lease) } else { (&mut self.free, &mut self.free_lease) };
+            if Self::reserve_cached_slot(free, lease, memory) {
+                free.push(b);
             }
         }
+    }
+
+    fn reserve_cached_slot(free: &mut Vec<Block>, backing: &mut Option<MemoryLease>, memory: &PortMemoryHandle) -> bool {
+        if free.len() < free.capacity() {
+            return true;
+        }
+        let Some((target, bytes)) = free.len().checked_add(1).and_then(|slots| tx_index_allocation(slots, free.capacity())) else {
+            return false;
+        };
+        let Some(mut lease) = memory.try_allocate_cached_index(bytes) else { return false };
+        let fault = tx_index_fault();
+        if fault == 1 {
+            return false;
+        }
+        let mut next = Vec::new();
+        if next.try_reserve_exact(target).is_err() {
+            return false;
+        }
+        let Ok(actual) = tx_index_bytes(next.capacity(), bytes, fault) else { return false };
+        lease.shrink_index_to(actual);
+        next.append(free);
+        let old = std::mem::replace(free, next);
+        drop(old);
+        *backing = Some(lease);
+        true
+    }
+
+    pub(crate) fn descriptor_bytes(&self) -> u64 {
+        ((self.free.capacity() + self.small.capacity()) * std::mem::size_of::<Block>()) as u64
     }
     pub fn cached(&self) -> usize {
         self.free.len() + self.small.len()
@@ -138,9 +215,11 @@ impl BlockPool {
     /// the number of blocks and bytes released.
     pub fn reclaim(&mut self) -> (usize, u64) {
         let n = self.cached();
-        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * (SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * SMALL_TX_BLOCK as u64 + self.descriptor_bytes();
         self.free = Vec::new();
+        self.free_lease = None;
         self.small = Vec::new();
+        self.small_lease = None;
         (n, bytes)
     }
 }
@@ -149,6 +228,7 @@ impl BlockPool {
 #[derive(Default)]
 pub struct TxBuf {
     blocks: VecDeque<Block>,
+    index_lease: Option<MemoryLease>,
     /// Position of offset 0 inside `blocks[0]`.
     head: usize,
     len: usize,
@@ -167,20 +247,46 @@ impl TxBuf {
     }
 
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
+        if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
+            return false;
+        }
         let before = self.blocks.len();
         let Some(total) = self.head.checked_add(self.len).and_then(|n| n.checked_add(src.len())) else { return false };
         let first_size = self.blocks.front().map_or_else(|| if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
         let needed = if total == 0 { 0 } else { 1 + total.saturating_sub(first_size).div_ceil(TX_BLOCK) };
-        while self.blocks.len() < needed {
-            let size = if self.blocks.is_empty() { first_size } else { TX_BLOCK };
+        let Ok(mut index) = self.prepare_index(needed, budget, peer) else { return false };
+        let assignment =
+            if index.is_none() { self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0)) } else { Ok(None) };
+        let Ok(assignment) = assignment else { return false };
+        let mut staged = 0;
+        while before + staged < needed {
+            let size = if before + staged == 0 { first_size } else { TX_BLOCK };
             let Some(block) = pool.get(budget, peer, size) else {
-                while self.blocks.len() > before {
-                    pool.put(self.blocks.pop_back().unwrap());
+                if let Some(index) = &mut index {
+                    while let Some(block) = index.blocks.pop_back() {
+                        pool.put(block);
+                    }
+                } else {
+                    while self.blocks.len() > before {
+                        pool.put(self.blocks.pop_back().unwrap());
+                    }
                 }
                 self.trim_empty_index();
                 return false;
             };
-            self.blocks.push_back(block);
+            if let Some(index) = &mut index {
+                index.blocks.push_back(block);
+            } else {
+                self.blocks.push_back(block);
+            }
+            staged += 1;
+        }
+        if let Some(assignment) = assignment {
+            self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
+        }
+        self.commit_index(index);
+        if !self.blocks.is_empty() {
+            self.index_lease.as_mut().unwrap().activate_index();
         }
         while !src.is_empty() {
             let end = self.head + self.len;
@@ -210,19 +316,44 @@ impl TxBuf {
         if max == 0 {
             return fill([&mut [], &mut []]).map(|_| Some(0));
         }
+        if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
+            return Ok(None);
+        }
         let before = self.blocks.len();
         let end = self.head + self.len;
         let spare = self.allocated().saturating_sub(end);
         if spare < max.min(SECOND_BELOW) {
             let size = if self.blocks.is_empty() && max <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK };
-            match pool.get(budget, peer, size) {
-                Some(block) => self.blocks.push_back(block),
+            let index = self.blocks.len().checked_add(1).and_then(|slots| self.prepare_index(slots, budget, peer).ok());
+            let block = index.and_then(|mut index| {
+                let assignment = if index.is_none() {
+                    self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0)).ok()?
+                } else {
+                    None
+                };
+                let block = pool.get(budget, peer, size)?;
+                if let Some(assignment) = assignment {
+                    self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
+                }
+                if let Some(next) = &mut index {
+                    next.blocks.push_back(block);
+                    self.commit_index(index);
+                } else {
+                    self.blocks.push_back(block);
+                }
+                Some(())
+            });
+            match block {
+                Some(()) => {}
                 None if spare == 0 => {
                     self.trim_empty_index();
                     return Ok(None);
                 }
                 None => {}
             }
+        }
+        if !self.blocks.is_empty() {
+            self.index_lease.as_mut().unwrap().activate_index();
         }
         // `end` lies inside the old tail block, or at the start of the fresh one.
         let (bi, pos) = self.position(end);
@@ -287,9 +418,54 @@ impl TxBuf {
     }
 
     fn trim_empty_index(&mut self) {
-        if self.blocks.is_empty() && self.blocks.capacity() > 8 {
-            self.blocks = VecDeque::new();
+        if self.blocks.is_empty() && (self.blocks.capacity() > 8 || self.index_lease.as_mut().is_some_and(|lease| !lease.park_index())) {
+            self.reclaim_idle_index();
         }
+    }
+
+    pub(crate) fn reclaim_idle_index(&mut self) -> u64 {
+        if !self.blocks.is_empty() {
+            return 0;
+        }
+        let bytes = (self.blocks.capacity() * std::mem::size_of::<Block>()) as u64;
+        self.blocks = VecDeque::new();
+        self.index_lease = None;
+        bytes
+    }
+
+    fn prepare_index(&self, slots: usize, budget: &mut Budget, peer: PeerId) -> Result<Option<TxIndex>, ()> {
+        if slots <= self.blocks.capacity() {
+            return Ok(None);
+        }
+        let (target, bytes) = tx_index_allocation(slots, self.blocks.capacity()).ok_or(())?;
+        let lease = budget.try_allocate_kind(peer, bytes, crate::budget::AllocationKind::TxIndex).ok_or(())?;
+        let fault = tx_index_fault();
+        if fault == 1 {
+            return Err(());
+        }
+        let mut blocks = VecDeque::new();
+        blocks.try_reserve_exact(target).map_err(|_| ())?;
+        tx_index_bytes(blocks.capacity(), bytes, fault)?;
+        // Keep the complete replacement precharge until payload admission;
+        // write_allocation_charge and physical waiters use this same sum.
+        Ok(Some(TxIndex { blocks, lease }))
+    }
+
+    fn commit_index(&mut self, index: Option<TxIndex>) {
+        if let Some(mut index) = index {
+            index.lease.shrink_index_to((index.blocks.capacity() * std::mem::size_of::<Block>()) as u64);
+            while let Some(block) = self.blocks.pop_back() {
+                index.blocks.push_front(block);
+            }
+            let old = std::mem::replace(&mut self.blocks, index.blocks);
+            drop(old);
+            self.index_lease = Some(index.lease);
+        }
+    }
+
+    #[cfg(test)]
+    fn descriptor_bytes(&self) -> u64 {
+        (self.blocks.capacity() * std::mem::size_of::<Block>()) as u64
     }
 
     // Only the first block may be small. Every following block can hold a
@@ -305,11 +481,13 @@ impl TxBuf {
 
     #[cfg(any(test, feature = "tokio"))]
     pub(crate) fn write_allocation_charge(&self, bytes: usize) -> u64 {
-        if self.blocks.is_empty() && bytes <= SMALL_TX_BLOCK {
-            SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES
+        let payload = if self.blocks.is_empty() && bytes <= SMALL_TX_BLOCK { SMALL_TX_BLOCK as u64 } else { TX_BLOCK_CHARGE };
+        let index = if self.blocks.len() < self.blocks.capacity() {
+            0
         } else {
-            TX_BLOCK_CHARGE
-        }
+            self.blocks.len().checked_add(1).and_then(|slots| tx_index_allocation(slots, self.blocks.capacity())).map_or(u64::MAX, |(_, bytes)| bytes)
+        };
+        payload.saturating_add(index)
     }
 
     /// Up to two slices covering `[off, off+len)`.
@@ -902,6 +1080,383 @@ impl OooQueue {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tx_descriptor_capacity_ledger_lifecycle() {
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(global.high(), global.high(), 8);
+        let input = vec![7; 4 * TX_BLOCK];
+        let mut tx = TxBuf::default();
+        let mut pool = BlockPool::new(0);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &input));
+        let backing = tx.descriptor_bytes();
+        assert_eq!(budget.physical_used(), 4 * TX_BLOCK_CHARGE + backing);
+        tx.consume(&mut pool, 3 * TX_BLOCK);
+        assert_eq!(tx.blocks.capacity(), 4);
+        assert_eq!(budget.physical_used(), TX_BLOCK_CHARGE + backing);
+        tx.consume(&mut pool, TX_BLOCK);
+        assert_eq!(budget.physical_used(), backing);
+        assert_eq!(global.cached_bytes(), backing);
+        println!("TX_LEDGER empty cap={} backing={} physical_used={}", tx.blocks.capacity(), backing, budget.physical_used());
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+
+        let mut pool = BlockPool::new(16);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &input));
+        tx.release_all(&mut pool);
+        let small = std::array::from_fn::<_, 4, _>(|_| pool.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap());
+        for block in small {
+            pool.put(block);
+        }
+        let payload = 4 * TX_BLOCK_CHARGE + 4 * SMALL_TX_BLOCK as u64;
+        assert_eq!((pool.free.len(), pool.small.len()), (4, 4));
+        assert_eq!(budget.physical_used(), payload + tx.descriptor_bytes() + pool.descriptor_bytes());
+        assert_eq!(global.cached_bytes(), budget.physical_used());
+        let backing = pool.descriptor_bytes();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(2), &input));
+        let small = std::array::from_fn::<_, 4, _>(|_| pool.get(&mut budget, PeerId(2), SMALL_TX_BLOCK).unwrap());
+        assert_eq!(pool.cached(), 0);
+        assert_eq!(pool.descriptor_bytes(), backing);
+        assert_eq!(global.cached_bytes(), backing);
+        assert_eq!(budget.physical_used(), payload + tx.descriptor_bytes() + backing);
+        println!(
+            "TX_LEDGER pool_taken free_cap={} small_cap={} backing={} physical_used={}",
+            pool.free.capacity(),
+            pool.small.capacity(),
+            backing,
+            budget.physical_used()
+        );
+        tx.release_all(&mut pool);
+        for block in small {
+            pool.put(block);
+        }
+        drop(tx);
+        assert_eq!(pool.reclaim(), (8, payload + backing));
+        assert_eq!(budget.physical_used(), 0);
+        assert_eq!(global.cached_bytes(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn tx_descriptor_budget_boundary_rolls_back_at_every_level() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        const LIMIT: u64 = 512 << 10;
+        for (level, (high, port, peer)) in
+            [(Level::Global, (LIMIT, LIMIT, LIMIT)), (Level::Port, (2 * LIMIT, LIMIT, LIMIT)), (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT))]
+        {
+            let global = crate::budget::GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, peer, 8);
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![7; 4 * TX_BLOCK]));
+            let cap = tx.blocks.capacity();
+            let before = budget.physical_used();
+            let replacement = tx_index_allocation(5, cap).unwrap().1;
+            let ceiling = LIMIT - global.headroom(LIMIT, Tier::Block);
+            let blocker = budget.try_allocate_kind(PeerId(1), ceiling - before - replacement + 1, AllocationKind::TxIndex).unwrap();
+            let held = global.reserved();
+            assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &[9]));
+            assert_eq!((tx.len(), tx.blocks.capacity()), (4 * TX_BLOCK, cap));
+            assert_eq!(tx.slices(4 * TX_BLOCK - 1, 1)[0], &[7]);
+            assert_eq!(global.reserved(), held, "failed replacement retained a lease");
+            assert_eq!(budget.stats().failures_by_level()[level as usize], 1);
+            drop(blocker);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[9]));
+            assert_eq!(budget.physical_used(), 5 * TX_BLOCK_CHARGE + tx.descriptor_bytes());
+            let [a, b] = tx.slices(4 * TX_BLOCK - 1, 2);
+            assert_eq!([a, b].concat(), [7, 9]);
+            drop(tx);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn payload_refusal_after_descriptor_preparation_keeps_old_backing() {
+        use crate::budget::{AllocationKind, Tier};
+        const LIMIT: u64 = 512 << 10;
+        let global = crate::budget::GlobalBudget::new(LIMIT);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(LIMIT, LIMIT, 8);
+        let mut pool = BlockPool::new(0);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; 4 * TX_BLOCK]));
+        let before = budget.physical_used();
+        let replacement = 8 * std::mem::size_of::<Block>() as u64;
+        let ceiling = LIMIT - global.headroom(LIMIT, Tier::Block);
+        let blocker = budget.try_allocate_kind(PeerId(1), ceiling - before - replacement - TX_BLOCK_CHARGE + 1, AllocationKind::TxIndex).unwrap();
+        let held = global.reserved();
+        assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
+        assert_eq!((tx.len(), tx.blocks.capacity(), global.reserved()), (4 * TX_BLOCK, 4, held));
+        assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> { panic!("fill called after payload refusal") }), Ok(None));
+        assert_eq!(global.reserved(), held);
+        assert_eq!(tx.slices(4 * TX_BLOCK - 1, 1)[0], &[3]);
+        drop(blocker);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn tx_descriptor_allocator_and_capacity_failure_preserve_old_backing() {
+        for fault in [1, 2] {
+            let global = crate::budget::GlobalBudget::new(8 << 20);
+            let mut budget = Budget::new(global.clone());
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; 4 * TX_BLOCK]));
+            let held = global.reserved();
+            TX_INDEX_FAULT.with(|f| f.set(fault));
+            assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
+            assert_eq!((tx.len(), tx.blocks.capacity(), global.reserved()), (4 * TX_BLOCK, 4, held));
+            TX_INDEX_FAULT.with(|f| f.set(fault));
+            assert_eq!(
+                tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> { panic!("fill called after descriptor refusal") }),
+                Ok(None)
+            );
+            assert_eq!(global.reserved(), held);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
+            drop(tx);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn pool_descriptor_failure_drops_incoming_block_and_keeps_old_cache() {
+        for size in [SMALL_TX_BLOCK, TX_BLOCK] {
+            for fault in [1, 2] {
+                let global = crate::budget::GlobalBudget::new(8 << 20);
+                let mut budget = Budget::new(global.clone());
+                let mut pool = BlockPool::new(16);
+                let mut blocks = std::array::from_fn::<_, 5, _>(|_| Some(pool.get(&mut budget, PeerId(1), size).unwrap()));
+                for block in &mut blocks[..4] {
+                    pool.put(block.take().unwrap());
+                }
+                let backing = pool.descriptor_bytes();
+                TX_INDEX_FAULT.with(|f| f.set(fault));
+                pool.put(blocks[4].take().unwrap());
+                assert_eq!(pool.cached(), 4);
+                assert_eq!(pool.descriptor_bytes(), backing);
+                assert_eq!(budget.physical_used(), 4 * size as u64 + backing);
+                assert_eq!(global.cached_bytes(), budget.physical_used());
+                drop(pool);
+                assert_eq!(global.reserved(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn retained_tx_index_keeps_peer_charge_and_rejects_foreign_port() {
+        use crate::budget::AllocationKind;
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let peer_limit = 4 * TX_BLOCK_CHARGE;
+        budget.set_limits(global.high(), peer_limit, 8);
+        let peer_room = peer_limit - global.headroom(peer_limit, crate::budget::Tier::Block);
+        let mut foreign = Budget::new(global.clone());
+        let mut pool = BlockPool::new(16);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1]));
+        assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(1), false));
+        assert!(tx.blocks.iter().all(|block| block.lease.can_reuse_index(&budget, PeerId(1), false)));
+        assert!(!tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(2), false));
+        assert!(!tx.push(&mut pool, &mut budget, PeerId(2), &[2]));
+        tx.consume(&mut pool, 1);
+        assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(1), false));
+        assert_eq!(global.cached_bytes(), budget.physical_used());
+        assert!(!budget.can_allocate(PeerId(1), peer_room, AllocationKind::TxIndex));
+        assert!(!tx.push(&mut pool, &mut foreign, PeerId(1), &[2]));
+        assert!(pool.get(&mut foreign, PeerId(1), TX_BLOCK).is_none());
+        assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[2]));
+        assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(2), false));
+        assert!(tx.blocks.iter().all(|block| block.lease.can_reuse_index(&budget, PeerId(2), false)));
+        assert!(budget.can_allocate(PeerId(1), peer_room, AllocationKind::TxIndex));
+        assert!(!budget.can_allocate(PeerId(2), peer_room, AllocationKind::TxIndex));
+        drop((tx, pool));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn empty_tx_index_peer_transfer_refusal_keeps_original_owner() {
+        use crate::budget::AllocationKind;
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let peer_limit = SMALL_TX_BLOCK as u64 + 8 * std::mem::size_of::<Block>() as u64;
+        budget.set_limits(global.high(), peer_limit, 8);
+        let mut pool = BlockPool::new(0);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1]));
+        tx.consume(&mut pool, 1);
+        let blocker = budget.try_allocate_kind(PeerId(2), peer_limit - SMALL_TX_BLOCK as u64 - tx.descriptor_bytes() + 1, AllocationKind::TxIndex).unwrap();
+        let held = global.reserved();
+        assert!(!tx.push(&mut pool, &mut budget, PeerId(2), &[2]));
+        assert_eq!(global.reserved(), held);
+        assert_eq!(
+            tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |_| -> Result<usize, ()> { panic!("fill called after peer transfer refusal") }),
+            Ok(None)
+        );
+        assert_eq!(global.reserved(), held);
+        drop(blocker);
+        assert!(!budget.can_allocate(PeerId(1), peer_limit, AllocationKind::TxIndex));
+        assert!(budget.can_allocate(PeerId(2), peer_limit, AllocationKind::TxIndex));
+        assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[2]));
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn pool_descriptor_budget_failure_drops_incoming_at_global_and_port() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        for level in [Level::Global, Level::Port] {
+            for size in [SMALL_TX_BLOCK, TX_BLOCK] {
+                let global = crate::budget::GlobalBudget::new(8 << 20);
+                let mut budget = Budget::new(global.clone());
+                let limit = if level == Level::Global { global.high() } else { 512 << 10 };
+                budget.set_limits(limit, limit, 8);
+                let mut pool = BlockPool::new(16);
+                let mut blocks = std::array::from_fn::<_, 5, _>(|_| Some(pool.get(&mut budget, PeerId(1), size).unwrap()));
+                for block in &mut blocks[..4] {
+                    pool.put(block.take().unwrap());
+                }
+                let backing = pool.descriptor_bytes();
+                let ceiling = limit - global.headroom(limit, Tier::Block);
+                let blocker = budget.try_allocate_kind(PeerId(2), ceiling - budget.physical_used(), AllocationKind::TxIndex).unwrap();
+                pool.put(blocks[4].take().unwrap());
+                assert_eq!(pool.cached(), 4);
+                assert_eq!(pool.descriptor_bytes(), backing);
+                assert_eq!(budget.stats().failures_by_level()[level as usize], 1);
+                drop(blocker);
+                assert_eq!(budget.physical_used(), 4 * size as u64 + backing);
+                assert_eq!(pool.reclaim(), (4, 4 * size as u64 + backing));
+                assert_eq!(global.reserved(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn retained_index_peer_debt_does_not_reject_its_own_staged_payload() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        const PEER: u64 = 819_200;
+        for write_with in [false, true] {
+            let global = crate::budget::GlobalBudget::new(8 << 20);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(2 * PEER, PEER, 8);
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1]));
+            tx.consume(&mut pool, 1);
+            let backing = tx.descriptor_bytes();
+            let ceiling = PEER - global.headroom(PEER, Tier::Block);
+            // Peer 2 has only non-drain allocations before the attempted write.
+            let blocker = budget.try_allocate_kind(PeerId(2), ceiling - SMALL_TX_BLOCK as u64 - backing, AllocationKind::TxIndex).unwrap();
+            let debt = budget.admit_debt(PeerId(2), Level::Peer, 4096);
+            let released = debt.released();
+            assert!(budget.can_allocate(PeerId(2), SMALL_TX_BLOCK as u64 + backing, AllocationKind::TxIndex));
+            if write_with {
+                assert_eq!(
+                    tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |parts| -> Result<usize, ()> {
+                        parts[0][0] = 2;
+                        Ok(1)
+                    }),
+                    Ok(Some(1)),
+                    "unpublished payload must not create its own descriptor refusal"
+                );
+            } else {
+                assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[2]), "unpublished payload must not create its own descriptor refusal");
+            }
+            assert_eq!(debt.released(), released);
+            assert_eq!(tx.slices(0, 1)[0], &[2]);
+            assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(2), false));
+            assert!(tx.blocks.iter().all(|block| block.lease.can_reuse_index(&budget, PeerId(2), false)));
+            tx.consume(&mut pool, 1);
+            assert_eq!(debt.released() - released, SMALL_TX_BLOCK as u64, "only the ACK-released payload is drain");
+            drop((tx, blocker, debt));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn tx_write_waiter_matches_precharge_at_initial_and_growth_boundaries() {
+        use crate::budget::{AllocationKind, Tier};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct Wake(AtomicUsize);
+        impl std::task::Wake for Wake {
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        const LIMIT: u64 = 512 << 10;
+        for blocks in [0, 4] {
+            let global = crate::budget::GlobalBudget::new(LIMIT);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(LIMIT, LIMIT, 8);
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            if blocks != 0 {
+                assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; blocks * TX_BLOCK]));
+            }
+            let before = budget.physical_used();
+            let charge = tx.write_allocation_charge(TX_BLOCK);
+            let ceiling = LIMIT - global.headroom(LIMIT, Tier::Block);
+            let blocker = budget.try_allocate_kind(PeerId(1), ceiling - before - charge, AllocationKind::TxIndex).unwrap();
+            let extra = budget.try_allocate_kind(PeerId(1), 1, AllocationKind::TxIndex).unwrap();
+            let observed = global.release_epoch();
+            assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; TX_BLOCK]), "replacement precharge must stay held until payload admission");
+            assert_eq!(global.reserved(), ceiling - charge + 1);
+            let memory = budget.memory_handle(PeerId(1));
+            let wake = Arc::new(Wake(AtomicUsize::new(0)));
+            let waiter = global.new_waiter_id();
+            global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, charge, AllocationKind::TxBlock);
+            assert_eq!(wake.0.load(Ordering::Relaxed), 0);
+            drop(extra);
+            assert_eq!(wake.0.load(Ordering::Relaxed), 1, "the exact retry precharge must wake the writer");
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; TX_BLOCK]));
+            assert_eq!(tx.slices(0, 1)[0], &[3]);
+            global.remove_waiter(waiter);
+            drop((tx, blocker));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn empty_tx_index_reclaim_is_not_ack_releasable_drain() {
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(0);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1]));
+        tx.consume(&mut pool, 1);
+        let debt = budget.admit_debt(PeerId(1), crate::budget::Level::Peer, 4096);
+        let released = debt.released();
+        let backing = tx.descriptor_bytes();
+        assert!(backing > 0);
+        assert_eq!(tx.reclaim_idle_index(), backing);
+        assert_eq!(debt.released(), released);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn first_tx_write_fits_progress_headroom_at_every_level() {
+        use crate::budget::{AllocationKind, Tier};
+        const LIMIT: u64 = 512 << 10;
+        for (high, port, peer) in [(LIMIT, LIMIT, LIMIT), (2 * LIMIT, LIMIT, LIMIT), (2 * LIMIT, 2 * LIMIT, LIMIT)] {
+            let global = crate::budget::GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, peer, 8);
+            let held = budget.try_allocate_kind(PeerId(1), LIMIT - global.headroom(LIMIT, Tier::Admit), AllocationKind::ActiveState).unwrap();
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            assert_eq!(tx.write_allocation_charge(TX_BLOCK), TX_FIRST_WRITE_CHARGE);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![1; TX_BLOCK]));
+            drop((tx, held));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -1037,7 +1592,7 @@ mod tests {
         let mut expected: Vec<u8> = (0..1900).map(|n| (n % 251) as u8).collect();
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &expected));
         assert_eq!(tx.allocated(), SMALL_TX_BLOCK);
-        assert_eq!(budget.physical_used(), SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(budget.physical_used(), SMALL_TX_BLOCK as u64 + tx.descriptor_bytes());
         let tail: Vec<u8> = (0..2 * TX_BLOCK).map(|n| (n % 239) as u8).collect();
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &tail));
         expected.extend_from_slice(&tail);
@@ -1056,15 +1611,18 @@ mod tests {
             assert_eq!([a, b].concat(), expected[..n]);
         }
         tx.release_all(&mut pool);
+        let expected_charge = 2 * TX_BLOCK_CHARGE + SMALL_TX_BLOCK as u64 + pool.descriptor_bytes();
         let (count, bytes) = pool.reclaim();
         assert_eq!(count, 3);
-        assert_eq!(bytes, 2 * TX_BLOCK_CHARGE + SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(bytes, expected_charge);
+        assert_eq!(global.reserved(), tx.descriptor_bytes());
+        drop(tx);
         assert_eq!(global.reserved(), 0);
     }
 
     #[test]
     fn small_tx_growth_failure_preserves_data_and_wait_size() {
-        let small_charge = SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+        let small_charge = SMALL_TX_BLOCK as u64 + 8 * std::mem::size_of::<Block>() as u64;
         let global = crate::budget::GlobalBudget::new(small_charge);
         let mut budget = Budget::new(global.clone());
         budget.set_limits(small_charge, small_charge, 4);
@@ -1076,8 +1634,9 @@ mod tests {
         assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &vec![7; TX_BLOCK]));
         assert_eq!(tx.len(), 8);
         assert_eq!(tx.slices(0, 8)[0], b"response");
-        assert_eq!(global.reserved(), small_charge);
+        assert_eq!(global.reserved(), SMALL_TX_BLOCK as u64 + tx.descriptor_bytes());
         tx.release_all(&mut pool);
+        drop(tx);
         assert_eq!(global.reserved(), 0);
     }
 
@@ -1093,7 +1652,7 @@ mod tests {
                 self.0.fetch_add(1, Ordering::Relaxed);
             }
         }
-        let charge = SMALL_TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+        let charge = SMALL_TX_BLOCK as u64 + 8 * std::mem::size_of::<Block>() as u64;
         let global = crate::budget::GlobalBudget::new(2 * charge);
         let mut budget = Budget::new(global.clone());
         budget.set_limits(2 * charge, charge, 4);
@@ -1102,7 +1661,7 @@ mod tests {
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[3]));
         tx.consume(&mut pool, 1);
         assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[4]));
-        assert_eq!(budget.physical_used(), charge);
+        assert_eq!(budget.physical_used(), SMALL_TX_BLOCK as u64 + tx.descriptor_bytes() + pool.descriptor_bytes());
         let memory = budget.memory_handle(PeerId(2));
         let wake = Arc::new(Wake(AtomicUsize::new(0)));
         let waiter = global.new_waiter_id();
@@ -1144,6 +1703,7 @@ mod tests {
         assert_eq!((pool.small.len(), pool.free.len()), (1, 0));
         assert_eq!(pool.cached(), 1);
         pool.reclaim();
+        drop(tx);
         assert_eq!(global.reserved(), 0);
     }
 
@@ -1234,27 +1794,30 @@ mod tests {
         assert_eq!(tx.allocated(), 0);
         tx.release_all(&mut pool);
         pool.reclaim();
+        drop(tx);
         assert_eq!(global.reserved(), 0);
     }
 
     #[test]
     fn tx_block_capacity_stays_charged_in_pool_and_changes_peer() {
-        let block_charge = TX_BLOCK as u64 + BLOCK_METADATA_BYTES;
+        let block_charge = TX_FIRST_WRITE_CHARGE;
         let global = crate::budget::GlobalBudget::new(4 * TX_BLOCK as u64);
         let mut budget = Budget::new(global.clone());
         budget.set_limits(2 * block_charge, block_charge, 4);
         let mut pool = BlockPool::new(1);
         let mut first = TxBuf::default();
         assert!(first.push(&mut pool, &mut budget, PeerId(1), &vec![7; TX_BLOCK]));
-        assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(budget.physical_used(), TX_BLOCK_CHARGE + first.descriptor_bytes());
         first.consume(&mut pool, TX_BLOCK);
         assert_eq!(pool.cached(), 1);
-        assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(budget.physical_used(), TX_BLOCK_CHARGE + first.descriptor_bytes() + pool.descriptor_bytes());
         let mut second = TxBuf::default();
         assert!(second.push(&mut pool, &mut budget, PeerId(2), &vec![9; TX_BLOCK]));
-        assert_eq!(budget.physical_used(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        assert_eq!(budget.physical_used(), TX_BLOCK_CHARGE + first.descriptor_bytes() + second.descriptor_bytes() + pool.descriptor_bytes());
         second.consume(&mut pool, TX_BLOCK);
         drop(pool);
+        assert_eq!(budget.physical_used(), first.descriptor_bytes() + second.descriptor_bytes());
+        drop((first, second));
         assert_eq!(budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
     }
@@ -1273,8 +1836,11 @@ mod tests {
         first.consume(&mut first_pool, TX_BLOCK);
         second.consume(&mut second_pool, TX_BLOCK);
         assert_eq!(first_pool.cached() + second_pool.cached(), 1);
-        assert_eq!(global.cached_bytes(), TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
-        drop((first_pool, second_pool));
+        assert_eq!(
+            global.cached_bytes(),
+            TX_BLOCK_CHARGE + first_pool.descriptor_bytes() + second_pool.descriptor_bytes() + first.descriptor_bytes() + second.descriptor_bytes()
+        );
+        drop((first_pool, second_pool, first, second));
         assert_eq!(global.cached_bytes(), 0);
         assert_eq!(global.reserved(), 0);
     }
@@ -1300,7 +1866,7 @@ mod tests {
 
     #[test]
     fn tx_block_quota_failure_does_not_append_partial_data() {
-        let global = crate::budget::GlobalBudget::new(TX_BLOCK as u64 + BLOCK_METADATA_BYTES);
+        let global = crate::budget::GlobalBudget::new(TX_FIRST_WRITE_CHARGE);
         let mut budget = Budget::new(global.clone());
         budget.set_limits(global.high(), global.high(), 4);
         let mut pool = BlockPool::new(0);

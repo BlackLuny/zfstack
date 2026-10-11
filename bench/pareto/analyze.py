@@ -212,7 +212,10 @@ def validate_row(row, number, expected_hashes, expected_case):
         "work_cpu_sec": cpu_ns / 1e9,
         "work_wall_sec": wall_ns / 1e9,
         "peak_rss_bytes": m.get("process_lifetime_peak_rss_bytes"),
-        "sampled_peak_reserved_bytes": m.get("sampled_peak_reserved_bytes"),
+        # Legacy TX rows used payload + 64, not an observed peak. Never compare
+        # that estimate to the v2 warmup ledger snapshot or to a sampled peak.
+        "sampled_peak_reserved_bytes": None if m.get("case") == "tx-alloc" else m.get("sampled_peak_reserved_bytes"),
+        "warmup_reserved_bytes": m.get("warmup_reserved_bytes"),
         "retained_reserved_bytes_before_drop": m.get("retained_reserved_bytes_before_drop"),
         "throttled_usec": env["throttled_usec"],
         "nr_throttled": env["nr_throttled"],
@@ -267,6 +270,8 @@ def case_summary(name, pairs, bootstrap, seed):
         rng = random.Random(case_seed)
         draws = [[rng.randrange(len(pairs)) for _ in pairs] for _ in range(bootstrap)]
     warnings = []
+    if example["case"] == "tx-alloc":
+        warnings.append("TX work-loop charged peak is unavailable. Legacy payload+64 estimates are omitted; v2 warmup_reserved_bytes is a ledger snapshot after warmup push, excluding transient reservations, not an allocator/RSS peak.")
     if protocol_mismatches:
         warnings.append("Protocol work counters differ within pairs; CPU differences may include a changed workload. Do not attribute them solely to implementation speed.")
     if any(not value["constant_across_all_runs"] for value in across_runs.values()):
@@ -307,6 +312,7 @@ def case_summary(name, pairs, bootstrap, seed):
         "memory": {
             "process_lifetime_peak_rss_bytes": metric_summary(pairs, "peak_rss_bytes", "bytes"),
             "sampled_peak_reserved_bytes": metric_summary(pairs, "sampled_peak_reserved_bytes", "bytes; sampled lower bound"),
+            "warmup_reserved_bytes": metric_summary(pairs, "warmup_reserved_bytes", "bytes; ledger after warmup push, not a peak"),
             "retained_reserved_bytes_before_drop": metric_summary(pairs, "retained_reserved_bytes_before_drop", "bytes"),
         },
         "environment": {
@@ -368,13 +374,14 @@ def print_summary(summary):
             diagnostics.append([
                 case["name"], direction(case["memory"]["process_lifetime_peak_rss_bytes"], 1 << 20),
                 direction(case["memory"]["sampled_peak_reserved_bytes"], 1024),
+                direction(case["memory"]["warmup_reserved_bytes"], 1024),
                 direction(case["work_wall_cpu_ratio"], digits=3),
                 direction(case["environment"]["throttled_usec"], digits=0),
                 direction(case["environment"]["nr_throttled"], digits=0),
                 "equal" if case["consistency"]["all_pair_protocol_counters_equal"] else "DIFFER",
             ])
         print()
-        terminal_table(["case", "peak RSS MiB B -> C", "charged peak KiB B -> C", "wall/CPU B -> C", "throttled us B -> C", "nr_throttled B -> C", "pair work"], diagnostics)
+        terminal_table(["case", "peak RSS MiB B -> C", "charged peak KiB B -> C", "warmup ledger KiB B -> C", "wall/CPU B -> C", "throttled us B -> C", "nr_throttled B -> C", "pair work"], diagnostics)
     for item in validation["rejected_records"]:
         print(f"REJECT line {item['line']}: {item.get('case')} / pair {item.get('pair')} / {item.get('variant')}: {'; '.join(item['reasons'])}")
     for item in validation["excluded_pairs"]:
@@ -512,7 +519,7 @@ def main():
             "paired_percent_change": "100*(candidate/baseline-1) for each matched (case,pair), then median and range",
             "bootstrap": f"fixed-seed nonparametric resampling of whole paired percent changes, median statistic, percentile 95% interval, {args.bootstrap} replicates, only when n>=6",
             "bootstrap_limit": "Describes this machine and fixed workload; not a population, protocol-correctness, or network-performance guarantee.",
-            "memory": "VmHWM process lifetime peak includes setup/cleanup; charged peak is a sample lower bound; retained-before-drop is not a leak when final_reserved_bytes is zero.",
+            "memory": "VmHWM process lifetime peak includes setup/cleanup; charged peak is a sample lower bound except legacy TX estimates, which are omitted; TX warmup ledger is a snapshot, not a peak; retained-before-drop is not a leak when final_reserved_bytes is zero.",
             "environment": "cgroup counter deltas span the subprocess, include other cgroup processes, and are contextual rather than CPU attributed to the benchmark",
             "virtual_time": "reported solely for workload consistency; never a real-throughput denominator",
         },
