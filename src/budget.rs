@@ -1552,6 +1552,7 @@ impl MemoryLease {
         let counter = budget.physical_peers.entry(peer).or_default().clone();
         if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
             budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+            self.global.request_cache_reclaim();
             return false;
         }
         for drain in [&self.global.drain, &self.port.drain, &counter.drain] {

@@ -2774,6 +2774,60 @@ mod admission_tests {
         assert_eq!(global.reserved(), 0);
     }
 
+    #[test]
+    fn cached_payload_peer_refusal_reclaims_same_peer_idle_tx_indexes() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        use crate::buf::{TX_BLOCK, TX_BLOCK_CHARGE, TX_FIRST_WRITE_CHARGE};
+        // Three connection states stay live; add their fixed charge to the
+        // 66112-byte (64-bit) payload/index boundary used by standalone TxBufs.
+        let peer_limit = TX_FIRST_WRITE_CHARGE + 3 * ACTIVE_STATE_BYTES;
+        let mut r = AdmitRig::new(2 * peer_limit, peer_limit);
+        assert_eq!(r.global.headroom(peer_limit, Tier::Block), 0);
+        let mut ids = Vec::new();
+        for port in 40000..40003 {
+            r.syn(0, 1, port);
+            let id = *r.sh.conn_ids().last().unwrap();
+            assert_eq!(r.sh.write(id, &[1]), WriteResult::Written(1));
+            r.sh.with_conn(id, |conn, ctx| conn.destroy(ctx)).unwrap();
+            ids.push(id);
+        }
+        let indexes = r.global.cached_bytes() - r.sh.pool.descriptor_bytes() - r.sh.pool.cached() as u64 * 2048;
+        assert!(indexes > TX_FIRST_WRITE_CHARGE - TX_BLOCK_CHARGE, "retained indexes must consume the first-write descriptor allowance");
+        r.syn(0, 2, 40003);
+        let other = *r.sh.conn_ids().last().unwrap();
+        assert_eq!(r.sh.write(other, &vec![2; TX_BLOCK]), WriteResult::Written(TX_BLOCK));
+        r.sh.with_conn(other, |conn, ctx| conn.destroy(ctx)).unwrap();
+        let cached = r.global.cached_bytes();
+        let held = r.sh.budget.physical_used();
+        let epoch = r.global.cache_reclaim_epoch();
+        let observed = r.global.release_epoch();
+        let failures = r.sh.budget.stats().failures_by_level()[Level::Peer as usize];
+        assert!(!r.sh.budget.can_allocate(PeerId(1), TX_BLOCK_CHARGE, AllocationKind::TxBlock));
+        assert_eq!(r.sh.write(ids[0], &vec![3; TX_BLOCK]), WriteResult::MemoryBlocked);
+        assert_eq!(r.sh.budget.physical_used(), held, "cached assign refusal must retain every lease");
+        assert_eq!(r.sh.budget.stats().failures_by_level()[Level::Peer as usize], failures + 1);
+        println!("CACHED_ASSIGN peer_limit={peer_limit} fixed_states={} retained_indexes={indexes} payload_charge={TX_BLOCK_CHARGE} room={} epoch_before={epoch} epoch_after={}", 3 * ACTIVE_STATE_BYTES, TX_FIRST_WRITE_CHARGE - indexes, r.global.cache_reclaim_epoch());
+        assert!(r.global.cache_reclaim_epoch() > epoch, "cached payload peer refusal must request reclaim without another allocator failure");
+        let memory = r.sh.memory_handle(PeerId(1));
+        let wake = Arc::new(CountWake(Default::default()));
+        let waiter = r.global.new_waiter_id();
+        r.global.register_physical_waiter(waiter, observed, &std::task::Waker::from(wake.clone()), &memory, TX_BLOCK_CHARGE, AllocationKind::TxBlock);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 0, "retained peer indexes must prevent a premature cache-retry wake");
+        r.sh.reclaim_cache_if_requested();
+        assert_eq!(r.global.cached_bytes(), 0);
+        assert_eq!(r.sh.budget.physical_used(), held - cached);
+        assert_eq!(r.sh.stats().cache_reclaimed_bytes, cached);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(r.sh.write(ids[0], &vec![3; TX_BLOCK]), WriteResult::Written(TX_BLOCK), "first write must fit after same-peer indexes are reclaimed");
+        for _ in 0..3 { r.sh.reclaim_cache_if_requested(); }
+        assert_eq!(r.sh.stats().cache_reclaims, 1);
+        assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        r.global.remove_waiter(waiter);
+        let global = r.global.clone();
+        drop(r);
+        assert_eq!(global.reserved(), 0);
+    }
+
     /// #664: idle TX blocks fill the port share, so an admission allocation
     /// fails. The failure must ask the shard to drop its cache; the release
     /// then wakes the parked allocator and the same allocation succeeds.
