@@ -582,7 +582,10 @@ fn reserve_amount(count: &AtomicU64, limit: u64, amount: u64) -> bool {
 }
 
 /// Hierarchical physical reserve used by both a retained [`MemoryHandle`] and a
-/// temporary core allocation. Returns the level that refused, if any.
+/// temporary core allocation. Returns the level that refused, if any. Forced
+/// inline so each caller keeps the body it had before the two shared it (#19:
+/// a shared call on the retained-handle path cost ~1% instructions).
+#[inline(always)]
 fn reserve_physical(
     global: &GlobalBudget,
     port: &LevelUse,
