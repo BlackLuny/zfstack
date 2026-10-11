@@ -54,9 +54,13 @@ thread_local! {
 
 fn tx_index_fault() -> u8 {
     #[cfg(test)]
-    { TX_INDEX_FAULT.with(|fault| fault.replace(0)) }
+    {
+        TX_INDEX_FAULT.with(|fault| fault.replace(0))
+    }
     #[cfg(not(test))]
-    { 0 }
+    {
+        0
+    }
 }
 
 fn tx_index_bytes(capacity: usize, reserved: u64, fault: u8) -> Result<u64, ()> {
@@ -169,11 +173,7 @@ impl BlockPool {
         }
         if self.cached() < self.max_cached && b.lease.park_cached() {
             let memory = self.memory.as_ref().unwrap();
-            let (free, lease) = if b.len() == SMALL_TX_BLOCK {
-                (&mut self.small, &mut self.small_lease)
-            } else {
-                (&mut self.free, &mut self.free_lease)
-            };
+            let (free, lease) = if b.len() == SMALL_TX_BLOCK { (&mut self.small, &mut self.small_lease) } else { (&mut self.free, &mut self.free_lease) };
             if Self::reserve_cached_slot(free, lease, memory) {
                 free.push(b);
             }
@@ -255,9 +255,8 @@ impl TxBuf {
         let first_size = self.blocks.front().map_or_else(|| if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
         let needed = if total == 0 { 0 } else { 1 + total.saturating_sub(first_size).div_ceil(TX_BLOCK) };
         let Ok(mut index) = self.prepare_index(needed, budget, peer) else { return false };
-        let assignment = if index.is_none() {
-            self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0))
-        } else { Ok(None) };
+        let assignment =
+            if index.is_none() { self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0)) } else { Ok(None) };
         let Ok(assignment) = assignment else { return false };
         let mut staged = 0;
         while before + staged < needed {
@@ -329,7 +328,9 @@ impl TxBuf {
             let block = index.and_then(|mut index| {
                 let assignment = if index.is_none() {
                     self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0)).ok()?
-                } else { None };
+                } else {
+                    None
+                };
                 let block = pool.get(budget, peer, size)?;
                 if let Some(assignment) = assignment {
                     self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
@@ -417,9 +418,7 @@ impl TxBuf {
     }
 
     fn trim_empty_index(&mut self) {
-        if self.blocks.is_empty()
-            && (self.blocks.capacity() > 8 || self.index_lease.as_mut().is_some_and(|lease| !lease.park_index()))
-        {
+        if self.blocks.is_empty() && (self.blocks.capacity() > 8 || self.index_lease.as_mut().is_some_and(|lease| !lease.park_index())) {
             self.reclaim_idle_index();
         }
     }
@@ -482,11 +481,7 @@ impl TxBuf {
 
     #[cfg(any(test, feature = "tokio"))]
     pub(crate) fn write_allocation_charge(&self, bytes: usize) -> u64 {
-        let payload = if self.blocks.is_empty() && bytes <= SMALL_TX_BLOCK {
-            SMALL_TX_BLOCK as u64
-        } else {
-            TX_BLOCK_CHARGE
-        };
+        let payload = if self.blocks.is_empty() && bytes <= SMALL_TX_BLOCK { SMALL_TX_BLOCK as u64 } else { TX_BLOCK_CHARGE };
         let index = if self.blocks.len() < self.blocks.capacity() {
             0
         } else {
@@ -1111,7 +1106,9 @@ mod tests {
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &input));
         tx.release_all(&mut pool);
         let small = std::array::from_fn::<_, 4, _>(|_| pool.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap());
-        for block in small { pool.put(block); }
+        for block in small {
+            pool.put(block);
+        }
         let payload = 4 * TX_BLOCK_CHARGE + 4 * SMALL_TX_BLOCK as u64;
         assert_eq!((pool.free.len(), pool.small.len()), (4, 4));
         assert_eq!(budget.physical_used(), payload + tx.descriptor_bytes() + pool.descriptor_bytes());
@@ -1123,9 +1120,17 @@ mod tests {
         assert_eq!(pool.descriptor_bytes(), backing);
         assert_eq!(global.cached_bytes(), backing);
         assert_eq!(budget.physical_used(), payload + tx.descriptor_bytes() + backing);
-        println!("TX_LEDGER pool_taken free_cap={} small_cap={} backing={} physical_used={}", pool.free.capacity(), pool.small.capacity(), backing, budget.physical_used());
+        println!(
+            "TX_LEDGER pool_taken free_cap={} small_cap={} backing={} physical_used={}",
+            pool.free.capacity(),
+            pool.small.capacity(),
+            backing,
+            budget.physical_used()
+        );
         tx.release_all(&mut pool);
-        for block in small { pool.put(block); }
+        for block in small {
+            pool.put(block);
+        }
         drop(tx);
         assert_eq!(pool.reclaim(), (8, payload + backing));
         assert_eq!(budget.physical_used(), 0);
@@ -1137,11 +1142,9 @@ mod tests {
     fn tx_descriptor_budget_boundary_rolls_back_at_every_level() {
         use crate::budget::{AllocationKind, Level, Tier};
         const LIMIT: u64 = 512 << 10;
-        for (level, (high, port, peer)) in [
-            (Level::Global, (LIMIT, LIMIT, LIMIT)),
-            (Level::Port, (2 * LIMIT, LIMIT, LIMIT)),
-            (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT)),
-        ] {
+        for (level, (high, port, peer)) in
+            [(Level::Global, (LIMIT, LIMIT, LIMIT)), (Level::Port, (2 * LIMIT, LIMIT, LIMIT)), (Level::Peer, (2 * LIMIT, 2 * LIMIT, LIMIT))]
+        {
             let global = crate::budget::GlobalBudget::new(high);
             let mut budget = Budget::new(global.clone());
             budget.set_limits(port, peer, 8);
@@ -1186,9 +1189,7 @@ mod tests {
         let held = global.reserved();
         assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
         assert_eq!((tx.len(), tx.blocks.capacity(), global.reserved()), (4 * TX_BLOCK, 4, held));
-        assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> {
-            panic!("fill called after payload refusal")
-        }), Ok(None));
+        assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> { panic!("fill called after payload refusal") }), Ok(None));
         assert_eq!(global.reserved(), held);
         assert_eq!(tx.slices(4 * TX_BLOCK - 1, 1)[0], &[3]);
         drop(blocker);
@@ -1210,9 +1211,10 @@ mod tests {
             assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
             assert_eq!((tx.len(), tx.blocks.capacity(), global.reserved()), (4 * TX_BLOCK, 4, held));
             TX_INDEX_FAULT.with(|f| f.set(fault));
-            assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> {
-                panic!("fill called after descriptor refusal")
-            }), Ok(None));
+            assert_eq!(
+                tx.write_with(&mut pool, &mut budget, PeerId(1), 1, |_| -> Result<usize, ()> { panic!("fill called after descriptor refusal") }),
+                Ok(None)
+            );
             assert_eq!(global.reserved(), held);
             assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[4]));
             drop(tx);
@@ -1228,7 +1230,9 @@ mod tests {
                 let mut budget = Budget::new(global.clone());
                 let mut pool = BlockPool::new(16);
                 let mut blocks = std::array::from_fn::<_, 5, _>(|_| Some(pool.get(&mut budget, PeerId(1), size).unwrap()));
-                for block in &mut blocks[..4] { pool.put(block.take().unwrap()); }
+                for block in &mut blocks[..4] {
+                    pool.put(block.take().unwrap());
+                }
                 let backing = pool.descriptor_bytes();
                 TX_INDEX_FAULT.with(|f| f.set(fault));
                 pool.put(blocks[4].take().unwrap());
@@ -1288,9 +1292,10 @@ mod tests {
         let held = global.reserved();
         assert!(!tx.push(&mut pool, &mut budget, PeerId(2), &[2]));
         assert_eq!(global.reserved(), held);
-        assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |_| -> Result<usize, ()> {
-            panic!("fill called after peer transfer refusal")
-        }), Ok(None));
+        assert_eq!(
+            tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |_| -> Result<usize, ()> { panic!("fill called after peer transfer refusal") }),
+            Ok(None)
+        );
         assert_eq!(global.reserved(), held);
         drop(blocker);
         assert!(!budget.can_allocate(PeerId(1), peer_limit, AllocationKind::TxIndex));
@@ -1311,7 +1316,9 @@ mod tests {
                 budget.set_limits(limit, limit, 8);
                 let mut pool = BlockPool::new(16);
                 let mut blocks = std::array::from_fn::<_, 5, _>(|_| Some(pool.get(&mut budget, PeerId(1), size).unwrap()));
-                for block in &mut blocks[..4] { pool.put(block.take().unwrap()); }
+                for block in &mut blocks[..4] {
+                    pool.put(block.take().unwrap());
+                }
                 let backing = pool.descriptor_bytes();
                 let ceiling = limit - global.headroom(limit, Tier::Block);
                 let blocker = budget.try_allocate_kind(PeerId(2), ceiling - budget.physical_used(), AllocationKind::TxIndex).unwrap();
@@ -1347,10 +1354,14 @@ mod tests {
             let released = debt.released();
             assert!(budget.can_allocate(PeerId(2), SMALL_TX_BLOCK as u64 + backing, AllocationKind::TxIndex));
             if write_with {
-                assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |parts| -> Result<usize, ()> {
-                    parts[0][0] = 2;
-                    Ok(1)
-                }), Ok(Some(1)), "unpublished payload must not create its own descriptor refusal");
+                assert_eq!(
+                    tx.write_with(&mut pool, &mut budget, PeerId(2), 1, |parts| -> Result<usize, ()> {
+                        parts[0][0] = 2;
+                        Ok(1)
+                    }),
+                    Ok(Some(1)),
+                    "unpublished payload must not create its own descriptor refusal"
+                );
             } else {
                 assert!(tx.push(&mut pool, &mut budget, PeerId(2), &[2]), "unpublished payload must not create its own descriptor refusal");
             }
@@ -1368,10 +1379,15 @@ mod tests {
     #[test]
     fn tx_write_waiter_matches_precharge_at_initial_and_growth_boundaries() {
         use crate::budget::{AllocationKind, Tier};
-        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
         struct Wake(AtomicUsize);
         impl std::task::Wake for Wake {
-            fn wake(self: Arc<Self>) { self.0.fetch_add(1, Ordering::Relaxed); }
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
         }
         const LIMIT: u64 = 512 << 10;
         for blocks in [0, 4] {
@@ -1380,7 +1396,9 @@ mod tests {
             budget.set_limits(LIMIT, LIMIT, 8);
             let mut pool = BlockPool::new(0);
             let mut tx = TxBuf::default();
-            if blocks != 0 { assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; blocks * TX_BLOCK])); }
+            if blocks != 0 {
+                assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![3; blocks * TX_BLOCK]));
+            }
             let before = budget.physical_used();
             let charge = tx.write_allocation_charge(TX_BLOCK);
             let ceiling = LIMIT - global.headroom(LIMIT, Tier::Block);
@@ -1438,7 +1456,6 @@ mod tests {
             assert_eq!(global.reserved(), 0);
         }
     }
-
 
     use super::*;
 
@@ -1819,7 +1836,10 @@ mod tests {
         first.consume(&mut first_pool, TX_BLOCK);
         second.consume(&mut second_pool, TX_BLOCK);
         assert_eq!(first_pool.cached() + second_pool.cached(), 1);
-        assert_eq!(global.cached_bytes(), TX_BLOCK_CHARGE + first_pool.descriptor_bytes() + second_pool.descriptor_bytes() + first.descriptor_bytes() + second.descriptor_bytes());
+        assert_eq!(
+            global.cached_bytes(),
+            TX_BLOCK_CHARGE + first_pool.descriptor_bytes() + second_pool.descriptor_bytes() + first.descriptor_bytes() + second.descriptor_bytes()
+        );
         drop((first_pool, second_pool, first, second));
         assert_eq!(global.cached_bytes(), 0);
         assert_eq!(global.reserved(), 0);

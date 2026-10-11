@@ -2765,7 +2765,9 @@ mod admission_tests {
         assert_eq!(r.sh.stats().cache_reclaimed_bytes, bytes);
         assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
         let retry = memory.try_allocate_kind(1, AllocationKind::TxIndex).expect("same peer must fit after descriptor-only reclaim");
-        for _ in 0..3 { r.sh.reclaim_cache_if_requested(); }
+        for _ in 0..3 {
+            r.sh.reclaim_cache_if_requested();
+        }
         assert_eq!(r.sh.stats().cache_reclaims, 1);
         assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1, "no repeated wake without another release");
         r.global.remove_waiter(waiter);
@@ -2819,7 +2821,9 @@ mod admission_tests {
         assert_eq!(r.sh.stats().cache_reclaimed_bytes, cached);
         assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
         assert_eq!(r.sh.write(ids[0], &vec![3; TX_BLOCK]), WriteResult::Written(TX_BLOCK), "first write must fit after same-peer indexes are reclaimed");
-        for _ in 0..3 { r.sh.reclaim_cache_if_requested(); }
+        for _ in 0..3 {
+            r.sh.reclaim_cache_if_requested();
+        }
         assert_eq!(r.sh.stats().cache_reclaims, 1);
         assert_eq!(wake.0.load(std::sync::atomic::Ordering::Relaxed), 1);
         r.global.remove_waiter(waiter);

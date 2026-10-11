@@ -1338,15 +1338,8 @@ impl PortMemoryHandle {
             self.global.request_cache_reclaim();
             return None;
         }
-        let mut lease = MemoryLease {
-            global: Arc::clone(&self.global),
-            port: Arc::clone(&self.port),
-            peer: None,
-            bytes,
-            peer_limit: 0,
-            cached: false,
-            drain: false,
-        };
+        let mut lease =
+            MemoryLease { global: Arc::clone(&self.global), port: Arc::clone(&self.port), peer: None, bytes, peer_limit: 0, cached: false, drain: false };
         if !self.global.try_cache(bytes) {
             return None;
         }
@@ -1442,9 +1435,8 @@ impl MemoryLease {
     }
 
     pub(crate) fn can_reuse_index(&self, budget: &Budget, peer: PeerId, empty: bool) -> bool {
-        self.belongs_to(budget) && (empty || budget.physical_peers.get(&peer).is_some_and(|counter| {
-            self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))
-        }))
+        self.belongs_to(budget)
+            && (empty || budget.physical_peers.get(&peer).is_some_and(|counter| self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))))
     }
 
     /// Prepare peer capacity before a new payload becomes drain. The old
@@ -1471,12 +1463,7 @@ impl MemoryLease {
             self.global.request_cache_reclaim();
             return Err(());
         }
-        Ok(Some(IndexPeerReservation {
-            global: Arc::clone(&self.global),
-            peer: Some(counter),
-            bytes: self.bytes,
-            peer_limit: budget.peer_limit,
-        }))
+        Ok(Some(IndexPeerReservation { global: Arc::clone(&self.global), peer: Some(counter), bytes: self.bytes, peer_limit: budget.peer_limit }))
     }
 
     pub(crate) fn commit_index_peer(&mut self, mut reservation: IndexPeerReservation) {
