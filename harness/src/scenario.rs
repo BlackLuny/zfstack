@@ -269,7 +269,8 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
         "sink-full-iface" => {
             check_backpressure(&mut errors, report, 200_000_000);
             match report.flows.iter().find(|f| f.class == "open").and_then(|f| f.finished_at_ns) {
-                Some(t) if (40_000_000..200_000_000).contains(&t) && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
+                Some(t)
+                    if (40_000_000..200_000_000).contains(&t) && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
                 Some(t) => errors.push(format!("unblocked iface did not finish during the other iface's Full window (finished={t})")),
                 None => errors.push("unblocked iface flow did not finish".into()),
             }
@@ -308,7 +309,8 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
                 errors.push(format!("reserved grew across rebuild: {} -> {}", b.reserved_before, b.reserved_after));
             }
             if b.untouched_live_before == 0 || b.untouched_live_after != b.untouched_live_before {
-                errors.push(format!("untouched iface did not retain live connections across rebuild: {} -> {}", b.untouched_live_before, b.untouched_live_after));
+                errors
+                    .push(format!("untouched iface did not retain live connections across rebuild: {} -> {}", b.untouched_live_before, b.untouched_live_after));
             }
             match report.flows.iter().find(|f| f.class == "other").and_then(|f| f.finished_at_ns) {
                 Some(t) if t > 40_000_000 => {}
