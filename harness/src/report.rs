@@ -71,6 +71,11 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
                 "shard": shard, "peer": peer, "bytes": bytes
             })).collect::<Vec<_>>(),
             "share_blocked": report.share_blocked,
+            "allocation_failures_by_level": {
+                "global": report.allocation_failures_by_level[0],
+                "port": report.allocation_failures_by_level[1],
+                "peer": report.allocation_failures_by_level[2],
+            },
             "conns_end": report.conns_end,
             "progress_reserve": report.progress_reserve,
         },
@@ -93,6 +98,8 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
             "reserved_after": report.rebuild.reserved_after,
             "server_slots_gone": report.rebuild.server_slots_gone,
             "client_closed": report.rebuild.client_closed,
+            "untouched_live_before": report.rebuild.untouched_live_before,
+            "untouched_live_after": report.rebuild.untouched_live_after,
         },
         "users": users,
         "flows": report.flows.iter().map(flow_json).collect::<Vec<_>>(),

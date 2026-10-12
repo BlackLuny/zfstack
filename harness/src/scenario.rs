@@ -269,7 +269,7 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
         "sink-full-iface" => {
             check_backpressure(&mut errors, report, 200_000_000);
             match report.flows.iter().find(|f| f.class == "open").and_then(|f| f.finished_at_ns) {
-                Some(t) if t < 200_000_000 && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
+                Some(t) if (40_000_000..200_000_000).contains(&t) && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
                 Some(t) => errors.push(format!("unblocked iface did not finish during the other iface's Full window (finished={t})")),
                 None => errors.push("unblocked iface flow did not finish".into()),
             }
@@ -306,6 +306,18 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
             }
             if b.reserved_after > b.reserved_before {
                 errors.push(format!("reserved grew across rebuild: {} -> {}", b.reserved_before, b.reserved_after));
+            }
+            if b.untouched_live_before == 0 || b.untouched_live_after != b.untouched_live_before {
+                errors.push(format!("untouched iface did not retain live connections across rebuild: {} -> {}", b.untouched_live_before, b.untouched_live_after));
+            }
+            match report.flows.iter().find(|f| f.class == "other").and_then(|f| f.finished_at_ns) {
+                Some(t) if t > 40_000_000 => {}
+                _ => errors.push("untouched flow did not make progress through the rebuild".into()),
+            }
+        }
+        "quota" => {
+            if report.share_blocked == 0 && report.allocation_failures_by_level == [0; 3] {
+                errors.push("quota run never reached a send share or physical budget limit".into());
             }
         }
         "peer-reuse" => {
@@ -373,7 +385,9 @@ fn cfg_quota() -> Config {
     cfg.until = Duration::from_secs(8);
     cfg.step_cap = 4_000_000;
     for i in 0..4u64 {
-        cfg.flows.push(bulk(0, 1 + i, "quota", 16 * 1024));
+        // Four senders retain more than their share of the 2 MiB port budget.
+        // Completion then requires ACK-driven release and a successful retry.
+        cfg.flows.push(bulk(0, 1 + i, "quota", 512 * 1024));
     }
     cfg
 }
@@ -416,7 +430,10 @@ fn cfg_sink_full_iface() -> Config {
     cfg.full = Some(FullFault { port: Some(0), from: Duration::from_millis(40), until: Duration::from_millis(200) });
     cfg.until = Duration::from_secs(3);
     cfg.flows.push(bulk(0, 1, "blocked", 256 * 1024));
-    cfg.flows.push(bulk(1, 1, "open", 4096));
+    let mut open = bulk(1, 1, "open", 4096);
+    // Start inside the fault: an already-finished flow cannot prove isolation.
+    open.start_after = Duration::from_millis(50);
+    cfg.flows.push(open);
     cfg
 }
 
@@ -507,7 +524,7 @@ fn cfg_rebuild() -> Config {
         read_pause: None,
     });
     // An untouched port must keep its own flow.
-    cfg.flows.push(bulk_on(1, 1, "other", 4096, Some(41_002), None));
+    cfg.flows.push(bulk_on(1, 1, "other", 256 * 1024, Some(41_002), None));
     cfg
 }
 
@@ -635,6 +652,25 @@ mod tests {
         let r = execute(cfg_sink_full());
         assert!(r.ok, "{:?}", r.errors);
         assert!(extra_checks("sink-full", &r).is_empty(), "{:?}", extra_checks("sink-full", &r));
+    }
+
+    #[test]
+    fn sink_full_iface_rejects_a_fault_that_blocks_every_iface() {
+        let mut cfg = cfg_sink_full_iface();
+        cfg.full.as_mut().unwrap().port = None;
+        let r = execute(cfg);
+        assert!(r.ok, "{:?}", r.errors);
+        assert!(!extra_checks("sink-full-iface", &r).is_empty());
+    }
+
+    #[test]
+    fn quota_requires_observed_pressure_and_then_completes() {
+        let mut r = execute(cfg_quota());
+        assert!(r.ok, "{:?}", r.errors);
+        assert!(extra_checks("quota", &r).is_empty(), "{:?}", extra_checks("quota", &r));
+        r.share_blocked = 0;
+        r.allocation_failures_by_level = [0; 3];
+        assert!(!extra_checks("quota", &r).is_empty());
     }
 
     #[test]

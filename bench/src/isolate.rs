@@ -236,6 +236,9 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
             Err(_) => errors.push(format!("light {i} loaded: thread panicked")),
         }
     }
+    // Lights may be absent or exit early. Their lifetime cannot shorten the
+    // configured heavy-only measurement window.
+    std::thread::sleep(window_end_at.saturating_duration_since(Instant::now()));
     let window_secs = window_start.elapsed().as_secs_f64().max(1e-6);
     let bytes_at_end = heavy_bytes.load(Relaxed);
     mark("window_end");
@@ -554,6 +557,26 @@ fn user_json(row: &UserRow) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn measurement_window_does_not_depend_on_light_users() {
+        let o = TestOpts {
+            secs: 1,
+            warmup: 0,
+            flows: 1,
+            rr_size: 256,
+            rr_interval_ms: 20,
+            idle_rr_secs: 0,
+            conns: 1,
+            concurrency: 1,
+            connect_timeout: Duration::from_secs(1),
+            client_cc: None,
+        };
+        let iso = resolve(1, 0, 0, Placement::SameIface, Topology::SharedShard).unwrap();
+        let out = test_isolate(&o, &iso, &mut |_| {});
+        assert!(out.errors.is_empty(), "{:?}", out.errors);
+        assert!(out.window_secs >= 1.0, "window was {} seconds", out.window_secs);
+    }
 
     #[test]
     fn classify_isolate_addresses() {

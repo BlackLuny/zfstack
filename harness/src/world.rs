@@ -325,6 +325,8 @@ pub struct RebuildStats {
     pub reserved_after: u64,
     pub server_slots_gone: bool,
     pub client_closed: bool,
+    pub untouched_live_before: usize,
+    pub untouched_live_after: usize,
 }
 
 pub struct Report {
@@ -346,6 +348,7 @@ pub struct Report {
     pub physical_peaks: Vec<u64>,
     pub peer_peaks: Vec<(usize, u64, u64)>,
     pub share_blocked: u64,
+    pub allocation_failures_by_level: [u64; 3],
     pub conns_end: usize,
     pub progress_reserve: bool,
     pub link_sent: u64,
@@ -385,6 +388,7 @@ pub fn execute(cfg: Config) -> Report {
                 physical_peaks: Vec::new(),
                 peer_peaks: Vec::new(),
                 share_blocked: 0,
+                allocation_failures_by_level: [0; 3],
                 conns_end: 0,
                 progress_reserve: false,
                 link_sent: 0,
@@ -882,6 +886,12 @@ impl World {
         let freed_before = self.servers[server].shard.stats().conns_freed;
         let live_before: Vec<ConnId> =
             self.servers[server].shard.conn_ids().into_iter().filter(|id| self.servers[server].shard.info(*id).is_some_and(|info| info.iface == old)).collect();
+        let untouched: Vec<ConnId> = self.servers[server]
+            .shard
+            .conn_ids()
+            .into_iter()
+            .filter(|id| self.servers[server].shard.info(*id).is_some_and(|info| info.iface != old && info.state.can_send_data()))
+            .collect();
         let client_closed = abort_apps(&mut self.clients[port], now);
         let server_slots_gone = take_down_iface(&mut self.servers[server], old, &live_before, now);
         let still_on_old =
@@ -897,6 +907,8 @@ impl World {
             reserved_after,
             server_slots_gone,
             client_closed,
+            untouched_live_before: untouched.len(),
+            untouched_live_after: untouched.iter().filter(|id| self.servers[server].shard.info(**id).is_some_and(|info| info.state.can_send_data())).count(),
         };
         let iface = self.servers[server].shard.add_iface(IfaceConfig::default());
         self.servers[server].note_iface(iface, port);
@@ -1061,6 +1073,12 @@ impl World {
             });
         }
         let share_blocked: u64 = self.servers.iter().map(|s| s.shard.budget().share_blocked()).sum();
+        let mut allocation_failures_by_level = [0; 3];
+        for s in &self.servers {
+            for (total, failures) in allocation_failures_by_level.iter_mut().zip(s.shard.budget().stats().failures_by_level()) {
+                *total += failures;
+            }
+        }
         let conns_end: usize = self.servers.iter().map(|s| s.shard.conn_count()).sum();
         let progress_reserve = self.servers.iter().all(|s| s.shard.budget().progress_reserve_active());
         let mut link_sent = 0;
@@ -1100,6 +1118,7 @@ impl World {
             physical_peaks: self.physical_peaks,
             peer_peaks,
             share_blocked,
+            allocation_failures_by_level,
             conns_end,
             progress_reserve,
             link_sent,
