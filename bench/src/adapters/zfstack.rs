@@ -351,11 +351,18 @@ impl ZfStack {
     pub fn with_isolate(opts: ZfOpts, counters: Arc<ServerCounters>, plan: IsolatePlan) -> Self {
         let cfg = stack_cfg(&opts);
         let nslots = if plan.per_port_shard { plan.ports as usize } else { 1 };
-        let global = GlobalBudget::new(512 << 20);
+        let (global_bytes, port_bytes, peer_bytes) = if plan.budget_mb == 0 {
+            (512 << 20, 64 << 20, 32 << 20)
+        } else {
+            let global_bytes = plan.budget_mb << 20;
+            let half = (global_bytes / 2).max(1);
+            (global_bytes, half, half)
+        };
+        let global = GlobalBudget::new(global_bytes);
         let mut slots = Vec::with_capacity(nslots);
         for _ in 0..nslots {
             let mut shard = Shard::with_budget(cfg.clone(), std::sync::Arc::clone(&global));
-            shard.set_budget_limits(64 << 20, 32 << 20, 4096);
+            shard.set_budget_limits(port_bytes, peer_bytes, 4096);
             slots.push(Slot::new(shard));
         }
         let mut locs = Vec::with_capacity(plan.ports as usize);
