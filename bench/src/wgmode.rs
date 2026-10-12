@@ -185,7 +185,7 @@ fn session(c: TcpStream, cfg: &ServeCfg) -> io::Result<()> {
             let ks = kernel_server::start(counters.clone(), stop_srv.clone(), opts.kernel_cc.clone(), None)?;
             Ok(Running::Kernel { bridge, ks, stop_srv })
         } else {
-            let st = build_stack(&opts, counters.clone());
+            let st = build_stack(&opts, counters.clone(), None);
             let udp = wg::udp_socket(cfg.wg_listen)?;
             let peer = Peer::new(&me, client_pub, None, 1);
             let (s, lv) = (stop.clone(), live.clone());
@@ -452,6 +452,10 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
             TestKind::Connect => client::test_connect(&o, &view, &mut mark),
             TestKind::Idle => {
                 eprintln!("--test idle needs --client-proxy");
+                std::process::exit(2);
+            }
+            TestKind::Isolate => {
+                eprintln!("--test isolate does not run over WireGuard");
                 std::process::exit(2);
             }
         }
