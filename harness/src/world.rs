@@ -16,7 +16,9 @@ use std::time::Duration;
 
 use zfstack::budget::GlobalBudget;
 use zfstack::sim::Rng;
-use zfstack::{CcAlgo, CloseReason, ConnId, Event, IfaceConfig, IfaceId, Instant, OutPacket, PeerId, ReadResult, SendResult, Shard, StackConfig, WriteResult};
+use zfstack::{
+    CcAlgo, CloseReason, ConnId, Event, IfaceConfig, IfaceId, Instant, OutPacket, PeerId, ReadResult, SendResult, Shard, StackConfig, State, WriteResult,
+};
 
 use bytes::Bytes;
 
@@ -138,6 +140,9 @@ pub struct Config {
     /// should be the ones already started on it.
     pub rebuild: Option<(u16, Duration)>,
     pub step_cap: u64,
+    /// Cap the load-generator's receive buffer so a paused reader actually
+    /// advertises a zero window. `None` keeps the default server profile.
+    pub client_max_rcv: Option<u32>,
 }
 
 impl Config {
@@ -157,6 +162,7 @@ impl Config {
             full: None,
             rebuild: None,
             step_cap: 2_000_000,
+            client_max_rcv: None,
         }
     }
 }
@@ -169,7 +175,11 @@ struct RrState {
     round: u32,
     pause: Duration,
     pause_until: Instant,
-    mark: Option<Instant>,
+    /// When the app was ready to send this round, including time spent blocked
+    /// on a full window or a quota. This is the start of the end-to-end latency.
+    ready: Option<Instant>,
+    /// When `write` first accepted a byte of this round.
+    first_write: Option<Instant>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,9 +204,32 @@ struct App {
     corrupt: bool,
     short: bool,
     reset_seen: bool,
+    port: u16,
+    /// The shard no longer has this conn (`info` is `None`) or, for a local
+    /// abort that keeps the slot, `ConnInfo.state` is `Closed`. Set only after
+    /// reading the stack, never as a stand-in for that read.
+    stack_released: bool,
+    saw_zero_wnd: bool,
+    saw_wnd_reopen: bool,
+    min_snd_wnd: Option<u64>,
+    max_tx_unsent: u64,
+    stall_wnd: Option<u64>,
+    /// Client read-resume time, copied onto the sender so the window probe
+    /// knows which samples are still inside the pause.
+    resume_at: Instant,
+    unsent_at_resume: Option<u64>,
+    /// App bytes already accepted when the sink fault was first observed.
+    sent_at_block: Option<u64>,
+    recv_at_block: Option<u64>,
+    /// During the fault the stack still held payload it had not emitted.
+    queued_during_block: bool,
+    progress_after_block: bool,
     read_pause_until: Instant,
     rr: Option<RrState>,
     latencies_ns: Vec<u64>,
+    /// `first_write - ready` for each round. Zero means the stack accepted the
+    /// byte in the same virtual instant the app became ready.
+    write_wait_ns: Vec<u64>,
     finished_at: Option<Instant>,
 }
 
@@ -268,6 +301,30 @@ pub struct FlowReport {
     pub reset: bool,
     pub finished_at_ns: Option<u64>,
     pub latencies_ns: Vec<u64>,
+    pub write_wait_ns: Vec<u64>,
+    pub saw_zero_wnd: bool,
+    pub saw_wnd_reopen: bool,
+    pub min_snd_wnd: Option<u64>,
+    pub max_tx_unsent: u64,
+    pub unsent_at_resume: Option<u64>,
+    pub sent_at_block: Option<u64>,
+    pub queued_during_block: bool,
+    pub progress_after_block: bool,
+    pub stack_released: bool,
+}
+
+/// What `remove_iface` did to the stack, read back from the shard rather than
+/// from a flag the harness set on the app.
+#[derive(Clone, Debug, Default)]
+pub struct RebuildStats {
+    pub happened: bool,
+    pub live_before: usize,
+    pub still_on_old: usize,
+    pub freed_delta: u64,
+    pub reserved_before: u64,
+    pub reserved_after: u64,
+    pub server_slots_gone: bool,
+    pub client_closed: bool,
 }
 
 pub struct Report {
@@ -295,6 +352,9 @@ pub struct Report {
     pub link_delivered: u64,
     pub link_queue_drops: u64,
     pub link_random_drops: u64,
+    pub sink_full_before: Option<u64>,
+    pub sink_full_total: u64,
+    pub rebuild: RebuildStats,
     /// Virtual clock for every latency and `finished_at`. `wall_sec` / `cpu_sec`
     /// are only the harness process, not a host PPS measurement.
     pub clock: &'static str,
@@ -331,6 +391,9 @@ pub fn execute(cfg: Config) -> Report {
                 link_delivered: 0,
                 link_queue_drops: 0,
                 link_random_drops: 0,
+                sink_full_before: None,
+                sink_full_total: 0,
+                rebuild: RebuildStats::default(),
                 clock: "virtual",
             };
         }
@@ -368,6 +431,8 @@ struct World {
     physical_peaks: Vec<u64>,
     peer_peaks: HashMap<(usize, u64), u64>,
     allow_no_iface: bool,
+    sink_full_before: Option<u64>,
+    rebuild_stats: RebuildStats,
 }
 
 impl World {
@@ -409,7 +474,11 @@ impl World {
             servers[server].note_iface(iface, p);
             ports.push(Port { server, iface });
         }
-        let client_stack = server_stack(CcAlgo::Cubic, None);
+        let mut client_stack = server_stack(CcAlgo::Cubic, None);
+        if let Some(n) = cfg.client_max_rcv {
+            client_stack.max_rcv_buf = n;
+            client_stack.init_rcv_wnd = n;
+        }
         let mut clients = Vec::with_capacity(n);
         for i in 0..n {
             // Separate budgets so the load generator cannot share a ceiling with
@@ -492,6 +561,8 @@ impl World {
             physical_peaks,
             peer_peaks: HashMap::new(),
             allow_no_iface: false,
+            sink_full_before: None,
+            rebuild_stats: RebuildStats::default(),
         })
     }
 
@@ -608,6 +679,7 @@ impl World {
         let now = self.now;
         self.maybe_rebuild(now);
         self.start_due();
+        self.note_full_window();
         self.release_full(now);
         self.deliver(now);
         let server_ok = self.server_may_run(now);
@@ -636,6 +708,95 @@ impl World {
             }
         }
         self.note_budget(now);
+        self.note_block();
+        self.note_window_after_emit();
+    }
+
+    /// `tx_unsent` shrinks in `run`, which happens after the app pump. Look
+    /// again at the end of the step so a window that opens and drains in one
+    /// step is visible.
+    fn note_window_after_emit(&mut self) {
+        let now = self.now;
+        for s in &mut self.servers {
+            let ids: Vec<ConnId> = s.apps.keys().copied().collect();
+            for id in ids {
+                let Some(info) = s.shard.info(id) else { continue };
+                let unsent = info.tx_unsent;
+                let Some(app) = s.apps.get_mut(&id) else { continue };
+                if app.role != Role::Server || app.resume_at == Instant::ZERO || now < app.resume_at {
+                    continue;
+                }
+                if app.saw_zero_wnd && app.unsent_at_resume.is_some_and(|at| unsent < at) {
+                    app.saw_wnd_reopen = true;
+                }
+            }
+        }
+    }
+
+    /// Remember the sink-full counter the instant the fault window opens, before
+    /// this step's `run` can increment it.
+    fn note_full_window(&mut self) {
+        if self.sink_full_before.is_some() || self.full.is_none() {
+            return;
+        }
+        let now = self.now;
+        let covers = match self.full.as_ref().and_then(|f| f.port) {
+            Some(p) => port_blocked(&self.full, p as usize, now),
+            None => !self.ports.is_empty() && port_blocked(&self.full, 0, now),
+        };
+        if !covers {
+            return;
+        }
+        let n = self.servers.iter().map(|s| s.shard.stats().sink_full).sum();
+        self.sink_full_before = Some(n);
+    }
+
+    fn note_block(&mut self) {
+        let now = self.now;
+        let full = self.full.clone();
+        if full.is_none() {
+            return;
+        }
+        for s in &mut self.servers {
+            let ids: Vec<ConnId> = s.apps.keys().copied().collect();
+            for id in ids {
+                let queued = s.shard.info(id).is_some_and(|info| info.tx_unsent > 0 || info.tx_queued > 0);
+                let Some(app) = s.apps.get_mut(&id) else { continue };
+                if app.role != Role::Server || app.send_target == 0 {
+                    continue;
+                }
+                if !port_blocked(&full, app.port as usize, now) {
+                    if app.queued_during_block && app.sent > app.sent_at_block.unwrap_or(0) {
+                        app.progress_after_block = true;
+                    }
+                    continue;
+                }
+                if app.sent_at_block.is_none() {
+                    app.sent_at_block = Some(app.sent);
+                }
+                if queued {
+                    app.queued_during_block = true;
+                }
+            }
+        }
+        // The receiver's byte count is what proves the transfer resumed, including
+        // the case where `write` had already accepted every byte and only the
+        // sink was holding it.
+        for (port, c) in self.clients.iter_mut().enumerate() {
+            let blocked = port_blocked(&full, port, now);
+            for app in c.apps.values_mut() {
+                if app.role != Role::Client || app.recv_target == 0 {
+                    continue;
+                }
+                if blocked {
+                    if app.recv_at_block.is_none() {
+                        app.recv_at_block = Some(app.recv);
+                    }
+                } else if app.recv > app.recv_at_block.unwrap_or(u64::MAX) {
+                    app.progress_after_block = true;
+                }
+            }
+        }
     }
 
     fn deliver(&mut self, now: Instant) {
@@ -717,8 +878,26 @@ impl World {
         self.links.up[port].clear();
         let server = self.ports[port].server;
         let old = self.ports[port].iface;
-        abort_apps(&mut self.clients[port], now);
-        take_down_iface(&mut self.servers[server], old, now);
+        let reserved_before = self.global.reserved();
+        let freed_before = self.servers[server].shard.stats().conns_freed;
+        let live_before: Vec<ConnId> =
+            self.servers[server].shard.conn_ids().into_iter().filter(|id| self.servers[server].shard.info(*id).is_some_and(|info| info.iface == old)).collect();
+        let client_closed = abort_apps(&mut self.clients[port], now);
+        let server_slots_gone = take_down_iface(&mut self.servers[server], old, &live_before, now);
+        let still_on_old =
+            self.servers[server].shard.conn_ids().into_iter().filter(|id| self.servers[server].shard.info(*id).is_some_and(|info| info.iface == old)).count();
+        let freed_delta = self.servers[server].shard.stats().conns_freed.saturating_sub(freed_before);
+        let reserved_after = self.global.reserved();
+        self.rebuild_stats = RebuildStats {
+            happened: true,
+            live_before: live_before.len(),
+            still_on_old,
+            freed_delta,
+            reserved_before,
+            reserved_after,
+            server_slots_gone,
+            client_closed,
+        };
         let iface = self.servers[server].shard.add_iface(IfaceConfig::default());
         self.servers[server].note_iface(iface, port);
         self.ports[port].iface = iface;
@@ -746,9 +925,12 @@ impl World {
         let local: SocketAddr = format!("10.0.0.2:{tuple}").parse().unwrap();
         let remote: SocketAddr = "10.0.0.1:80".parse().unwrap();
         let id = self.clients[port_i].shard.connect(now, IfaceId(0), peer, local, remote);
-        let client_app = App::new(idx as u16, Role::Client, (salt_c2s, salt_s2c), (c_send, c_recv), read_pause, rr.clone());
+        let mut client_app = App::new(idx as u16, Role::Client, (salt_c2s, salt_s2c), (c_send, c_recv), read_pause, rr.clone());
+        client_app.port = self.flows[idx].port;
         self.clients[port_i].apps.insert(id, client_app);
-        let server_app = App::new(idx as u16, Role::Server, (salt_s2c, salt_c2s), (s_send, s_recv), Instant::ZERO, rr);
+        let mut server_app = App::new(idx as u16, Role::Server, (salt_s2c, salt_c2s), (s_send, s_recv), Instant::ZERO, rr);
+        server_app.port = self.flows[idx].port;
+        server_app.resume_at = read_pause;
         self.servers[server].routes.insert((iface, peer, tuple), Route { app: server_app });
         self.flows[idx].started = true;
     }
@@ -836,8 +1018,17 @@ impl World {
                     }
                 }
                 Expect::Reset => {
-                    if flow.started && !reset {
-                        errors.push(format!("flow {} expected a reset when its iface was rebuilt", flow.id));
+                    // `reset_seen` is not evidence: local abort does not emit
+                    // `Closed`. The slot has to be gone, or the stack has to
+                    // report `State::Closed`, which `stack_released` records.
+                    if !flow.started {
+                        errors.push(format!("flow {} never started before rebuild", flow.id));
+                    }
+                    if !client.is_some_and(|c| c.stack_released) {
+                        errors.push(format!("flow {} client conn was not closed by the stack", flow.id));
+                    }
+                    if !server.is_some_and(|s| s.stack_released) {
+                        errors.push(format!("flow {} server conn was still in the shard after remove_iface", flow.id));
                     }
                 }
             }
@@ -857,6 +1048,16 @@ impl World {
                 reset,
                 finished_at_ns: finished,
                 latencies_ns: client.map(|c| c.latencies_ns.clone()).unwrap_or_default(),
+                write_wait_ns: client.map(|c| c.write_wait_ns.clone()).unwrap_or_default(),
+                saw_zero_wnd: server.is_some_and(|s| s.saw_zero_wnd),
+                saw_wnd_reopen: server.is_some_and(|s| s.saw_wnd_reopen),
+                min_snd_wnd: server.and_then(|s| s.min_snd_wnd),
+                max_tx_unsent: server.map(|s| s.max_tx_unsent).unwrap_or(0),
+                unsent_at_resume: server.and_then(|s| s.unsent_at_resume),
+                sent_at_block: server.and_then(|s| s.sent_at_block),
+                queued_during_block: server.is_some_and(|s| s.queued_during_block),
+                progress_after_block: client.is_some_and(|c| c.progress_after_block),
+                stack_released: server.is_some_and(|s| s.stack_released) || client.is_some_and(|c| c.stack_released),
             });
         }
         let share_blocked: u64 = self.servers.iter().map(|s| s.shard.budget().share_blocked()).sum();
@@ -875,6 +1076,9 @@ impl World {
         for l in self.links.down.iter().chain(self.links.up.iter()) {
             fold(&l.stats, &mut link_sent, &mut link_delivered, &mut link_queue_drops, &mut link_random_drops);
         }
+        let sink_full_total = self.servers.iter().map(|s| s.shard.stats().sink_full).sum();
+        let rebuild = self.rebuild_stats.clone();
+        let sink_full_before = self.sink_full_before;
         let mut peer_peaks: Vec<_> = self.peer_peaks.into_iter().map(|((shard, peer), bytes)| (shard, peer, bytes)).collect();
         peer_peaks.sort_unstable();
         Report {
@@ -902,6 +1106,9 @@ impl World {
             link_delivered,
             link_queue_drops,
             link_random_drops,
+            sink_full_before,
+            sink_full_total,
+            rebuild,
             clock: "virtual",
         }
     }
@@ -947,7 +1154,7 @@ fn targets(kind: &Kind) -> (u64, u64, u64, u64, Option<RrState>) {
     match *kind {
         Kind::Bulk { from_server, from_client } => (from_client, from_server, from_server, from_client, None),
         Kind::Rr { req, resp, rounds, pause } => {
-            let rr = RrState { req, resp, rounds, round: 0, pause, pause_until: Instant::ZERO, mark: None };
+            let rr = RrState { req, resp, rounds, round: 0, pause, pause_until: Instant::ZERO, ready: None, first_write: None };
             (req * rounds as u64, resp * rounds as u64, resp * rounds as u64, req * rounds as u64, Some(rr))
         }
     }
@@ -1004,9 +1211,23 @@ impl App {
             corrupt: false,
             short: false,
             reset_seen: false,
+            port: 0,
+            stack_released: false,
+            saw_zero_wnd: false,
+            saw_wnd_reopen: false,
+            min_snd_wnd: None,
+            max_tx_unsent: 0,
+            stall_wnd: None,
+            resume_at: Instant::ZERO,
+            unsent_at_resume: None,
+            sent_at_block: None,
+            recv_at_block: None,
+            queued_during_block: false,
+            progress_after_block: false,
             read_pause_until,
             rr,
             latencies_ns: Vec::new(),
+            write_wait_ns: Vec::new(),
             finished_at: None,
         }
     }
@@ -1115,8 +1336,12 @@ fn pump_one(ep: &mut Endpoint, id: ConnId, now: Instant) -> bool {
     if let Some(rr) = app.rr.as_mut() {
         if app.role == Role::Client {
             while rr.round < rr.rounds && app.recv >= (rr.round as u64 + 1) * rr.resp {
-                if let Some(t0) = rr.mark.take() {
+                let ready = rr.ready.take();
+                let first = rr.first_write.take();
+                if let Some(t0) = ready {
                     app.latencies_ns.push(now.saturating_since(t0).as_nanos() as u64);
+                    let waited = first.map(|t| t.saturating_since(t0).as_nanos() as u64).unwrap_or(0);
+                    app.write_wait_ns.push(waited);
                 }
                 rr.round += 1;
                 if rr.round < rr.rounds {
@@ -1125,7 +1350,37 @@ fn pump_one(ep: &mut Endpoint, id: ConnId, now: Instant) -> bool {
             }
         }
     }
+    if established && app.role == Role::Server {
+        if let Some(info) = shard.info(id) {
+            app.min_snd_wnd = Some(app.min_snd_wnd.map_or(info.snd_wnd, |m| m.min(info.snd_wnd)));
+            // `sent` is what the app handed the stack, which can run ahead of the
+            // window. Zero-window means the peer's advertised window is closed
+            // while payload is still sitting in the send buffer.
+            app.max_tx_unsent = app.max_tx_unsent.max(info.tx_unsent);
+            // Receiver SWS can leave a non-zero advertisement while more payload
+            // is waiting than that advertisement can hold. That is the stall.
+            // A later larger snd_wnd is the window update after the app reads.
+            if info.snd_wnd == 0 || (info.tx_unsent > info.snd_wnd && info.tx_unsent > 0) {
+                app.saw_zero_wnd = true;
+                app.stall_wnd = Some(app.stall_wnd.map_or(info.snd_wnd, |w| w.min(info.snd_wnd)));
+            }
+            if app.resume_at > Instant::ZERO {
+                if now < app.resume_at {
+                    app.unsent_at_resume = Some(info.tx_unsent);
+                } else if app.saw_zero_wnd && app.unsent_at_resume.is_some_and(|at| info.tx_unsent < at) {
+                    app.saw_wnd_reopen = true;
+                }
+            } else if app.saw_zero_wnd && info.snd_wnd > app.stall_wnd.unwrap_or(u64::MAX) {
+                app.saw_wnd_reopen = true;
+            }
+        }
+    }
     if established {
+        if let Some(rr) = app.rr.as_mut() {
+            if app.role == Role::Client && rr.ready.is_none() && rr.round < rr.rounds && app.sent == rr.round as u64 * rr.req && now >= rr.pause_until {
+                rr.ready = Some(now);
+            }
+        }
         let limit = app.send_limit(now);
         while app.sent < limit {
             let n = ((limit - app.sent) as usize).min(WRITE_CHUNK);
@@ -1134,8 +1389,8 @@ fn pump_one(ep: &mut Endpoint, id: ConnId, now: Instant) -> bool {
             match shard.write(id, pattern_at(pattern, salt, before, n)) {
                 WriteResult::Written(w) => {
                     if let Some(rr) = app.rr.as_mut() {
-                        if app.role == Role::Client && before == rr.round as u64 * rr.req && rr.mark.is_none() {
-                            rr.mark = Some(now);
+                        if app.role == Role::Client && before == rr.round as u64 * rr.req && rr.first_write.is_none() {
+                            rr.first_write = Some(now);
                         }
                     }
                     app.sent += w as u64;
@@ -1185,40 +1440,50 @@ fn should_fin(app: &App) -> bool {
     true
 }
 
-fn abort_apps(ep: &mut Endpoint, now: Instant) {
+/// Abort every app conn. Returns whether each one is `Closed` or gone afterwards.
+/// Local abort does not emit `Closed`; the state is read back from `info`.
+fn abort_apps(ep: &mut Endpoint, now: Instant) -> bool {
     let ids: Vec<ConnId> = ep.apps.keys().copied().collect();
+    let mut all_closed = !ids.is_empty();
     for id in ids {
         ep.shard.abort(id);
+        let gone = ep.shard.info(id).is_none_or(|info| info.state == State::Closed);
+        if !gone {
+            all_closed = false;
+        }
         if let Some(app) = ep.apps.get_mut(&id) {
             if !app.released {
-                app.closed = Some(CloseReason::Aborted);
-                app.reset_seen = true;
+                app.stack_released = gone;
                 app.released = true;
                 app.finished_at = Some(now);
             }
         }
     }
     while ep.shard.poll_event().is_some() {}
+    all_closed
 }
 
-fn take_down_iface(ep: &mut Endpoint, iface: IfaceId, now: Instant) {
+/// `remove_iface` frees the slots. Returns whether every previously live id is gone.
+fn take_down_iface(ep: &mut Endpoint, iface: IfaceId, live: &[ConnId], now: Instant) -> bool {
     ep.shard.remove_iface(iface);
     if (iface.0 as usize) < ep.iface_port.len() {
         ep.iface_port[iface.0 as usize] = None;
     }
     ep.routes.retain(|k, _| k.0 != iface);
+    let gone = live.iter().all(|id| ep.shard.info(*id).is_none());
     let ids: Vec<ConnId> = ep.apps.keys().copied().collect();
     for id in ids {
-        if ep.shard.info(id).is_none() {
-            if let Some(app) = ep.apps.get_mut(&id) {
-                app.closed = Some(CloseReason::Aborted);
-                app.reset_seen = true;
+        let slot_gone = ep.shard.info(id).is_none();
+        if let Some(app) = ep.apps.get_mut(&id) {
+            if slot_gone {
+                app.stack_released = true;
                 app.released = true;
                 app.finished_at.get_or_insert(now);
             }
         }
     }
     while ep.shard.poll_event().is_some() {}
+    gone && live.iter().all(|id| ep.shard.info(*id).is_none())
 }
 
 fn process_cpu() -> f64 {

@@ -12,5 +12,9 @@ if [ ! -x "$bin" ]; then
     echo "missing $bin; build with: cargo build --release -p zfbench" >&2
     exit 3
 fi
+# Do not exec: that would replace this shell and drop the EXIT trap.
+# zfbench also cleans up on its own exit, panic, and signal; this covers the
+# shell being interrupted before the child installs its handler.
 trap '"$bin" --cleanup >/dev/null 2>&1 || true' EXIT INT TERM
-exec "$bin" --stack zfstack-cubic --test isolate "$@"
+"$bin" --stack zfstack-cubic --test isolate "$@"
+exit $?

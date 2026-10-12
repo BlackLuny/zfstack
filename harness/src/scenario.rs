@@ -35,10 +35,12 @@ pub fn scenario_names() -> &'static [&'static str] {
         "quota",
         "zero-window",
         "sink-full",
+        "sink-full-iface",
         "idle-reclaim",
         "lossy",
         "iface-rebuild",
         "wall-bulk",
+        "crowd",
     ]
 }
 
@@ -195,6 +197,8 @@ fn build(name: &str, o: &Overrides) -> Result<Config, String> {
         "quota" => cfg_quota(),
         "zero-window" => cfg_zero_window(),
         "sink-full" => cfg_sink_full(),
+        "sink-full-iface" => cfg_sink_full_iface(),
+        "crowd" => cfg_crowd(o),
         "idle-reclaim" => cfg_idle(),
         "lossy" => cfg_lossy(),
         "iface-rebuild" => cfg_rebuild(),
@@ -244,7 +248,7 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
             match (light.and_then(|f| f.finished_at_ns), heavy.and_then(|f| f.finished_at_ns)) {
                 (Some(l), Some(h)) => {
                     if l >= 1_000_000_000 {
-                        errors.push(format!("light user finished at {l} ns virtual, not during the 1s zero-window"));
+                        errors.push(format!("light user finished at {l} ns virtual, not during the 1s read pause"));
                     }
                     if h < 1_000_000_000 {
                         errors.push(format!("heavy download finished at {h} ns virtual, before the receiver resumed"));
@@ -252,12 +256,24 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
                 }
                 _ => errors.push("zero-window flows did not record a finish time".into()),
             }
+            match heavy {
+                Some(h) if h.saw_zero_wnd && h.saw_wnd_reopen => {}
+                Some(h) => errors.push(format!(
+                    "sender was not window-blocked with unsent data and then offered a larger window (blocked={} reopen={} min_snd_wnd={:?} max_unsent={} at_resume={:?})",
+                    h.saw_zero_wnd, h.saw_wnd_reopen, h.min_snd_wnd, h.max_tx_unsent, h.unsent_at_resume
+                )),
+                None => errors.push("zero-window heavy flow missing".into()),
+            }
         }
-        "sink-full" => match report.flows.first().and_then(|f| f.finished_at_ns) {
-            Some(t) if t >= 200_000_000 => {}
-            Some(t) => errors.push(format!("transfer finished at {t} ns virtual while the sink was Full until 200 ms")),
-            None => errors.push("sink-full flow did not finish".into()),
-        },
+        "sink-full" => check_backpressure(&mut errors, report, 200_000_000),
+        "sink-full-iface" => {
+            check_backpressure(&mut errors, report, 200_000_000);
+            match report.flows.iter().find(|f| f.class == "open").and_then(|f| f.finished_at_ns) {
+                Some(t) if t < 200_000_000 && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
+                Some(t) => errors.push(format!("unblocked iface did not finish during the other iface's Full window (finished={t})")),
+                None => errors.push("unblocked iface flow did not finish".into()),
+            }
+        }
         "idle-reclaim" => {
             if report.conns_end != 0 {
                 errors.push(format!("connections still in the table after idle: {}", report.conns_end));
@@ -266,6 +282,30 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
                 Some(at) if report.reserved_end <= at => {}
                 Some(at) => errors.push(format!("reserved grew during idle: complete {at} end {}", report.reserved_end)),
                 None => errors.push("idle run never reached a settled point".into()),
+            }
+        }
+        "iface-rebuild" => {
+            let b = &report.rebuild;
+            if !b.happened {
+                errors.push("iface rebuild did not run".into());
+            }
+            if b.live_before == 0 {
+                errors.push("rebuild ran before the server had a live connection on the old iface".into());
+            }
+            if b.still_on_old != 0 {
+                errors.push(format!("{} connections still on the old iface after remove_iface", b.still_on_old));
+            }
+            if !b.server_slots_gone {
+                errors.push("remove_iface left a server slot info() could still see".into());
+            }
+            if !b.client_closed {
+                errors.push("client abort did not leave the conn Closed or gone".into());
+            }
+            if b.freed_delta < b.live_before as u64 {
+                errors.push(format!("conns_freed rose by {} but {} conns were live", b.freed_delta, b.live_before));
+            }
+            if b.reserved_after > b.reserved_before {
+                errors.push(format!("reserved grew across rebuild: {} -> {}", b.reserved_before, b.reserved_after));
             }
         }
         "peer-reuse" => {
@@ -341,6 +381,9 @@ fn cfg_quota() -> Config {
 fn cfg_zero_window() -> Config {
     let mut cfg = Config::skeleton(1, Topology::SharedShard);
     cfg.until = Duration::from_secs(4);
+    // The receiver is the load generator. A small buffer is what makes the
+    // paused app advertise a zero window instead of absorbing the download.
+    cfg.client_max_rcv = Some(32 * 1024);
     cfg.flows.push(FlowSpec {
         port: 0,
         peer: 1,
@@ -356,10 +399,65 @@ fn cfg_zero_window() -> Config {
 }
 
 fn cfg_sink_full() -> Config {
+    // Slow enough that a 256 KiB download is established and still holding
+    // payload when the sink starts returning Full at 40 ms. Blocking from t=0
+    // only delayed the SYN.
     let mut cfg = Config::skeleton(1, Topology::SharedShard);
-    cfg.full = Some(FullFault { port: None, from: Duration::ZERO, until: Duration::from_millis(200) });
-    cfg.flows.push(bulk(0, 1, "bulk", 8 * 1024));
+    cfg.link = wan(20_000_000, Duration::from_millis(12), 2.0, 0.0);
+    cfg.full = Some(FullFault { port: None, from: Duration::from_millis(40), until: Duration::from_millis(200) });
+    cfg.until = Duration::from_secs(3);
+    cfg.flows.push(bulk(0, 1, "blocked", 256 * 1024));
     cfg
+}
+
+fn cfg_sink_full_iface() -> Config {
+    let mut cfg = Config::skeleton(2, Topology::SharedShard);
+    cfg.link = wan(20_000_000, Duration::from_millis(12), 2.0, 0.0);
+    cfg.full = Some(FullFault { port: Some(0), from: Duration::from_millis(40), until: Duration::from_millis(200) });
+    cfg.until = Duration::from_secs(3);
+    cfg.flows.push(bulk(0, 1, "blocked", 256 * 1024));
+    cfg.flows.push(bulk(1, 1, "open", 4096));
+    cfg
+}
+
+fn cfg_crowd(o: &Overrides) -> Config {
+    // One heavy port beside many light ports. Not a substitute for a long
+    // 128-port soak; `--ports 128` opts into that. The 1 KiB density row only
+    // checks that many ifaces can handshake.
+    let ports = o.ports.unwrap_or(16).max(2);
+    let mut cfg = Config::skeleton(ports, Topology::SharedShard);
+    cfg.until = Duration::from_secs(3);
+    cfg.step_cap = 4_000_000;
+    cfg.flows.push(bulk(0, 1, "heavy", o.heavy_bytes.unwrap_or(32 * 1024)));
+    for p in 1..ports {
+        cfg.flows.push(rr(p, 1, "light", 256, 256, 2));
+    }
+    cfg
+}
+
+fn check_backpressure(errors: &mut Vec<String>, report: &Report, until_ns: u64) {
+    let before = report.sink_full_before.unwrap_or(0);
+    if report.sink_full_total <= before {
+        errors.push(format!("sink Full was not observed (before={before} total={})", report.sink_full_total));
+    }
+    let Some(flow) = report.flows.iter().find(|f| f.class == "blocked") else {
+        errors.push("backpressure flow missing".into());
+        return;
+    };
+    if flow.sent_at_block.unwrap_or(0) == 0 {
+        errors.push("sink fault started before any payload had been accepted".into());
+    }
+    if !flow.queued_during_block {
+        errors.push("no unsent stack payload while the sink was Full".into());
+    }
+    if !flow.progress_after_block {
+        errors.push("receiver made no progress after the sink was released".into());
+    }
+    match flow.finished_at_ns {
+        Some(t) if t >= until_ns => {}
+        Some(t) => errors.push(format!("transfer finished at {t} ns, inside the Full window")),
+        None => errors.push("backpressure flow did not finish".into()),
+    }
 }
 
 fn cfg_idle() -> Config {
@@ -382,9 +480,12 @@ fn cfg_lossy() -> Config {
 }
 
 fn cfg_rebuild() -> Config {
+    // 40 ms is after the handshake on a 20 Mbit/s, 12 ms link, and before a
+    // 256 KiB download can finish. Rebuilding at 5 ms only aborted a SYN.
     let mut cfg = Config::skeleton(2, Topology::SharedShard);
+    cfg.link = wan(20_000_000, Duration::from_millis(12), 2.0, 0.0);
     cfg.until = Duration::from_secs(3);
-    cfg.rebuild = Some((0, Duration::from_millis(5)));
+    cfg.rebuild = Some((0, Duration::from_millis(40)));
     cfg.flows.push(FlowSpec {
         port: 0,
         peer: 1,
@@ -392,7 +493,7 @@ fn cfg_rebuild() -> Config {
         tuple: Some(41_000),
         start_after: Duration::ZERO,
         expect: Expect::Reset,
-        kind: Kind::Bulk { from_server: 64 * 1024, from_client: 0 },
+        kind: Kind::Bulk { from_server: 256 * 1024, from_client: 0 },
         read_pause: None,
     });
     cfg.flows.push(FlowSpec {
@@ -400,7 +501,7 @@ fn cfg_rebuild() -> Config {
         peer: 1,
         class: "new",
         tuple: Some(41_001),
-        start_after: Duration::from_millis(5),
+        start_after: Duration::from_millis(40),
         expect: Expect::Complete,
         kind: Kind::Bulk { from_server: 4096, from_client: 0 },
         read_pause: None,
@@ -582,7 +683,18 @@ mod tests {
     #[test]
     fn stress_scenarios_complete() {
         let o = Overrides { lights: Some(2), heavy_bytes: Some(8 * 1024), heavy_conns: Some(2), ..Overrides::default() };
-        for name in ["lossy", "iface-rebuild", "quota", "heavy-fanout", "wall-bulk", "noisy-cross-iface", "noisy-cross-shard", "noisy-shared-uplink"] {
+        for name in [
+            "lossy",
+            "iface-rebuild",
+            "quota",
+            "heavy-fanout",
+            "wall-bulk",
+            "noisy-cross-iface",
+            "noisy-cross-shard",
+            "noisy-shared-uplink",
+            "sink-full-iface",
+            "crowd",
+        ] {
             let v = run_named(name, &o).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(v["ok"].as_bool().unwrap(), "{name}: {}", v["errors"]);
         }

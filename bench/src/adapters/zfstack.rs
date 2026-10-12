@@ -320,6 +320,8 @@ pub struct ZfStack {
     locs: Vec<(usize, IfaceId)>,
     rx_pkts: Vec<u64>,
     demux_drops: u64,
+    busy_slot_polls: u64,
+    idle_slot_polls: u64,
     plan: Option<IsolatePlan>,
 }
 
@@ -337,6 +339,8 @@ impl ZfStack {
             locs: Vec::new(),
             rx_pkts: Vec::new(),
             demux_drops: 0,
+            busy_slot_polls: 0,
+            idle_slot_polls: 0,
             plan: None,
         }
     }
@@ -361,7 +365,19 @@ impl ZfStack {
             slots[slot].note_iface(iface, port);
             locs.push((slot, iface));
         }
-        ZfStack { opts, start: Instant::now(), counters, slots, legacy: None, locs, rx_pkts: vec![0; plan.ports as usize], demux_drops: 0, plan: Some(plan) }
+        ZfStack {
+            opts,
+            start: Instant::now(),
+            counters,
+            slots,
+            legacy: None,
+            locs,
+            rx_pkts: vec![0; plan.ports as usize],
+            demux_drops: 0,
+            busy_slot_polls: 0,
+            idle_slot_polls: 0,
+            plan: Some(plan),
+        }
     }
 
     fn zt(&self, now: Instant) -> zfstack::Instant {
@@ -405,9 +421,18 @@ impl UserStack for ZfStack {
         let counters = Arc::clone(&self.counters);
         for _ in 0..64 {
             let mut progress = false;
+            let mut busy = 0u64;
+            let mut idle = 0u64;
             for slot in &mut self.slots {
-                progress |= slot.poll_once(zn, out, &counters);
+                if slot.poll_once(zn, out, &counters) {
+                    busy += 1;
+                    progress = true;
+                } else {
+                    idle += 1;
+                }
             }
+            self.busy_slot_polls += busy;
+            self.idle_slot_polls += idle;
             if !progress {
                 break;
             }
@@ -513,6 +538,11 @@ impl UserStack for ZfStack {
                 "budget_note": "isolate ceilings are 512 MiB global / 64 MiB port / 32 MiB peer, shared by the shards in this process",
             })),
             "demux_drops": self.demux_drops,
+            "scheduler_polls": {
+                "busy_slot_polls": self.busy_slot_polls,
+                "idle_slot_polls": self.idle_slot_polls,
+                "note": "fixed round-robin of every shard, up to 64 passes; not the production Tokio adapter",
+            },
             "ports": ports,
             "budget": {"reserved": reserved, "high": high},
             "shards": shard_rows,

@@ -357,7 +357,9 @@ sudo ./bench/run-isolate.sh --ports 16 --placement cross-shard --topology per-po
 ```
 
 Only `zfstack-*` stacks. The script deletes `zfbA` on exit. P99.9 is omitted
-unless a light user collected at least 1000 samples.
+unless a light user collected at least 1000 samples. Heavy goodput uses the
+measured wall interval after the light users have connected
+(`window_wall_sec`), not `secs - warmup`.
 
 ## Caveats (read before trusting numbers)
 

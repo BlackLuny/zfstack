@@ -43,10 +43,16 @@ cargo run -p zfharness --release -- l0 --scenario matrix --full --format md
 - 1 个重用户 + 多个轻用户：同 iface、跨 iface（各有一条链路）、跨 shard、以及跨 iface 但共享瓶颈
 - 一个 peer 开多条连接
 - 1/16/128 个逻辑端口（`--full` 再加 64）
-- 紧预算、零窗口邻居、出口 `Full` 之后放开、关闭后重建 iface、1% 丢包 + 乱序
+- 紧预算、暂停读取的邻居（发送方有发不出去的数据，恢复读取后积压下降）、出口 `Full` 打在已经有未发送数据的连接上（全局，以及只堵一个 iface）、关闭后重建 iface、1% 丢包 + 乱序
 - 传完进入空闲，`reserved` 不涨，连接表回到 0（`time_wait` 配成 1s 的那一格）
 
-轻用户的 P99 要 ≥100 个虚拟样本才输出，P99.9 要 ≥1000。不够就显式省略。跨 iface 带宽平均 **不是**产品保证（0001：不做用户级 QoS），所以只报告退化，不设“必须一样快”的门槛。
+轻用户的 P99 要 ≥100 个虚拟样本才输出，P99.9 要 ≥1000。不够就显式省略。请求延迟从「应用准备发送」算起，另外单列等 `write` 接受第一个字节的时间。跨 iface 带宽平均 **不是**产品保证（0001：不做用户级 QoS），所以只报告退化，不设“必须一样快”的门槛。
+
+出口 `Full` 从握手之后才开始，并且要求故障期间发送缓冲里还有数据、`sink_full` 计数上升、放开之后接收方继续收到字节。只堵一个 iface 时，另一个 iface 必须在故障窗口内完成。
+
+重建 iface 时，旧连接必须已经在服务端建立。通过条件是 `remove_iface` 之后旧 iface 上没有连接、`info` 看不到旧 slot、`conns_freed` 至少增加了这些连接、客户端 `abort` 之后栈报告 `Closed`，以及 `reserved` 不增加。本地 abort 不会发 `Closed` 事件，所以不能靠 harness 自己把 reset 标成真。
+
+`port-density` 的 128 端口每口只有 1 KiB，只说明大量 iface 能握手。`crowd` 才是一个重端口加许多轻端口；`--ports 128` 可以加大，不放进每次 CI。
 
 L0 的 `wall_sec` / `process_cpu_sec` 是 **这个进程把虚拟时钟跑完花的 CPU**，不是 PPS，也不是 RSS。`wall-bulk` 把这两列当成标题，虚拟完成时间不当延迟。
 
@@ -65,7 +71,9 @@ sudo ./bench/run-isolate.sh --ports 16 --placement cross-shard --topology per-po
 
 每个 peer 在 TUN 上有一个 `/32`（`10.210.<peer>.1`）。`10.211.0.0/16` 路由进 TUN，由 zfstack 按目的地址拆端口。内核 TCP 是对端。链路模拟器仍是 zfbench 原来的那一条，所以 **所有逻辑端口共享一个瓶颈**。重用户把队列打满时，别的 iface 上的轻用户墙钟 RTT 也会变——这是共享链路，不要写成“栈没有按端口隔离”。要看栈调度本身，用 L0 的 `noisy-cross-iface`（每端口一条链路）。
 
-`--topology per-port-shard` 是多个 shard 共用一个 `GlobalBudget`，仍由 **一条**栈线程轮流跑。这不是多核部署。
+`--topology per-port-shard` 是多个 shard 共用一个 `GlobalBudget`，仍由 **一条**栈线程按固定顺序轮流跑，不是生产 Tokio adapter，也不是多核。统计里的 `scheduler_polls` 把空转和真正有进展的 slot 分开，避免把空轮询当成协议 CPU。
+
+重用户吞吐的分母是连接都建立之后的实测墙钟（`window_wall_sec`），不是 `secs - warmup`。建连耗时在 `connect_phase_sec`。
 
 P99 少于 100 个样本、P99.9 少于 1000 个样本时写成 null。把 `--secs` 加长、`--rr-interval-ms` 减小才能谈尾延迟。kernel / smoltcp 不进这个模式：它们的 adapter 是单口的，拓扑不同，不能在这里说“比内核快”。
 

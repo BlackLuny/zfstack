@@ -190,13 +190,38 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
             Err(e) => errors.push(format!("heavy {i}: connect: {e}")),
         }
     }
-    // Warmup is outside the measurement window. Lights keep their own warmup filter.
+    // Heavies run alone through warmup so their congestion window is up before
+    // the measured interval. Connecting the lights is a separate phase: it is
+    // not part of the goodput denominator.
     if o.warmup > 0 {
         std::thread::sleep(Duration::from_secs(o.warmup));
     }
+    let t_connect = Instant::now();
+    let mut connected = Vec::new();
+    for i in 0..iso.lights {
+        let (port, peer) = light_user(i, iso);
+        match connect_bound(o, peer, port) {
+            Ok(mut s) => {
+                if let Err(e) = s.write_all(&app::encode_header(app::CMD_ECHO, msg.len() as u64)) {
+                    errors.push(format!("light {i} loaded port {port} peer {peer}: header: {e}"));
+                    connected.push(None);
+                } else {
+                    connected.push(Some(s));
+                }
+            }
+            Err(e) => {
+                errors.push(format!("light {i} loaded port {port} peer {peer}: connect: {e}"));
+                connected.push(None);
+            }
+        }
+    }
+    let connect_phase_sec = t_connect.elapsed().as_secs_f64();
+    let measure = o.secs.saturating_sub(o.warmup).max(1);
+    let window_start = Instant::now();
+    let window_end_at = window_start + Duration::from_secs(measure);
     let bytes_at_window = heavy_bytes.load(Relaxed);
     mark("window_start");
-    let loaded_handles = spawn_lights(o, iso, &msg, o.secs.saturating_sub(o.warmup).max(1), 0);
+    let loaded_handles = spawn_loaded(&msg, o.rr_interval_ms, window_end_at, connected);
     let mut loaded = Vec::new();
     for (i, h) in loaded_handles.into_iter().enumerate() {
         let i = i as u16;
@@ -211,8 +236,9 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
             Err(_) => errors.push(format!("light {i} loaded: thread panicked")),
         }
     }
-    mark("window_end");
+    let window_secs = window_start.elapsed().as_secs_f64().max(1e-6);
     let bytes_at_end = heavy_bytes.load(Relaxed);
+    mark("window_end");
     stop.store(true, Relaxed);
     for (i, h) in heavy_handles.into_iter().enumerate() {
         match h.join() {
@@ -225,7 +251,6 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
         }
     }
     let window_bytes = bytes_at_end.saturating_sub(bytes_at_window);
-    let window_secs = o.secs.saturating_sub(o.warmup).max(1) as f64;
     let deltas = loaded.iter().map(|row| {
         let base = baseline.iter().find(|b| b.index == row.index);
         let b50 = base.and_then(|b| pct(&b.samples, 50.0));
@@ -264,14 +289,31 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
         "comparability": "L1 wall-clock on this TUN path is not L0 virtual time and not an L2 WireGuard measurement. Kernel and smoltcp are not in this mode: their adapters are single-homed, so a 'faster than kernel' claim is not available here.",
         "heavy": {
             "window_bytes": window_bytes,
-            "window_secs": window_secs,
+            "window_nominal_sec": measure,
+            "window_wall_sec": window_secs,
+            "connect_phase_sec": connect_phase_sec,
             "goodput_mbps_window": window_bytes as f64 * 8.0 / 1e6 / window_secs,
+            "goodput_note": "window_wall_sec is the measured Instant interval after connects completed, not secs-warmup",
         },
         "baseline_users": baseline.iter().map(user_json).collect::<Vec<_>>(),
         "loaded_users": loaded.iter().map(user_json).collect::<Vec<_>>(),
         "latency_delta_ms": deltas.collect::<Vec<_>>(),
     });
     TestOutcome { results, errors, window_bytes, window_secs }
+}
+
+fn spawn_loaded(msg: &[u8], interval_ms: u64, end: Instant, streams: Vec<Option<TcpStream>>) -> Vec<JoinHandle<(Vec<f64>, Vec<String>)>> {
+    let interval = Duration::from_millis(interval_ms.max(1));
+    streams
+        .into_iter()
+        .map(|s| {
+            let msg = msg.to_vec();
+            std::thread::spawn(move || match s {
+                Some(s) => light_until(s, &msg, interval, end),
+                None => (Vec::new(), Vec::new()),
+            })
+        })
+        .collect()
 }
 
 fn spawn_lights(o: &TestOpts, iso: &Iso, msg: &[u8], secs: u64, warmup: u64) -> Vec<JoinHandle<(Vec<f64>, Vec<String>)>> {
@@ -293,7 +335,10 @@ fn spawn_lights(o: &TestOpts, iso: &Iso, msg: &[u8], secs: u64, warmup: u64) -> 
                     }
                     Err(e) => return (Vec::new(), vec![format!("connect: {e}")]),
                 };
-                let (samples, errs) = light_loop(s, &msg, interval, secs, warmup);
+                let start = Instant::now();
+                let end = start + Duration::from_secs(secs.max(1));
+                let warmup_until = start + Duration::from_secs(warmup);
+                let (samples, errs) = light_loop(s, &msg, interval, end, warmup_until);
                 errors.extend(errs);
                 (samples, errors)
             })
@@ -399,15 +444,17 @@ fn sockaddr_v4(ip: Ipv4Addr, port: u16) -> libc::sockaddr_in {
     }
 }
 
-fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, secs: u64, warmup: u64) -> (Vec<f64>, Vec<String>) {
+fn light_until(s: TcpStream, msg: &[u8], interval: Duration, end: Instant) -> (Vec<f64>, Vec<String>) {
+    light_loop(s, msg, interval, end, Instant::now())
+}
+
+fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, end: Instant, warmup_until: Instant) -> (Vec<f64>, Vec<String>) {
     let mut rbuf = vec![0u8; msg.len()];
     let mut samples = Vec::new();
     let mut errors = Vec::new();
     s.set_read_timeout(Some(Duration::from_secs(5))).ok();
     s.set_write_timeout(Some(Duration::from_secs(5))).ok();
-    let t0 = Instant::now();
-    let end = t0 + Duration::from_secs(secs.max(1));
-    let mut next = t0;
+    let mut next = Instant::now();
     while Instant::now() < end {
         if next > Instant::now() {
             std::thread::sleep(next - Instant::now());
@@ -415,9 +462,8 @@ fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, secs: u64, warmu
         if Instant::now() >= end {
             break;
         }
-        let at = t0.elapsed().as_secs_f64();
         match rr_once(&mut s, msg, &mut rbuf) {
-            Ok(ms) if at >= warmup as f64 => samples.push(ms),
+            Ok(ms) if Instant::now() >= warmup_until => samples.push(ms),
             Ok(_) => {}
             Err(e) => {
                 errors.push(e.to_string());

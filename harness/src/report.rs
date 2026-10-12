@@ -21,12 +21,15 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
         seen.push(key);
         let group: Vec<&FlowReport> = report.flows.iter().filter(|g| g.port == f.port && g.peer == f.peer && g.class == f.class).collect();
         let mut lats = Vec::new();
+        let mut waits = Vec::new();
         let mut recv = 0u64;
         for g in &group {
             lats.extend(g.latencies_ns.iter().copied());
+            waits.extend(g.write_wait_ns.iter().copied());
             recv += g.client_recv;
         }
         lats.sort_unstable();
+        waits.sort_unstable();
         users.push(json!({
             "port": f.port,
             "peer": f.peer,
@@ -36,6 +39,7 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
             "client_recv_bytes": recv,
             "finished_at_us": group.iter().filter_map(|g| g.finished_at_ns).max().map(|n| n / 1000),
             "sim_latency": latency_json(&lats),
+            "write_wait": latency_json(&waits),
         }));
     }
     json!({
@@ -76,6 +80,20 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
             "queue_drops": report.link_queue_drops,
             "random_drops": report.link_random_drops,
         },
+        "sink_full": {
+            "before": report.sink_full_before,
+            "total": report.sink_full_total,
+        },
+        "rebuild": {
+            "happened": report.rebuild.happened,
+            "live_before": report.rebuild.live_before,
+            "still_on_old": report.rebuild.still_on_old,
+            "freed_delta": report.rebuild.freed_delta,
+            "reserved_before": report.rebuild.reserved_before,
+            "reserved_after": report.rebuild.reserved_after,
+            "server_slots_gone": report.rebuild.server_slots_gone,
+            "client_closed": report.rebuild.client_closed,
+        },
         "users": users,
         "flows": report.flows.iter().map(flow_json).collect::<Vec<_>>(),
     })
@@ -97,6 +115,14 @@ fn flow_json(f: &FlowReport) -> Value {
         "reset": f.reset,
         "finished_at_us": f.finished_at_ns.map(|n| n / 1000),
         "sim_latency_us": f.latencies_ns.iter().map(|n| n / 1000).collect::<Vec<_>>(),
+        "write_wait_us": f.write_wait_ns.iter().map(|n| n / 1000).collect::<Vec<_>>(),
+        "saw_zero_wnd": f.saw_zero_wnd,
+        "saw_wnd_reopen": f.saw_wnd_reopen,
+        "min_snd_wnd": f.min_snd_wnd,
+        "sent_at_block": f.sent_at_block,
+        "queued_during_block": f.queued_during_block,
+        "progress_after_block": f.progress_after_block,
+        "stack_released": f.stack_released,
     })
 }
 
