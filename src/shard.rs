@@ -1479,7 +1479,11 @@ impl Shard {
     fn try_admit_memory(&mut self, peer: PeerId, charge: u64) -> Result<(MemoryLease, Option<MemoryLease>, Arc<crate::buf::RxProgress>), Level> {
         let memory = self.budget.memory_handle(peer);
         let active = memory.try_allocate_level(ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
-        let stream = if self.stream_state_bytes == 0 { None } else { Some(memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?) };
+        let stream = if self.stream_state_bytes == 0 {
+            None
+        } else {
+            Some(memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?)
+        };
         let rx = memory.try_allocate_level(charge, crate::budget::AllocationKind::RxProgress)?;
         Ok((active, stream, crate::buf::RxProgress::new(rx, charge)))
     }

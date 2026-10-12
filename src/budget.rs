@@ -1164,11 +1164,8 @@ impl Budget {
         };
         let headroom = self.global.headroom(limit, Tier::Bulk);
         // Another shard may raise shared reserves between the two snapshots.
-        let cap = if headroom == 0 {
-            self.global.admit_reserve.load(Ordering::Relaxed)
-        } else {
-            headroom.saturating_sub(self.global.headroom(limit, Tier::Admit))
-        };
+        let cap =
+            if headroom == 0 { self.global.admit_reserve.load(Ordering::Relaxed) } else { headroom.saturating_sub(self.global.headroom(limit, Tier::Admit)) };
         let mut cur = counter.load(Ordering::Relaxed);
         let owed = loop {
             let add = bytes.min(cap.saturating_sub(cur));

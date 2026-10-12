@@ -64,12 +64,8 @@ impl Drop for RxProgressLease {
 }
 
 enum RxIndexLease {
-    Bulk {
-        _lease: MemoryLease,
-    },
-    Progress {
-        _lease: RxProgressLease,
-    },
+    Bulk { _lease: MemoryLease },
+    Progress { _lease: RxProgressLease },
 }
 
 struct ProgressPayload {
