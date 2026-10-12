@@ -53,6 +53,8 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
-      # Running a benchmark needs root + TUN, so CI only builds the harness and runs its unit tests.
+      # L0 (zfharness) needs no privileges. L1 still needs root + TUN, so CI only
+      # builds zfbench and runs its unit tests.
+      - run: cargo test -p zfharness --release
       - run: cargo build -p zfbench --release
       - run: cargo test -p zfbench --release

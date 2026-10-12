@@ -339,6 +339,28 @@ $B --client-proxy zfstack-client --splice --vnet-hdr --test idle --conns 2000
 The TUN routes `198.18.0.0/15`; its own address is `172.19.0.1/30` because
 sing-box answers DNS on the device's next address. Needs `ip` (iproute2).
 
+## Multi-tenant isolate (no WireGuard)
+
+`--test isolate` is the L1 slice of [issue #24](https://github.com/BlackLuny/zfstack/issues/24).
+Kernel TCP clients in the root netns talk to a zfstack server through the
+existing TUN and link emulator. Logical ports are **not** WireGuard sessions:
+destination `10.211.<port>.2` selects an `IfaceId`, source `10.210.<peer>.1`
+selects a `PeerId`. One TUN carries every port. That is weaker than one TUN
+per port, and it is one shared bottleneck, so a heavy flow can still queue
+light flows that live on other ifaces. Per-port link isolation is an L0
+question (`zfharness`); see [`harness/README.md`](../harness/README.md).
+
+```sh
+sudo ./bench/run-isolate.sh --ports 1 --placement same-iface --lights 4 --secs 10
+sudo ./bench/run-isolate.sh --ports 16 --placement cross-iface --topology shared-shard --lights 16
+sudo ./bench/run-isolate.sh --ports 16 --placement cross-shard --topology per-port-shard --lights 16
+```
+
+Only `zfstack-*` stacks. The script deletes `zfbA` on exit. P99.9 is omitted
+unless a light user collected at least 1000 samples. Heavy goodput uses the
+measured wall interval after the light users have connected
+(`window_wall_sec`), not `secs - warmup`.
+
 ## Caveats (read before trusting numbers)
 
 - **Timing precision.** Deliveries are about 15–25 µs late on average under

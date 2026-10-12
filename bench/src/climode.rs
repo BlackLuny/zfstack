@@ -261,6 +261,10 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
             TestKind::Idle => test_idle(a.conns, pid, &mut mark),
+            TestKind::Isolate => {
+                eprintln!("--test isolate uses the emulator path, not --client-proxy");
+                std::process::exit(2);
+            }
         }
     };
     std::thread::sleep(Duration::from_millis(300));

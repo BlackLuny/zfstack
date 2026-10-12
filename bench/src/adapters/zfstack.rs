@@ -1,17 +1,26 @@
 //! zfstack adapter (feature `zfstack`).
 //!
-//! One `Shard` with one iface (MTU `tun::MTU`), every packet attributed to a single
-//! WG peer. The app server is driven from shard events only (Accepted / Readable /
-//! Writable / Closed), so idle connections cost nothing per poll.
+//! Default: one `Shard`, one iface (MTU `tun::MTU`), every packet attributed to
+//! peer 1. The app server is driven from shard events only.
+//!
+//! `--test isolate` builds several logical ports. Packets are demuxed by
+//! destination `10.211.<port>.2` and source `10.210.<peer>.1`. That mapping is
+//! the harness's stand-in for "which WireGuard port / peer this packet came
+//! from". It is not WireGuard, and one TUN is not N physical devices.
+//! `shared-shard` puts every iface on one shard (docs/design/0001). `per-port-shard`
+//! uses one shard per port, all sharing one `GlobalBudget`, still driven by this
+//! single thread.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use bytes::Bytes;
+use zfstack::budget::GlobalBudget;
 use zfstack::{CcAlgo, CloseReason, ConnId, Event, IfaceConfig, IfaceId, OutPacket, PeerId, ReadResult, SendResult, Shard, StackConfig, WriteResult};
 
 use crate::app::{AppConn, CloseAction, ServerCounters};
+use crate::isolate::{self, IsolatePlan};
 use crate::stack::UserStack;
 use crate::tun;
 
@@ -84,14 +93,15 @@ impl Agg {
     }
 }
 
-pub struct ZfStack {
-    opts: ZfOpts,
+/// One shard plus the connections it owns. ConnIds are not unique across shards.
+struct Slot {
     shard: Shard,
-    iface: IfaceId,
-    start: Instant,
+    /// `iface_port[iface] = Some(logical port)` for isolate mode.
+    iface_port: Vec<Option<u16>>,
+    tx_pkts: Vec<u64>,
+    tx_bytes: Vec<u64>,
     conns: HashMap<ConnId, C>,
     active: HashSet<ConnId>,
-    counters: Arc<ServerCounters>,
     buf: Vec<u8>,
     pkt: Vec<u8>,
     closed_agg: Agg,
@@ -101,26 +111,15 @@ pub struct ZfStack {
     t_app: std::time::Duration,
 }
 
-impl ZfStack {
-    pub fn new(opts: ZfOpts, counters: Arc<ServerCounters>) -> Self {
-        let cfg = StackConfig {
-            cc: opts.cc,
-            pacing: opts.pacing,
-            max_rcv_buf: opts.sock_buf as u32,
-            max_snd_inflight: opts.sock_buf as u32,
-            timestamps: std::env::var("ZF_TS").map_or(true, |v| v != "0"),
-            ..Default::default()
-        };
-        let mut shard = Shard::new(cfg);
-        let iface = shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
-        ZfStack {
-            opts,
+impl Slot {
+    fn new(shard: Shard) -> Self {
+        Slot {
             shard,
-            iface,
-            start: Instant::now(),
+            iface_port: Vec::new(),
+            tx_pkts: Vec::new(),
+            tx_bytes: Vec::new(),
             conns: HashMap::new(),
             active: HashSet::new(),
-            counters,
             buf: vec![0u8; 256 * 1024],
             pkt: Vec::with_capacity(2048),
             closed_agg: Agg::default(),
@@ -131,8 +130,14 @@ impl ZfStack {
         }
     }
 
-    fn zt(&self, now: Instant) -> zfstack::Instant {
-        zfstack::Instant::from_nanos(now.saturating_duration_since(self.start).as_nanos() as u64 + 1)
+    fn note_iface(&mut self, iface: IfaceId, port: u16) {
+        let i = iface.0 as usize;
+        if self.iface_port.len() <= i {
+            self.iface_port.resize(i + 1, None);
+            self.tx_pkts.resize(i + 1, 0);
+            self.tx_bytes.resize(i + 1, 0);
+        }
+        self.iface_port[i] = Some(port);
     }
 
     fn drop_conn(&mut self, id: ConnId, zn: zfstack::Instant, abort: bool) {
@@ -150,10 +155,8 @@ impl ZfStack {
         self.active.remove(&id);
     }
 
-    /// Drive the app for one connection. Returns true if anything happened.
     fn pump(&mut self, id: ConnId, zn: zfstack::Instant) -> bool {
         let mut progressed = false;
-        // Receive.
         loop {
             let Some(c) = self.conns.get_mut(&id) else { return progressed };
             if c.eof {
@@ -176,7 +179,6 @@ impl ZfStack {
                 }
             }
         }
-        // Send.
         loop {
             let Some(c) = self.conns.get_mut(&id) else { return progressed };
             if c.pending_off < c.pending.len() {
@@ -201,7 +203,6 @@ impl ZfStack {
             }
             let space = self.shard.send_space(id).min(self.buf.len());
             if space == 0 {
-                // Arms the Writable event.
                 let _ = self.shard.write(id, &[]);
                 break;
             }
@@ -232,7 +233,6 @@ impl ZfStack {
                 }
             }
         }
-        // Close.
         let Some(c) = self.conns.get(&id) else { return progressed };
         let flushed = c.pending_off >= c.pending.len();
         match c.app.close_action() {
@@ -249,13 +249,13 @@ impl ZfStack {
         progressed
     }
 
-    fn handle_events(&mut self) -> bool {
+    fn handle_events(&mut self, counters: &Arc<ServerCounters>) -> bool {
         let mut any = false;
         while let Some(ev) = self.shard.poll_event() {
             any = true;
             match ev {
                 Event::Accepted(id) => {
-                    self.conns.insert(id, C { app: AppConn::new(self.counters.clone()), eof: false, pending: Vec::new(), pending_off: 0 });
+                    self.conns.insert(id, C { app: AppConn::new(counters.clone()), eof: false, pending: Vec::new(), pending_off: 0 });
                     self.active.insert(id);
                     self.max_conns = self.max_conns.max(self.conns.len());
                 }
@@ -266,7 +266,6 @@ impl ZfStack {
                 }
                 Event::Closed(id, _reason) => {
                     if self.conns.contains_key(&id) {
-                        // Let the app see any remaining data first.
                         self.active.insert(id);
                         let _: Option<CloseReason> = None;
                     }
@@ -276,47 +275,172 @@ impl ZfStack {
         }
         any
     }
+
+    /// One scheduling round. `true` if the caller should poll again immediately.
+    fn poll_once(&mut self, zn: zfstack::Instant, out: &mut dyn FnMut(&[u8]), counters: &Arc<ServerCounters>) -> bool {
+        let tx_pkts = &mut self.tx_pkts;
+        let tx_bytes = &mut self.tx_bytes;
+        let pkt = &mut self.pkt;
+        let mut sink = |iface: IfaceId, p: &OutPacket<'_>| {
+            let i = iface.0 as usize;
+            if i < tx_pkts.len() {
+                tx_pkts[i] += 1;
+                tx_bytes[i] += p.len() as u64;
+            }
+            pkt.clear();
+            p.write_to(pkt);
+            out(pkt);
+            SendResult::Accepted
+        };
+        let t0 = Instant::now();
+        let o = self.shard.run(zn, &mut sink);
+        let t1 = Instant::now();
+        self.t_run += t1 - t0;
+        let ev = self.handle_events(counters);
+        let mut progressed = false;
+        if !self.active.is_empty() {
+            let ids: Vec<ConnId> = self.active.drain().collect();
+            for id in ids {
+                progressed |= self.pump(id, zn);
+            }
+        }
+        self.t_app += t1.elapsed();
+        ev || progressed || o.more
+    }
+}
+
+pub struct ZfStack {
+    opts: ZfOpts,
+    start: Instant,
+    counters: Arc<ServerCounters>,
+    slots: Vec<Slot>,
+    /// Legacy single-iface mode. Isolate mode demuxes instead.
+    legacy: Option<IfaceId>,
+    /// `locs[port] = (slot index, iface)`.
+    locs: Vec<(usize, IfaceId)>,
+    rx_pkts: Vec<u64>,
+    demux_drops: u64,
+    busy_slot_polls: u64,
+    idle_slot_polls: u64,
+    plan: Option<IsolatePlan>,
+}
+
+impl ZfStack {
+    pub fn new(opts: ZfOpts, counters: Arc<ServerCounters>) -> Self {
+        let cfg = stack_cfg(&opts);
+        let mut shard = Shard::new(cfg);
+        let iface = shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
+        ZfStack {
+            opts,
+            start: Instant::now(),
+            counters,
+            slots: vec![Slot::new(shard)],
+            legacy: Some(iface),
+            locs: Vec::new(),
+            rx_pkts: Vec::new(),
+            demux_drops: 0,
+            busy_slot_polls: 0,
+            idle_slot_polls: 0,
+            plan: None,
+        }
+    }
+
+    /// Logical multi-port server. Budgets are ample ceilings so this mode measures
+    /// scheduling and demux, not an artificially tight quota. Still `StackConfig::default`
+    /// plus the bench's CC / buffer flags — not `StackConfig::client()`.
+    pub fn with_isolate(opts: ZfOpts, counters: Arc<ServerCounters>, plan: IsolatePlan) -> Self {
+        let cfg = stack_cfg(&opts);
+        let nslots = if plan.per_port_shard { plan.ports as usize } else { 1 };
+        let global = GlobalBudget::new(512 << 20);
+        let mut slots = Vec::with_capacity(nslots);
+        for _ in 0..nslots {
+            let mut shard = Shard::with_budget(cfg.clone(), std::sync::Arc::clone(&global));
+            shard.set_budget_limits(64 << 20, 32 << 20, 4096);
+            slots.push(Slot::new(shard));
+        }
+        let mut locs = Vec::with_capacity(plan.ports as usize);
+        for port in 0..plan.ports {
+            let slot = if plan.per_port_shard { port as usize } else { 0 };
+            let iface = slots[slot].shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
+            slots[slot].note_iface(iface, port);
+            locs.push((slot, iface));
+        }
+        ZfStack {
+            opts,
+            start: Instant::now(),
+            counters,
+            slots,
+            legacy: None,
+            locs,
+            rx_pkts: vec![0; plan.ports as usize],
+            demux_drops: 0,
+            busy_slot_polls: 0,
+            idle_slot_polls: 0,
+            plan: Some(plan),
+        }
+    }
+
+    fn zt(&self, now: Instant) -> zfstack::Instant {
+        zfstack::Instant::from_nanos(now.saturating_duration_since(self.start).as_nanos() as u64 + 1)
+    }
+}
+
+fn stack_cfg(opts: &ZfOpts) -> StackConfig {
+    StackConfig {
+        cc: opts.cc,
+        pacing: opts.pacing,
+        max_rcv_buf: opts.sock_buf as u32,
+        max_snd_inflight: opts.sock_buf as u32,
+        timestamps: std::env::var("ZF_TS").map_or(true, |v| v != "0"),
+        ..Default::default()
+    }
 }
 
 impl UserStack for ZfStack {
     fn ingress(&mut self, now: Instant, pkt: &[u8]) {
         let zn = self.zt(now);
         let t0 = Instant::now();
-        self.shard.ingress(zn, self.iface, PeerId(1), Bytes::copy_from_slice(pkt));
-        self.t_ingress += t0.elapsed();
+        if let Some(iface) = self.legacy {
+            self.slots[0].shard.ingress(zn, iface, PeerId(1), Bytes::copy_from_slice(pkt));
+            self.slots[0].t_ingress += t0.elapsed();
+            return;
+        }
+        match isolate::classify_packet(pkt) {
+            Some((port, peer)) if (port as usize) < self.locs.len() => {
+                let (slot, iface) = self.locs[port as usize];
+                self.slots[slot].shard.ingress(zn, iface, PeerId(peer), Bytes::copy_from_slice(pkt));
+                self.slots[slot].t_ingress += t0.elapsed();
+                self.rx_pkts[port as usize] += 1;
+            }
+            _ => self.demux_drops += 1,
+        }
     }
 
     fn poll(&mut self, now: Instant, out: &mut dyn FnMut(&[u8])) {
         let zn = self.zt(now);
+        let counters = Arc::clone(&self.counters);
         for _ in 0..64 {
-            let pkt = &mut self.pkt;
-            let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
-                pkt.clear();
-                p.write_to(pkt);
-                out(pkt);
-                SendResult::Accepted
-            };
-            let t0 = Instant::now();
-            let o = self.shard.run(zn, &mut sink);
-            let t1 = Instant::now();
-            self.t_run += t1 - t0;
-            let ev = self.handle_events();
-            let mut progressed = false;
-            if !self.active.is_empty() {
-                let ids: Vec<ConnId> = self.active.drain().collect();
-                for id in ids {
-                    progressed |= self.pump(id, zn);
+            let mut progress = false;
+            let mut busy = 0u64;
+            let mut idle = 0u64;
+            for slot in &mut self.slots {
+                if slot.poll_once(zn, out, &counters) {
+                    busy += 1;
+                    progress = true;
+                } else {
+                    idle += 1;
                 }
             }
-            self.t_app += t1.elapsed();
-            if !ev && !progressed && !o.more {
+            self.busy_slot_polls += busy;
+            self.idle_slot_polls += idle;
+            if !progress {
                 break;
             }
         }
     }
 
     fn next_deadline(&mut self, now: Instant) -> Option<Instant> {
-        let d = self.shard.next_deadline()?;
+        let d = self.slots.iter().filter_map(|s| s.shard.next_deadline()).min()?;
         let ns = d.as_nanos();
         let t = self.start + std::time::Duration::from_nanos(ns.saturating_sub(1));
         Some(if t < now { now } else { t })
@@ -324,31 +448,104 @@ impl UserStack for ZfStack {
 
     fn stats(&self) -> serde_json::Value {
         let mut live = Agg::default();
-        for id in self.shard.conn_ids() {
-            if let Some(i) = self.shard.info(id) {
-                live.add(&i);
+        let mut closed = Agg::default();
+        let mut shard_rows = Vec::new();
+        let mut live_conns = 0usize;
+        let mut max_conns = 0usize;
+        let mut t_ingress = std::time::Duration::ZERO;
+        let mut t_run = std::time::Duration::ZERO;
+        let mut t_app = std::time::Duration::ZERO;
+        let mut reserved = 0u64;
+        let mut high = 0u64;
+        for (i, slot) in self.slots.iter().enumerate() {
+            for id in slot.shard.conn_ids() {
+                if let Some(info) = slot.shard.info(id) {
+                    live.add(&info);
+                }
             }
-        }
-        let st = self.shard.stats();
-        serde_json::json!({
-            "impl": "zfstack",
-            "cc": format!("{:?}", self.opts.cc),
-            "pacing": self.opts.pacing,
-            "sock_buf": self.opts.sock_buf,
-            "pacing_credit_us": self.shard.pacing_credit().as_micros() as u64,
-            "max_conns": self.max_conns,
-            "time_ms": {"ingress": self.t_ingress.as_secs_f64() * 1e3, "run": self.t_run.as_secs_f64() * 1e3, "app": self.t_app.as_secs_f64() * 1e3},
-            "live_conns": self.shard.conn_count(),
-            "closed": self.closed_agg.json(),
-            "live": live.json(),
-            "shard": {
+            closed.conns += slot.closed_agg.conns;
+            closed.bytes_sent += slot.closed_agg.bytes_sent;
+            closed.bytes_retrans += slot.closed_agg.bytes_retrans;
+            closed.rto += slot.closed_agg.rto;
+            closed.tlp += slot.closed_agg.tlp;
+            closed.fast_recoveries += slot.closed_agg.fast_recoveries;
+            closed.spurious_rtos += slot.closed_agg.spurious_rtos;
+            closed.dsacks += slot.closed_agg.dsacks;
+            closed.ooo_segs += slot.closed_agg.ooo_segs;
+            closed.rack_scanned += slot.closed_agg.rack_scanned;
+            closed.small_segs += slot.closed_agg.small_segs;
+            closed.max_cwnd = closed.max_cwnd.max(slot.closed_agg.max_cwnd);
+            closed.max_rcv_target = closed.max_rcv_target.max(slot.closed_agg.max_rcv_target);
+            closed.dropped_no_mem += slot.closed_agg.dropped_no_mem;
+            closed.limited_rwnd_ms += slot.closed_agg.limited_rwnd_ms;
+            closed.limited_cwnd_ms += slot.closed_agg.limited_cwnd_ms;
+            closed.limited_pacing_ms += slot.closed_agg.limited_pacing_ms;
+            live_conns += slot.shard.conn_count();
+            max_conns += slot.max_conns;
+            t_ingress += slot.t_ingress;
+            t_run += slot.t_run;
+            t_app += slot.t_app;
+            let st = slot.shard.stats();
+            reserved = slot.shard.budget().global().reserved();
+            high = slot.shard.budget().global().high();
+            shard_rows.push(serde_json::json!({
+                "shard": i,
+                "physical_used": slot.shard.budget().physical_used(),
+                "senders": slot.shard.budget().senders(),
+                "share_blocked": slot.shard.budget().share_blocked(),
+                "conns": slot.shard.conn_count(),
                 "rx_packets": st.rx_packets, "tx_packets": st.tx_packets, "rst_sent": st.rst_sent,
                 "syn_received": st.syn_received, "syn_dropped": st.syn_dropped,
                 "syn_cookies_sent": st.syn_cookies_sent, "conns_created": st.conns_created,
                 "conns_freed": st.conns_freed, "runs": st.runs, "idle_rounds": st.idle_rounds,
                 "round_budget_exhausted": st.round_budget_exhausted,
                 "pacing_credit_dropped": st.pacing_credit_dropped, "rx_dropped_parse": st.rx_dropped_parse,
+                "rx_dropped_no_iface": st.rx_dropped_no_iface,
+                "rx_dropped_peer_mismatch": st.rx_dropped_peer_mismatch,
+            }));
+        }
+        let mut ports = Vec::new();
+        if self.plan.is_some() {
+            for (port, (slot, iface)) in self.locs.iter().enumerate() {
+                let s = &self.slots[*slot];
+                let i = iface.0 as usize;
+                ports.push(serde_json::json!({
+                    "port": port,
+                    "shard": slot,
+                    "iface": iface.0,
+                    "rx_pkts": self.rx_pkts.get(port).copied().unwrap_or(0),
+                    "tx_pkts": s.tx_pkts.get(i).copied().unwrap_or(0),
+                    "tx_bytes": s.tx_bytes.get(i).copied().unwrap_or(0),
+                }));
+            }
+        }
+        serde_json::json!({
+            "impl": "zfstack",
+            "cc": format!("{:?}", self.opts.cc),
+            "pacing": self.opts.pacing,
+            "sock_buf": self.opts.sock_buf,
+            "pacing_credit_us": self.slots.first().map(|s| s.shard.pacing_credit().as_micros() as u64),
+            "max_conns": max_conns,
+            "time_ms": {"ingress": t_ingress.as_secs_f64() * 1e3, "run": t_run.as_secs_f64() * 1e3, "app": t_app.as_secs_f64() * 1e3},
+            "live_conns": live_conns,
+            "closed": closed.json(),
+            "live": live.json(),
+            "legacy_single_iface": self.legacy.is_some(),
+            "isolate": self.plan.as_ref().map(|p| serde_json::json!({
+                "ports": p.ports,
+                "per_port_shard": p.per_port_shard,
+                "scheduler": "one thread co-schedules every shard; this is not a multi-core deployment",
+                "budget_note": "isolate ceilings are 512 MiB global / 64 MiB port / 32 MiB peer, shared by the shards in this process",
+            })),
+            "demux_drops": self.demux_drops,
+            "scheduler_polls": {
+                "busy_slot_polls": self.busy_slot_polls,
+                "idle_slot_polls": self.idle_slot_polls,
+                "note": "fixed round-robin of every shard, up to 64 passes; not the production Tokio adapter",
             },
+            "ports": ports,
+            "budget": {"reserved": reserved, "high": high},
+            "shards": shard_rows,
         })
     }
 }

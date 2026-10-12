@@ -8,6 +8,7 @@ mod adapters;
 mod app;
 mod client;
 mod climode;
+mod isolate;
 mod kernel_server;
 mod link;
 mod stack;
@@ -50,6 +51,8 @@ pub enum TestKind {
     Connect,
     /// Client mode only: hold `--conns` idle connections, report proxy memory.
     Idle,
+    /// Kernel TCP clients, one TUN, many logical ports. zfstack only; no WireGuard.
+    Isolate,
 }
 
 #[derive(Parser, Debug)]
@@ -130,6 +133,21 @@ pub struct Args {
     /// RNG seed for the loss processes.
     #[arg(long, default_value_t = 1)]
     seed: u64,
+    /// `--test isolate`: logical ports (IfaceIds). 1 is a single iface.
+    #[arg(long, default_value_t = 1)]
+    ports: u16,
+    /// `--test isolate`: light request/response users beside the heavy download.
+    #[arg(long, default_value_t = 4)]
+    lights: u16,
+    /// `--test isolate`: download connections opened by the heavy peer.
+    #[arg(long, default_value_t = 1)]
+    heavy_conns: u16,
+    /// `--test isolate`: where the heavy user sits relative to the light users.
+    #[arg(long, value_enum, default_value = "same-iface")]
+    placement: isolate::Placement,
+    /// `--test isolate`: one shard for every port, or one shard per port.
+    #[arg(long, value_enum, default_value = "shared-shard")]
+    topology: isolate::Topology,
     /// Also write the JSON result to this file.
     #[arg(long)]
     json: Option<std::path::PathBuf>,
@@ -281,7 +299,7 @@ impl StackOpts {
     }
 }
 
-pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>) -> Box<dyn UserStack> {
+pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>, isolate: Option<&isolate::IsolatePlan>) -> Box<dyn UserStack> {
     use smoltcp::socket::tcp::CongestionControl as CC;
     let cc = match o.stack {
         StackKind::SmoltcpCubic => CC::Cubic,
@@ -295,7 +313,11 @@ pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>) -> Box<dyn User
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                return Box::new(adapters::zfstack::ZfStack::new(adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing }, counters));
+                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing };
+                return match isolate {
+                    Some(plan) => Box::new(adapters::zfstack::ZfStack::with_isolate(opts, counters, plan.clone())),
+                    None => Box::new(adapters::zfstack::ZfStack::new(opts, counters)),
+                };
             }
             #[cfg(not(feature = "zfstack"))]
             {
@@ -337,6 +359,7 @@ pub fn test_name(t: TestKind) -> &'static str {
         TestKind::Mixed => "mixed",
         TestKind::Connect => "connect",
         TestKind::Idle => "idle",
+        TestKind::Isolate => "isolate",
     }
 }
 
@@ -390,7 +413,7 @@ fn main() {
             }
         }
     }
-    if a.warmup >= a.secs && matches!(a.test, TestKind::Down | TestKind::Up | TestKind::Mixed) {
+    if a.warmup >= a.secs && matches!(a.test, TestKind::Down | TestKind::Up | TestKind::Mixed | TestKind::Isolate) {
         eprintln!("--warmup must be < --secs");
         std::process::exit(2);
     }
@@ -433,6 +456,25 @@ fn install_signal_cleanup() {
 }
 
 fn run(a: &Args) -> std::io::Result<i32> {
+    if a.test != TestKind::Isolate && a.ports != 1 {
+        eprintln!("--ports is only used with --test isolate");
+        std::process::exit(2);
+    }
+    let iso = if a.test == TestKind::Isolate {
+        if !matches!(a.stack, StackKind::ZfstackCubic | StackKind::ZfstackBbr | StackKind::ZfstackNopace) {
+            eprintln!("--test isolate only supports zfstack-*: kernel and smoltcp adapters are single-homed, so they are not the same topology");
+            std::process::exit(2);
+        }
+        match isolate::resolve(a.ports, a.lights, a.heavy_conns, a.placement, a.topology) {
+            Ok(iso) => Some(iso),
+            Err(e) => {
+                eprintln!("zfbench: {e}");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        None
+    };
     tun::cleanup();
     let rtt = Duration::from_secs_f64(a.rtt_ms / 1e3);
     let one_way = rtt / 2;
@@ -454,6 +496,9 @@ fn run(a: &Args) -> std::io::Result<i32> {
     let softnet0 = util::softnet_dropped();
 
     let fd_a = tun::setup_a()?;
+    if let Some(iso) = iso.as_ref() {
+        isolate::setup_routes(iso)?;
+    }
     let mut fd_b = None;
     let mut kserver = None;
     let mut stack_handle = None;
@@ -468,7 +513,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         down_src = Source::Tun(fb);
         down_sink = Sink::Tun(fd_a);
     } else {
-        let st = build_stack(&StackOpts::from_args(a), counters.clone());
+        let st = build_stack(&StackOpts::from_args(a), counters.clone(), iso.as_ref().map(isolate::Iso::plan).as_ref());
         let (up_tx, up_rx) = crossbeam_channel::unbounded();
         let (down_tx, down_rx) = crossbeam_channel::unbounded();
         let (stop, lv) = (stop_link.clone(), live.clone());
@@ -518,6 +563,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
             TestKind::Up => client::test_up(&o, &counters, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
+            TestKind::Isolate => isolate::test_isolate(&o, iso.as_ref().expect("isolate"), &mut mark),
             TestKind::Idle => {
                 eprintln!("--test idle needs --client-proxy");
                 std::process::exit(2);
@@ -623,6 +669,11 @@ fn run(a: &Args) -> std::io::Result<i32> {
             "smol_pacing_backlog_us": a.smol_pacing_backlog_us,
             "smol_timestamps": a.smol_timestamps,
             "seed": a.seed,
+            "ports": a.ports,
+            "lights": a.lights,
+            "heavy_conns": a.heavy_conns,
+            "placement": a.placement.as_str(),
+            "topology": a.topology.as_str(),
             "kernel_cc": a.kernel_cc.clone().unwrap_or_else(|| sysctl("net.ipv4.tcp_congestion_control")),
             "client_cc": a.client_cc.clone().unwrap_or_else(|| sysctl("net.ipv4.tcp_congestion_control")),
             "mtu": tun::MTU,

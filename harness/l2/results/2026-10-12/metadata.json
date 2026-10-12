@@ -1,0 +1,29 @@
+{
+  "sources": {
+    "zfc": {
+      "sha": "2cd672c97b18fcd3d9ab01f53190359fa9653014",
+      "dirty": true
+    },
+    "zfstack": {
+      "sha": "ee0e7284c24f0162e10238f8805d7cf96901d8b2",
+      "dirty": false,
+      "core_tree_sha256": "bedf3b672b40ebe40db72bbac22943065e11efb7339ad9deb978083b22ba0742"
+    },
+    "private_tun": {
+      "sha": "91bdeab6d2988814dc9c7a21c327f6f609906a78",
+      "dirty": false
+    },
+    "shadow-tls-tokio": {
+      "sha": "282e66194f76b813e1731282a70e0a8974cc9997",
+      "dirty": false
+    }
+  },
+  "zfc_patch": "diff --git a/Cargo.toml b/Cargo.toml\nindex 165a9dfef..1dedef42d 100644\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -258,3 +258,6 @@ quinn-udp = { git = \"https://github.com/BlackLuny/quinn\", rev = \"d9c82e5073a153e\n [patch.\"https://github.com/BlackLuny/shadow-tls-tokio.git\"]\n shadow-tls-tokio = { path = \"../shadow-tls-tokio\" }\n # zfstack\uff08BlackLuny/zfstack\uff09\uff1azfw-wireguard \u8ddf\u8e2a\u8be5\u4ed3\u5e93 main\uff0c\u4e0d\u9489 commit\uff0c\u4e5f\u4e0d\u518d patch \u5230 ../zfstack\u3002\n+\n+[patch.\"https://github.com/BlackLuny/zfstack.git\"]\n+zfstack = { path = \"../zfstack\" }",
+  "worker_sha256": "fb32f8b37862d364d7e6abd4cf4bb4d39e3776e5f2f8ddb3ac89d1aebdbd07eb",
+  "cargo_lock_sha256": "45b50f63049880f9656043299ddbaa1acfe1a4b96ee3602a1eab02214081ca6a",
+  "rig_sha": "8580c23b8139cd49aa38f4ed6df8c28dc059fa1d",
+  "build_tail": "warning: associated function `record_removed` is never used\n   --> zf-worker/crates/zfw-control/src/controller/port_rebuild_ledger.rs:427:12\n    |\n248 | impl PortRebuildLedger {\n    | ---------------------- associated function in this implementation\n...\n427 |     pub fn record_removed(ctx_instance_id: u64, port: u16) {\n    |            ^^^^^^^^^^^^^^\n\nwarning: `zfw-server` (lib) generated 2 warnings (run `cargo fix --lib -p zfw-server` to apply 1 suggestion)\nwarning: `zfw-control` (lib) generated 2 warnings\n    Finished `fast-release` profile [optimized] target(s) in 6m 28s",
+  "final_watcher": "active",
+  "installed_zf_service": "active",
+  "original_rig_worker_sha256": "399a80ac481a0cd9362e20fc597938055d880847797380a8ce6761213e939acd"
+}
