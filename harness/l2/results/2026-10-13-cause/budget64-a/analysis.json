@@ -1,0 +1,66 @@
+{
+  "case": "budget64-a",
+  "ok": true,
+  "heavy_mbps": 1941.95458,
+  "loaded_n": 706,
+  "loaded_max_ms": 244.11559477448463,
+  "loaded_p99_ms": 30.558522790670395,
+  "slow_over_100ms": 2,
+  "requests_retransmitted": 1,
+  "pcap_inner_packets": 4507,
+  "pcap_target_payloads": 4881,
+  "target_events_peer1": 2291,
+  "slow_request_inbound_fraction_min": 0.013116544149658765,
+  "slow_request_inbound_fraction_median": 0.917747411267949,
+  "capture_stats": {
+    "light-capture.log": "tcpdump: listening on wg0, link-type RAW (Raw IP), snapshot length 512 bytes\n4507 packets captured\n4597 packets received by filter\n0 packets dropped by kernel\n",
+    "target-capture.log": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 384 bytes\n4881 packets captured\n4967 packets received by filter\n0 packets dropped by kernel\n"
+  },
+  "slow_requests": [
+    {
+      "seq": 808,
+      "phase": "loaded",
+      "start_sec": 8.200571898370981,
+      "latency_ms": 244.11559477448463,
+      "inner_request_at_sec": [
+        8.200618,
+        8.420649
+      ],
+      "inner_request_intervals_ms": [
+        220.031
+      ],
+      "target_req_ms": 224.03645515441895,
+      "target_reply_ms": 224.1225242614746,
+      "inner_reply_ms": 244.05741691589355,
+      "server_receive_ms": 224.11374747753143,
+      "server_work_ms": 0.03587082028388977,
+      "request_first_ack_ms": 244.05741691589355,
+      "request_wire_tcp_seq": 1847547028,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 8.200618389993906,
+          "dup_ack_delay_ms": 23.688077926635742,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 1443,
+      "phase": "loaded",
+      "start_sec": 22.34247250109911,
+      "latency_ms": 180.29219657182693,
+      "inner_request_at_sec": [
+        22.342524
+      ],
+      "inner_request_intervals_ms": [],
+      "target_req_ms": 2.3648105561733246,
+      "target_reply_ms": 161.0209308564663,
+      "inner_reply_ms": 180.23794516921043,
+      "server_receive_ms": 161.0141657292843,
+      "server_work_ms": 0.018287450075149536,
+      "request_first_ack_ms": 63.41498717665672,
+      "request_wire_tcp_seq": 1847709588,
+      "rejected_attempts": []
+    }
+  ]
+}

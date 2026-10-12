@@ -45,7 +45,7 @@ exec 9>"$RIG_ROOT/state/watch.lock"
 flock -n 9 || { echo 'Another rig owner holds watch.lock' >&2; exit 3; }
 # The stopped watcher may still be finishing a case's EXIT cleanup. Wait for
 # those owned resources to drain; never delete an unknown namespace here.
-for ((i=0;i<50;i++)); do
+for ((i=0;i<${L2_NAMESPACE_WAIT_SECS:-150}*5;i++)); do
   [[ -n "$(ip netns list)" ]] || break
   sleep .2
 done
@@ -87,7 +87,7 @@ for i in range(2):
     ports.append(port)
 (p/'portmap.json').write_text(json.dumps(ports,indent=2)+'\n')
 PY
-ip netns exec "$TOPO_NS_TARGET" python3 "$HERE/load.py" serve --host "$TOPO_IP_TARGET" > "$OUT/target.log" 2>&1 & PIDS+=("$!")
+ip netns exec "$TOPO_NS_TARGET" env L2_SERVER_EVENTS="$OUT/server-events.jsonl" python3 "$HERE/load.py" serve --host "$TOPO_IP_TARGET" > "$OUT/target.log" 2>&1 & PIDS+=("$!")
 for ((i=0;i<50;i++)); do [[ ! -s "$OUT/target.log" ]] || break; sleep .1; done
 grep -q ready "$OUT/target.log" || die 'target did not become ready'
 (cd "$OUT/ctl" && exec ip netns exec "$TOPO_NS_CTL" "$RIG_BUILD/tools/fakectl" \
@@ -127,15 +127,25 @@ for i in 0 1 2 3; do
     peer "$(cat "$OUT/keys/server$port.pub")" endpoint "$TOPO_IP_WORKER:$((20001+port))" \
     allowed-ips "$TOPO_IP_TARGET/32" persistent-keepalive 5
   ip netns exec "$ns" ip link set wg0 mtu 1420 up
+  if [[ "${L2_UPLINK_DELAY_MS:-0}" != 0 ]]; then
+    ip netns exec "$ns" tc qdisc add dev wg0 root netem delay "${L2_UPLINK_DELAY_MS}ms"
+  fi
   ip netns exec "$ns" ip route replace "$TOPO_IP_TARGET/32" dev wg0
   ip netns exec "$ns" ip route get "$TOPO_IP_TARGET" > "$OUT/route$i.txt"
   grep -q 'dev wg0' "$OUT/route$i.txt" || die 'WG target route is missing'
 done
+if [[ "${L2_CAPTURE:-0}" == 1 ]]; then
+  ip netns exec "${clients[1]}" tcpdump -U -nn -s 512 -i wg0 -w "$OUT/light-inner.pcap" 'tcp port 19001' > "$OUT/light-capture.log" 2>&1 & PIDS+=("$!")
+  ip netns exec "$TOPO_NS_TARGET" tcpdump -U -nn -s 384 -i eth0 -w "$OUT/light-target.pcap" 'tcp port 19001 and (tcp[((tcp[12] & 0xf0) >> 2):4] = 1 or tcp[((tcp[12] & 0xf0) >> 2):1] = 0x45)' > "$OUT/target-capture.log" 2>&1 & PIDS+=("$!")
+  sleep 1
+fi
+python3 -c 'import json,time; print(json.dumps({"monotonic":time.monotonic(),"realtime":time.time()}))' > "$OUT/clock.json"
 nftpath_snapshot "$TOPO_ID" "$OUT/path-pre.json"
 set +e
 python3 "$HERE/load.py" run --host "$TOPO_IP_TARGET" --clients "${clients[@]}" \
   --worker-pid "$WPID" --out "$OUT/load" --conns "${L2_HEAVY_CONNS:-4}" \
-  --request-timeout "${L2_REQUEST_TIMEOUT_SECS:-3}"
+  --request-timeout "${L2_REQUEST_TIMEOUT_SECS:-3}" \
+  --baseline "${L2_BASELINE_SECS:-8}" --loaded "${L2_LOADED_SECS:-16}" --recovery "${L2_RECOVERY_SECS:-8}"
 load_rc=$?
 set -e
 nftpath_snapshot "$TOPO_ID" "$OUT/path-post.json"
