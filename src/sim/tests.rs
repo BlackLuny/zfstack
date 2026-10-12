@@ -48,6 +48,55 @@ fn clean_download() {
 }
 
 #[test]
+fn rx_progress_small_requests_cross_a_saturated_port_without_wire_retransmission() {
+    for enabled in [false, true] {
+        let mut s = sim(850, LinkParams::default(), LinkParams::default());
+        let port = 1 << 20;
+        s.a.shard.set_budget_limits(port, port, 16);
+        let client = s.connect_as(PeerId(1), 40050, AppConn::default());
+        s.run_until(s.now + Duration::from_millis(100));
+        let server = s.a.accepted[0];
+        if !enabled {
+            s.a.shard.disable_rx_progress(server);
+        }
+        let memory = s.a.shard.memory_handle(PeerId(2));
+        let ceiling = port - s.a.shard.budget().global().headroom(port, crate::budget::Tier::Block);
+        let blocker = memory.try_allocate_kind(ceiling - s.a.shard.budget().physical_used(), crate::budget::AllocationKind::TxBlock).unwrap();
+        let before = s.a.shard.budget().physical_used();
+        for n in 0..16 {
+            let data: Vec<_> = (n * 256..(n + 1) * 256).map(pattern_byte).collect();
+            assert_eq!(s.b.shard.write(client, &data), WriteResult::Written(data.len()));
+            s.run_until(s.now + Duration::from_millis(80));
+            if !enabled {
+                assert_eq!(s.a.conns[&server].received, 0);
+                assert!(s.a.shard.info(server).unwrap().stats.dropped_no_mem > 0);
+                assert_eq!(s.b.shard.info(client).unwrap().tx_queued, 256);
+                break;
+            }
+            assert_eq!(s.a.conns[&server].received, (n + 1) * 256);
+            assert!(!s.a.conns[&server].corrupt);
+            assert_eq!(s.b.shard.info(client).unwrap().tx_queued, 0, "ACK must advance before the first RTO");
+            assert_eq!(s.b.shard.info(client).unwrap().stats.bytes_retrans, 0);
+            assert_eq!(s.a.shard.info(server).unwrap().stats.dropped_no_mem, 0);
+            assert_eq!(s.a.shard.info(server).unwrap().stats.rx_progress_packets, n + 1);
+            assert_eq!(s.a.shard.budget().physical_used(), before);
+            assert!(s.a.shard.budget().physical_used() <= port);
+        }
+        assert!(s.a.shard.budget().stats().failures().rx_chunk > 0, "the ordinary Bulk path must really refuse input");
+        drop(blocker);
+        if !enabled {
+            s.run_until(s.now + secs(1));
+            assert_eq!(s.a.conns[&server].received, 256);
+            assert!(s.b.shard.info(client).unwrap().stats.bytes_retrans >= 256);
+        }
+        let a = s.a.shard.budget().global().clone();
+        let b = s.b.shard.budget().global().clone();
+        drop(s);
+        assert_eq!((a.reserved(), b.reserved()), (0, 0));
+    }
+}
+
+#[test]
 fn send_record_quota_retries_after_physical_memory_release() {
     let mut s = sim(840, LinkParams::default(), LinkParams::default());
     let port_limit = 128 << 10;
@@ -103,33 +152,34 @@ fn rx_descriptor_quota_drop_recovers_on_wire_retransmission() {
     let client = s.connect(40045, AppConn { read_paused_until: Instant::ZERO + secs(30), ..Default::default() });
     s.run_until(s.now + Duration::from_millis(100));
     let server = s.a.accepted[0];
-    let payload: Vec<_> = (0..320).map(pattern_byte).collect();
+    let payload: Vec<_> = (0..576).map(pattern_byte).collect();
     let mut charges = Vec::new();
-    for part in payload[..256].chunks(64) {
+    for part in payload[..512].chunks(64) {
         let before = s.b.shard.budget().physical_used();
         assert_eq!(s.a.shard.write(server, part), WriteResult::Written(part.len()));
         s.run_until(s.now + Duration::from_millis(100));
         charges.push(s.b.shard.budget().physical_used() - before);
     }
-    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 256);
-    assert_eq!(s.b.conns[&client].received, 0, "slow reader must retain all four owners");
+    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 512);
+    assert_eq!(s.b.conns[&client].received, 0, "slow reader must retain all eight owners");
     let owner_charge = charges[1];
     assert!(owner_charge >= 64);
-    assert_eq!(&charges[1..], &[owner_charge; 3], "only the first chunk grows the index");
-    // One more compact owner fits, but replacing four descriptor slots with
-    // eight misses by one byte while the old backing remains charged.
-    let replacement_charge = (8 * std::mem::size_of::<Bytes>() * 2) as u64;
+    assert_eq!(&charges[1..4], &[owner_charge; 3]);
+    assert_eq!(&charges[5..], &[owner_charge; 3]);
+    // Ordinary backing beyond eight slots is outside the RX credit promise.
+    // Its replacement misses by one byte while old backing stays charged.
+    let replacement_charge = (16 * std::mem::size_of::<Bytes>() * 2) as u64;
     let room = owner_charge + replacement_charge - 1;
     let blocker = s.b.shard.memory_handle(PeerId(1)).try_allocate(port_limit - s.b.shard.budget().physical_used() - room).unwrap();
     let retrans_before = s.a.shard.info(server).unwrap().stats.bytes_retrans;
-    assert_eq!(s.a.shard.write(server, &payload[256..]), WriteResult::Written(64));
+    assert_eq!(s.a.shard.write(server, &payload[512..]), WriteResult::Written(64));
     let failure_deadline = s.now + secs(1);
     while s.now < failure_deadline && s.b.shard.budget().stats().failures().rx_chunk == 0 {
         s.run_until(s.now + Duration::from_millis(1));
     }
     assert_eq!(s.b.shard.budget().stats().failures().rx_chunk, 1);
     assert_eq!(s.b.shard.budget().stats().failures().ooo, 0);
-    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 256);
+    assert_eq!(s.b.shard.info(client).unwrap().rx_queued, 512);
     // Deliver the duplicate ACK: the receiver did not acknowledge the byte
     // range whose backing it could not reserve.
     s.run_until(s.now + Duration::from_millis(30));

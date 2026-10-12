@@ -1,0 +1,119 @@
+{
+  "sample_timezone": "UTC; report directory uses UTC+7 date",
+  "baseline_worker_sha256": "fb32f8b37862d364d7e6abd4cf4bb4d39e3776e5f2f8ddb3ac89d1aebdbd07eb",
+  "diagnostic_worker_sha256": "7959abec49621f5730c0c9c0b72df035a0eef33131269b5004d5ef01fe2b19d1",
+  "original_rig_worker_sha256": "a75d816045f93151cfcad4e1b69d6173343d06fac641531f09d0a5c3205fc487",
+  "diag_build_info": {
+    "schema_version": 1,
+    "package": "zf-worker",
+    "version": "1.2.3",
+    "source": {
+      "commit": "2cd672c97b18fcd3d9ab01f53190359fa9653014",
+      "dirty": true,
+      "tree_sha256": "60e7f612f52effcbade10bf6b527ef13cadf4292f854c80bfe0b14e2abf19b57",
+      "provenance": "git"
+    },
+    "private_tun": {
+      "commit": "91bdeab6d2988814dc9c7a21c327f6f609906a78",
+      "dirty": false,
+      "tree_sha256": "b92d109edbbce303dba6e3ad6ee0db6988415183b6ad404d1426e18eeb461be8",
+      "provenance": "git"
+    },
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8",
+    "target": "x86_64-unknown-linux-musl",
+    "features": [
+      "aws-lc-rs",
+      "default",
+      "jemalloc",
+      "mmsg"
+    ],
+    "allocator": "jemalloc"
+  },
+  "diag_build_tail": "    |            ^^^^^^^^^^^^^^\n\nwarning: `zfw-server` (lib) generated 2 warnings (run `cargo fix --lib -p zfw-server` to apply 1 suggestion)\nwarning: `zfw-control` (lib) generated 2 warnings\n    Finished `fast-release` profile [optimized] target(s) in 6m 17s",
+  "baseline_core_restored_sha256": "bedf3b672b40ebe40db72bbac22943065e11efb7339ad9deb978083b22ba0742",
+  "baseline_core_status": "",
+  "batch_exit": "0",
+  "diag_build_exit": "0",
+  "diag_run_exit": "0",
+  "final_services": {
+    "zf": "active",
+    "zfc-rig-watch.service": "active",
+    "pr25-l2-cause-569a9e61.service": "inactive",
+    "pr25-l2-cause-v2-569a9e61.service": "inactive",
+    "pr25-cause-diag-build-569a9e61.service": "inactive",
+    "pr25-cause-diag-run-569a9e61.service": "inactive",
+    "pr25-cause-diag-run-v2-569a9e61.service": "inactive"
+  },
+  "cases_cleanup": {
+    "budget8-a": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "budget64-a": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "budget64-b": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "budget8-b": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "capped-peer8-a": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "diag-budget8-v2": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    },
+    "diag-capped-peer8-v2": {
+      "exit-code": "0\n",
+      "namespaces-after.txt": "",
+      "watcher-after.txt": "inactive\n"
+    }
+  },
+  "normal_capture_wait_sec": 50,
+  "diagnostic_capture_wait_sec": 150,
+  "node_archive": "/root/zfc-rig/local/pr25-cause-v2-569a9e61",
+  "diagnostic_run_script": "#!/usr/bin/env bash\nset -euo pipefail\nTASK=/root/zfc-rig/local/pr25-cause-v2-569a9e61\ntrap 'exit 130' INT TERM\nfor ((i=0;i<180;i++)); do [[ ! -f \"$TASK/diag-build.exit\" ]] || break; sleep 5; done\n[[ -f \"$TASK/diag-build.exit\" && \"$(cat \"$TASK/diag-build.exit\")\" == 0 ]]\n[[ -x \"$TASK/zf-worker-diag\" ]]\nwatch_active=0\nsystemctl is-active --quiet zfc-rig-watch.service && watch_active=1\nrestore() { rc=$?; trap - EXIT; printf '%s\\n' \"$rc\" > \"$TASK/diag-run.exit\"; (( watch_active == 0 )) || systemctl start zfc-rig-watch.service; }\ntrap restore EXIT\nsystemctl stop zfc-rig-watch.service\nrun() {\n local name=\"$1\"; shift\n printf '%s\\n' \"$name\" > \"$TASK/diag-current-case\"\n printf '%s\\n' \"$@\" > \"$TASK/$name.env\"\n set +e\n env L2_MEMORY_MB=8 L2_HEAVY_CONNS=16 L2_REQUEST_TIMEOUT_SECS=30 \"$@\" timeout 250 bash \"$TASK/l2/run-rig.sh\" /root/zfc-rig \"$TASK/zf-worker-diag\" \"$TASK/$name\" > \"$TASK/$name.log\" 2>&1\n rc=$?\n set -e\n printf '%s\\n' \"$rc\" > \"$TASK/$name.rc\"\n [[ -f \"$TASK/$name/result.json\" ]] || return \"$rc\"\n}\nrun diag-budget8-v2\nrun diag-capped-peer8-v2 ZFW_WG_ZFSTACK_RX_MAX_KB=64 ZFW_WG_ZFSTACK_TX_MAX_KB=64 ZFW_WG_ZFSTACK_PREFETCH_MAX_KB=64 ZFW_WG_ZFSTACK_STREAM_RX_KB=16 ZFW_WG_ZFSTACK_STREAM_TX_KB=16\nprintf 'done\\n' > \"$TASK/diag-current-case\"\n",
+  "baseline_run_script": "#!/usr/bin/env bash\nset -euo pipefail\nTASK=/root/zfc-rig/local/pr25-cause-v2-569a9e61\nWORKER=/root/zfc-rig/local/pr25-l2-f55ea791/build/out/func/zf-worker\nwatch_active=0\nsystemctl is-active --quiet zfc-rig-watch.service && watch_active=1\nrestore() { rc=$?; trap - EXIT; printf '%s\\n' \"$rc\" > \"$TASK/batch.exit\"; (( watch_active == 0 )) || systemctl start zfc-rig-watch.service; }\ntrap restore EXIT\ntrap 'exit 130' INT TERM\nsystemctl stop zfc-rig-watch.service\nsha256sum \"$WORKER\" /root/zfc-rig/local/build/out/func/zf-worker > \"$TASK/binary-hashes.txt\"\nrun() {\n  local name=\"$1\"; shift\n  printf '%s\\n' \"$name\" > \"$TASK/current-case\"\n  printf '%s\\n' \"$@\" > \"$TASK/$name.env\"\n  set +e\n  env L2_HEAVY_CONNS=16 L2_REQUEST_TIMEOUT_SECS=30 \"$@\" timeout 130 bash \"$TASK/l2/run-rig.sh\" /root/zfc-rig \"$WORKER\" \"$TASK/$name\" > \"$TASK/$name.log\" 2>&1\n  rc=$?\n  set -e\n  printf '%s\\n' \"$rc\" > \"$TASK/$name.rc\"\n  [[ -f \"$TASK/$name/result.json\" ]] || return \"$rc\"\n}\nrun budget8-a L2_MEMORY_MB=8\nrun budget64-a L2_MEMORY_MB=64\nrun budget64-b L2_MEMORY_MB=64\nrun budget8-b L2_MEMORY_MB=8\nrun capped-peer8-a L2_MEMORY_MB=8 ZFW_WG_ZFSTACK_RX_MAX_KB=64 ZFW_WG_ZFSTACK_TX_MAX_KB=64 ZFW_WG_ZFSTACK_PREFETCH_MAX_KB=64 ZFW_WG_ZFSTACK_STREAM_RX_KB=16 ZFW_WG_ZFSTACK_STREAM_TX_KB=16\nprintf 'done\\n' > \"$TASK/current-case\"\n",
+  "diagnostic_build_script": "#!/usr/bin/env bash\nset -euo pipefail\nTASK=/root/zfc-rig/local/pr25-cause-v2-569a9e61\nOLD=/root/zfc-rig/local/pr25-l2-f55ea791\nrestore() {\n rc=$?; trap - EXIT\n # This checkout was clean before the temporary diagnostic patch.\n if (( patch_applied )); then\n git -C \"$OLD/repos/zfstack\" diff -- src/conn.rs src/budget.rs > \"$TASK/core-diagnostic-applied.patch\"\n git -C \"$OLD/repos/zfstack\" restore -- src/conn.rs src/budget.rs\n fi\n printf '%s\\n' \"$rc\" > \"$TASK/diag-build.exit\"\n (( was_active == 0 )) || systemctl start zfc-rig-watch.service\n exit \"$rc\"\n}\npatch_applied=0\nwas_active=0\nsystemctl is-active --quiet zfc-rig-watch.service && was_active=1\ntrap restore EXIT\ntrap 'exit 130' TERM INT\nsystemctl stop zfc-rig-watch.service\ncd /root/zfc-rig\nexec 9>local/state/watch.lock\nflock -w 60 9\nsource local/env.sh\nexport XDG_CACHE_HOME=/root/zfc-rig/local/cache\nexport ZIG_GLOBAL_CACHE_DIR=/root/zfc-rig/local/cache/zig\nexport ZIG_LOCAL_CACHE_DIR=/root/zfc-rig/local/cache/zig-local\nexport CARGO_TARGET_DIR=/root/zfc-rig/local/build/target\nexport CARGO_NET_GIT_FETCH_WITH_CLI=true\n[[ -z \"$(git -C \"$OLD/repos/zfstack\" status --porcelain)\" ]]\npatch_applied=1\npython3 \"$TASK/diag-source.py\"\ncd \"$OLD/repos/zfc\"\ncargo zigbuild -p zf-worker --bin zf-worker --profile fast-release --target x86_64-unknown-linux-musl --features mmsg,jemalloc --config 'profile.fast-release.strip=false' > \"$TASK/diag-build.log\" 2>&1\ninstall -m 0755 \"$CARGO_TARGET_DIR/x86_64-unknown-linux-musl/fast-release/zf-worker\" \"$TASK/zf-worker-diag\"\n\"$TASK/zf-worker-diag\" --build-info > \"$TASK/diag-build-info.json\"\nsha256sum \"$TASK/zf-worker-diag\" > \"$TASK/diag-worker.sha256\"\n",
+  "binary_hashes_before": "fb32f8b37862d364d7e6abd4cf4bb4d39e3776e5f2f8ddb3ac89d1aebdbd07eb  /root/zfc-rig/local/pr25-l2-f55ea791/build/out/func/zf-worker\nbf792a2f2a02f093e2ea587c58fe361bb4ecf8091416f6f8793754a05adba17f  /root/zfc-rig/local/build/out/func/zf-worker\n",
+  "rig_cache_build_info_after": {
+    "schema_version": 1,
+    "package": "zf-worker",
+    "version": "1.2.3",
+    "source": {
+      "commit": "73a1d977d63427ecb0d03096af9d1851d8a2f4df",
+      "dirty": false,
+      "tree_sha256": "fbd26a2fddeb8cccbfc417d4012ec1b7a15d301ab6b8754a3a1bcea5f038cdb3",
+      "provenance": "git"
+    },
+    "private_tun": {
+      "commit": "91bdeab6d2988814dc9c7a21c327f6f609906a78",
+      "dirty": false,
+      "tree_sha256": "b92d109edbbce303dba6e3ad6ee0db6988415183b6ad404d1426e18eeb461be8",
+      "provenance": "git"
+    },
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8",
+    "target": "x86_64-unknown-linux-musl",
+    "features": [
+      "aws-lc-rs",
+      "default",
+      "jemalloc",
+      "mmsg"
+    ],
+    "allocator": "jemalloc"
+  },
+  "rig_cache_mtime_utc": "2026-10-12 18:44:40.856135643 +0000",
+  "diag_build_log_created_utc": "2026-10-12 18:45:01.819625405 +0000"
+}

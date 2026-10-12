@@ -38,6 +38,7 @@ def wait_until(deadline):
 
 
 async def serve(host, port):
+    events = open(os.environ["L2_SERVER_EVENTS"], "w") if os.environ.get("L2_SERVER_EVENTS") else None
     async def connection(reader, writer):
         try:
             header = await reader.readexactly(5)
@@ -50,14 +51,22 @@ async def serve(host, port):
             elif header[:1] == b"E":
                 while True:
                     data = await reader.readexactly(256)
+                    received = time.monotonic()
                     writer.write(data)
                     await writer.drain()
+                    if events:
+                        seq = struct.unpack("!I", data[4:8])[0]
+                        events.write(json.dumps({"peer": flow, "seq": seq, "received_at": received, "replied_at": time.monotonic()}) + "\n")
+                        if seq % 100 == 0:
+                            events.flush()
             else:
                 raise ValueError("bad application header")
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
             writer.close()
+            if events:
+                events.flush()
     server = await asyncio.start_server(connection, host, port)
     print("ready", flush=True)
     async with server:
@@ -226,6 +235,7 @@ def run(a):
               "clock": "wall-monotonic", "start_at": start,
               "phases_sec": {"baseline": a.baseline, "loaded": a.loaded, "recovery": a.recovery},
               "request_timeout_sec": a.request_timeout,
+              "uplink_delay_ms": float(os.environ.get("L2_UPLINK_DELAY_MS", "0")),
               "heavy_bytes": total, "heavy_mbps": total * 8 / a.loaded / 1e6,
               "light_users": rows, "worker": resources,
               "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold."}

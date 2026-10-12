@@ -1,0 +1,245 @@
+{
+  "layer": "L2",
+  "ok": true,
+  "errors": [],
+  "clock": "wall-monotonic",
+  "start_at": 26053154.155357108,
+  "phases_sec": {
+    "baseline": 8.0,
+    "loaded": 64.0,
+    "recovery": 8.0
+  },
+  "request_timeout_sec": 3.0,
+  "uplink_delay_ms": 50.0,
+  "heavy_bytes": 2430013312,
+  "heavy_mbps": 303.751664,
+  "light_users": [
+    {
+      "peer": 1,
+      "placement": "same-port",
+      "phases": {
+        "baseline": {
+          "n": 155,
+          "p50_ms": 50.981566309928894,
+          "p95_ms": 51.366306841373444,
+          "p99_ms": 92.31479838490486,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1183,
+          "p50_ms": 50.67957192659378,
+          "p95_ms": 90.48383310437202,
+          "p99_ms": 91.0353846848011,
+          "p999_ms": 91.50460362434387
+        },
+        "recovery": {
+          "n": 147,
+          "p50_ms": 50.83494260907173,
+          "p95_ms": 92.03653410077095,
+          "p99_ms": 92.34344959259033,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 2,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 155,
+          "p50_ms": 50.9798489511013,
+          "p95_ms": 51.374588161706924,
+          "p99_ms": 91.41002967953682,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1183,
+          "p50_ms": 50.640564411878586,
+          "p95_ms": 90.8716507256031,
+          "p99_ms": 91.48373454809189,
+          "p999_ms": 92.50082820653915
+        },
+        "recovery": {
+          "n": 148,
+          "p50_ms": 50.87234452366829,
+          "p95_ms": 91.5912464261055,
+          "p99_ms": 91.93771705031395,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 3,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 155,
+          "p50_ms": 50.95737800002098,
+          "p95_ms": 51.431283354759216,
+          "p99_ms": 92.3052616417408,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1183,
+          "p50_ms": 50.612930208444595,
+          "p95_ms": 90.8537395298481,
+          "p99_ms": 91.508649289608,
+          "p999_ms": 92.79471635818481
+        },
+        "recovery": {
+          "n": 148,
+          "p50_ms": 50.84399878978729,
+          "p95_ms": 91.37409552931786,
+          "p99_ms": 91.58677607774734,
+          "p999_ms": null
+        }
+      }
+    }
+  ],
+  "worker": {
+    "baseline": {
+      "worker_cpu_sec": 0.19,
+      "sample_window_sec": 7.53819165378809,
+      "rss_peak_kib": 83988,
+      "rss_end_kib": 83708
+    },
+    "loaded": {
+      "worker_cpu_sec": 53.82,
+      "sample_window_sec": 63.79913456365466,
+      "rss_peak_kib": 92348,
+      "rss_end_kib": 91232
+    },
+    "recovery": {
+      "worker_cpu_sec": 0.17999999999999972,
+      "sample_window_sec": 7.537192832678556,
+      "rss_peak_kib": 91232,
+      "rss_end_kib": 89180
+    }
+  },
+  "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold.",
+  "path_bytes": {
+    "ctl/from_client": 0,
+    "ctl/to_client": 0,
+    "ctl/from_worker": 7777,
+    "ctl/to_worker": 2692,
+    "ctl/from_fwd1": 0,
+    "ctl/to_fwd1": 0,
+    "ctl/from_fwd2": 0,
+    "ctl/to_fwd2": 0,
+    "ctl/from_fwd3": 0,
+    "ctl/to_fwd3": 0,
+    "ctl/from_fwd4": 0,
+    "ctl/to_fwd4": 0,
+    "ctl/from_target": 0,
+    "ctl/to_target": 0,
+    "client/from_ctl": 0,
+    "client/to_ctl": 0,
+    "client/from_worker": 2607227692,
+    "client/to_worker": 76246352,
+    "client/from_fwd1": 0,
+    "client/to_fwd1": 0,
+    "client/from_fwd2": 0,
+    "client/to_fwd2": 0,
+    "client/from_fwd3": 0,
+    "client/to_fwd3": 0,
+    "client/from_fwd4": 0,
+    "client/to_fwd4": 0,
+    "client/from_target": 2475031248,
+    "client/to_target": 31969468,
+    "worker/from_ctl": 2692,
+    "worker/to_ctl": 7777,
+    "worker/from_client": 76246352,
+    "worker/to_client": 2607227692,
+    "worker/from_fwd1": 565044,
+    "worker/to_fwd1": 547048,
+    "worker/from_fwd2": 565424,
+    "worker/to_fwd2": 547304,
+    "worker/from_fwd3": 565424,
+    "worker/to_fwd3": 547304,
+    "worker/from_fwd4": 0,
+    "worker/to_fwd4": 0,
+    "worker/from_target": 2451350436,
+    "worker/to_target": 4093459,
+    "fwd1/from_ctl": 0,
+    "fwd1/to_ctl": 0,
+    "fwd1/from_client": 0,
+    "fwd1/to_client": 0,
+    "fwd1/from_worker": 547048,
+    "fwd1/to_worker": 565044,
+    "fwd1/from_fwd2": 0,
+    "fwd1/to_fwd2": 0,
+    "fwd1/from_fwd3": 0,
+    "fwd1/to_fwd3": 0,
+    "fwd1/from_fwd4": 0,
+    "fwd1/to_fwd4": 0,
+    "fwd1/from_target": 457648,
+    "fwd1/to_target": 457705,
+    "fwd2/from_ctl": 0,
+    "fwd2/to_ctl": 0,
+    "fwd2/from_client": 0,
+    "fwd2/to_client": 0,
+    "fwd2/from_worker": 547304,
+    "fwd2/to_worker": 565424,
+    "fwd2/from_fwd1": 0,
+    "fwd2/to_fwd1": 0,
+    "fwd2/from_fwd3": 0,
+    "fwd2/to_fwd3": 0,
+    "fwd2/from_fwd4": 0,
+    "fwd2/to_fwd4": 0,
+    "fwd2/from_target": 457904,
+    "fwd2/to_target": 458013,
+    "fwd3/from_ctl": 0,
+    "fwd3/to_ctl": 0,
+    "fwd3/from_client": 0,
+    "fwd3/to_client": 0,
+    "fwd3/from_worker": 547304,
+    "fwd3/to_worker": 565424,
+    "fwd3/from_fwd1": 0,
+    "fwd3/to_fwd1": 0,
+    "fwd3/from_fwd2": 0,
+    "fwd3/to_fwd2": 0,
+    "fwd3/from_fwd4": 0,
+    "fwd3/to_fwd4": 0,
+    "fwd3/from_target": 457904,
+    "fwd3/to_target": 458013,
+    "fwd4/from_ctl": 0,
+    "fwd4/to_ctl": 0,
+    "fwd4/from_client": 0,
+    "fwd4/to_client": 0,
+    "fwd4/from_worker": 0,
+    "fwd4/to_worker": 0,
+    "fwd4/from_fwd1": 0,
+    "fwd4/to_fwd1": 0,
+    "fwd4/from_fwd2": 0,
+    "fwd4/to_fwd2": 0,
+    "fwd4/from_fwd3": 0,
+    "fwd4/to_fwd3": 0,
+    "fwd4/from_target": 0,
+    "fwd4/to_target": 0,
+    "target/from_ctl": 0,
+    "target/to_ctl": 0,
+    "target/from_client": 0,
+    "target/to_client": 0,
+    "target/from_worker": 4093459,
+    "target/to_worker": 2451350436,
+    "target/from_fwd1": 0,
+    "target/to_fwd1": 0,
+    "target/from_fwd2": 0,
+    "target/to_fwd2": 0,
+    "target/from_fwd3": 0,
+    "target/to_fwd3": 0,
+    "target/from_fwd4": 0,
+    "target/to_fwd4": 0
+  },
+  "topology": {
+    "wg_ports": 2,
+    "peers": 4,
+    "heavy_peer": 0,
+    "light_peers": [
+      1,
+      2,
+      3
+    ]
+  },
+  "memory_mb": 8
+}

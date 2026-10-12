@@ -47,6 +47,8 @@ share_blocks(limit, senders) =
 
 ### 2.3 core 执行点
 
+[0010](0010-rx-progress-credit.md) 补充最低一块份额的物理约束：部分 ACK 虽减少 `tx.len()`，却未释放头部 backing；`send_space` 同时检查已有块容量和尾部余量，在旧块真实释放前不允许再申请第二块。较大份额沿用本节行为。该限制为私有 RX 信用留出真实空间，避免停读连接以一块逻辑份额钉住两块物理 backing。
+
 `send_space = min(sndbuf_limit, cap) − core_tx`（adapter → core 搬运不重复扣除 adapter 队列；应用入口仍按 `cap − occ` 背压）。`write()` 区分两种受限：
 
 - `sndbuf_limit` 受限（连接自己的窗口/拥塞）→ 照旧 `WouldBlock`，等自己的 ACK。

@@ -1,0 +1,48 @@
+--- a/src/conn.rs
++++ b/src/conn.rs
+@@ -1611,6 +1611,10 @@
+             }
+         }
+         let len = payload.len() as u64;
++        let l2_app_seq = match &payload {
++            IngressPayload::Borrowed(v) if v.len() == 256 && v[..4] == [0, 0, 0, 1] => Some(u32::from_be_bytes(v[4..8].try_into().unwrap())),
++            _ => None,
++        };
+         self.rcv_mss = self.rcv_mss.max(len as u32);
+         let in_order = off as u64 == self.rcv_nxt;
+ 
+@@ -1624,6 +1628,9 @@
+             return;
+         }
+         if !ctx.budget.try_reserve(self.peer, len, progress) {
++            if let Some(seq) = l2_app_seq {
++                eprintln!("L2_RX_DROP cause=logical realtime_us={} seq={} src={} conn={} port_used={} port_limit={} global_used={} bulk_headroom={} progress={} rx_charged={} fail_rx={}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros(), seq, self.remote, self.id.0, ctx.budget.physical_used(), ctx.budget.port_limit, ctx.budget.global().reserved(), ctx.budget.global().headroom(ctx.budget.port_limit, crate::budget::Tier::Bulk), progress, self.rcv_charged, ctx.budget.stats().failures().rx_chunk);
++            }
+             self.stats.dropped_no_mem += 1;
+             self.ack_need = AckNeed::Now;
+             return;
+@@ -1636,6 +1643,9 @@
+                 IngressPayload::Leased(v) => self.rx.push_leased(v, ctx.budget, self.peer),
+             };
+             if !retained {
++                if let Some(seq) = l2_app_seq {
++                    eprintln!("L2_RX_DROP cause=backing realtime_us={} seq={} src={} conn={} port_used={} port_limit={} global_used={} bulk_headroom={} progress={} rx_charged={} fail_rx={}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros(), seq, self.remote, self.id.0, ctx.budget.physical_used(), ctx.budget.port_limit, ctx.budget.global().reserved(), ctx.budget.global().headroom(ctx.budget.port_limit, crate::budget::Tier::Bulk), progress, self.rcv_charged, ctx.budget.stats().failures().rx_chunk);
++                }
+                 ctx.budget.release(self.peer, len);
+                 self.stats.dropped_no_mem += 1;
+                 self.ack_need = AckNeed::Now;
+--- a/src/budget.rs
++++ b/src/budget.rs
+@@ -1049,8 +1049,12 @@
+         // cloned `stats` and then dropped it on success. Reserve in place and
+         // clone only the three counter owners the lease keeps. The retained
+         // handle path (`MemoryHandle::try_allocate_level`) is unchanged.
++        let l2_peer = peer;
+         let peer = self.physical_peers.entry(peer).or_default();
+         if let Some(level) = reserve_physical(&self.global, &self.physical_port, peer, self.port_limit, self.peer_limit, bytes, kind) {
++            if matches!(kind, AllocationKind::RxChunk) && bytes <= 1024 {
++                eprintln!("L2_RX_ALLOC realtime_us={} peer={} bytes={} level={:?} port_used={} port_limit={} peer_used={} peer_limit={} global_used={} bulk_headroom={}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros(), l2_peer.0, bytes, level, self.physical_port.used.load(Ordering::Relaxed), self.port_limit, peer.used.load(Ordering::Relaxed), self.peer_limit, self.global.reserved(), self.global.headroom(self.port_limit, Tier::Bulk));
++            }
+             self.stats.note(kind, Some(level));
+             self.global.request_cache_reclaim();
+             return None;
