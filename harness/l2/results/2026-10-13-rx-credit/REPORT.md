@@ -60,8 +60,16 @@
 - `cargo test -p zfstack --release --features tokio,test-peer --test rx_capacity_lifecycle -- --nocapture`：2 通过；取消路径最终 reserved/cached 均为 0。
 - `cargo test -p zfharness --release`：13 通过；完整 L0 matrix `--full`：20/20，包括停读、Full、重建、丢包/乱序、64/128 端口。结果见 [l0-matrix.md](l0-matrix.md)。
 - 无默认 feature check 与 workspace all-targets clippy 成功；clippy 保留 69 warnings，成功仅表示现有 CI lint 口径通过，没有声明零警告。全部 Cargo 检查通过 remote-compile，task ID 见 [validation.json](validation.json)。
-- Python 比较器 6 项测试加入 CI：成功样本不能掩盖超时，3 秒截止时间、恢复进展、抓包丢包、重流校验、负载/二进制一致性、轻请求重传和显式性能门槛均有反例。shell/Python 语法、diff 空白检查通过。
+- zfbench 合入 L1 预算参数后 9 项测试通过。Python 比较器 6 项测试加入 CI：成功样本不能掩盖超时，3 秒截止时间、恢复进展、抓包丢包、重流校验、负载/二进制一致性、轻请求重传和显式性能门槛均有反例。shell/Python 语法、diff 空白检查通过。
 - GitNexus 未索引 zfstack，impact/detect_changes 返回仓库不存在，未宣称图分析通过；源码核查了接收/descriptor、三条被动准入、adapter 与发送份额调用者，并以定向及完整测试补证。
+
+## 最终构建独立验证
+
+最终欠账防护及其断言对应 core 树 `dab72bf076ac94e9fd89f36539df0743c7fb28fd7ef082f3c142eb2049ad56c4`，按同一构建参数重新编译并单独运行 [final-small](final-small/result.json)：8 MiB、16 重流、3 秒超时，空载/加载/恢复均通过；同端口加载请求 1593 个，P99 10.51 ms、最慢 35.36 ms、重传 0。吞吐 1397.5 Mbps、CPU 秒/GiB 11.82，仅为额外功能复测，没有混入上述 ABBA 均值。
+
+该 worker SHA256 为 `a8ccf0854e78407e1124f198cab0c57e9feb9244175728f50c86f2bc4de1ff10`；[final-source.patch](final-source.patch)、[final-metadata.json](final-metadata.json) 与 [final-smoke.sh](final-smoke.sh) 保存精确出处。随后按 GitHub CI 日志手工修正三处排版及可选尾逗号，最终 core 树为 `5b80bbb5ae9fff90214d74e9ae204c07a776b763c25f669c16aa3e6655ba2153`，行为相同。未调用格式化工具改写源码，只按 CI 差异手工排版。
+
+新 draft [PR #26](https://github.com/BlackLuny/zfstack/pull/26) 承接已经合并的 #25。`fb7a156` 的 GitHub CI 三项全部通过：fmt + clippy、core tests、zfbench build + unit tests（包括 Python 比较器）。最终二进制复测和 CI 分别验证完整修复与排版后的源码。
 
 ## 代价和未覆盖面
 
@@ -73,7 +81,7 @@
 
 每组保留 result.json、完整 raw.json.gz、analysis.json、诊断、两处轻流 pcap 和 build-info。所有流载荷、WG 路由及路径计数通过；客户端到 target 的物理捷径为 0。两个 tcpdump 每组均为 0 kernel drop，候选同端口 request retransmission 为 0。诊断中的普通 fail_rx_chunk 可以增加后成功使用信用，不能等同于最终输入丢包。
 
-12 组 exit-code=0，自己的 namespaces-after 为空；批次退出为 0，原 zf 与 watcher active/active，core 源码恢复且工作树干净，Cargo.lock 构建前后 hash 相同。同一租约继续用于最终构建的独立验证，完成后释放。完整密钥和 worker/controller 配置只在节点案卷，未导出。共享 rig 缓存由 watcher 管理，没有把其 hash 不变当作本实验清理条件。
+12 组 exit-code=0，自己的 namespaces-after 为空；批次退出为 0，原 zf 与 watcher active/active，core 源码恢复且工作树干净，Cargo.lock 构建前后 hash 相同。最终构建独立验证也完成，节点租约已释放。完整密钥和 worker/controller 配置只在节点案卷，未导出。共享 rig 缓存由 watcher 管理，没有把其 hash 不变当作本实验清理条件。
 
 ```sh
 python3 harness/l2/results/2026-10-13-cause/analyze.py harness/l2/results/2026-10-13-rx-credit

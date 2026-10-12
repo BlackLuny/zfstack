@@ -69,5 +69,26 @@
     "reason": "zfstack is not indexed; impact and detect_changes return repository not found",
     "fallback": "source/caller review and targeted/full runtime tests"
   },
-  "final_l2": "pending isolated final binary verification"
+  "final_l2": {
+    "case": "final-small",
+    "status": "success",
+    "worker_sha256": "a8ccf0854e78407e1124f198cab0c57e9feb9244175728f50c86f2bc4de1ff10",
+    "loaded_requests": 1593,
+    "loaded_p99_ms": 10.507993400096893,
+    "loaded_max_ms": 35.357531160116196,
+    "light_request_retransmissions": 0,
+    "core_build_sha256": "dab72bf076ac94e9fd89f36539df0743c7fb28fd7ef082f3c142eb2049ad56c4",
+    "ci_source_sha256": "5b80bbb5ae9fff90214d74e9ae204c07a776b763c25f669c16aa3e6655ba2153",
+    "note": "Only the three CI-requested layout/optional trailing comma edits differ from final-source.patch; no behavior changes."
+  },
+  "github_ci": {
+    "head": "fb7a156bf494b7cb7bddcc7bb0d199ac367e5e6f",
+    "run": 38300862362,
+    "status": "success",
+    "jobs": [
+      "fmt + clippy",
+      "test",
+      "zfbench build + unit tests"
+    ]
+  }
 }
