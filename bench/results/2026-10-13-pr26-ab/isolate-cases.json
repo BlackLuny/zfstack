@@ -1,0 +1,38 @@
+[
+  {
+    "name": "same_port_8mib_16h_1l",
+    "args": [
+      "--stack", "zfstack-cubic", "--test", "isolate",
+      "--ports", "1", "--placement", "same-iface", "--topology", "shared-shard",
+      "--heavy-conns", "16", "--lights", "1", "--budget-mb", "8",
+      "--rate-mbps", "0", "--rtt-ms", "12", "--queue-bdp", "2",
+      "--secs", "12", "--warmup", "2",
+      "--rr-size", "320", "--rr-interval-ms", "10", "--idle-rr-secs", "0",
+      "--client-cc", "cubic"
+    ]
+  },
+  {
+    "name": "same_port_64mib_16h_1l",
+    "args": [
+      "--stack", "zfstack-cubic", "--test", "isolate",
+      "--ports", "1", "--placement", "same-iface", "--topology", "shared-shard",
+      "--heavy-conns", "16", "--lights", "1", "--budget-mb", "64",
+      "--rate-mbps", "0", "--rtt-ms", "12", "--queue-bdp", "2",
+      "--secs", "12", "--warmup", "2",
+      "--rr-size", "320", "--rr-interval-ms", "10", "--idle-rr-secs", "0",
+      "--client-cc", "cubic"
+    ]
+  },
+  {
+    "name": "cross_port_8mib_16h_1l",
+    "args": [
+      "--stack", "zfstack-cubic", "--test", "isolate",
+      "--ports", "2", "--placement", "cross-iface", "--topology", "shared-shard",
+      "--heavy-conns", "16", "--lights", "1", "--budget-mb", "8",
+      "--rate-mbps", "0", "--rtt-ms", "12", "--queue-bdp", "2",
+      "--secs", "12", "--warmup", "2",
+      "--rr-size", "320", "--rr-interval-ms", "10", "--idle-rr-secs", "0",
+      "--client-cc", "cubic"
+    ]
+  }
+]

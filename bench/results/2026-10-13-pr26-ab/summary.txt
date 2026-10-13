@@ -1,0 +1,45 @@
+Validation: OK
+Measured pairs accepted: 108; warmup records ignored: 36; rejected records: 0; excluded pairs: 0
+CPU change is candidate/baseline - 1 (negative is better). Rates below are packet/buffer processing using real wall time, not network throughput.
+
+case                      pairs  CPU B -> C                      paired CPU delta% [range]  95% descriptive CI  wall processing Gbit/s B -> C  rate delta%
+budget_1400_p1            6      102.457 -> 99.629 ns/op         -1.59% [-4.92, 2.03]       [-4.69, 1.33]       - -> -                         -          
+budget_handle_control_p1  6      100.861 -> 100.156 ns/op        -0.41% [-2.33, 9.56]       [-1.83, 5.38]       - -> -                         -          
+rx_64_p1                  6      2.694 -> 2.696 s/GB             0.56% [-1.84, 1.89]        [-0.79, 1.29]       2.969 -> 2.967                 -0.57      
+rx_1400_p8                6      0.287 -> 0.288 s/GB             0.03% [-3.99, 2.21]        [-2.70, 1.90]       27.863 -> 27.765               -0.02      
+rx_65535_p1               6      0.188 -> 0.187 s/GB             -0.13% [-15.71, 1.60]      [-9.14, 1.28]       42.601 -> 42.856               0.13       
+rx_tail_1400              6      0.342 -> 0.335 s/GB             -2.48% [-13.76, 0.02]      [-13.26, -0.46]     23.395 -> 23.906               2.57       
+tx_alloc_64k              6      0.183 -> 0.184 s/GB             0.21% [-1.30, 0.72]        [-1.17, 0.68]       43.643 -> 43.389               -0.21      
+heap_equal_4096           6      3.355 -> 3.296 ns/op            -1.74% [-2.86, 1.29]       [-2.85, 0.20]       - -> -                         -          
+heap_mixed_4096           6      4.678 -> 4.229 ns/op            -9.23% [-11.27, -5.76]     [-10.63, -7.30]     - -> -                         -          
+heap_pop_4096             6      266086.865 -> 251503.744 ns/op  -6.76% [-12.83, -1.09]     [-10.60, -2.69]     - -> -                         -          
+down_1_paced              6      1.043 -> 1.056 s/GB             0.56% [-4.12, 4.00]        [-2.24, 2.90]       7.670 -> 7.577                 -0.56      
+up_1_paced                6      0.989 -> 0.989 s/GB             0.07% [-0.88, 2.46]        [-0.78, 2.06]       8.086 -> 8.088                 -0.12      
+up_8_peers_paced          6      0.932 -> 0.938 s/GB             -0.45% [-2.37, 3.18]       [-1.94, 2.53]       8.567 -> 8.531                 0.46       
+bidi_8_one_peer           6      0.975 -> 0.983 s/GB             0.94% [-3.40, 2.96]        [-2.56, 2.40]       8.206 -> 8.138                 -0.93      
+up_64_peers_paced         6      1.071 -> 1.081 s/GB             1.35% [-0.68, 7.33]        [-0.31, 5.37]       7.468 -> 7.398                 -1.34      
+up_8_owned_control        6      0.990 -> 1.016 s/GB             2.45% [-3.45, 7.38]        [-1.27, 5.42]       8.078 -> 7.869                 -2.39      
+down_8_unpaced            6      0.962 -> 0.956 s/GB             -0.16% [-1.42, 2.20]       [-1.20, 1.59]       8.312 -> 8.367                 -0.09      
+short_64x4096             6      1.586 -> 1.639 s/GB             2.43% [-2.27, 8.86]        [-1.65, 7.30]       5.039 -> 4.873                 -2.37      
+
+case                      peak RSS MiB B -> C  charged peak KiB B -> C  warmup ledger KiB B -> C  wall/CPU B -> C  throttled us B -> C  nr_throttled B -> C  pair work
+budget_1400_p1            2.32 -> 2.32         2.06 -> 2.06             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+budget_handle_control_p1  2.31 -> 2.32         2.06 -> 2.06             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+rx_64_p1                  2.31 -> 2.32         0.38 -> 0.38             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+rx_1400_p8                2.32 -> 2.33         4.06 -> 4.06             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+rx_65535_p1               2.50 -> 2.51         64.31 -> 64.31           - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+rx_tail_1400              2.32 -> 2.33         3.94 -> 3.94             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+tx_alloc_64k              2.44 -> 2.45         - -> -                   64.28 -> 64.28            1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+heap_equal_4096           2.34 -> 2.37         0.00 -> 0.00             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+heap_mixed_4096           2.41 -> 2.35         0.00 -> 0.00             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+heap_pop_4096             2.37 -> 2.35         0.00 -> 0.00             - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+down_1_paced              66.80 -> 66.81       65799.83 -> 65815.86     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+up_1_paced                66.80 -> 66.81       65799.83 -> 65815.86     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+up_8_peers_paced          67.06 -> 67.07       65994.06 -> 66122.31     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+bidi_8_one_peer           67.35 -> 67.36       66289.50 -> 66417.75     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+up_64_peers_paced         131.46 -> 131.48     132035.06 -> 133061.06   - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+up_8_owned_control        67.06 -> 67.06       65994.06 -> 66122.31     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+down_8_unpaced            67.05 -> 67.05       65994.06 -> 66122.31     - -> -                    1.000 -> 1.000   0 -> 0               0 -> 0               equal    
+short_64x4096             5.89 -> 7.16         8673.69 -> 9699.69       - -> -                    1.001 -> 1.001   0 -> 0               0 -> 0               equal    
+Bootstrap intervals are descriptive for these paired runs, this machine, and this fixed workload; they do not guarantee general stack or network performance.
+Summary: /tmp/zfstack-pareto/summary-ab.json

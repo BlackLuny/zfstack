@@ -1,0 +1,804 @@
+{
+  "tool": "zfstack-isolate-ab",
+  "baseline": "01e3dc3eddd02971a21bde465d1ac1247f21e976",
+  "candidate": "3fe3be95aa9e19716be362a3dfab53489faba2f6",
+  "pr": 26,
+  "profile": "zfbench default release (not fat LTO); isolate --rate-mbps 0",
+  "cases": [
+    {
+      "case": "same_port_8mib_16h_1l",
+      "variants": {
+        "baseline": {
+          "ok": "1/6",
+          "ok_count": 1,
+          "n": 6,
+          "heavy_mbps_median": 1701.3833285607411,
+          "cpu_sec_per_GB_median": 1.0217914831896961,
+          "light_n_median": 0.0,
+          "light_p99_ms_median": 13.301518999999999,
+          "light_max_ms_median": 13.713849,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1944.9567843899788,
+              "cpu_sec_per_GB": 1.1362947075144918,
+              "stack_thread_window_sec": 2.762573183,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 996624
+            },
+            {
+              "pair": 1,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1703.543258231889,
+              "cpu_sec_per_GB": 1.00724730865366,
+              "stack_thread_window_sec": 2.144875497,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 996624
+            },
+            {
+              "pair": 2,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1611.812764032276,
+              "cpu_sec_per_GB": 1.0629480515310292,
+              "stack_thread_window_sec": 2.142928451,
+              "light_n": 804,
+              "light_p50_ms": 12.420254,
+              "light_p99_ms": 13.301518999999999,
+              "light_max_ms": 13.713849,
+              "reserved": 990720
+            },
+            {
+              "pair": 3,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1712.4696440717316,
+              "cpu_sec_per_GB": 1.0363356577257326,
+              "stack_thread_window_sec": 2.218386186,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 996624
+            },
+            {
+              "pair": 4,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1699.2233988895935,
+              "cpu_sec_per_GB": 0.9371905032741503,
+              "stack_thread_window_sec": 1.9906318560000003,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 999576
+            },
+            {
+              "pair": 5,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1645.3490392865262,
+              "cpu_sec_per_GB": 0.9171347678592534,
+              "stack_thread_window_sec": 1.886270314,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 990720
+            }
+          ]
+        },
+        "candidate": {
+          "ok": "5/6",
+          "ok_count": 5,
+          "n": 6,
+          "heavy_mbps_median": 1609.160357054313,
+          "cpu_sec_per_GB_median": 1.0666396611978475,
+          "light_n_median": 801.5,
+          "light_p99_ms_median": 13.337081000000001,
+          "light_max_ms_median": 13.872026,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1625.795343231438,
+              "cpu_sec_per_GB": 1.297749385436395,
+              "stack_thread_window_sec": 2.639524327,
+              "light_n": 811,
+              "light_p50_ms": 12.21094,
+              "light_p99_ms": 13.37041,
+              "light_max_ms": 14.635304999999999,
+              "reserved": 990720
+            },
+            {
+              "pair": 1,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1500.3433440036858,
+              "cpu_sec_per_GB": 1.273661425041009,
+              "stack_thread_window_sec": 2.3909085560000003,
+              "light_n": 811,
+              "light_p50_ms": 12.277511,
+              "light_p99_ms": 13.082767,
+              "light_max_ms": 13.582722,
+              "reserved": 990720
+            },
+            {
+              "pair": 2,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1611.266694641047,
+              "cpu_sec_per_GB": 1.0869278178130155,
+              "stack_thread_window_sec": 2.191518717,
+              "light_n": 803,
+              "light_p50_ms": 12.423939,
+              "light_p99_ms": 13.338097,
+              "light_max_ms": 13.756542,
+              "reserved": 990720
+            },
+            {
+              "pair": 3,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1607.0540194675787,
+              "cpu_sec_per_GB": 1.0463515045826797,
+              "stack_thread_window_sec": 2.102920347,
+              "light_n": 800,
+              "light_p50_ms": 12.486578,
+              "light_p99_ms": 13.337081000000001,
+              "light_max_ms": 13.676008999999999,
+              "reserved": 990720
+            },
+            {
+              "pair": 4,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1777.1656890249292,
+              "cpu_sec_per_GB": 0.9514889772999413,
+              "stack_thread_window_sec": 2.1137040889999996,
+              "light_n": 77,
+              "light_p50_ms": 12.454201999999999,
+              "light_p99_ms": null,
+              "light_max_ms": 13.98751,
+              "reserved": 990720
+            },
+            {
+              "pair": 5,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1601.945904443639,
+              "cpu_sec_per_GB": 0.9671682765634972,
+              "stack_thread_window_sec": 1.9389181839999998,
+              "light_n": 800,
+              "light_p50_ms": 12.490909,
+              "light_p99_ms": 13.316567,
+              "light_max_ms": 14.487231,
+              "reserved": 990720
+            }
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -16.409693198332086,
+          "cpu_change_pct": 14.20887353027156,
+          "baseline_light_n": 0,
+          "candidate_light_n": 811,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.37041
+        },
+        {
+          "pair": 1,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -11.928074807980204,
+          "cpu_change_pct": 26.449722337153947,
+          "baseline_light_n": 0,
+          "candidate_light_n": 811,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.082767
+        },
+        {
+          "pair": 2,
+          "baseline_ok": true,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -0.03387920752425666,
+          "cpu_change_pct": 2.2559678478592415,
+          "baseline_light_n": 804,
+          "candidate_light_n": 803,
+          "baseline_p99_ms": 13.301518999999999,
+          "candidate_p99_ms": 13.338097
+        },
+        {
+          "pair": 3,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -6.155766028850984,
+          "cpu_change_pct": 0.9664674550451391,
+          "baseline_light_n": 0,
+          "candidate_light_n": 800,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.337081000000001
+        },
+        {
+          "pair": 4,
+          "baseline_ok": false,
+          "candidate_ok": false,
+          "heavy_mbps_change_pct": 4.586936019493937,
+          "cpu_change_pct": 1.5256742333429774,
+          "baseline_light_n": 0,
+          "candidate_light_n": 77,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": null
+        },
+        {
+          "pair": 5,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -2.637928719471472,
+          "cpu_change_pct": 5.455415109933126,
+          "baseline_light_n": 0,
+          "candidate_light_n": 800,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.316567
+        }
+      ],
+      "paired_heavy_mbps_change_pct_median": -4.3968473741612275,
+      "paired_cpu_change_pct_median": 3.855691478896184
+    },
+    {
+      "case": "same_port_64mib_16h_1l",
+      "variants": {
+        "baseline": {
+          "ok": "2/6",
+          "ok_count": 2,
+          "n": 6,
+          "heavy_mbps_median": 4374.254278197293,
+          "cpu_sec_per_GB_median": 1.1080240185713803,
+          "light_n_median": 222.5,
+          "light_p99_ms_median": 49.747237,
+          "light_max_ms_median": 967.6038085,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 4594.126788898503,
+              "cpu_sec_per_GB": 1.0771747794103859,
+              "stack_thread_window_sec": 6.185882928,
+              "light_n": 5,
+              "light_p50_ms": 299.350545,
+              "light_p99_ms": null,
+              "light_max_ms": 2075.185566,
+              "reserved": 1060616
+            },
+            {
+              "pair": 1,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 4604.714576679395,
+              "cpu_sec_per_GB": 1.0155866953115675,
+              "stack_thread_window_sec": 8.467295925,
+              "light_n": 241,
+              "light_p50_ms": 38.532374000000004,
+              "light_p99_ms": 48.142377,
+              "light_max_ms": 48.770585,
+              "reserved": 1060616
+            },
+            {
+              "pair": 2,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 4393.325525479951,
+              "cpu_sec_per_GB": 1.1152443499165505,
+              "stack_thread_window_sec": 8.862028652,
+              "light_n": 237,
+              "light_p50_ms": 38.625848999999995,
+              "light_p99_ms": 53.607628,
+              "light_max_ms": 54.610112,
+              "reserved": 1060616
+            },
+            {
+              "pair": 3,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4193.995020722302,
+              "cpu_sec_per_GB": 1.1815039954989708,
+              "stack_thread_window_sec": 7.109914665,
+              "light_n": 227,
+              "light_p50_ms": 41.967535,
+              "light_p99_ms": 58.007541,
+              "light_max_ms": 1880.597505,
+              "reserved": 1056256
+            },
+            {
+              "pair": 4,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4355.183030914637,
+              "cpu_sec_per_GB": 1.1064165429053028,
+              "stack_thread_window_sec": 7.785346155,
+              "light_n": 218,
+              "light_p50_ms": 40.133676,
+              "light_p99_ms": 49.747237,
+              "light_max_ms": 4127.34205,
+              "reserved": 1056256
+            },
+            {
+              "pair": 5,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 0 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 4302.630941793153,
+              "cpu_sec_per_GB": 1.109631494237458,
+              "stack_thread_window_sec": 8.31630006,
+              "light_n": 218,
+              "light_p50_ms": 39.578452999999996,
+              "light_p99_ms": 46.808622,
+              "light_max_ms": 47.989521,
+              "reserved": 1060616
+            }
+          ]
+        },
+        "candidate": {
+          "ok": "6/6",
+          "ok_count": 6,
+          "n": 6,
+          "heavy_mbps_median": 4432.129009096422,
+          "cpu_sec_per_GB_median": 1.0959927999640162,
+          "light_n_median": 231.0,
+          "light_p99_ms_median": 53.288949,
+          "light_max_ms_median": 56.747803,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4676.535187546373,
+              "cpu_sec_per_GB": 1.0900517564485404,
+              "stack_thread_window_sec": 6.372439237,
+              "light_n": 243,
+              "light_p50_ms": 40.110003,
+              "light_p99_ms": 50.978297999999995,
+              "light_max_ms": 55.899918,
+              "reserved": 1056256
+            },
+            {
+              "pair": 1,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4490.135355976844,
+              "cpu_sec_per_GB": 1.0322308214569162,
+              "stack_thread_window_sec": 5.804855568000001,
+              "light_n": 238,
+              "light_p50_ms": 41.795186,
+              "light_p99_ms": 49.384537,
+              "light_max_ms": 51.364591000000004,
+              "reserved": 1056256
+            },
+            {
+              "pair": 2,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4083.542301860186,
+              "cpu_sec_per_GB": 1.1508288116314713,
+              "stack_thread_window_sec": 5.877888970000001,
+              "light_n": 234,
+              "light_p50_ms": 41.610653,
+              "light_p99_ms": 55.755456,
+              "light_max_ms": 58.873262000000004,
+              "reserved": 1056256
+            },
+            {
+              "pair": 3,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4279.405394742845,
+              "cpu_sec_per_GB": 1.1481318201332162,
+              "stack_thread_window_sec": 6.149448992,
+              "light_n": 228,
+              "light_p50_ms": 43.612189,
+              "light_p99_ms": 53.352964,
+              "light_max_ms": 57.595687999999996,
+              "reserved": 1056256
+            },
+            {
+              "pair": 4,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4696.28149345775,
+              "cpu_sec_per_GB": 1.0696627583917862,
+              "stack_thread_window_sec": 6.2797479769999995,
+              "light_n": 225,
+              "light_p50_ms": 43.401229,
+              "light_p99_ms": 53.224934000000005,
+              "light_max_ms": 53.641616000000006,
+              "reserved": 1056256
+            },
+            {
+              "pair": 5,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 4374.122662216,
+              "cpu_sec_per_GB": 1.101933843479492,
+              "stack_thread_window_sec": 6.038115017999999,
+              "light_n": 226,
+              "light_p50_ms": 43.87968,
+              "light_p99_ms": 59.642834,
+              "light_max_ms": 65.597448,
+              "reserved": 1056256
+            }
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": 1.7937771949830816,
+          "cpu_change_pct": 1.1954398937192856,
+          "baseline_light_n": 5,
+          "candidate_light_n": 243,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 50.978297999999995
+        },
+        {
+          "pair": 1,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -2.488302343055915,
+          "cpu_change_pct": 1.638868077160316,
+          "baseline_light_n": 241,
+          "candidate_light_n": 238,
+          "baseline_p99_ms": 48.142377,
+          "candidate_p99_ms": 49.384537
+        },
+        {
+          "pair": 2,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -7.05122399474194,
+          "cpu_change_pct": 3.1907323016326927,
+          "baseline_light_n": 237,
+          "candidate_light_n": 234,
+          "baseline_p99_ms": 53.607628,
+          "candidate_p99_ms": 55.755456
+        },
+        {
+          "pair": 3,
+          "baseline_ok": true,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": 2.036492022487746,
+          "cpu_change_pct": -2.824550360632583,
+          "baseline_light_n": 227,
+          "candidate_light_n": 228,
+          "baseline_p99_ms": 58.007541,
+          "candidate_p99_ms": 53.352964
+        },
+        {
+          "pair": 4,
+          "baseline_ok": true,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": 7.832012113426101,
+          "cpu_change_pct": -3.3218759019099653,
+          "baseline_light_n": 218,
+          "candidate_light_n": 225,
+          "baseline_p99_ms": 49.747237,
+          "candidate_p99_ms": 53.224934000000005
+        },
+        {
+          "pair": 5,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": 1.6615815158213865,
+          "cpu_change_pct": -0.6937123538707679,
+          "baseline_light_n": 218,
+          "candidate_light_n": 226,
+          "baseline_p99_ms": 46.808622,
+          "candidate_p99_ms": 59.642834
+        }
+      ],
+      "paired_heavy_mbps_change_pct_median": 1.727679355402234,
+      "paired_cpu_change_pct_median": 0.25086376992425885
+    },
+    {
+      "case": "cross_port_8mib_16h_1l",
+      "variants": {
+        "baseline": {
+          "ok": "1/6",
+          "ok_count": 1,
+          "n": 6,
+          "heavy_mbps_median": 1694.6132536929074,
+          "cpu_sec_per_GB_median": 0.8569807518499064,
+          "light_n_median": 0.0,
+          "light_p99_ms_median": 13.472380000000001,
+          "light_max_ms_median": 13.834949,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 1 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1697.2180085591638,
+              "cpu_sec_per_GB": 0.9359228199856905,
+              "stack_thread_window_sec": 1.985590623,
+              "light_n": 43,
+              "light_p50_ms": 12.28048,
+              "light_p99_ms": null,
+              "light_max_ms": 13.497518999999999,
+              "reserved": 995080
+            },
+            {
+              "pair": 1,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 1 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1688.708868390672,
+              "cpu_sec_per_GB": 0.8297131924833381,
+              "stack_thread_window_sec": 1.7514419629999998,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 993672
+            },
+            {
+              "pair": 2,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 1 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1698.9071863179659,
+              "cpu_sec_per_GB": 0.8842483112164746,
+              "stack_thread_window_sec": 1.8778312380000002,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 999576
+            },
+            {
+              "pair": 3,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1449.6522894522661,
+              "cpu_sec_per_GB": 0.8127613240370103,
+              "stack_thread_window_sec": 1.4744600650000002,
+              "light_n": 796,
+              "light_p50_ms": 12.537185,
+              "light_p99_ms": 13.472380000000001,
+              "light_max_ms": 14.172379000000001,
+              "reserved": 991008
+            },
+            {
+              "pair": 4,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 1 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1702.3927207473184,
+              "cpu_sec_per_GB": 0.907153085923551,
+              "stack_thread_window_sec": 1.9304633580000001,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 996624
+            },
+            {
+              "pair": 5,
+              "ok": false,
+              "errors": [
+                "light 0 loaded port 1 peer 2: Resource temporarily unavailable (os error 11)"
+              ],
+              "heavy_mbps": 1692.008498826651,
+              "cpu_sec_per_GB": 0.8134251758331882,
+              "stack_thread_window_sec": 1.720404457,
+              "light_n": 0,
+              "light_p50_ms": null,
+              "light_p99_ms": null,
+              "light_max_ms": null,
+              "reserved": 996624
+            }
+          ]
+        },
+        "candidate": {
+          "ok": "6/6",
+          "ok_count": 6,
+          "n": 6,
+          "heavy_mbps_median": 1583.7029778674196,
+          "cpu_sec_per_GB_median": 0.82991744565145,
+          "light_n_median": 793.0,
+          "light_p99_ms_median": 13.4250345,
+          "light_max_ms_median": 14.011819,
+          "runs": [
+            {
+              "pair": 0,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1586.9159249110091,
+              "cpu_sec_per_GB": 0.8083793439227198,
+              "stack_thread_window_sec": 1.605131619,
+              "light_n": 793,
+              "light_p50_ms": 12.627904000000001,
+              "light_p99_ms": 13.282399999999999,
+              "light_max_ms": 13.464062,
+              "reserved": 990720
+            },
+            {
+              "pair": 1,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1580.49003082383,
+              "cpu_sec_per_GB": 0.7931292778120328,
+              "stack_thread_window_sec": 1.567963855,
+              "light_n": 791,
+              "light_p50_ms": 12.664659,
+              "light_p99_ms": 13.351562000000001,
+              "light_max_ms": 13.692031,
+              "reserved": 990720
+            },
+            {
+              "pair": 2,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1416.8935301356444,
+              "cpu_sec_per_GB": 0.833179030712607,
+              "stack_thread_window_sec": 1.476033749,
+              "light_n": 793,
+              "light_p50_ms": 12.569063,
+              "light_p99_ms": 13.498507,
+              "light_max_ms": 14.213306,
+              "reserved": 991008
+            },
+            {
+              "pair": 3,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1579.9547608517332,
+              "cpu_sec_per_GB": 0.8386087868496503,
+              "stack_thread_window_sec": 1.656749166,
+              "light_n": 791,
+              "light_p50_ms": 12.642594,
+              "light_p99_ms": 13.711962,
+              "light_max_ms": 14.256206,
+              "reserved": 990720
+            },
+            {
+              "pair": 4,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1596.042898728654,
+              "cpu_sec_per_GB": 0.9072405649465651,
+              "stack_thread_window_sec": 1.8101809330000003,
+              "light_n": 793,
+              "light_p50_ms": 12.602649000000001,
+              "light_p99_ms": 13.566848,
+              "light_max_ms": 14.097794,
+              "reserved": 990720
+            },
+            {
+              "pair": 5,
+              "ok": true,
+              "errors": [],
+              "heavy_mbps": 1589.9958299221987,
+              "cpu_sec_per_GB": 0.8266558605902931,
+              "stack_thread_window_sec": 1.6440191569999998,
+              "light_n": 793,
+              "light_p50_ms": 12.594966000000001,
+              "light_p99_ms": 13.33338,
+              "light_max_ms": 13.925844,
+              "reserved": 990720
+            }
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -6.498993240225781,
+          "cpu_change_pct": -13.627563442135182,
+          "baseline_light_n": 43,
+          "candidate_light_n": 793,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.282399999999999
+        },
+        {
+          "pair": 1,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -6.408377405512999,
+          "cpu_change_pct": -4.409224175622583,
+          "baseline_light_n": 0,
+          "candidate_light_n": 791,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.351562000000001
+        },
+        {
+          "pair": 2,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -16.599709416353015,
+          "cpu_change_pct": -5.775445636261467,
+          "baseline_light_n": 0,
+          "candidate_light_n": 793,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.498507
+        },
+        {
+          "pair": 3,
+          "baseline_ok": true,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": 8.988532791453064,
+          "cpu_change_pct": 3.1802033448460554,
+          "baseline_light_n": 796,
+          "candidate_light_n": 791,
+          "baseline_p99_ms": 13.472380000000001,
+          "candidate_p99_ms": 13.711962
+        },
+        {
+          "pair": 4,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -6.247079226935293,
+          "cpu_change_pct": 0.009643248132151783,
+          "baseline_light_n": 0,
+          "candidate_light_n": 793,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.566848
+        },
+        {
+          "pair": 5,
+          "baseline_ok": false,
+          "candidate_ok": true,
+          "heavy_mbps_change_pct": -6.029087263757516,
+          "cpu_change_pct": 1.626539865028498,
+          "baseline_light_n": 0,
+          "candidate_light_n": 793,
+          "baseline_p99_ms": null,
+          "candidate_p99_ms": 13.33338
+        }
+      ],
+      "paired_heavy_mbps_change_pct_median": -6.327728316224146,
+      "paired_cpu_change_pct_median": -2.1997904637452157
+    }
+  ]
+}
