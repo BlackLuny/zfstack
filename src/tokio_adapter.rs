@@ -2227,8 +2227,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn splice_relays_both_directions_and_half_closes() {
-        splice_roundtrips(vec![(StackConfig::default(), 1420u16, 0u32), (StackConfig::client(), 65535, 0), (StackConfig::client(), 1500, 65_000)])
-            .await;
+        splice_roundtrips(vec![(StackConfig::default(), 1420u16, 0u32), (StackConfig::client(), 65535, 0), (StackConfig::client(), 1500, 65_000)]).await;
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -1295,12 +1295,7 @@ fn tx_capacity_eight_flows_survive_loss_reorder_fin_and_release() {
             s.connect_as(
                 PeerId(1 + i % 2),
                 46000 + i as u16,
-                AppConn {
-                    to_send: 64 * 1024 + 9,
-                    fin_after_send: true,
-                    read_paused_until: s.now + Duration::from_millis(500),
-                    ..Default::default()
-                },
+                AppConn { to_send: 64 * 1024 + 9, fin_after_send: true, read_paused_until: s.now + Duration::from_millis(500), ..Default::default() },
             );
         }
         for _ in 0..3000 {
