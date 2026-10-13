@@ -80,6 +80,13 @@ zfstack 改动前（原 tokio 适配器 + 中继任务 + 默认配置）：
 
 ### 4.5 零拷贝收：`PacketPool` + `ingress_buf`
 
+0004 §2 规定：owned 入包若不能核验 backing 容量，必须保守复制。新增 `pktpool::PacketPool`：宿主从池里拿 `PacketBuf`（**先按 `buf_size` 向预算申请 lease 再分配**；分配器实际给出的容量若超过 lease 则拒绝，与其他计费容器规则一致；缓存中的块也一直计费），把 TUN 包直接读进去，交给 `Shard::ingress_buf(buf, start, csum)`：
+
+- 有序负载 ≥ 缓冲容量一半：以缓冲切片直接挂进 RX 队列（`IngressPayload::Leased` → `RxQueue::push_leased`，只预留描述符槽），不拷贝；最后一个切片释放时缓冲回池。
+- 其余（ACK、小包、乱序段）：照旧复制进计费块，缓冲立即回池。
+
+物理计费覆盖整块：被钉住的缓冲按整块容量计费，最坏放大 2 倍（负载恰好半块）。池有上限（`max_cached`），`in_use()` 可用于诊断被应用未读数据钉住的缓冲数。
+
 #### 空闲与低速缓存维护（显式启用）
 
 宿主可在统一的低频维护循环中调用 `PacketPool::trim_idle(now, idle, target)`。
@@ -101,13 +108,6 @@ zfbench 的 `packet-pool-idle-trim` 实验 feature 还要求同时设置
 reader 原有完全空闲路径仍负责归还 EAGAIN spare 并执行显式 trim。
 维护任务使用弱 channel sender，reader / driver 退出后会在下一次检查结束。
 该功能仍默认关闭，参数仅用于实验。缓存 lease 减少不等于 RSS 同幅下降或吞吐提升。
-
-0004 §2 规定：owned 入包若不能核验 backing 容量，必须保守复制。新增 `pktpool::PacketPool`：宿主从池里拿 `PacketBuf`（**先按 `buf_size` 向预算申请 lease 再分配**；分配器实际给出的容量若超过 lease 则拒绝，与其他计费容器规则一致；缓存中的块也一直计费），把 TUN 包直接读进去，交给 `Shard::ingress_buf(buf, start, csum)`：
-
-- 有序负载 ≥ 缓冲容量一半：以缓冲切片直接挂进 RX 队列（`IngressPayload::Leased` → `RxQueue::push_leased`，只预留描述符槽），不拷贝；最后一个切片释放时缓冲回池。
-- 其余（ACK、小包、乱序段）：照旧复制进计费块，缓冲立即回池。
-
-物理计费覆盖整块：被钉住的缓冲按整块容量计费，最坏放大 2 倍（负载恰好半块）。池有上限（`max_cached`），`in_use()` 可用于诊断被应用未读数据钉住的缓冲数。
 
 ### 4.6 驱动内中继：`TcpStream::splice`
 

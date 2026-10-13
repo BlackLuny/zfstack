@@ -118,8 +118,8 @@ impl PacketPool {
 
     /// Release historical free buffers that were never borrowed during an
     /// observation window of at least `idle`. Keep at least `target` free
-    /// buffers and all buffers reused within the window. Only complete idle
-    /// can reach zero with a zero target; low-rate traffic retains its hot tail.
+    /// buffers and all free buffers reused within the window. With a zero
+    /// target, low-rate traffic still retains its recently reused free buffers.
     ///
     /// The first call opts this shared pool into tracking and starts a window.
     /// A single host maintenance loop should call this periodically, including
