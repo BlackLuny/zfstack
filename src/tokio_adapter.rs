@@ -417,6 +417,13 @@ impl TcpStream {
     }
 }
 
+fn register_waker(slot: &mut Option<Waker>, waker: &Waker) {
+    match slot {
+        Some(stored) => stored.clone_from(waker),
+        None => *slot = Some(waker.clone()),
+    }
+}
+
 impl AsyncRead for TcpStream {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         if buf.remaining() == 0 {
@@ -435,7 +442,7 @@ impl AsyncRead for TcpStream {
             if q.rx_eof {
                 return Poll::Ready(Ok(()));
             }
-            q.read_waker = Some(cx.waker().clone());
+            register_waker(&mut q.read_waker, cx.waker());
             return Poll::Pending;
         }
         let mut consumed = 0;
@@ -480,7 +487,7 @@ impl AsyncWrite for TcpStream {
         let free = sh.cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room);
         let min_free = sh.cfg.tx_low_watermark.min(src.len().max(1));
         if free < min_free {
-            q.write_waker = Some(cx.waker().clone());
+            register_waker(&mut q.write_waker, cx.waker());
             q.write_parked = true;
             // Republish the room promptly: the core buffer may have drained
             // since the last pump, and an empty queue gives no other wake
@@ -498,7 +505,7 @@ impl AsyncWrite for TcpStream {
             if matches!(failure, Some((QueueGrowError::Allocation, _))) {
                 return Poll::Ready(Err(io::Error::new(io::ErrorKind::OutOfMemory, "TX queue descriptor allocation failed")));
             }
-            q.write_waker = Some(cx.waker().clone());
+            register_waker(&mut q.write_waker, cx.waker());
             q.write_parked = true;
             let needed = match failure {
                 Some((QueueGrowError::Quota(bytes), _)) => bytes,
@@ -525,7 +532,7 @@ impl AsyncWrite for TcpStream {
         if q.tx.is_empty() {
             Poll::Ready(Ok(()))
         } else {
-            q.flush_waker = Some(cx.waker().clone());
+            register_waker(&mut q.flush_waker, cx.waker());
             Poll::Pending
         }
     }
@@ -540,7 +547,7 @@ impl AsyncWrite for TcpStream {
         if q.tx.is_empty() {
             Poll::Ready(Ok(()))
         } else {
-            q.flush_waker = Some(cx.waker().clone());
+            register_waker(&mut q.flush_waker, cx.waker());
             Poll::Pending
         }
     }
@@ -1257,19 +1264,18 @@ where
 
     /// Exchange data for one stream.
     fn pump(&mut self, id: ConnId) {
-        if !self.relays.is_empty() && self.relays.contains_key(&id) {
-            self.relay_pump(id);
-            return;
-        }
         let Some(sh) = self.streams.get(&id).cloned() else { return };
         let now = self.now();
+        if !self.relays.is_empty() && self.relay_pump(id, &sh, now) {
+            return;
+        }
         let cfg = &self.stream_cfg;
         let consumed = {
             let mut q = sh.q.lock().unwrap();
             if q.splice.is_some() {
                 drop(q);
                 if self.start_relay(id) {
-                    self.relay_pump(id);
+                    self.relay_pump(id, &sh, self.now());
                 }
                 return;
             }
@@ -1466,12 +1472,10 @@ where
 
     /// Move bytes between a spliced stream and its socket until both sides
     /// would block; readiness and core events call this again.
-    fn relay_pump(&mut self, id: ConnId) {
-        let Some(sh) = self.streams.get(&id).cloned() else { return };
-        let now = self.now();
-        let waker = sh.driver_wake.clone();
-        let mut cx = Context::from_waker(&waker);
-        let Some(relay) = self.relays.get_mut(&id) else { return };
+    /// Returns whether this was a relay, including one finished by this call.
+    fn relay_pump(&mut self, id: ConnId, sh: &Shared, now: crate::Instant) -> bool {
+        let Some(relay) = self.relays.get_mut(&id) else { return false };
+        let mut cx = Context::from_waker(&sh.driver_wake);
         let mut failure: Option<io::Error> = None;
 
         // Core → socket: zero-copy chunks out with writev.
@@ -1592,6 +1596,7 @@ where
         } else if relay.sock_eof && relay.sock_write_shut {
             self.finish_relay(id, Ok(()));
         }
+        true
     }
 
     /// End a spliced stream: an orderly finish closes the core connection
@@ -1726,6 +1731,57 @@ mod tests {
         }
         fn wake_by_ref(self: &Arc<Self>) {
             self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pending_polls_keep_the_latest_task_waker() {
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::default(), 1500);
+        peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        let mut stream = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                peer.step(&h, iface).await;
+                if let Ok(stream) = acc.rx.try_recv() {
+                    break stream;
+                }
+            }
+        }).await.unwrap();
+        let first = Arc::new(CountWake(AtomicUsize::new(0)));
+        let latest = Arc::new(CountWake(AtomicUsize::new(0)));
+        let wakers = [Waker::from(first.clone()), Waker::from(latest.clone())];
+        // No await while polling: the driver cannot drain our queues between
+        // registrations. Exercise read, full write, flush and shutdown slots.
+        for operation in 0..4 {
+            {
+                let mut q = stream.sh.q.lock().unwrap();
+                q.send_room = 0;
+                if operation == 2 {
+                    assert_eq!(q.tx.push(b"queued", &stream.sh.memory), 6);
+                }
+            }
+            for waker in [&wakers[0], &wakers[0], &wakers[1], &wakers[1]] {
+                let mut cx = Context::from_waker(waker);
+                let mut data = [0u8; 1];
+                let mut buf = ReadBuf::new(&mut data);
+                let pending = match operation {
+                    0 => Pin::new(&mut stream).poll_read(&mut cx, &mut buf).is_pending(),
+                    1 => Pin::new(&mut stream).poll_write(&mut cx, b"x").is_pending(),
+                    2 => Pin::new(&mut stream).poll_flush(&mut cx).is_pending(),
+                    _ => Pin::new(&mut stream).poll_shutdown(&mut cx).is_pending(),
+                };
+                assert!(pending);
+            }
+            let registered = {
+                let mut q = stream.sh.q.lock().unwrap();
+                match operation {
+                    0 => q.read_waker.take(),
+                    1 => q.write_waker.take(),
+                    _ => q.flush_waker.take(),
+                }.unwrap()
+            };
+            registered.wake();
+            assert_eq!(first.0.load(Ordering::Relaxed), 0);
+            assert_eq!(latest.0.load(Ordering::Relaxed), operation + 1);
         }
     }
 
@@ -2017,6 +2073,63 @@ mod tests {
             h.set_iface_tso(ids[0], tso);
         }
         ((h, acc, ids[0], TunPeer::new(mtu, to_client_rx)), super_segments)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_stream_progresses_while_a_relay_is_active() {
+        let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = up.local_addr().unwrap();
+        let release = Arc::new(Notify::new());
+        let upstream_release = release.clone();
+        let upstream = tokio::spawn(async move {
+            let (mut socket, _) = up.accept().await.unwrap();
+            socket.write_all(b"relay").await.unwrap();
+            upstream_release.notified().await;
+            socket.shutdown().await.unwrap();
+        });
+        let (h, mut acc, iface, mut peer) = splice_stack(StackConfig::default(), 1500);
+        let server = tokio::spawn(async move {
+            let stream = acc.accept().await.unwrap();
+            let relay = tokio::spawn(stream.splice(tokio::net::TcpStream::connect(addr).await.unwrap()));
+            let mut ordinary = acc.accept().await.unwrap();
+            ordinary.write_all(b"plain").await.unwrap();
+            ordinary.shutdown().await.unwrap();
+            relay.await.unwrap().unwrap()
+        });
+        let relay_id = peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            // Receiving these bytes proves the relay map is populated before
+            // the ordinary connection takes pump's missing-relay fallback.
+            let mut received = Vec::new();
+            let mut buf = [0; 16];
+            while received.len() < 5 {
+                peer.step(&h, iface).await;
+                if let ReadResult::Data(n) = peer.c.read(peer.now(), relay_id, &mut buf) {
+                    received.extend_from_slice(&buf[..n]);
+                }
+            }
+            assert_eq!(received, b"relay");
+            let ordinary_id = peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5556".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            received.clear();
+            loop {
+                peer.step(&h, iface).await;
+                match peer.c.read(peer.now(), ordinary_id, &mut buf) {
+                    ReadResult::Data(n) => received.extend_from_slice(&buf[..n]),
+                    ReadResult::Eof => break,
+                    ReadResult::WouldBlock => {},
+                    other => panic!("ordinary connection failed: {other:?}"),
+                }
+            }
+            assert_eq!(received, b"plain");
+            peer.c.shutdown_write(ordinary_id);
+            peer.c.shutdown_write(relay_id);
+            release.notify_one();
+            while !server.is_finished() {
+                peer.step(&h, iface).await;
+            }
+        }).await.unwrap();
+        assert_eq!(server.await.unwrap(), SpliceStats { uploaded: 0, downloaded: 5 });
+        upstream.await.unwrap();
     }
 
     #[tokio::test(flavor = "current_thread")]
