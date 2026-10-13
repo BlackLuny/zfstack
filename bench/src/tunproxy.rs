@@ -84,9 +84,83 @@ type Batch = Vec<(PacketBuf, usize, RxChecksum)>;
 /// Idle packet buffers kept (and charged) by the reader's pool.
 const POOL_CACHED: usize = 128;
 
+/// Experimental settings. Both variables are required to enable trimming:
+/// ZFBENCH_PACKET_POOL_TRIM_IDLE_MS and ZFBENCH_PACKET_POOL_TRIM_TARGET.
+/// There are deliberately no experimental defaults.
+#[cfg(feature = "packet-pool-idle-trim")]
+#[derive(Clone, Copy, Debug)]
+struct PacketPoolTrimConfig {
+    idle: std::time::Duration,
+    target: usize,
+}
+
+#[cfg(feature = "packet-pool-idle-trim")]
+impl PacketPoolTrimConfig {
+    fn from_env() -> io::Result<Option<Self>> {
+        fn read(name: &str) -> io::Result<Option<String>> {
+            match std::env::var(name) {
+                Ok(value) => Ok(Some(value)),
+                Err(std::env::VarError::NotPresent) => Ok(None),
+                Err(std::env::VarError::NotUnicode(_)) => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be UTF-8"))),
+            }
+        }
+        let idle = read("ZFBENCH_PACKET_POOL_TRIM_IDLE_MS")?;
+        let target = read("ZFBENCH_PACKET_POOL_TRIM_TARGET")?;
+        Self::from_values(idle.as_deref(), target.as_deref())
+    }
+
+    fn from_values(idle: Option<&str>, target: Option<&str>) -> io::Result<Option<Self>> {
+        let invalid = |message| io::Error::new(io::ErrorKind::InvalidInput, message);
+        match (idle, target) {
+            (None, None) => Ok(None),
+            (Some(idle), Some(target)) => {
+                let idle_ms = idle.parse::<u64>().map_err(|_| invalid("ZFBENCH_PACKET_POOL_TRIM_IDLE_MS must be an unsigned integer"))?;
+                let target = target.parse::<usize>().map_err(|_| invalid("ZFBENCH_PACKET_POOL_TRIM_TARGET must be an unsigned integer"))?;
+                if target > POOL_CACHED {
+                    return Err(invalid("ZFBENCH_PACKET_POOL_TRIM_TARGET exceeds POOL_CACHED"));
+                }
+                Ok(Some(Self { idle: std::time::Duration::from_millis(idle_ms), target }))
+            }
+            _ => Err(invalid("set both ZFBENCH_PACKET_POOL_TRIM_IDLE_MS and ZFBENCH_PACKET_POOL_TRIM_TARGET")),
+        }
+    }
+}
+
+/// A coarse quiet-period policy driven by the existing reader poll timeout.
+/// The idle clock starts at the first timeout after a successful batch, so
+/// detection includes that sampling delay. No per-packet clock is read.
+#[cfg(feature = "packet-pool-idle-trim")]
+struct PacketPoolIdleTrim {
+    config: PacketPoolTrimConfig,
+    idle_since: Option<std::time::Instant>,
+}
+
+#[cfg(feature = "packet-pool-idle-trim")]
+impl PacketPoolIdleTrim {
+    fn new(config: PacketPoolTrimConfig) -> Self {
+        Self { config, idle_since: None }
+    }
+
+    fn note_activity(&mut self) {
+        self.idle_since = None;
+    }
+
+    fn target_at_idle(&mut self, now: std::time::Instant) -> Option<usize> {
+        let since = self.idle_since.get_or_insert(now);
+        (now.saturating_duration_since(*since) >= self.config.idle).then_some(self.config.target)
+    }
+}
+
 /// Blocking TUN reader: reads each packet straight into a pooled, charged
 /// buffer (zero-copy ingress) and batches them for the driver.
-fn reader(fd: RawFd, pool: PacketPool, vnet: bool, trust: bool, tx: tokio::sync::mpsc::Sender<Batch>) {
+fn reader(
+    fd: RawFd,
+    pool: PacketPool,
+    vnet: bool,
+    trust: bool,
+    tx: tokio::sync::mpsc::Sender<Batch>,
+    #[cfg(feature = "packet-pool-idle-trim")] mut idle_trim: Option<PacketPoolIdleTrim>,
+) {
     let start = if vnet { VIRTIO_NET_HDR_LEN } else { 0 };
     let mut spare: Option<PacketBuf> = None;
     loop {
@@ -97,6 +171,22 @@ fn reader(fd: RawFd, pool: PacketPool, vnet: bool, trust: bool, tx: tokio::sync:
                 continue;
             }
             return;
+        }
+        #[cfg(feature = "packet-pool-idle-trim")]
+        if rc == 0 {
+            if let Some(policy) = &mut idle_trim {
+                if let Some(target) = policy.target_at_idle(std::time::Instant::now()) {
+                    // EAGAIN retains one empty buffer in spare. Return that
+                    // host-owned buffer before trimming, without touching any
+                    // queued packet or payload owner retained by a slice.
+                    drop(spare.take());
+                    pool.trim_cached_to(target);
+                }
+                // In this opt-in mode, do not perform a doomed read after
+                // a timeout or recreate spare immediately after cold trim.
+                // Keep checking while cold: late slice drops can refill free.
+                continue;
+            }
         }
         let mut batch = Vec::with_capacity(16);
         let mut bytes = 0;
@@ -130,6 +220,12 @@ fn reader(fd: RawFd, pool: PacketPool, vnet: bool, trust: bool, tx: tokio::sync:
             }
             bytes += b.len();
             batch.push((b, start, csum));
+        }
+        #[cfg(feature = "packet-pool-idle-trim")]
+        if !batch.is_empty() {
+            if let Some(policy) = &mut idle_trim {
+                policy.note_activity();
+            }
         }
         if !batch.is_empty() && tx.blocking_send(batch).is_err() {
             return;
@@ -169,8 +265,215 @@ struct Stack {
     _task: tokio_adapter::DriverTask,
 }
 
+// Explicit runtime-only experimental settings. No trim or sampler defaults.
+// All five TX trim variables are required to opt in; SAMPLE_MS is independent.
+const TX_TRIM_ENV: [&str; 5] = [
+    "ZFBENCH_TX_CACHE_TRIM_CHECK_MS",
+    "ZFBENCH_TX_CACHE_TRIM_WARM_MS",
+    "ZFBENCH_TX_CACHE_TRIM_COLD_MS",
+    "ZFBENCH_TX_CACHE_TRIM_LARGE",
+    "ZFBENCH_TX_CACHE_TRIM_SMALL",
+];
+const TX_SAMPLE_ENV: &str = "ZFBENCH_TX_CACHE_SAMPLE_MS";
+
+#[derive(Clone, Copy, Debug)]
+struct TxCacheExperiment {
+    trim: Option<zfstack::TxCacheTrimPolicy>,
+    sample: Option<std::time::Duration>,
+}
+
+impl TxCacheExperiment {
+    fn from_env() -> io::Result<Self> {
+        fn read(name: &str) -> io::Result<Option<String>> {
+            match std::env::var(name) {
+                Ok(value) => Ok(Some(value)),
+                Err(std::env::VarError::NotPresent) => Ok(None),
+                Err(std::env::VarError::NotUnicode(_)) => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be UTF-8"))),
+            }
+        }
+        let values: Vec<_> = TX_TRIM_ENV.iter().map(|name| read(name)).collect::<io::Result<_>>()?;
+        let sample = read(TX_SAMPLE_ENV)?;
+        Self::from_values([values[0].as_deref(), values[1].as_deref(), values[2].as_deref(), values[3].as_deref(), values[4].as_deref()], sample.as_deref())
+    }
+
+    fn from_values(values: [Option<&str>; 5], sample: Option<&str>) -> io::Result<Self> {
+        fn milliseconds(value: &str, name: &str) -> io::Result<u64> {
+            let ms = value.parse::<u64>().map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be an unsigned integer")))?;
+            if ms > u64::MAX / 1_000_000 {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{name} exceeds the core nanosecond clock range")));
+            }
+            Ok(ms)
+        }
+        fn slots(value: &str, name: &str) -> io::Result<usize> {
+            value.parse::<usize>().map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be an unsigned integer")))
+        }
+        let supplied = values.iter().filter(|value| value.is_some()).count();
+        let trim = match supplied {
+            0 => None,
+            5 => {
+                let check = milliseconds(values[0].unwrap(), TX_TRIM_ENV[0])?;
+                let warm = milliseconds(values[1].unwrap(), TX_TRIM_ENV[1])?;
+                let cold = milliseconds(values[2].unwrap(), TX_TRIM_ENV[2])?;
+                if check == 0 || cold == 0 || warm > cold {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "TX cache trim needs positive CHECK_MS/COLD_MS and WARM_MS <= COLD_MS"));
+                }
+                Some(zfstack::TxCacheTrimPolicy {
+                    check_interval: std::time::Duration::from_millis(check),
+                    warm_after: std::time::Duration::from_millis(warm),
+                    cold_after: std::time::Duration::from_millis(cold),
+                    warm_large: slots(values[3].unwrap(), TX_TRIM_ENV[3])?,
+                    warm_small: slots(values[4].unwrap(), TX_TRIM_ENV[4])?,
+                })
+            }
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "set all five ZFBENCH_TX_CACHE_TRIM_* variables or none")),
+        };
+        let sample = match sample {
+            None => None,
+            Some(value) => {
+                let ms = milliseconds(value, TX_SAMPLE_ENV)?;
+                if ms < 1000 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_TX_CACHE_SAMPLE_MS must be at least 1000 (coarse sampling)"));
+                }
+                Some(std::time::Duration::from_millis(ms))
+            }
+        };
+        Ok(Self { trim, sample })
+    }
+}
+
+fn spawn_tx_cache_sampler(
+    handle: tokio_adapter::StackHandle,
+    interval: std::time::Duration,
+    packet_pool: PacketPool,
+    peer_memory: zfstack::budget::MemoryHandle,
+    limits: ResourceLimits,
+) {
+    tokio::spawn(async move {
+        let start = std::time::Instant::now();
+        loop {
+            // One bounded control request per interval; no catch-up bursts.
+            tokio::time::sleep(interval).await;
+            let Some(snap) = handle.snapshot().await else { break };
+            // Separate low-frequency reads, not an atomic pool/global snapshot.
+            // in_use includes the reader spare, queued packets and retained slices.
+            let packet_cached = packet_pool.cached();
+            let packet_in_use = packet_pool.in_use();
+            let packet_buf_size = packet_pool.buf_size() as u64;
+            let peer_physical_bytes = peer_memory.peer_physical_used();
+            eprintln!(
+                "ZFBENCH_TX_CACHE {}",
+                serde_json::json!({
+                    "elapsed_ms": start.elapsed().as_millis(),
+                    "peer_id": 0,
+                    "peer_physical_bytes": peer_physical_bytes,
+                    "global_limit_bytes": peer_memory.global().high(),
+                    "port_limit_bytes": limits.port_bytes,
+                    "peer_limit_bytes": limits.peer_bytes,
+                    "packet_cached": packet_cached,
+                    "packet_in_use": packet_in_use,
+                    "packet_buf_size": packet_buf_size,
+                    "packet_free_lease_bytes_estimate": (packet_cached as u64).saturating_mul(packet_buf_size),
+                    "packet_in_use_lease_bytes_estimate": (packet_in_use as u64).saturating_mul(packet_buf_size),
+                    "reserve_failures_by_level": snap.failures_by_level,
+                    "admission_debt_by_level": snap.admission_debt,
+                    "record_waiters": snap.record_waiters,
+                    "send_share_blocked": snap.share_blocked,
+                    "senders": snap.senders,
+                    "sample_coherence": "separate reads; validate conservation during settled quiet only",
+                    "scope": "one tunproxy shard and one PeerId(0); not a multi-peer fairness test",
+                    "large_cached": snap.tx_cache.large_cached,
+                    "small_cached": snap.tx_cache.small_cached,
+                    "large_capacity": snap.tx_cache.large_capacity,
+                    "small_capacity": snap.tx_cache.small_capacity,
+                    "payload_bytes": snap.tx_cache.payload_bytes,
+                    "descriptor_bytes": snap.tx_cache.descriptor_bytes,
+                    "port_physical_bytes": snap.port_physical_bytes,
+                    "global_reserved_bytes": snap.global_reserved_bytes,
+                    "global_cached_bytes": snap.global_cached_bytes,
+                    "maintenance_checks": snap.stats.tx_cache_maintenance_checks,
+                    "idle_trims": snap.stats.tx_cache_idle_trims,
+                    "idle_trimmed_blocks": snap.stats.tx_cache_idle_trimmed_blocks,
+                    "idle_trimmed_bytes": snap.stats.tx_cache_idle_trimmed_bytes,
+                    "pressure_reclaims": snap.stats.cache_reclaims,
+                    "pressure_reclaimed_bytes": snap.stats.cache_reclaimed_bytes,
+                    "driver_runs": snap.stats.runs,
+                })
+            );
+        }
+    });
+}
+
+// Benchmark-host configuration only. These values are ceilings, not usage.
+// No overrides preserves the existing from_system() and equal-share behavior.
+const BENCH_BUDGET_ENV: [&str; 3] = ["ZFBENCH_GLOBAL_BYTES", "ZFBENCH_PORT_BYTES", "ZFBENCH_PEER_BYTES"];
+
+#[derive(Clone, Copy, Debug)]
+struct BudgetDraft {
+    bytes: Option<[u64; 3]>,
+}
+
+impl BudgetDraft {
+    fn from_env() -> io::Result<Self> {
+        let mut values: [Option<String>; 3] = Default::default();
+        for (index, name) in BENCH_BUDGET_ENV.iter().enumerate() {
+            values[index] = match std::env::var(name) {
+                Ok(value) => Some(value),
+                Err(std::env::VarError::NotPresent) => None,
+                Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be UTF-8"))),
+            };
+        }
+        Self::from_values([values[0].as_deref(), values[1].as_deref(), values[2].as_deref()])
+    }
+
+    fn from_values(values: [Option<&str>; 3]) -> io::Result<Self> {
+        let count = values.iter().filter(|value| value.is_some()).count();
+        if count == 0 {
+            return Ok(Self { bytes: None });
+        }
+        if count != 3 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "set all three ZFBENCH_*_BYTES variables or none"));
+        }
+        let mut bytes = [0; 3];
+        for (index, value) in values.iter().enumerate() {
+            bytes[index] = value
+                .unwrap()
+                .parse::<u64>()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, format!("{} must be an unsigned integer", BENCH_BUDGET_ENV[index])))?;
+        }
+        if bytes[2] == 0 || bytes[2] > bytes[1] || bytes[1] > bytes[0] {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "budgets require 0 < peer <= port <= global"));
+        }
+        Ok(Self { bytes: Some(bytes) })
+    }
+
+    fn create(self) -> (std::sync::Arc<zfstack::budget::GlobalBudget>, ResourceLimits) {
+        let global = match self.bytes {
+            Some(bytes) => zfstack::budget::GlobalBudget::new(bytes[0]),
+            None => zfstack::budget::GlobalBudget::from_system(),
+        };
+        let high = global.high();
+        let bytes = self.bytes.unwrap_or([high; 3]);
+        eprintln!(
+            "ZFBENCH_BUDGET_CONFIG {}",
+            serde_json::json!({
+                "global_bytes": high, "port_bytes": bytes[1], "peer_bytes": bytes[2],
+                "peer_id": 0, "peer_max_connections": u32::MAX,
+                "scope": "one tunproxy shard and one PeerId(0); configured ceilings are not usage",
+            })
+        );
+        let limits = ResourceLimits { port_bytes: bytes[1], peer_bytes: bytes[2], peer_max_connections: u32::MAX };
+        (global, limits)
+    }
+}
+
 /// Spawn the stack driver on the current runtime and start the TUN reader.
-fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
+fn start_stack(
+    o: &ProxyOpts,
+    fd: RawFd,
+    tx_experiment: TxCacheExperiment,
+    bench_budget: BudgetDraft,
+    #[cfg(feature = "packet-pool-idle-trim")] idle_trim: Option<PacketPoolTrimConfig>,
+) -> Stack {
     let (mtu, vnet, tso) = (o.mtu, o.vnet_hdr, o.tso);
     // TSO super-segments can exceed the MTU (up to 64 KiB of IP packet).
     let max_pkt = if tso { 65535 } else { mtu as usize };
@@ -178,15 +481,18 @@ fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
     // checksums like sing-box does; with one, the header says per packet.
     let trust = o.client_profile && !vnet;
     let (tx, rx) = tokio::sync::mpsc::channel::<Batch>(BATCH_QUEUE);
-    let global = zfstack::budget::GlobalBudget::from_system();
-    let high = global.high();
-    let limits = ResourceLimits { port_bytes: high, peer_bytes: high, peer_max_connections: u32::MAX };
+    let (global, limits) = bench_budget.create();
     let egress = move |_: IfaceId, _: PeerId, p: &OutPacket<'_>| write_packet(fd, p, vnet);
     let (handle, acceptor, ids, task, memory) = tokio_adapter::spawn_with_source_factory(
         client_config(o.client_profile),
         StreamConfig::default(),
         vec![IfaceConfig { mtu }],
-        move |shard| (egress, shard.memory_handle(PeerId(0))),
+        move |shard| {
+            if let Some(policy) = tx_experiment.trim {
+                shard.set_tx_cache_trim(Some(policy)).expect("validated experimental TX cache trim");
+            }
+            (egress, shard.memory_handle(PeerId(0)))
+        },
         global,
         limits,
         rx,
@@ -196,7 +502,9 @@ fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
             }
         },
     );
+    let sample_memory = tx_experiment.sample.map(|_| memory.clone());
     let pool = PacketPool::new(memory, max_pkt + if vnet { VIRTIO_NET_HDR_LEN } else { 0 }, POOL_CACHED);
+    let sample_packet_pool = tx_experiment.sample.map(|_| pool.clone());
     assert_eq!(ids[0], IfaceId(0));
     if vnet {
         handle.set_iface_tx_checksum_offload(ids[0], true);
@@ -204,11 +512,29 @@ fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
     if tso {
         handle.set_iface_tso(ids[0], 65_000);
     }
-    std::thread::Builder::new().name("zfc-tun-rx".into()).spawn(move || reader(fd, pool, vnet, trust, tx)).unwrap();
+    std::thread::Builder::new()
+        .name("zfc-tun-rx".into())
+        .spawn(move || {
+            #[cfg(feature = "packet-pool-idle-trim")]
+            reader(fd, pool, vnet, trust, tx, idle_trim.map(PacketPoolIdleTrim::new));
+            #[cfg(not(feature = "packet-pool-idle-trim"))]
+            reader(fd, pool, vnet, trust, tx);
+        })
+        .unwrap();
+    if let Some(interval) = tx_experiment.sample {
+        spawn_tx_cache_sampler(handle.clone(), interval, sample_packet_pool.unwrap(), sample_memory.unwrap(), limits);
+    }
     Stack { acceptor, _handle: handle, _task: task }
 }
 
 pub fn run(o: ProxyOpts) -> io::Result<()> {
+    // Validate budget settings before any TUN deletion, creation or configuration.
+    let bench_budget = BudgetDraft::from_env()?;
+    // Validate all TX settings before deleting, creating or configuring any TUN.
+    let tx_experiment = TxCacheExperiment::from_env()?;
+    // Reject incomplete experimental settings before changing the TUN device.
+    #[cfg(feature = "packet-pool-idle-trim")]
+    let idle_trim = PacketPoolTrimConfig::from_env()?;
     tun::sh_quiet(&format!("ip link del {PROXY_TUN}"));
     let fd = open_proxy_tun(o.vnet_hdr, o.tso)?;
     tun::sh(&format!("ip addr add {PROXY_TUN_ADDR} dev {PROXY_TUN}"))?;
@@ -222,7 +548,10 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
         std::thread::Builder::new().name("zfc-driver".into()).spawn(move || {
             let drt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
             drt.block_on(async move {
-                let stack = start_stack(&o, fd);
+                #[cfg(feature = "packet-pool-idle-trim")]
+                let stack = start_stack(&o, fd, tx_experiment, bench_budget, idle_trim);
+                #[cfg(not(feature = "packet-pool-idle-trim"))]
+                let stack = start_stack(&o, fd, tx_experiment, bench_budget);
                 let _ = stx.send(stack);
                 std::future::pending::<()>().await
             })
@@ -230,7 +559,11 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
         srx.recv().map_err(|_| io::Error::other("driver thread failed"))?
     } else {
         let _g = rt.enter();
-        start_stack(&o, fd)
+        #[cfg(feature = "packet-pool-idle-trim")]
+        let stack = start_stack(&o, fd, tx_experiment, bench_budget, idle_trim);
+        #[cfg(not(feature = "packet-pool-idle-trim"))]
+        let stack = start_stack(&o, fd, tx_experiment, bench_budget);
+        stack
     };
     let mut acceptor = stack.acceptor;
     eprintln!("zfbench tun-proxy: ready on {PROXY_TUN} splice {splice} -> {upstream}");
@@ -251,4 +584,140 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tx_cache_experiment_tests {
+    use super::*;
+
+    #[test]
+    fn tx_settings_are_explicit_and_sampler_can_observe_disabled_policy() {
+        let off = TxCacheExperiment::from_values([None; 5], None).unwrap();
+        assert!(off.trim.is_none() && off.sample.is_none());
+        let observed_off = TxCacheExperiment::from_values([None; 5], Some("1000")).unwrap();
+        assert!(observed_off.trim.is_none());
+        assert_eq!(observed_off.sample, Some(std::time::Duration::from_secs(1)));
+        let on = TxCacheExperiment::from_values([Some("10000"), Some("20000"), Some("90000"), Some("2"), Some("1")], None).unwrap();
+        let trim = on.trim.unwrap();
+        assert_eq!(trim.check_interval, std::time::Duration::from_secs(10));
+        assert_eq!(trim.warm_after, std::time::Duration::from_secs(20));
+        assert_eq!(trim.cold_after, std::time::Duration::from_secs(90));
+        assert_eq!((trim.warm_large, trim.warm_small), (2, 1));
+    }
+
+    #[test]
+    fn malformed_or_partial_tx_settings_are_rejected_without_device_access() {
+        let valid = [Some("10000"), Some("20000"), Some("90000"), Some("2"), Some("1")];
+        for i in 0..5 {
+            let mut partial = valid;
+            partial[i] = None;
+            assert!(TxCacheExperiment::from_values(partial, None).is_err());
+            let mut malformed = valid;
+            malformed[i] = Some("bad");
+            assert!(TxCacheExperiment::from_values(malformed, None).is_err());
+        }
+        for values in [
+            [Some("0"), Some("20"), Some("90"), Some("2"), Some("1")],
+            [Some("10"), Some("91"), Some("90"), Some("2"), Some("1")],
+            [Some("10"), Some("0"), Some("0"), Some("2"), Some("1")],
+            [Some("18446744073709551615"), Some("20"), Some("90"), Some("2"), Some("1")],
+            [Some("10"), Some("20"), Some("90"), Some("-1"), Some("1")],
+        ] {
+            assert!(TxCacheExperiment::from_values(values, None).is_err());
+        }
+        for sample in ["0", "999", "bad", "18446744073709551615"] {
+            assert!(TxCacheExperiment::from_values([None; 5], Some(sample)).is_err());
+        }
+    }
+}
+
+#[cfg(all(test, feature = "packet-pool-idle-trim"))]
+mod idle_trim_tests {
+    use super::*;
+
+    #[test]
+    fn experimental_settings_require_explicit_values() {
+        assert!(PacketPoolTrimConfig::from_values(None, None).unwrap().is_none());
+        assert!(PacketPoolTrimConfig::from_values(Some("20"), None).is_err());
+        assert!(PacketPoolTrimConfig::from_values(None, Some("0")).is_err());
+        assert!(PacketPoolTrimConfig::from_values(Some("bad"), Some("0")).is_err());
+        assert!(PacketPoolTrimConfig::from_values(Some("20"), Some("bad")).is_err());
+        assert!(PacketPoolTrimConfig::from_values(Some("20"), Some("129")).is_err());
+        let config = PacketPoolTrimConfig::from_values(Some("20"), Some("0")).unwrap().unwrap();
+        assert_eq!(config.idle, std::time::Duration::from_millis(20));
+        assert_eq!(config.target, 0);
+    }
+
+    #[test]
+    fn idle_deadline_resets_on_activity_and_remains_due_while_cold() {
+        let idle = std::time::Duration::from_millis(20);
+        let mut policy = PacketPoolIdleTrim::new(PacketPoolTrimConfig { idle, target: 1 });
+        let start = std::time::Instant::now();
+        assert_eq!(policy.target_at_idle(start), None);
+        assert_eq!(policy.target_at_idle(start + idle - std::time::Duration::from_nanos(1)), None);
+        assert_eq!(policy.target_at_idle(start + idle), Some(1));
+        assert_eq!(policy.target_at_idle(start + idle + idle), Some(1));
+        policy.note_activity();
+        let next = start + idle + idle;
+        assert_eq!(policy.target_at_idle(next), None);
+        assert_eq!(policy.target_at_idle(next + idle), Some(1));
+    }
+
+    #[test]
+    fn cold_tick_returns_spare_and_reclaims_late_returns() {
+        let global = zfstack::budget::GlobalBudget::new(1 << 20);
+        let mut budget = zfstack::budget::Budget::new(global.clone());
+        let pool = PacketPool::new(budget.memory_handle(PeerId(0)), 4096, 2);
+        let late = pool.get().unwrap();
+        let mut spare = Some(pool.get().unwrap());
+        let idle = std::time::Duration::from_millis(20);
+        let mut policy = PacketPoolIdleTrim::new(PacketPoolTrimConfig { idle, target: 0 });
+        let start = std::time::Instant::now();
+        assert_eq!(policy.target_at_idle(start), None);
+        let target = policy.target_at_idle(start + idle).unwrap();
+        drop(spare.take());
+        assert_eq!(pool.trim_cached_to(target), 1);
+        assert_eq!(pool.in_use(), 1);
+        assert_eq!(global.reserved(), 4096);
+        drop(late);
+        assert_eq!(pool.cached(), 1);
+        let target = policy.target_at_idle(start + idle + idle).unwrap();
+        assert_eq!(pool.trim_cached_to(target), 1);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.physical_used(), 0);
+    }
+}
+
+#[cfg(test)]
+mod budget_draft_tests {
+    use super::*;
+
+    #[test]
+    fn absent_values_preserve_default_and_explicit_values_are_exact() {
+        assert!(BudgetDraft::from_values([None; 3]).unwrap().bytes.is_none());
+        assert_eq!(BudgetDraft::from_values([Some("67108864"), Some("8388608"), Some("4194304")]).unwrap().bytes, Some([67108864, 8388608, 4194304]));
+    }
+
+    #[test]
+    fn invalid_values_are_rejected_before_any_tun_operation() {
+        let valid = [Some("67108864"), Some("8388608"), Some("4194304")];
+        for index in 0..3 {
+            let mut partial = valid;
+            partial[index] = None;
+            assert!(BudgetDraft::from_values(partial).is_err());
+            for bad in ["bad", "", "-1", "18446744073709551616"] {
+                let mut malformed = valid;
+                malformed[index] = Some(bad);
+                assert!(BudgetDraft::from_values(malformed).is_err());
+            }
+        }
+        for values in [
+            [Some("0"), Some("0"), Some("0")],
+            [Some("4194304"), Some("2097152"), Some("0")],
+            [Some("1048576"), Some("2097152"), Some("1048576")],
+            [Some("4194304"), Some("1048576"), Some("2097152")],
+        ] {
+            assert!(BudgetDraft::from_values(values).is_err());
+        }
+    }
 }

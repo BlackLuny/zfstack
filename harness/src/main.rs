@@ -37,6 +37,9 @@ enum Cmd {
         /// Matrix also runs port-density at 64 and 128.
         #[arg(long)]
         full: bool,
+        /// Exercise opt-in server TX trimming (10/20/60 ms, 2 large/1 small).
+        #[arg(long)]
+        tx_cache_trim: bool,
         #[arg(long, value_enum, default_value = "json")]
         format: Format,
         /// Also write the JSON document here.
@@ -61,8 +64,8 @@ fn main() {
                 println!("{n}");
             }
         }
-        Cmd::L0 { scenario, seed, ports, lights, heavy_bytes, heavy_conns, until_ms, full, format, json } => {
-            let over = Overrides { seed: Some(seed), ports, lights, heavy_bytes, heavy_conns, until_ms, full };
+        Cmd::L0 { scenario, seed, ports, lights, heavy_bytes, heavy_conns, until_ms, full, tx_cache_trim, format, json } => {
+            let over = Overrides { seed: Some(seed), ports, lights, heavy_bytes, heavy_conns, until_ms, full, tx_cache_trim };
             let result = run_named(&scenario, &over);
             let mut value = match result {
                 Ok(v) => v,
@@ -74,6 +77,7 @@ fn main() {
             if let Some(obj) = value.as_object_mut() {
                 obj.insert("tool".into(), serde_json::json!("zfharness"));
                 obj.insert("layer".into(), serde_json::json!("L0"));
+                obj.insert("tx_cache_trim_enabled".into(), serde_json::json!(tx_cache_trim));
                 obj.insert("git_sha".into(), serde_json::json!(git_sha()));
                 obj.insert("l1".into(), serde_json::json!("zfbench --test isolate (root, TUN, no WireGuard)"));
                 obj.insert("l2".into(), serde_json::json!("not run; WireGuard is out of the core matrix"));

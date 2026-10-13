@@ -1,0 +1,15 @@
+diff --git a/bench/src/tunproxy.rs b/bench/src/tunproxy.rs
+index 9f7475f..a5b5a94 100644
+--- a/bench/src/tunproxy.rs
++++ b/bench/src/tunproxy.rs
+@@ -178,8 +178,8 @@ fn start_stack(o: &ProxyOpts, fd: RawFd) -> Stack {
+     // checksums like sing-box does; with one, the header says per packet.
+     let trust = o.client_profile && !vnet;
+     let (tx, rx) = tokio::sync::mpsc::channel::<Batch>(BATCH_QUEUE);
+-    let global = zfstack::budget::GlobalBudget::from_system();
+-    let high = global.high();
++    let global = zfstack::budget::GlobalBudget::new(8 << 20);
++    let high = 4 << 20;
+     let limits = ResourceLimits { port_bytes: high, peer_bytes: high, peer_max_connections: u32::MAX };
+     let egress = move |_: IfaceId, _: PeerId, p: &OutPacket<'_>| write_packet(fd, p, vnet);
+     let (handle, acceptor, ids, task, memory) = tokio_adapter::spawn_with_source_factory(

@@ -57,6 +57,41 @@ impl PacketPool {
         self.inner.in_use.load(Ordering::Relaxed)
     }
 
+    /// Release only free packet buffers; payloads and leases drop outside the lock.
+    /// Concurrent returns may refill the cache. Nonzero targets retain Vec capacity.
+    /// Zero also frees free-list backing, which has no lease in the existing model.
+    pub fn trim_cached_to(&self, target: usize) -> usize {
+        if target == 0 {
+            let retired = {
+                let mut free = self.inner.free.lock().unwrap();
+                std::mem::take(&mut *free)
+            };
+            let removed = retired.len();
+            drop(retired);
+            return removed;
+        }
+        let mut remaining = self.inner.free.lock().unwrap().len().saturating_sub(target);
+        let mut removed = 0;
+        while remaining != 0 {
+            let mut retired: [Option<(Vec<u8>, MemoryLease)>; 32] = std::array::from_fn(|_| None);
+            let count = {
+                let mut free = self.inner.free.lock().unwrap();
+                let count = remaining.min(free.len().saturating_sub(target)).min(retired.len());
+                for slot in &mut retired[..count] {
+                    *slot = free.pop();
+                }
+                count
+            };
+            if count == 0 {
+                break;
+            }
+            remaining -= count;
+            removed += count;
+            drop(retired);
+        }
+        removed
+    }
+
     /// An empty buffer, or `None` when the budget has no room for another or
     /// the allocation failed (the caller should stop reading the device until
     /// memory is released). A buffer's capacity never exceeds its charge.
@@ -175,5 +210,196 @@ mod tests {
         drop(pool);
         assert_eq!(global.reserved(), 0);
         let _ = &mut budget;
+    }
+}
+
+#[cfg(test)]
+mod idle_trim_tests {
+    use super::*;
+    use crate::{
+        budget::{Budget, GlobalBudget},
+        PeerId,
+    };
+    #[test]
+    fn free_only_trim_and_empty_backing() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 5);
+        let mut v: Vec<_> = (0..6).map(|_| p.get().unwrap()).collect();
+        let held = v.pop().unwrap();
+        drop(v);
+        assert_eq!((p.cached(), p.in_use()), (5, 1));
+        assert_eq!(p.trim_cached_to(2), 3);
+        assert_eq!((p.cached(), p.in_use()), (2, 1));
+        assert_eq!(g.reserved(), 3 * 4096);
+        assert_eq!(p.trim_cached_to(usize::MAX), 0);
+        let a = p.get().unwrap();
+        assert_eq!(a.len(), 0);
+        assert_eq!(p.trim_cached_to(0), 1);
+        assert_eq!(p.in_use(), 2);
+        assert_eq!(g.reserved(), 8192);
+        drop(a);
+        drop(held);
+        assert_eq!(p.trim_cached_to(0), 2);
+        assert_eq!(p.trim_cached_to(0), 0);
+        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(g.reserved(), 0);
+        assert_eq!(b.physical_used(), 0);
+    }
+    #[test]
+    fn empty_retained_vec_and_live_owner_are_distinct() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 2);
+        drop(p.get().unwrap());
+        let held = p.get().unwrap();
+        assert!(p.inner.free.lock().unwrap().capacity() > 0);
+        assert_eq!(p.trim_cached_to(0), 0);
+        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(g.reserved(), 4096);
+        drop(held);
+        p.trim_cached_to(0);
+        assert_eq!(g.reserved(), 0);
+    }
+    #[test]
+    fn clones_and_late_slices_survive_trim() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 3);
+        let observer = p.clone();
+        let mut held = p.get().unwrap();
+        for (i, s) in held.spare_capacity_mut()[..8].iter_mut().enumerate() {
+            s.write(i as u8);
+        }
+        // SAFETY: the eight bytes above were initialized.
+        unsafe { held.set_len(8) };
+        let idle: Vec<_> = (0..2).map(|_| p.get().unwrap()).collect();
+        drop(idle);
+        let owner = bytes::Bytes::from_owner(held);
+        let clone = owner.clone();
+        let a = owner.slice(1..7);
+        let c = clone.slice(2..5);
+        drop(owner);
+        drop(clone);
+        drop(p);
+        let t = observer.clone();
+        assert_eq!(std::thread::spawn(move || t.trim_cached_to(0)).join().unwrap(), 2);
+        assert_eq!(observer.in_use(), 1);
+        assert_eq!(g.reserved(), 4096);
+        assert_eq!(&a[..], &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(&c[..], &[2, 3, 4]);
+        drop(a);
+        assert_eq!(observer.in_use(), 1);
+        drop(c);
+        assert_eq!((observer.cached(), observer.in_use()), (1, 0));
+        assert_eq!(observer.trim_cached_to(0), 1);
+        assert_eq!(g.reserved(), 0);
+        let mut held = observer.get().unwrap();
+        held.spare_capacity_mut()[0].write(9);
+        // SAFETY: the first byte was initialized.
+        unsafe { held.set_len(1) };
+        let owner = bytes::Bytes::from_owner(held);
+        let slice = owner.slice(..);
+        drop(owner);
+        drop(observer);
+        assert_eq!(g.reserved(), 4096);
+        assert_eq!(&slice[..], &[9]);
+        drop(slice);
+        assert_eq!(g.reserved(), 0);
+        assert_eq!(b.physical_used(), 0);
+    }
+    struct UnlockWake {
+        pool: PacketPool,
+        calls: AtomicUsize,
+    }
+    impl std::task::Wake for UnlockWake {
+        fn wake(self: Arc<Self>) {
+            self.check();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.check();
+        }
+    }
+    impl UnlockWake {
+        fn check(&self) {
+            assert!(self.pool.inner.free.try_lock().is_ok(), "wake under pool mutex");
+            self.calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    #[test]
+    fn lease_wakeup_is_outside_pool_lock() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let m = b.memory_handle(PeerId(1));
+        let p = PacketPool::new(m.clone(), 4096, 4);
+        let v: Vec<_> = (0..4).map(|_| p.get().unwrap()).collect();
+        drop(v);
+        let wake = Arc::new(UnlockWake { pool: p.clone(), calls: AtomicUsize::new(0) });
+        let w = std::task::Waker::from(wake.clone());
+        let a = g.new_waiter_id();
+        g.register_waiter(a, g.release_epoch(), &w);
+        assert_eq!(p.trim_cached_to(2), 2);
+        assert_eq!(wake.calls.load(Ordering::Relaxed), 1);
+        let c = g.new_waiter_id();
+        g.register_waiter(c, g.release_epoch(), &w);
+        assert_eq!(p.trim_cached_to(0), 2);
+        assert_eq!(wake.calls.load(Ordering::Relaxed), 2);
+        drop(m.try_allocate_kind(4096, AllocationKind::RxChunk).unwrap());
+        g.remove_waiter(a);
+        g.remove_waiter(c);
+        assert_eq!(g.reserved(), 0);
+    }
+    #[test]
+    fn concurrent_trim_get_drop_and_bytes_validation() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 8);
+        let barrier = Arc::new(std::sync::Barrier::new(7));
+        let mut threads = Vec::new();
+        for worker in 0..4usize {
+            let p = p.clone();
+            let barrier = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                for i in 0..256usize {
+                    let v = (worker as u8).wrapping_add(i as u8);
+                    let mut held = p.get().unwrap();
+                    for s in &mut held.spare_capacity_mut()[..64] {
+                        s.write(v);
+                    }
+                    // SAFETY: all 64 bytes were initialized.
+                    unsafe { held.set_len(64) };
+                    let owner = bytes::Bytes::from_owner(held);
+                    let c = owner.clone();
+                    let s = owner.slice(1..63);
+                    drop(owner);
+                    assert!(s.iter().all(|&b| b == v));
+                    drop(c);
+                    assert!(s.iter().all(|&b| b == v));
+                    drop(s);
+                }
+            }));
+        }
+        for n in 0..2 {
+            let p = p.clone();
+            let barrier = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                for i in 0..512 {
+                    p.trim_cached_to((i + n) % 4);
+                }
+            }));
+        }
+        barrier.wait();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(p.in_use(), 0);
+        assert!(p.cached() <= 8);
+        assert_eq!(g.reserved(), p.cached() as u64 * 4096);
+        assert_eq!(b.physical_used(), g.reserved());
+        p.trim_cached_to(0);
+        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(g.reserved(), 0);
     }
 }

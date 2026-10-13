@@ -18,6 +18,7 @@ pub struct Overrides {
     pub heavy_conns: Option<u16>,
     pub until_ms: Option<u64>,
     pub full: bool,
+    pub tx_cache_trim: bool,
 }
 
 pub fn scenario_names() -> &'static [&'static str] {
@@ -210,6 +211,15 @@ fn build(name: &str, o: &Overrides) -> Result<Config, String> {
 }
 
 fn apply(o: &Overrides, cfg: &mut Config) {
+    if o.tx_cache_trim {
+        cfg.tx_cache_trim = Some(zfstack::TxCacheTrimPolicy {
+            check_interval: Duration::from_millis(10),
+            warm_after: Duration::from_millis(20),
+            cold_after: Duration::from_millis(60),
+            warm_large: 2,
+            warm_small: 1,
+        });
+    }
     if let Some(seed) = o.seed {
         cfg.seed = seed;
     }
@@ -735,6 +745,15 @@ mod tests {
         ] {
             let v = run_named(name, &o).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(v["ok"].as_bool().unwrap(), "{name}: {}", v["errors"]);
+        }
+    }
+
+    #[test]
+    fn opt_in_trim_preserves_pressure_isolation_and_progress() {
+        let o = Overrides { tx_cache_trim: true, ..Overrides::default() };
+        for name in ["quota", "zero-window", "sink-full-iface", "lossy", "iface-rebuild", "noisy-same-iface", "noisy-cross-shard", "same-shard-peer-alias"] {
+            let value = run_named(name, &o).unwrap();
+            assert!(value["ok"].as_bool().unwrap(), "{name}: {value}");
         }
     }
 

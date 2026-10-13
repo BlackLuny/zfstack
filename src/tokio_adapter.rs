@@ -586,6 +586,11 @@ pub struct TailConnection {
 pub struct StackSnapshot {
     pub stats: ShardStats,
     pub port_physical_bytes: u64,
+    /// All charged global bytes, including free and borrowed PacketPool buffers.
+    pub global_reserved_bytes: u64,
+    /// TX payload/index cache ledger; PacketPool free buffers are not included.
+    pub global_cached_bytes: u64,
+    pub tx_cache: crate::buf::TxCacheSnapshot,
     pub core_reserve_failures: u64,
     pub failures_by_kind: crate::budget::ReserveFailures,
     /// Physical failures rejected by the global, port and peer share.
@@ -1059,6 +1064,9 @@ where
                 let _ = reply.send(StackSnapshot {
                     stats: self.shard.stats().clone(),
                     port_physical_bytes: budget.physical_used(),
+                    global_reserved_bytes: budget.global().reserved(),
+                    global_cached_bytes: budget.global().cached_bytes(),
+                    tx_cache: self.shard.tx_cache_snapshot(),
                     core_reserve_failures: budget.reserve_failures(),
                     failures_by_kind: budget.stats().failures(),
                     failures_by_level: budget.stats().failures_by_level(),
@@ -1889,6 +1897,76 @@ mod tests {
         }
         assert!(q.is_empty());
         drop(q);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tx_cache_complete_idle_is_reclaimed_by_real_driver_deadline() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let global = GlobalBudget::new(16 << 20);
+        let packets = Arc::new(AtomicUsize::new(0));
+        let sent = packets.clone();
+        // Keep the empty source open. There are no ingress messages, connections,
+        // stream/control notifications, snapshots or sampling tasks before reclaim.
+        let (_input_tx, input_rx) = mpsc::channel::<()>(1);
+        let high = global.high();
+        let (handle, _acceptor, _, task, ()) = spawn_with_source_factory(
+            StackConfig::default(),
+            StreamConfig::default(),
+            vec![IfaceConfig::default()],
+            move |shard| {
+                shard
+                    .set_tx_cache_trim(Some(crate::TxCacheTrimPolicy {
+                        check_interval: std::time::Duration::from_millis(20),
+                        warm_after: std::time::Duration::from_millis(60),
+                        cold_after: std::time::Duration::from_millis(140),
+                        warm_large: 1,
+                        warm_small: 0,
+                    }))
+                    .unwrap();
+                shard.prime_tx_cache_for_test(4);
+                let egress = move |_: IfaceId, _: PeerId, _: &OutPacket<'_>| {
+                    sent.fetch_add(1, Ordering::Relaxed);
+                    SendResult::Accepted
+                };
+                (egress, ())
+            },
+            global.clone(),
+            ResourceLimits { port_bytes: high, peer_bytes: high, peer_max_connections: 8 },
+            input_rx,
+            |_, _, ()| {},
+        );
+        let cached_before = global.cached_bytes();
+        let reserved_before = global.reserved();
+        assert!(cached_before >= 4 * crate::buf::TX_BLOCK_CHARGE);
+        let wall_start = std::time::Instant::now();
+        // This is a real-time test: no pause(), advance() or direct Shard::run().
+        // Reading an atomic ledger does not notify the driver. If next_deadline
+        // omits maintenance, the driver stays pending and this timeout fails.
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while global.cached_bytes() != 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("complete idle must reclaim without input or snapshot-driven service");
+        assert!(wall_start.elapsed() >= std::time::Duration::from_millis(140));
+        assert_eq!(global.reserved(), reserved_before - cached_before);
+        assert_eq!(packets.load(Ordering::Relaxed), 0);
+        // The first and only control request follows the independently observed release.
+        let snap = handle.snapshot().await.unwrap();
+        assert_eq!(snap.tx_cache.large_cached, 0);
+        assert_eq!(snap.tx_cache.small_cached, 0);
+        assert_eq!(snap.tx_cache.descriptor_bytes, 0);
+        assert_eq!(snap.global_cached_bytes, 0);
+        assert_eq!(snap.stats.tx_cache_idle_trims, 2);
+        assert_eq!(snap.stats.tx_cache_idle_trimmed_blocks, 4);
+        assert_eq!(snap.stats.tx_cache_idle_trimmed_bytes, cached_before);
+        assert!(snap.stats.tx_cache_maintenance_checks >= 2);
+        assert_eq!(snap.stats.cache_reclaims, 0);
+        task.shutdown_and_join().await.unwrap();
+        drop(handle);
+        drop(_acceptor);
         assert_eq!(global.reserved(), 0);
     }
 
