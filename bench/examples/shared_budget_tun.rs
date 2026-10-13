@@ -343,12 +343,14 @@ async fn parked(port: &Port, client: &Client, round: u16, phase: &str) -> u64 {
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         assert!(Instant::now() < deadline, "did not observe a real parked writer");
+        assert!(!client.join.as_ref().unwrap().is_finished(), "client exited before release/cancellation");
         let snap = sample(port, round, 1, phase).await;
         let before = client.bytes.load(Relaxed);
         if snap.waiters.tx_block + snap.waiters.adapter_tx > 0 || snap.budget_waiting || snap.record_waiters > 0 {
             // No snapshots or control requests in this window: they wake drivers.
             tokio::time::sleep(Duration::from_millis(300)).await;
             if before == client.bytes.load(Relaxed) && before < BYTES as u64 {
+                assert!(!client.join.as_ref().unwrap().is_finished(), "client exited during held interval");
                 emit(json!({"type":"held","round":round,"phase":phase,"bytes":before,"quiet_ms":300}));
                 return before;
             }
