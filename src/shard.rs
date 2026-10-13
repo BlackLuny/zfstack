@@ -325,14 +325,19 @@ struct WakeStats {
 
 /// Experimental TX-pool idle trim. No policy is installed by default.
 /// The host must honor Shard::next_deadline(), including during complete idle.
-/// Any successful block get/put restarts the shared idle clock for both size
-/// classes. This policy does not shrink historical caches under continuous
-/// low-rate traffic, even when that traffic only uses the small-block class.
+/// Each warm window retires unused free-list prefixes above the warm floors,
+/// preserving recently reused blocks even during low-rate traffic. Large and
+/// small classes have independent cold clocks; complete class idle releases
+/// its remaining cache. No per-block clocks or connection scans are needed.
 #[derive(Clone, Copy, Debug)]
 pub struct TxCacheTrimPolicy {
     pub check_interval: Duration,
+    /// Observation window for unused free-list prefixes. Zero checks every tick.
+    /// Blocks returned during a window can age through the following window.
     pub warm_after: Duration,
+    /// Complete-idle delay for each size class, sampled at check_interval.
     pub cold_after: Duration,
+    /// Warm retention floors, not hard caps on recently reused blocks.
     pub warm_large: usize,
     pub warm_small: usize,
 }
@@ -340,8 +345,8 @@ pub struct TxCacheTrimPolicy {
 #[derive(Clone, Copy)]
 struct TxCacheIdle {
     next_check: Instant,
-    quiet_since: Instant,
-    warm_trimmed: bool,
+    quiet_since: [Instant; 2],
+    warm_since: Instant,
 }
 
 pub struct Shard {
@@ -1410,8 +1415,8 @@ impl Shard {
     }
 
     /// Explicitly opt into experimental idle trim, or disable it with None.
-    /// This adds a conditional marker write per successful block get/put and
-    /// coarse maintenance wakes; it must be measured before enabling by default.
+    /// This adds conditional activity/low-water tracking per successful block
+    /// get/put and coarse maintenance wakes. It remains disabled by default.
     pub fn set_tx_cache_trim(&mut self, policy: Option<TxCacheTrimPolicy>) -> Result<(), &'static str> {
         if let Some(policy) = policy {
             if policy.check_interval.is_zero() || policy.cold_after.is_zero() || policy.warm_after > policy.cold_after {
@@ -1431,7 +1436,8 @@ impl Shard {
             self.pool.take_activity();
         } else if self.tx_cache_idle.is_none() {
             self.pool.take_activity();
-            self.tx_cache_idle = Some(TxCacheIdle { next_check: now + policy.check_interval, quiet_since: now, warm_trimmed: false });
+            self.pool.reset_activity_window();
+            self.tx_cache_idle = Some(TxCacheIdle { next_check: now + policy.check_interval, quiet_since: [now; 2], warm_since: now });
         }
     }
 
@@ -1454,23 +1460,28 @@ impl Shard {
             return;
         }
         self.stats.tx_cache_maintenance_checks += 1;
-        if self.pool.take_activity() {
-            // Upper-bound the last block activity by this coarse sample.
-            idle.quiet_since = now;
-            idle.warm_trimmed = false;
-        } else {
-            let quiet = now.saturating_since(idle.quiet_since);
-            if quiet >= policy.cold_after {
-                let (blocks, bytes) = self.pool.reclaim();
-                self.note_idle_tx_cache_trim(blocks, bytes);
-                self.tx_cache_idle = None;
-                return;
+        for (since, touched) in idle.quiet_since.iter_mut().zip(self.pool.take_activity()) {
+            if touched {
+                // Upper-bound this class's last activity by the coarse sample.
+                *since = now;
             }
-            if quiet >= policy.warm_after && !idle.warm_trimmed {
-                let (blocks, bytes) = self.pool.trim_cached_to(policy.warm_large, policy.warm_small);
-                self.note_idle_tx_cache_trim(blocks, bytes);
-                idle.warm_trimmed = true;
+        }
+        let warm_due = now.saturating_since(idle.warm_since) >= policy.warm_after;
+        let mut targets = if warm_due { self.pool.warm_trim_targets([policy.warm_large, policy.warm_small]) } else { self.pool.cached_by_class() };
+        let mut trim_due = warm_due;
+        for ((target, since), retained) in targets.iter_mut().zip(idle.quiet_since).zip(self.pool.retained_by_class()) {
+            if retained && now.saturating_since(since) >= policy.cold_after {
+                *target = 0;
+                trim_due = true;
             }
+        }
+        if trim_due {
+            let (blocks, bytes) = self.pool.trim_cached_to(targets[0], targets[1]);
+            self.note_idle_tx_cache_trim(blocks, bytes);
+        }
+        if warm_due {
+            self.pool.reset_activity_window();
+            idle.warm_since = now;
         }
         // No catch-up loop after a delayed host wake.
         idle.next_check = now + policy.check_interval;
@@ -2238,7 +2249,7 @@ mod tx_cache_trim_tests {
     }
 
     #[test]
-    fn block_reuse_resets_only_at_coarse_sample() {
+    fn block_reuse_resets_cold_clock_without_postponing_warm_decay() {
         let (mut sh, global) = shard();
         sh.set_tx_cache_trim(Some(policy())).unwrap();
         cache_large(&mut sh, 4);
@@ -2251,15 +2262,85 @@ mod tx_cache_trim_tests {
         run(&mut sh, 19);
         assert_eq!(sh.next_deadline(), Some(Instant::from_millis(20)));
         run(&mut sh, 20);
-        assert_eq!(sh.pool.cached(), 4);
+        assert_eq!(sh.pool.cached(), 2);
         run(&mut sh, 30);
         run(&mut sh, 39);
-        assert_eq!(sh.pool.cached(), 4);
+        assert_eq!(sh.pool.cached(), 2);
         run(&mut sh, 40);
         assert_eq!(sh.pool.cached(), 2);
         run(&mut sh, 80);
         assert_eq!(global.reserved(), 0);
         assert_eq!(sh.next_deadline(), None);
+    }
+
+    #[test]
+    fn small_traffic_does_not_keep_historical_large_blocks() {
+        let (mut sh, global) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        run(&mut sh, 0);
+        for ms in (10..=80).step_by(10) {
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(2), &[9; 64]));
+            tx.consume(&mut sh.pool, 64);
+            drop(tx);
+            run(&mut sh, ms);
+            if ms == 20 {
+                assert_eq!(sh.tx_cache_snapshot().large_cached, 2);
+            }
+        }
+        let cache = sh.tx_cache_snapshot();
+        assert_eq!(cache.large_cached, 0);
+        assert_eq!(cache.large_capacity, 0);
+        assert_eq!(cache.small_cached, 1);
+        run(&mut sh, 140);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(sh.next_deadline(), None);
+    }
+
+    #[test]
+    fn low_rate_large_block_reuse_releases_only_unused_history() {
+        for warm_large in [0, 2] {
+            let (mut sh, global) = shard();
+            let mut p = policy();
+            p.warm_large = warm_large;
+            sh.set_tx_cache_trim(Some(p)).unwrap();
+            cache_large(&mut sh, 4);
+            run(&mut sh, 0);
+            for ms in (10..=200).step_by(10) {
+                let mut tx = TxBuf::default();
+                assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(2), &vec![9; TX_BLOCK]));
+                assert_eq!(tx.slices(0, TX_BLOCK)[0], &vec![9; TX_BLOCK]);
+                tx.consume(&mut sh.pool, TX_BLOCK);
+                drop(tx);
+                run(&mut sh, ms);
+                if ms >= 20 {
+                    assert_eq!(sh.tx_cache_snapshot().large_cached, warm_large.max(1));
+                }
+            }
+            // Repeated maintenance must not discard and reallocate the hot tail.
+            assert_eq!(sh.stats.tx_cache_idle_trimmed_blocks, (4 - warm_large.max(1)) as u64);
+            run(&mut sh, 260);
+            assert_eq!(global.reserved(), 0);
+            assert_eq!(sh.next_deadline(), None);
+        }
+    }
+
+    #[test]
+    fn sustained_use_preserves_cache_above_warm_target() {
+        let (mut sh, _) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        run(&mut sh, 0);
+        for ms in (10..=100).step_by(10) {
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(2), &vec![9; 4 * TX_BLOCK]));
+            tx.release_all(&mut sh.pool);
+            drop(tx);
+            run(&mut sh, ms);
+            assert_eq!(sh.tx_cache_snapshot().large_cached, 4);
+        }
+        assert_eq!(sh.stats.tx_cache_idle_trimmed_blocks, 0);
     }
 
     #[test]
@@ -2336,7 +2417,7 @@ mod tx_cache_trim_tests {
         invalid.warm_after = invalid.cold_after + Duration::from_millis(1);
         assert!(sh.set_tx_cache_trim(Some(invalid)).is_err());
         assert_eq!(sh.next_deadline(), None);
-        assert!(!sh.pool.take_activity());
+        assert_eq!(sh.pool.take_activity(), [false; 2]);
     }
 }
 
