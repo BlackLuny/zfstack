@@ -1127,6 +1127,20 @@ impl Budget {
         }
     }
 
+    /// Borrow allocation owners for a synchronous batch. Only returned leases
+    /// retain references; constructing and dropping the scope does not touch
+    /// the owners' reference counts.
+    pub(crate) fn memory_scope(&mut self, peer: PeerId) -> MemoryScope<'_> {
+        MemoryScope {
+            global: &self.global,
+            port: &self.physical_port,
+            peer: self.physical_peers.entry(peer).or_default(),
+            port_limit: self.port_limit,
+            peer_limit: self.peer_limit,
+            stats: &self.stats,
+        }
+    }
+
     pub(crate) fn port_memory_handle(&self) -> PortMemoryHandle {
         PortMemoryHandle {
             global: Arc::clone(&self.global),
@@ -1422,6 +1436,38 @@ impl MemoryHandle {
     }
 }
 
+/// Borrowed owners for allocations that finish before the budget is reused.
+/// Leases remain independently owned and may outlive both scope and budget.
+/// Keep the retained-handle and ordinary core allocation paths unchanged.
+pub(crate) struct MemoryScope<'a> {
+    global: &'a Arc<GlobalBudget>,
+    port: &'a Arc<LevelUse>,
+    peer: &'a Arc<LevelUse>,
+    port_limit: u64,
+    peer_limit: u64,
+    stats: &'a Arc<PortStats>,
+}
+
+impl MemoryScope<'_> {
+    #[inline]
+    pub(crate) fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
+        if let Some(level) = reserve_physical(self.global, self.port, self.peer, self.port_limit, self.peer_limit, bytes, kind) {
+            self.stats.note(kind, Some(level));
+            self.global.request_cache_reclaim();
+            return Err(level);
+        }
+        Ok(MemoryLease {
+            global: Arc::clone(self.global),
+            port: Arc::clone(self.port),
+            peer: Some(Arc::clone(self.peer)),
+            bytes,
+            peer_limit: self.peer_limit,
+            cached: false,
+            drain: kind.drains(),
+        })
+    }
+}
+
 /// One allocation's global/port reservation. Cached blocks can temporarily
 /// release their peer share without releasing the still-resident backing.
 pub struct MemoryLease {
@@ -1687,6 +1733,23 @@ mod tests {
         b.global().register_waiter(id, observed, &Waker::from(wake.clone()));
         b.sender_del(PeerId(2));
         assert_eq!(wake.0.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn scoped_admission_leases_outlive_budget_and_release_independently() {
+        let global = GlobalBudget::new(8 << 20);
+        let (active, rx) = {
+            let mut budget = Budget::new(global.clone());
+            let scope = budget.memory_scope(PeerId(1));
+            let active = scope.try_allocate_level(1024, AllocationKind::ActiveState).unwrap();
+            let rx = scope.try_allocate_level(8192, AllocationKind::RxProgress).unwrap();
+            (active, rx)
+        };
+        assert_eq!(global.reserved(), 9216);
+        drop(active);
+        assert_eq!(global.reserved(), 8192);
+        std::thread::spawn(move || drop(rx)).join().unwrap();
+        assert_eq!(global.reserved(), 0);
     }
 
     #[test]
