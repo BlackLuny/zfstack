@@ -148,6 +148,10 @@ pub struct Args {
     /// `--test isolate`: one shard for every port, or one shard per port.
     #[arg(long, value_enum, default_value = "shared-shard")]
     topology: isolate::Topology,
+    /// `--test isolate`: global budget in MiB. 0 keeps the ample ceilings.
+    /// A positive value sets port and peer ceilings to half, as in the L2 8 MiB run.
+    #[arg(long, default_value_t = 0)]
+    budget_mb: u64,
     /// Also write the JSON result to this file.
     #[arg(long)]
     json: Option<std::path::PathBuf>,
@@ -465,7 +469,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
             eprintln!("--test isolate only supports zfstack-*: kernel and smoltcp adapters are single-homed, so they are not the same topology");
             std::process::exit(2);
         }
-        match isolate::resolve(a.ports, a.lights, a.heavy_conns, a.placement, a.topology) {
+        match isolate::resolve(a.ports, a.lights, a.heavy_conns, a.placement, a.topology, a.budget_mb) {
             Ok(iso) => Some(iso),
             Err(e) => {
                 eprintln!("zfbench: {e}");
@@ -674,6 +678,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
             "heavy_conns": a.heavy_conns,
             "placement": a.placement.as_str(),
             "topology": a.topology.as_str(),
+            "budget_mb": a.budget_mb,
             "kernel_cc": a.kernel_cc.clone().unwrap_or_else(|| sysctl("net.ipv4.tcp_congestion_control")),
             "client_cc": a.client_cc.clone().unwrap_or_else(|| sysctl("net.ipv4.tcp_congestion_control")),
             "mtu": tun::MTU,

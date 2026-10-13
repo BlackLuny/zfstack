@@ -510,6 +510,7 @@ impl Shard {
     }
 
     pub fn add_iface(&mut self, cfg: IfaceConfig) -> IfaceId {
+        self.ensure_rx_admit_reserve(cfg.mtu);
         let id = self.ifaces.len();
         self.ifaces.push(Some(Iface { cfg, tx_csum_offload: false, tso_max: 0, full: false, drr: Drr::default(), tw_pending: 0 }));
         IfaceId(id as u16)
@@ -519,6 +520,7 @@ impl Shard {
     pub fn set_iface_mtu(&mut self, id: IfaceId, mtu: u16) {
         let Some(Some(ifc)) = self.ifaces.get_mut(id.0 as usize) else { return };
         ifc.cfg.mtu = mtu;
+        self.ensure_rx_admit_reserve(mtu);
         self.stats.mtu_changes += 1;
         for s in &mut self.slots {
             if let Some(c) = s.conn.as_mut() {
@@ -1074,7 +1076,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(now, (iface, remote, local), peer) else {
+        let Some((active_memory, stream_memory, rx_progress)) = self.admit_memory(now, (iface, remote, local), peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
             return;
@@ -1085,6 +1087,7 @@ impl Shard {
         let tso = self.ts_offset(remote, local);
         let mut conn = Conn::new_passive(id, iface, peer, local, remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
+        conn.set_rx_progress(rx_progress);
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.slots[idx as usize].permit = Some(permit);
         self.slots[idx as usize].active_memory = Some(active_memory);
@@ -1122,7 +1125,7 @@ impl Shard {
             self.stats.syn_dropped += 1;
             return;
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(now, (old.iface, old.remote, old.local), peer) else {
+        let Some((active_memory, stream_memory, rx_progress)) = self.admit_memory(now, (old.iface, old.remote, old.local), peer) else {
             self.slots[idx as usize].permit.as_mut().unwrap().to_time_wait();
             self.budget.peer_conn_del(peer);
             self.stats.syn_dropped += 1;
@@ -1142,6 +1145,7 @@ impl Shard {
         let id = ConnId::new(idx, slot.gen);
         let mut conn = Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
+        conn.set_rx_progress(rx_progress);
         slot.conn = Some(Box::new(conn));
         slot.active_memory = Some(active_memory);
         slot.sched.time_wait = false;
@@ -1283,7 +1287,7 @@ impl Shard {
             self.budget.peer_conn_del(peer);
             return Err(false);
         }
-        let Some((active_memory, stream_memory)) = self.admit_memory(now, (iface, remote, local), peer) else {
+        let Some((active_memory, stream_memory, rx_progress)) = self.admit_memory(now, (iface, remote, local), peer) else {
             self.budget.peer_conn_del(peer);
             self.stats.syn_cookies_rejected_resources += 1;
             return Err(true);
@@ -1296,6 +1300,7 @@ impl Shard {
         let syn = SynParams { mss: Some(mss), wscale, sack, ts };
         let mut conn = Conn::new_from_cookie(id, iface, peer, local, remote, Seq(cookie), tso, mtu, peer_isn, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
+        conn.set_rx_progress(rx_progress);
         conn.accepted = true;
         self.events.push_back(Event::Accepted(id));
         self.slots[idx as usize].conn = Some(Box::new(conn));
@@ -1492,6 +1497,13 @@ impl Shard {
     /// it cannot attach after the handshake (#664).
     pub fn reserve_stream_state(&mut self, bytes: u64) {
         self.stream_state_bytes = bytes;
+        for iface in self.ifaces.iter().flatten() {
+            self.ensure_rx_admit_reserve(iface.cfg.mtu);
+        }
+    }
+
+    fn ensure_rx_admit_reserve(&self, mtu: u16) {
+        self.budget.global().ensure_rx_admit_reserve(ACTIVE_STATE_BYTES + self.stream_state_bytes, crate::buf::rx_progress_charge(mtu));
     }
 
     /// The stream state reserved for `id`, handed over once on accept.
@@ -1510,9 +1522,15 @@ impl Shard {
     /// A refusal leaves an admission debt on the level that refused, so
     /// buffering there frees room for the peer's SYN retransmit instead of
     /// taking every released block back (docs/design/0006 §2).
-    fn admit_memory(&mut self, now: Instant, key: (IfaceId, SocketAddr, SocketAddr), peer: PeerId) -> Option<(MemoryLease, Option<MemoryLease>)> {
-        let admitted = match self.try_admit_memory(peer) {
-            Err(_) if self.reclaim_own_cache() => self.try_admit_memory(peer),
+    fn admit_memory(
+        &mut self,
+        now: Instant,
+        key: (IfaceId, SocketAddr, SocketAddr),
+        peer: PeerId,
+    ) -> Option<(MemoryLease, Option<MemoryLease>, Arc<crate::buf::RxProgress>)> {
+        let charge = crate::buf::rx_progress_charge(self.iface_mtu(key.0));
+        let admitted = match self.try_admit_memory(peer, charge) {
+            Err(_) if self.reclaim_own_cache() => self.try_admit_memory(peer, charge),
             r => r,
         };
         let pending = self.pending_admissions.iter().position(|p| p.key == key);
@@ -1524,7 +1542,7 @@ impl Shard {
                 Some(memory)
             }
             Err(level) => {
-                let bytes = ACTIVE_STATE_BYTES + self.stream_state_bytes;
+                let bytes = ACTIVE_STATE_BYTES + self.stream_state_bytes + charge;
                 let k = match pending {
                     Some(k) => k,
                     None if self.pending_admissions.len() < crate::budget::ADMIT_BURST as usize => {
@@ -1571,14 +1589,16 @@ impl Shard {
         self.slots.iter_mut().filter_map(|slot| slot.conn.as_mut()).map(|conn| conn.reclaim_idle_tx_index()).sum()
     }
 
-    fn try_admit_memory(&mut self, peer: PeerId) -> Result<(MemoryLease, Option<MemoryLease>), Level> {
-        let memory = self.budget.memory_handle(peer);
+    fn try_admit_memory(&mut self, peer: PeerId, charge: u64) -> Result<(MemoryLease, Option<MemoryLease>, Arc<crate::buf::RxProgress>), Level> {
+        let memory = self.budget.memory_scope(peer);
         let active = memory.try_allocate_level(ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
-        if self.stream_state_bytes == 0 {
-            return Ok((active, None));
-        }
-        let stream = memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?;
-        Ok((active, Some(stream)))
+        let stream = if self.stream_state_bytes == 0 {
+            None
+        } else {
+            Some(memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?)
+        };
+        let rx = memory.try_allocate_level(charge, crate::budget::AllocationKind::RxProgress)?;
+        Ok((active, stream, crate::buf::RxProgress::new(rx, charge)))
     }
 
     /// Drop admission debts whose peer did not retry within the hold, and
@@ -2086,6 +2106,13 @@ impl Shard {
         s.conn.as_ref().map(|c| c.info())
     }
 
+    #[cfg(test)]
+    pub(crate) fn disable_rx_progress(&mut self, id: ConnId) {
+        let slot = &mut self.slots[id.idx()];
+        assert_eq!(slot.gen, id.gen());
+        slot.conn.as_mut().unwrap().disable_rx_progress();
+    }
+
     /// Iterate over all live connections (diagnostics).
     pub fn conn_ids(&self) -> Vec<ConnId> {
         self.slots.iter().enumerate().filter_map(|(i, s)| s.conn.as_ref().map(|_| ConnId::new(i as u32, s.gen))).collect()
@@ -2101,13 +2128,15 @@ impl Shard {
     pub fn connect(&mut self, now: Instant, iface: IfaceId, peer: PeerId, local: SocketAddr, remote: SocketAddr) -> ConnId {
         let permit = self.budget.global().try_acquire_connection().expect("test peer connection limit");
         assert!(self.budget.peer_conn_add(peer), "test peer connection limit");
-        let active_memory = self.budget.try_allocate(peer, ACTIVE_STATE_BYTES).expect("test peer memory limit");
         let mtu = self.iface_mtu(iface);
+        let (active_memory, stream_memory, rx_progress) = self.try_admit_memory(peer, crate::buf::rx_progress_charge(mtu)).expect("test peer memory limit");
         let (idx, gen) = self.alloc_slot();
         let id = ConnId::new(idx, gen);
         let iss = self.isn(now, remote, local);
         let tso = self.ts_offset(remote, local);
-        let conn = Conn::new_active(id, iface, peer, local, remote, iss, tso, mtu, &self.cfg, now);
+        let mut conn = Conn::new_active(id, iface, peer, local, remote, iss, tso, mtu, &self.cfg, now);
+        conn.stream_memory = stream_memory;
+        conn.set_rx_progress(rx_progress);
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.slots[idx as usize].permit = Some(permit);
         self.slots[idx as usize].active_memory = Some(active_memory);
@@ -2496,6 +2525,43 @@ mod admission_tests {
         r.syn(3000, 1, 40000);
         assert_eq!(r.sh.conn_count(), 1);
         assert_eq!(r.debt(), [0; 3]);
+    }
+
+    #[test]
+    fn rx_progress_admission_refusal_rolls_back_state_and_tracks_the_full_promise() {
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let limit = 1 << 20;
+            let high = if level == Level::Global { limit } else { 2 * limit };
+            let port = if level == Level::Peer { high } else { limit };
+            let global = GlobalBudget::new(high);
+            let mut sh = Shard::with_budget(StackConfig::default(), global.clone());
+            sh.set_budget_limits(port, limit, 16);
+            sh.reserve_stream_state(1024);
+            let iface = sh.add_iface(IfaceConfig::default());
+            let charge = crate::buf::rx_progress_charge(1500);
+            let admission = ACTIVE_STATE_BYTES + 1024 + charge;
+            let peer = PeerId(1);
+            let ceiling = limit - global.headroom(limit, crate::budget::Tier::Admit);
+            let blocker = sh.memory_handle(peer).try_allocate(ceiling - admission + 1).unwrap();
+            let before = global.reserved();
+            let key = (iface, "10.0.0.2:40000".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            assert!(sh.admit_memory(Instant::ZERO, key, peer).is_none());
+            assert_eq!(global.reserved(), before, "prepared core/stream leases must roll back when RX credit fails");
+            assert_eq!(sh.budget.stats().failures().rx_progress, 1);
+            let index = match level {
+                Level::Global => 0,
+                Level::Port => 1,
+                Level::Peer => 2,
+            };
+            assert_eq!(sh.budget.admission_debt()[index], admission);
+            drop(blocker);
+            let admitted = sh.admit_memory(Instant::from_millis(1000), key, peer).unwrap();
+            assert_eq!(global.reserved(), admission);
+            assert_eq!(sh.budget.admission_debt(), [0; 3]);
+            drop(admitted);
+            drop(sh);
+            assert_eq!(global.reserved(), 0);
+        }
     }
 
     #[test]
@@ -3080,10 +3146,12 @@ mod admission_tests {
         }
         let indexes = r.global.cached_bytes() - r.sh.pool.descriptor_bytes() - r.sh.pool.cached() as u64 * 2048;
         assert!(indexes > TX_FIRST_WRITE_CHARGE - TX_BLOCK_CHARGE, "retained indexes must consume the first-write descriptor allowance");
-        r.syn(0, 2, 40003);
-        let other = *r.sh.conn_ids().last().unwrap();
-        assert_eq!(r.sh.write(other, &vec![2; TX_BLOCK]), WriteResult::Written(TX_BLOCK));
-        r.sh.with_conn(other, |conn, ctx| conn.destroy(ctx)).unwrap();
+        // Seed the other peer's cached block directly: no fourth live
+        // connection/RX promise belongs in this exact TX quota boundary.
+        let mut seed = crate::buf::TxBuf::default();
+        assert!(seed.push(&mut r.sh.pool, &mut r.sh.budget, PeerId(2), &vec![2; TX_BLOCK]));
+        seed.consume(&mut r.sh.pool, TX_BLOCK);
+        drop(seed);
         let cached = r.global.cached_bytes();
         let held = r.sh.budget.physical_used();
         let epoch = r.global.cache_reclaim_epoch();

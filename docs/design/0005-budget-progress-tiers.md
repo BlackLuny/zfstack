@@ -60,6 +60,8 @@ zfc 目前的处理是把端口份额抬到 `2·H_4` 并告警。这**改变了�
 
 ### core RX 描述符的独立计费与失败合同
 
+以下为普通 Bulk 接收合同。[0010](0010-rx-progress-credit.md) 另在连接准入时预付私有 RX 信用：低未读量的顺序小包可复用已计费的 payload/descriptor 承诺，仍不借用 P1 排空额度。该设计还在小份额上按单条完整准入需求钳制 burst headroom，保留本节推进分级。
+
 这里的 core RX 描述符与上文 P1 的 adapter RX 描述符是两个队列。core `RxQueue` 的 `VecDeque<Bytes>` backing 通过独立 `MemoryLease` 按 `AllocationKind::RxChunk` / Bulk（P4）计费；payload owner 的租约仍随最后一个切片释放。部分读取减少逻辑字节数，并不释放仍在使用的描述符容量，因此不能按剩余元素数替代 backing 计费，也不能把它算作 ACK 可释放的 TX `drain`。
 
 - 扩容先为 replacement 预留 `2 × target_slots × size_of::<Bytes>()`，再 fallible 分配并检查实际容量。当前实现 `target_slots` 至少为 4，并向上取整为 2 的幂。实际 backing 不大于租约，租约不大于实际 backing 的两倍；这部分是有界的保守预留。迁移时旧、新 backing 及各自租约短暂同时存活，旧 backing 释放后才还旧租约，不能只按最终容量忽略扩容峰值。

@@ -1,0 +1,39 @@
+{
+  "case": "delayed-candidate-a",
+  "ok": true,
+  "heavy_mbps": 303.751664,
+  "loaded_n": 1183,
+  "loaded_max_ms": 202.07954570651054,
+  "loaded_p99_ms": 91.0353846848011,
+  "slow_over_100ms": 1,
+  "requests_retransmitted": 0,
+  "pcap_inner_packets": 2963,
+  "pcap_target_payloads": 3223,
+  "target_events_peer1": 1485,
+  "slow_request_inbound_fraction_min": 0.24900707093322252,
+  "slow_request_inbound_fraction_median": 0.24900707093322252,
+  "capture_stats": {
+    "light-capture.log": "tcpdump: listening on wg0, link-type RAW (Raw IP), snapshot length 512 bytes\n2963 packets captured\n2981 packets received by filter\n0 packets dropped by kernel\n",
+    "target-capture.log": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 384 bytes\n3223 packets captured\n3235 packets received by filter\n0 packets dropped by kernel\n"
+  },
+  "slow_requests": [
+    {
+      "seq": 156,
+      "phase": "loaded",
+      "start_sec": 8.063365176320076,
+      "latency_ms": 202.07954570651054,
+      "inner_request_at_sec": [
+        8.113455
+      ],
+      "inner_request_intervals_ms": [],
+      "target_req_ms": 50.319235771894455,
+      "target_reply_ms": 64.8532323539257,
+      "inner_reply_ms": 202.03427597880363,
+      "server_receive_ms": 64.8394450545311,
+      "server_work_ms": 0.03965198993682861,
+      "request_first_ack_ms": 91.22328087687492,
+      "request_wire_tcp_seq": 2438620222,
+      "rejected_attempts": []
+    }
+  ]
+}

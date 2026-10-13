@@ -359,7 +359,9 @@ sudo ./bench/run-isolate.sh --ports 16 --placement cross-shard --topology per-po
 Only `zfstack-*` stacks. The script deletes `zfbA` on exit. P99.9 is omitted
 unless a light user collected at least 1000 samples. Heavy goodput uses the
 measured wall interval after the light users have connected
-(`window_wall_sec`), not `secs - warmup`.
+(`window_wall_sec`), not `secs - warmup`. `--budget-mb 8` sets an 8 MiB
+global ceiling and 4 MiB port/peer ceilings, the shape of the open L2
+same-port stall.
 
 ## Caveats (read before trusting numbers)
 
