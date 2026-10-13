@@ -176,6 +176,11 @@ pub struct ShardStats {
     /// Rounds that dropped idle TX blocks on request, and the bytes released.
     pub cache_reclaims: u64,
     pub cache_reclaimed_bytes: u64,
+    /// Experimental coarse TX-pool maintenance, separate from pressure reclaim.
+    pub tx_cache_maintenance_checks: u64,
+    pub tx_cache_idle_trims: u64,
+    pub tx_cache_idle_trimmed_blocks: u64,
+    pub tx_cache_idle_trimmed_bytes: u64,
     /// New connections refused for memory that left an admission debt, and
     /// debts dropped because the peer did not retry in time.
     pub admission_debts: u64,
@@ -318,6 +323,24 @@ struct WakeStats {
     credit: Duration,
 }
 
+/// Experimental TX-pool idle trim. No policy is installed by default.
+/// The host must honor Shard::next_deadline(), including during complete idle.
+#[derive(Clone, Copy, Debug)]
+pub struct TxCacheTrimPolicy {
+    pub check_interval: Duration,
+    pub warm_after: Duration,
+    pub cold_after: Duration,
+    pub warm_large: usize,
+    pub warm_small: usize,
+}
+
+#[derive(Clone, Copy)]
+struct TxCacheIdle {
+    next_check: Instant,
+    quiet_since: Instant,
+    warm_trimmed: bool,
+}
+
 pub struct Shard {
     cfg: StackConfig,
     ifaces: Vec<Option<Iface>>,
@@ -344,6 +367,8 @@ pub struct Shard {
     share_wait_epoch: Option<u64>,
     /// Last cache reclaim request this shard has served.
     cache_reclaim_seen: u64,
+    tx_cache_trim: Option<TxCacheTrimPolicy>,
+    tx_cache_idle: Option<TxCacheIdle>,
     /// Bytes a host adapter needs per accepted stream, reserved at SYN time.
     stream_state_bytes: u64,
     /// At most `ADMIT_BURST` refused connections, oldest first.
@@ -400,6 +425,8 @@ impl Shard {
             share_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
             share_wait_epoch: None,
             cache_reclaim_seen,
+            tx_cache_trim: None,
+            tx_cache_idle: None,
             stream_state_bytes: 0,
             pending_admissions: VecDeque::new(),
             admission: Box::new(AcceptAll),
@@ -537,7 +564,8 @@ impl Shard {
         let a = self.timers.peek().map(|x| x.0);
         let b = self.pacing.peek().map(|x| x.0);
         let c = self.pending_admissions.iter().map(|p| if p.debt.is_some() { p.until.min(p.progress_at + ADMISSION_DEBT_STALL) } else { p.until }).min();
-        [a, b, c].into_iter().flatten().min()
+        let maintenance = self.tx_cache_trim.and_then(|_| self.pool.has_retained().then(|| self.tx_cache_idle.map_or(Instant::ZERO, |idle| idle.next_check)));
+        [a, b, c, maintenance].into_iter().flatten().min()
     }
 
     // ------------------------------------------------------------------
@@ -1358,6 +1386,89 @@ impl Shard {
         self.wake.last = Some(now);
     }
 
+    pub fn tx_cache_snapshot(&self) -> crate::buf::TxCacheSnapshot {
+        self.pool.snapshot()
+    }
+
+    // Seed the real driver test without creating connections, TCP timers or input.
+    #[cfg(test)]
+    pub(crate) fn prime_tx_cache_for_test(&mut self, blocks: usize) {
+        assert!(blocks > 0 && blocks <= self.pool.max_cached);
+        let mut tx = crate::buf::TxBuf::default();
+        assert!(tx.push(&mut self.pool, &mut self.budget, PeerId(1), &vec![7; blocks * crate::buf::TX_BLOCK]));
+        tx.release_all(&mut self.pool);
+        drop(tx);
+        assert_eq!(self.pool.cached(), blocks);
+    }
+
+    /// Explicitly opt into experimental idle trim, or disable it with None.
+    /// This adds a conditional marker write per successful block get/put and
+    /// coarse maintenance wakes; it must be measured before enabling by default.
+    pub fn set_tx_cache_trim(&mut self, policy: Option<TxCacheTrimPolicy>) -> Result<(), &'static str> {
+        if let Some(policy) = policy {
+            if policy.check_interval.is_zero() || policy.cold_after.is_zero() || policy.warm_after > policy.cold_after {
+                return Err("TX cache trim needs a positive interval/cold delay and warm <= cold");
+            }
+        }
+        self.tx_cache_trim = policy;
+        self.tx_cache_idle = None;
+        self.pool.set_activity_tracking(policy.is_some());
+        Ok(())
+    }
+
+    fn arm_tx_cache_maintenance(&mut self, now: Instant) {
+        let Some(policy) = self.tx_cache_trim else { return };
+        if !self.pool.has_retained() {
+            self.tx_cache_idle = None;
+            self.pool.take_activity();
+        } else if self.tx_cache_idle.is_none() {
+            self.pool.take_activity();
+            self.tx_cache_idle = Some(TxCacheIdle { next_check: now + policy.check_interval, quiet_since: now, warm_trimmed: false });
+        }
+    }
+
+    fn note_idle_tx_cache_trim(&mut self, blocks: usize, bytes: u64) {
+        if bytes != 0 {
+            self.stats.tx_cache_idle_trims += 1;
+            self.stats.tx_cache_idle_trimmed_blocks += blocks as u64;
+            self.stats.tx_cache_idle_trimmed_bytes += bytes;
+        }
+    }
+
+    fn maintain_tx_cache(&mut self, now: Instant) {
+        let Some(policy) = self.tx_cache_trim else { return };
+        if !self.pool.has_retained() || self.tx_cache_idle.is_none() {
+            self.arm_tx_cache_maintenance(now);
+            return;
+        }
+        let mut idle = self.tx_cache_idle.unwrap();
+        if now < idle.next_check {
+            return;
+        }
+        self.stats.tx_cache_maintenance_checks += 1;
+        if self.pool.take_activity() {
+            // Upper-bound the last block activity by this coarse sample.
+            idle.quiet_since = now;
+            idle.warm_trimmed = false;
+        } else {
+            let quiet = now.saturating_since(idle.quiet_since);
+            if quiet >= policy.cold_after {
+                let (blocks, bytes) = self.pool.reclaim();
+                self.note_idle_tx_cache_trim(blocks, bytes);
+                self.tx_cache_idle = None;
+                return;
+            }
+            if quiet >= policy.warm_after && !idle.warm_trimmed {
+                let (blocks, bytes) = self.pool.trim_cached_to(policy.warm_large, policy.warm_small);
+                self.note_idle_tx_cache_trim(blocks, bytes);
+                idle.warm_trimmed = true;
+            }
+        }
+        // No catch-up loop after a delayed host wake.
+        idle.next_check = now + policy.check_interval;
+        self.tx_cache_idle = self.pool.has_retained().then_some(idle);
+    }
+
     /// Drop idle TX blocks after any allocation failed while they were cached
     /// (docs/design/0005 §4). The release wakes the parked allocator.
     fn reclaim_cache_if_requested(&mut self) {
@@ -1367,6 +1478,7 @@ impl Shard {
         }
         self.cache_reclaim_seen = epoch;
         let (_, pool_bytes) = self.pool.reclaim();
+        self.tx_cache_idle = None;
         let bytes = pool_bytes + self.reclaim_idle_tx_indexes();
         if bytes != 0 {
             self.stats.cache_reclaims += 1;
@@ -1445,6 +1557,7 @@ impl Shard {
 
     fn reclaim_own_cache(&mut self) -> bool {
         let (_, pool_bytes) = self.pool.reclaim();
+        self.tx_cache_idle = None;
         let bytes = pool_bytes + self.reclaim_idle_tx_indexes();
         if bytes == 0 {
             return false;
@@ -1498,6 +1611,7 @@ impl Shard {
         self.note_wake(now);
         let mut out = RunOutcome::default();
         self.reclaim_cache_if_requested();
+        self.maintain_tx_cache(now);
         self.expire_admission_debts(now);
         self.retry_share_writers();
 
@@ -1683,6 +1797,7 @@ impl Shard {
         if !served_any && out.packets == 0 {
             self.stats.idle_rounds += 1;
         }
+        self.arm_tx_cache_maintenance(now);
         out
     }
 
@@ -2020,6 +2135,176 @@ impl Shard {
         }
         assert!(self.timers.len() <= self.slots.len());
         assert!(self.pacing.len() <= self.slots.len());
+    }
+}
+
+#[cfg(test)]
+mod tx_cache_trim_tests {
+    use super::*;
+    use crate::buf::{TxBuf, TX_BLOCK, TX_BLOCK_CHARGE};
+
+    fn policy() -> TxCacheTrimPolicy {
+        TxCacheTrimPolicy {
+            check_interval: Duration::from_millis(10),
+            warm_after: Duration::from_millis(20),
+            cold_after: Duration::from_millis(60),
+            warm_large: 2,
+            warm_small: 1,
+        }
+    }
+
+    fn shard() -> (Shard, Arc<GlobalBudget>) {
+        let global = GlobalBudget::new(8 << 20);
+        let mut sh = Shard::with_budget(StackConfig::default(), Arc::clone(&global));
+        sh.set_budget_limits(global.high(), global.high(), 8);
+        (sh, global)
+    }
+
+    fn cache_large(sh: &mut Shard, blocks: usize) {
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(1), &vec![7; blocks * TX_BLOCK]));
+        tx.release_all(&mut sh.pool);
+        drop(tx);
+        assert_eq!(sh.pool.cached(), blocks);
+    }
+
+    fn run(sh: &mut Shard, ms: u64) {
+        let out = sh.run(Instant::from_millis(ms), &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        assert_eq!(out.packets, 0);
+        assert!(!out.more, "a future maintenance deadline must not force a busy loop");
+    }
+
+    #[test]
+    fn trim_is_disabled_by_default_then_complete_idle_releases_pool() {
+        let (mut sh, global) = shard();
+        cache_large(&mut sh, 4);
+        let before = global.reserved();
+        assert_eq!(sh.next_deadline(), None);
+        run(&mut sh, 1000);
+        assert_eq!(global.reserved(), before);
+        assert_eq!(sh.stats.tx_cache_maintenance_checks, 0);
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        assert_eq!(sh.next_deadline(), Some(Instant::ZERO), "run once to arm without reading a clock");
+        run(&mut sh, 1000);
+        assert_eq!(sh.next_deadline(), Some(Instant::from_millis(1010)));
+        run(&mut sh, 1010);
+        run(&mut sh, 1019);
+        assert_eq!(sh.pool.cached(), 4);
+        run(&mut sh, 1020);
+        assert_eq!(sh.pool.cached(), 2);
+        assert!(sh.pool.descriptor_bytes() != 0);
+        assert_eq!(sh.next_deadline(), Some(Instant::from_millis(1030)));
+        run(&mut sh, 1060);
+        assert!(!sh.pool.has_retained());
+        assert_eq!(sh.next_deadline(), None);
+        assert_eq!(global.cached_bytes(), 0);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(sh.stats.tx_cache_idle_trims, 2);
+        assert_eq!(sh.stats.tx_cache_idle_trimmed_blocks, 4);
+        assert_eq!(sh.stats.tx_cache_idle_trimmed_bytes, before);
+        assert_eq!(sh.stats.cache_reclaims, 0);
+    }
+
+    #[test]
+    fn block_reuse_resets_only_at_coarse_sample() {
+        let (mut sh, global) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        run(&mut sh, 0);
+        run(&mut sh, 10);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(2), &vec![9; TX_BLOCK]));
+        tx.consume(&mut sh.pool, TX_BLOCK);
+        drop(tx);
+        run(&mut sh, 19);
+        assert_eq!(sh.next_deadline(), Some(Instant::from_millis(20)));
+        run(&mut sh, 20);
+        assert_eq!(sh.pool.cached(), 4);
+        run(&mut sh, 30);
+        run(&mut sh, 39);
+        assert_eq!(sh.pool.cached(), 4);
+        run(&mut sh, 40);
+        assert_eq!(sh.pool.cached(), 2);
+        run(&mut sh, 80);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(sh.next_deadline(), None);
+    }
+
+    #[test]
+    fn descriptor_only_idle_trim_leaves_active_tx_intact() {
+        let (mut sh, global) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        let mut tx = TxBuf::default();
+        let input = vec![9; 4 * TX_BLOCK];
+        assert!(tx.push(&mut sh.pool, &mut sh.budget, PeerId(2), &input));
+        assert_eq!(sh.pool.cached(), 0);
+        let backing = sh.pool.descriptor_bytes();
+        assert!(backing != 0);
+        let before = global.reserved();
+        run(&mut sh, 0);
+        assert_eq!(sh.next_deadline(), Some(Instant::from_millis(10)));
+        run(&mut sh, 20);
+        assert_eq!(sh.pool.descriptor_bytes(), 0);
+        assert_eq!(global.reserved(), before - backing);
+        assert!(global.reserved() >= 4 * TX_BLOCK_CHARGE);
+        assert_eq!(tx.len(), input.len());
+        assert_eq!(tx.slices(0, TX_BLOCK)[0], &input[..TX_BLOCK]);
+        assert_eq!(sh.stats.tx_cache_idle_trimmed_blocks, 0);
+        assert_eq!(sh.stats.tx_cache_idle_trimmed_bytes, backing);
+        assert_eq!(sh.next_deadline(), None);
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn pressure_reclaim_ignores_cooldown_and_does_not_become_idle_trim() {
+        let (mut sh, global) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        let before = global.reserved();
+        run(&mut sh, 0);
+        let observed = global.cache_reclaim_epoch();
+        global.request_cache_reclaim();
+        assert!(global.cache_reclaim_epoch() > observed);
+        run(&mut sh, 1);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(sh.stats.cache_reclaims, 1);
+        assert_eq!(sh.stats.cache_reclaimed_bytes, before);
+        assert_eq!(sh.stats.tx_cache_idle_trims, 0);
+        assert_eq!(sh.next_deadline(), None);
+    }
+
+    #[test]
+    fn disabling_trim_cancels_deadline_without_releasing_cache() {
+        let (mut sh, global) = shard();
+        sh.set_tx_cache_trim(Some(policy())).unwrap();
+        cache_large(&mut sh, 4);
+        run(&mut sh, 0);
+        let before = global.reserved();
+        sh.set_tx_cache_trim(None).unwrap();
+        assert_eq!(sh.next_deadline(), None);
+        run(&mut sh, 1000);
+        assert_eq!(sh.pool.cached(), 4);
+        assert_eq!(global.reserved(), before);
+        assert_eq!(sh.stats.tx_cache_idle_trims, 0);
+    }
+
+    #[test]
+    fn invalid_policy_does_not_enable_tracking_or_deadline() {
+        let (mut sh, _) = shard();
+        cache_large(&mut sh, 4);
+        let mut invalid = policy();
+        invalid.check_interval = Duration::ZERO;
+        assert!(sh.set_tx_cache_trim(Some(invalid)).is_err());
+        invalid = policy();
+        invalid.cold_after = Duration::ZERO;
+        assert!(sh.set_tx_cache_trim(Some(invalid)).is_err());
+        invalid = policy();
+        invalid.warm_after = invalid.cold_after + Duration::from_millis(1);
+        assert!(sh.set_tx_cache_trim(Some(invalid)).is_err());
+        assert_eq!(sh.next_deadline(), None);
+        assert!(!sh.pool.take_activity());
     }
 }
 

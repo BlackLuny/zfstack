@@ -31,4 +31,6 @@ boringtun = { version = "0.7.1", default-features = false }
 [features]
 default = ["zfstack"]
 zfstack = ["dep:zfstack"]
+# Experimental host-side PacketPool maintenance; also requires explicit env settings.
+packet-pool-idle-trim = ["zfstack"]
 

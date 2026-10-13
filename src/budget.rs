@@ -1359,6 +1359,12 @@ pub struct MemoryHandle {
 }
 
 impl MemoryHandle {
+    /// Physical leases currently assigned to this peer. Parked TX-pool blocks
+    /// are port-owned instead; cached PacketPool leases remain peer-owned.
+    pub fn peer_physical_used(&self) -> u64 {
+        self.peer.used.load(Ordering::Acquire)
+    }
+
     /// Allocate at the admission tier. Paths that drain buffered bytes use
     /// [`Self::try_allocate_kind`] with their kind.
     pub fn try_allocate(&self, bytes: u64) -> Option<MemoryLease> {
@@ -1612,6 +1618,41 @@ impl Drop for AdmitDebt {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn memory_handle_reports_peer_ownership_not_port_cache() {
+        let global = GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(global.high(), global.high(), 8);
+        let peer = budget.memory_handle(PeerId(1));
+        let other = budget.memory_handle(PeerId(2));
+        let other_lease = other.try_allocate_kind(2048, AllocationKind::RxChunk).unwrap();
+        let packet_pool = crate::pktpool::PacketPool::new(peer.clone(), 4096, 2);
+        let packet = packet_pool.get().unwrap();
+        assert_eq!(peer.peer_physical_used(), 4096);
+        drop(packet);
+        assert_eq!(packet_pool.cached(), 1);
+        assert_eq!(packet_pool.in_use(), 0);
+        assert_eq!(peer.peer_physical_used(), 4096, "free packets retain their peer lease");
+        assert_eq!(other.peer_physical_used(), 2048);
+        assert_eq!(budget.physical_used(), 6144);
+        assert_eq!(global.cached_bytes(), 0, "the TX cache ledger does not count PacketPool free");
+        drop(packet_pool);
+        assert_eq!(peer.peer_physical_used(), 0);
+        assert_eq!(other.peer_physical_used(), 2048);
+        drop(other_lease);
+        assert_eq!(global.reserved(), 0);
+        let mut tx_pool = crate::buf::BlockPool::new(16);
+        let mut tx = crate::buf::TxBuf::default();
+        assert!(tx.push(&mut tx_pool, &mut budget, PeerId(1), &[7]));
+        tx.consume(&mut tx_pool, 1);
+        drop(tx);
+        assert_eq!(peer.peer_physical_used(), 0, "parked TX blocks release peer ownership");
+        assert!(budget.physical_used() > 0);
+        assert!(global.cached_bytes() > 0);
+        tx_pool.reclaim();
+        assert_eq!(global.reserved(), 0);
+    }
     use super::*;
     use std::sync::atomic::AtomicUsize;
     use std::task::Wake;

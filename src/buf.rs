@@ -125,6 +125,17 @@ impl Block {
     }
 }
 
+/// Read-only TX-pool ownership snapshot; collected off the packet path.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TxCacheSnapshot {
+    pub large_cached: usize,
+    pub small_cached: usize,
+    pub large_capacity: usize,
+    pub small_capacity: usize,
+    pub payload_bytes: u64,
+    pub descriptor_bytes: u64,
+}
+
 /// Recycles TX blocks between connections of one shard.
 #[derive(Default)]
 pub struct BlockPool {
@@ -134,6 +145,8 @@ pub struct BlockPool {
     small_lease: Option<MemoryLease>,
     memory: Option<PortMemoryHandle>,
     pub max_cached: usize,
+    // None keeps experimental activity sampling disabled.
+    activity: Option<bool>,
 }
 
 impl BlockPool {
@@ -148,15 +161,18 @@ impl BlockPool {
             self.memory = Some(budget.port_memory_handle());
         }
         let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
-        if let Some(mut block) = free.pop() {
-            if block.lease.assign(budget, peer) {
-                return Some(block);
+        let block = if let Some(mut block) = free.pop() {
+            if !block.lease.assign(budget, peer) {
+                free.push(block);
+                return None;
             }
-            free.push(block);
-            return None;
-        }
-        let lease = budget.try_allocate_kind(peer, size as u64, crate::budget::AllocationKind::TxBlock)?;
-        Some(Block::new(size, lease))
+            block
+        } else {
+            let lease = budget.try_allocate_kind(peer, size as u64, crate::budget::AllocationKind::TxBlock)?;
+            Block::new(size, lease)
+        };
+        self.note_activity();
+        Some(block)
     }
     fn put(&mut self, mut b: Block) {
         if self.memory.as_ref().is_none_or(|memory| !memory.owns(&b.lease)) {
@@ -176,6 +192,7 @@ impl BlockPool {
             let (free, lease) = if b.len() == SMALL_TX_BLOCK { (&mut self.small, &mut self.small_lease) } else { (&mut self.free, &mut self.free_lease) };
             if Self::reserve_cached_slot(free, lease, memory) {
                 free.push(b);
+                self.note_activity();
             }
         }
     }
@@ -211,16 +228,69 @@ impl BlockPool {
     pub fn cached(&self) -> usize {
         self.free.len() + self.small.len()
     }
+    pub fn snapshot(&self) -> TxCacheSnapshot {
+        TxCacheSnapshot {
+            large_cached: self.free.len(),
+            small_cached: self.small.len(),
+            large_capacity: self.free.capacity(),
+            small_capacity: self.small.capacity(),
+            payload_bytes: self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * SMALL_TX_BLOCK as u64,
+            descriptor_bytes: self.descriptor_bytes(),
+        }
+    }
+
+    pub(crate) fn set_activity_tracking(&mut self, enabled: bool) {
+        self.activity = enabled.then_some(false);
+    }
+
+    #[inline]
+    fn note_activity(&mut self) {
+        if let Some(touched) = &mut self.activity {
+            *touched = true;
+        }
+    }
+
+    pub(crate) fn take_activity(&mut self) -> bool {
+        self.activity.as_mut().is_some_and(|touched| std::mem::take(touched))
+    }
+
+    pub(crate) fn has_retained(&self) -> bool {
+        self.free.capacity() != 0 || self.small.capacity() != 0
+    }
+
+    fn retained_bytes(&self) -> u64 {
+        self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * SMALL_TX_BLOCK as u64 + self.descriptor_bytes()
+    }
+
+    fn trim_class(free: &mut Vec<Block>, backing: &mut Option<MemoryLease>, target: usize) {
+        // Keep the recent LIFO tail. The cache is bounded; no allocation occurs.
+        let excess = free.len().saturating_sub(target);
+        if excess != 0 {
+            drop(free.drain(..excess));
+        }
+        if free.is_empty() {
+            // Deallocate actual backing before releasing its independent lease.
+            *free = Vec::new();
+            *backing = None;
+        }
+    }
+
+    /// Trim free blocks only. Nonempty backing keeps its complete existing
+    /// charge; empty classes release backing too, including descriptor-only caches.
+    pub(crate) fn trim_cached_to(&mut self, large: usize, small: usize) -> (usize, u64) {
+        let before_n = self.cached();
+        let before_bytes = self.retained_bytes();
+        Self::trim_class(&mut self.free, &mut self.free_lease, large);
+        Self::trim_class(&mut self.small, &mut self.small_lease, small);
+        (before_n - self.cached(), before_bytes - self.retained_bytes())
+    }
+
     /// Drop every idle block, releasing its global and port share. Returns
     /// the number of blocks and bytes released.
     pub fn reclaim(&mut self) -> (usize, u64) {
-        let n = self.cached();
-        let bytes = self.free.len() as u64 * TX_BLOCK_CHARGE + self.small.len() as u64 * SMALL_TX_BLOCK as u64 + self.descriptor_bytes();
-        self.free = Vec::new();
-        self.free_lease = None;
-        self.small = Vec::new();
-        self.small_lease = None;
-        (n, bytes)
+        let reclaimed = self.trim_cached_to(0, 0);
+        self.take_activity();
+        reclaimed
     }
 }
 
@@ -1080,6 +1150,104 @@ impl OooQueue {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn pool_trim_keeps_recent_tail_and_charges_retained_backing() {
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(16);
+        let mut large: Vec<_> = (0..4).map(|_| pool.get(&mut budget, PeerId(1), TX_BLOCK).unwrap()).collect();
+        let mut small: Vec<_> = (0..3).map(|_| pool.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap()).collect();
+        let recent = large.last().unwrap().as_ptr();
+        for block in large.drain(..) {
+            pool.put(block);
+        }
+        for block in small.drain(..) {
+            pool.put(block);
+        }
+        let large_backing = (pool.free.capacity() * std::mem::size_of::<Block>()) as u64;
+        let small_backing = (pool.small.capacity() * std::mem::size_of::<Block>()) as u64;
+        let before = budget.physical_used();
+        assert_eq!(pool.trim_cached_to(1, 0), (6, 3 * TX_BLOCK_CHARGE + 3 * SMALL_TX_BLOCK as u64 + small_backing));
+        assert_eq!(pool.free[0].as_ptr(), recent);
+        assert_eq!(pool.descriptor_bytes(), large_backing);
+        assert_eq!(budget.physical_used(), TX_BLOCK_CHARGE + large_backing);
+        assert_eq!(global.cached_bytes(), budget.physical_used());
+        assert_eq!(before - budget.physical_used(), 3 * TX_BLOCK_CHARGE + 3 * SMALL_TX_BLOCK as u64 + small_backing);
+        assert_eq!(pool.trim_cached_to(8, 8), (0, 0), "trim never grows a cache");
+        assert_eq!(pool.reclaim(), (1, TX_BLOCK_CHARGE + large_backing));
+        assert_eq!(pool.reclaim(), (0, 0));
+        assert!(!pool.has_retained());
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn descriptor_only_trim_preserves_checked_out_payload_and_wakes_waiter() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct CountWake(AtomicUsize);
+        impl std::task::Wake for CountWake {
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(16);
+        let mut block = pool.get(&mut budget, PeerId(1), TX_BLOCK).unwrap();
+        block.write(0, b"still owned");
+        let ptr = block.as_ptr();
+        pool.put(block);
+        let block = pool.get(&mut budget, PeerId(2), TX_BLOCK).unwrap();
+        assert_eq!(pool.cached(), 0);
+        let backing = pool.descriptor_bytes();
+        assert!(backing != 0 && pool.has_retained());
+        let before = budget.physical_used();
+        let observed = global.release_epoch();
+        let reclaim_epoch = global.cache_reclaim_epoch();
+        let wake = Arc::new(CountWake(AtomicUsize::new(0)));
+        let waiter = global.new_waiter_id();
+        global.register_waiter(waiter, observed, &std::task::Waker::from(wake.clone()));
+        assert_eq!(pool.trim_cached_to(0, 0), (0, backing));
+        assert_eq!(block.as_ptr(), ptr);
+        assert_eq!(block.bytes(0, 11), b"still owned");
+        assert_eq!(budget.physical_used(), before - backing);
+        assert_eq!(global.cached_bytes(), 0);
+        assert!(global.release_epoch() > observed);
+        assert_eq!(global.cache_reclaim_epoch(), reclaim_epoch, "idle trim is not a pressure request");
+        assert_eq!(wake.0.load(Ordering::Relaxed), 1);
+        global.remove_waiter(waiter);
+        drop(block);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn activity_sampling_is_opt_in_and_only_tracks_success() {
+        let global = crate::budget::GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut foreign = Budget::new(global.clone());
+        let mut pool = BlockPool::new(16);
+        let block = pool.get(&mut budget, PeerId(1), TX_BLOCK).unwrap();
+        pool.put(block);
+        assert!(!pool.take_activity());
+        pool.set_activity_tracking(true);
+        assert!(pool.get(&mut foreign, PeerId(1), TX_BLOCK).is_none());
+        assert!(!pool.take_activity());
+        let block = pool.get(&mut budget, PeerId(2), TX_BLOCK).unwrap();
+        assert!(pool.take_activity());
+        assert!(!pool.take_activity());
+        pool.put(block);
+        assert!(pool.take_activity());
+        assert!(!pool.take_activity());
+        pool.set_activity_tracking(false);
+        let block = pool.get(&mut budget, PeerId(2), TX_BLOCK).unwrap();
+        pool.put(block);
+        assert!(!pool.take_activity());
+        pool.reclaim();
+        assert_eq!(global.reserved(), 0);
+    }
     #[test]
     fn tx_descriptor_capacity_ledger_lifecycle() {
         let global = crate::budget::GlobalBudget::new(8 << 20);
