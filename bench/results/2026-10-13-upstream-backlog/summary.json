@@ -1,0 +1,371 @@
+{
+  "direct": {
+    "default": {
+      "bursts": 8,
+      "flows": 512,
+      "errors": 11,
+      "backlog": 5,
+      "error_types": {
+        "ConnectionResetError(104, 'Connection reset by peer')": 11
+      }
+    },
+    "128": {
+      "bursts": 8,
+      "flows": 512,
+      "errors": 0,
+      "backlog": 128,
+      "error_types": {}
+    }
+  },
+  "rst_trace": {
+    "upstream_resets": [
+      {
+        "unix_us": 1791873532040337,
+        "src": "127.0.0.1",
+        "dst": "127.0.0.1",
+        "sport": 5201,
+        "dport": 35416,
+        "seq": 1907152629,
+        "ack": 0,
+        "flags": 4
+      },
+      {
+        "unix_us": 1791873533063717,
+        "src": "127.0.0.1",
+        "dst": "127.0.0.1",
+        "sport": 5201,
+        "dport": 35608,
+        "seq": 661758429,
+        "ack": 0,
+        "flags": 4
+      },
+      {
+        "unix_us": 1791873533064444,
+        "src": "127.0.0.1",
+        "dst": "127.0.0.1",
+        "sport": 5201,
+        "dport": 35596,
+        "seq": 2674398309,
+        "ack": 0,
+        "flags": 4
+      },
+      {
+        "unix_us": 1791873533064799,
+        "src": "127.0.0.1",
+        "dst": "127.0.0.1",
+        "sport": 5201,
+        "dport": 35568,
+        "seq": 2137798130,
+        "ack": 0,
+        "flags": 4
+      }
+    ],
+    "tun_resets": [
+      {
+        "unix_us": 1791873532040588,
+        "src": "198.18.0.2",
+        "dst": "172.19.0.1",
+        "sport": 5201,
+        "dport": 54394,
+        "seq": 3700532942,
+        "ack": 2712686698,
+        "flags": 20
+      },
+      {
+        "unix_us": 1791873533064868,
+        "src": "198.18.0.2",
+        "dst": "172.19.0.1",
+        "sport": 5201,
+        "dport": 54492,
+        "seq": 2167267491,
+        "ack": 2590688404,
+        "flags": 20
+      },
+      {
+        "unix_us": 1791873533064922,
+        "src": "198.18.0.2",
+        "dst": "172.19.0.1",
+        "sport": 5201,
+        "dport": 54582,
+        "seq": 429927452,
+        "ack": 2767412409,
+        "flags": 20
+      },
+      {
+        "unix_us": 1791873533065268,
+        "src": "198.18.0.2",
+        "dst": "172.19.0.1",
+        "sport": 5201,
+        "dport": 54604,
+        "seq": 1253159853,
+        "ack": 1628713294,
+        "flags": 20
+      }
+    ],
+    "first_forwarding_delay_us": 251,
+    "upstream_syn_retries": [
+      {
+        "client_port": 35416,
+        "syns": 2,
+        "syn_retry_delay_ms": 1026.267
+      },
+      {
+        "client_port": 35608,
+        "syns": 2,
+        "syn_retry_delay_ms": 1023.497
+      },
+      {
+        "client_port": 35596,
+        "syns": 2,
+        "syn_retry_delay_ms": 1023.515
+      },
+      {
+        "client_port": 35568,
+        "syns": 2,
+        "syn_retry_delay_ms": 1023.533
+      }
+    ],
+    "tcpdump": {
+      "captured": 154722,
+      "dropped_by_interface": null,
+      "dropped_by_kernel": 0,
+      "interface_drop_counter_available": false,
+      "received_by_filter": 176299,
+      "zero_kernel_drops": true
+    },
+    "scope": "upstream reset precedes propagation to TUN; not a claim about every historical timeout"
+  },
+  "tun": [
+    {
+      "name": "backlog128-trace-1500-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "backlog128-trace-1500-8-0-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "backlog128-trace-1500-8-0-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "backlog128-trace-1500-8-0-3",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-64-1000-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-64-1000-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-8-0-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-1500-8-0-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-64-1000-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-64-1000-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-8-0-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-main-512-8-0-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-64-1000-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-64-1000-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-8-0-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-1500-8-0-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-64-1000-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-64-1000-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-8-0-1",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "confirmed-packetpool-512-8-0-2",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-main-1500-8-0-0",
+      "ok": false,
+      "errors": [
+        "loader exited 1"
+      ],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-main-512-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-main-512-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-packetpool-1500-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-packetpool-512-64-1000-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "repro-packetpool-512-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "trace-trace-1500-8-0-0",
+      "ok": true,
+      "errors": [],
+      "cleanup_ok": true
+    },
+    {
+      "name": "trace-trace-1500-8-0-1",
+      "ok": false,
+      "errors": [
+        "loader exited 1"
+      ],
+      "cleanup_ok": true
+    }
+  ],
+  "confirmed_groups": {
+    "main-1500-64-1000": 3,
+    "main-1500-8-0": 3,
+    "main-512-64-1000": 3,
+    "main-512-8-0": 3,
+    "packetpool-1500-64-1000": 3,
+    "packetpool-1500-8-0": 3,
+    "packetpool-512-64-1000": 3,
+    "packetpool-512-8-0": 3
+  },
+  "confirmed_bulk_bytes": 6442450944
+}
