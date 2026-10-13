@@ -184,6 +184,23 @@ impl PacketPoolIdleTrim {
     }
 }
 
+/// One coarse host timer per pool, independent of RX readiness and TX
+/// diagnostics. A weak sender lets reader/driver shutdown end maintenance
+/// without keeping the source channel alive. No catch-up timer bursts.
+#[cfg(feature = "packet-pool-idle-trim")]
+fn spawn_packet_pool_maintenance(pool: PacketPool, config: PacketPoolTrimConfig, source: tokio::sync::mpsc::WeakSender<Batch>) -> tokio::task::JoinHandle<()> {
+    pool.trim_idle(std::time::Instant::now(), config.idle, config.target);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            if source.upgrade().is_none_or(|source| source.is_closed()) {
+                break;
+            }
+            pool.trim_idle(std::time::Instant::now(), config.idle, config.target);
+        }
+    })
+}
+
 /// Blocking TUN reader: reads each packet straight into a pooled, charged
 /// buffer (zero-copy ingress) and batches them for the driver.
 fn reader(
@@ -598,6 +615,10 @@ fn start_stack(
     );
     let sample_memory = tx_experiment.sample.map(|_| memory.clone());
     let pool = PacketPool::new(memory, max_pkt + if vnet { VIRTIO_NET_HDR_LEN } else { 0 }, POOL_CACHED);
+    #[cfg(feature = "packet-pool-idle-trim")]
+    if let Some(config) = idle_trim {
+        spawn_packet_pool_maintenance(pool.clone(), config, tx.downgrade());
+    }
     let sample_packet_pool = tx_experiment.sample.map(|_| pool.clone());
     assert_eq!(ids[0], IfaceId(0));
     if vnet {
@@ -763,6 +784,32 @@ mod tx_cache_experiment_tests {
 #[cfg(all(test, feature = "packet-pool-idle-trim"))]
 mod idle_trim_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn maintenance_runs_during_traffic_and_does_not_keep_reader_alive() {
+        use std::time::Duration;
+        let global = zfstack::budget::GlobalBudget::new(1 << 20);
+        let mut budget = zfstack::budget::Budget::new(global.clone());
+        let pool = PacketPool::new(budget.memory_handle(PeerId(0)), 4096, 8);
+        drop((0..8).map(|_| pool.get().unwrap()).collect::<Vec<_>>());
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Batch>(1);
+        let task = spawn_packet_pool_maintenance(pool.clone(), PacketPoolTrimConfig { idle: Duration::from_millis(500), target: 0 }, tx.downgrade());
+        // Never let RX become quiet for the reader's one-second poll timeout.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while pool.cached() > 1 {
+                drop(pool.get().unwrap());
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(global.reserved(), 4096);
+        drop(tx);
+        assert!(tokio::time::timeout(Duration::from_millis(100), rx.recv()).await.unwrap().is_none());
+        tokio::time::timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
+        drop(pool);
+        assert_eq!(global.reserved(), 0);
+    }
 
     #[test]
     fn experimental_settings_require_explicit_values() {

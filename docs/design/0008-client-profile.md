@@ -87,6 +87,28 @@ zfstack 改动前（原 tokio 适配器 + 中继任务 + 默认配置）：
 
 物理计费覆盖整块：被钉住的缓冲按整块容量计费，最坏放大 2 倍（负载恰好半块）。池有上限（`max_cached`），`in_use()` 可用于诊断被应用未读数据钉住的缓冲数。
 
+#### 空闲与低速缓存维护（显式启用）
+
+宿主可在统一的低频维护循环中调用 `PacketPool::trim_idle(now, idle, target)`。
+首次调用为整个共享池开启观察；之后即使完全无流量也需要按时调用。库不创建后台任务，
+默认未调用时保持原有缓存行为。`target` 是保留下限，不是对活跃工作集的硬上限。
+
+free-list 是 LIFO：每次借用在原有互斥锁内更新观察窗口的最小长度，因而能识别整段时间内
+从未借出的旧前缀。到期只回收旧前缀，保留近期复用的尾部；持续低速不会保住整个历史高峰，
+持续复用全部缓存也不会被定时压到固定数量。没有逐包时钟或新增逐包原子操作。
+晚归还的缓冲区必须经过下一个完整观察窗口，所以最迟约两个窗口加调度延迟才能回收。
+仅回收 free 对象，`PacketBuf` / `Bytes` slice 仍持有的容量继续完整计费。
+每批至多移出 32 个对象，在锁外释放 payload、lease 并唤醒预算等待者；
+非空 free-list 保留原有 backing，空 free-list 释放 backing（原有 PacketPool 模型未给此 backing 单独计费）。
+`trim_cached_to` 仍可无条件显式回收，并同步校正观察状态。
+
+zfbench 的 `packet-pool-idle-trim` 实验 feature 还要求同时设置
+`ZFBENCH_PACKET_POOL_TRIM_IDLE_MS` 和 `ZFBENCH_PACKET_POOL_TRIM_TARGET`。
+启用后宿主每池每秒维护一次，独立于 TUN readiness、TX trim 和诊断 sampler；
+reader 原有完全空闲路径仍负责归还 EAGAIN spare 并执行显式 trim。
+维护任务使用弱 channel sender，reader / driver 退出后会在下一次检查结束。
+该功能仍默认关闭，参数仅用于实验。缓存 lease 减少不等于 RSS 同幅下降或吞吐提升。
+
 ### 4.6 驱动内中继：`TcpStream::splice`
 
 `TcpStream::splice(upstream) -> Splice`：把流和上游 socket 一起交给驱动，驱动自己搬字节：
