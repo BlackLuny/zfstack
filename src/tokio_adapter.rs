@@ -1745,7 +1745,9 @@ mod tests {
                     break stream;
                 }
             }
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         let first = Arc::new(CountWake(AtomicUsize::new(0)));
         let latest = Arc::new(CountWake(AtomicUsize::new(0)));
         let wakers = [Waker::from(first.clone()), Waker::from(latest.clone())];
@@ -1777,7 +1779,8 @@ mod tests {
                     0 => q.read_waker.take(),
                     1 => q.write_waker.take(),
                     _ => q.flush_waker.take(),
-                }.unwrap()
+                }
+                .unwrap()
             };
             registered.wake();
             assert_eq!(first.0.load(Ordering::Relaxed), 0);
@@ -2116,7 +2119,7 @@ mod tests {
                 match peer.c.read(peer.now(), ordinary_id, &mut buf) {
                     ReadResult::Data(n) => received.extend_from_slice(&buf[..n]),
                     ReadResult::Eof => break,
-                    ReadResult::WouldBlock => {},
+                    ReadResult::WouldBlock => {}
                     other => panic!("ordinary connection failed: {other:?}"),
                 }
             }
@@ -2127,7 +2130,9 @@ mod tests {
             while !server.is_finished() {
                 peer.step(&h, iface).await;
             }
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(server.await.unwrap(), SpliceStats { uploaded: 0, downloaded: 5 });
         upstream.await.unwrap();
     }

@@ -94,6 +94,23 @@ cargo check -p zfstack --locked --no-default-features
 - 原有 ignored 测试 `bbr_probe_steady_state`、`bbr_trace`、`soak_paused_reader_lossy_multiflow` 未额外运行。
 - `git diff --check` 通过。GitNexus 未收录 zfstack，impact/detect_changes 均不可用；已用源码直接核对两个 helper 调用点、五个登记点及关闭路径，并以针对性运行回归补证。
 
+## 对齐最新 main 后的回归（2026-10-13）
+
+分支已无冲突 rebase 到 `667e9dbc5a0e4bc86b83fc5c9116a2cb2432eadc`。`range-diff` 确认原优化补丁完整保留，生产 adapter 源码不变；新增测试随后仅手工调整换行和空 match 分支的可选逗号。前面的汇编对照仍对应原基线，本节记录最新 main 上的运行回归，不把旧汇编当作新基线的重新测量。
+
+本机剩余 8.8 GiB，继续通过 rc-agent 在 x86_64 Linux / rustc 1.96.1 执行，任务 `t-01M4SN0EN055P3SFMJBEWJD5JE`；冻结的 rebase 提交为 `79078d1fce88f372ad272b13b275d5eb4a1f7e69`。
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test -p zfstack --release --features tokio,test-peer` | 196 单元测试 + 2 集成测试通过；3 项原有 ignored |
+| `cargo test -p zfharness --release` | 13 通过 |
+| `cargo test -p zfbench --release` | 9 通过 |
+| `cargo check -p zfstack --no-default-features` | 通过 |
+| `cargo clippy -p zfstack --all-targets --features tokio` | 通过，保留存量警告 |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s harness/l2 -p 'test_*.py'`（本机） | 6 通过 |
+
+构建过程为新增的 harness workspace 成员更新了冻结快照里的 Cargo.lock，该锁文件与完整日志仅保存在本地证据目录 `rebased/`，不纳入提交。PR 相对 main 仍只有 adapter 源码（含两项回归）及本报告两个文件。
+
 ## 本地证据
 
 原始证据保留在验证机器的 `bench/results/2026-10-13-issue29-microopts/`，不随本次代码和报告提交；以下为本地路径，不是仓库下载链接。本报告已包含验证命令、关键汇编片段和测试结果。
