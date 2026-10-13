@@ -387,6 +387,11 @@ its namespace after bounded process cleanup. Do not run the example directly
 in an existing network namespace. Add `--trim` only for an explicit TX-policy
 configuration check; the short rounds do not establish automatic cache decay.
 See the [recorded matrix and limits](results/2026-10-13-shared-budget/README.md).
+The wrapper now rejects application or kernel ingress overflow. The diagnostic
+default is 4096 packets per port and 4096 in the kernel TUN queue; use
+`--ingress-capacity` and `--tun-queue-len` for bounded queue controls, with
+`--allow-ingress-drops` only for explicitly lossy diagnostics. See the
+[loss diagnosis and default-policy assessment](results/2026-10-13-ingress-overload/README.md).
 
 ## Caveats (read before trusting numbers)
 

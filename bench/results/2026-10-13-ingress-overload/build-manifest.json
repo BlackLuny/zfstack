@@ -1,0 +1,23 @@
+{
+  "builds": {
+    "before": {
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9"
+    },
+    "after": {
+      "source_sha": "3e6a703e12f88d65e291dcd71c61815a4099e705",
+      "binary_sha256": "2174027ce02f6773e9f6c59fecd00949301ae44dc70406fd58304b438d8a1f52"
+    },
+    "final": {
+      "source_sha": "e46c973c4f87e3e99e9ffa049a4791d0faa01a2f",
+      "binary_sha256": "6b6a13fae53fa22fdb7d4f4812dc0a3e516dc3beab762ca9b17cc6100322cf71"
+    }
+  },
+  "rust": "1.94.1",
+  "profile": "release; fat LTO; codegen-units=1; panic=abort",
+  "command": "CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort cargo build --locked -p zfbench --release --example shared_budget_tun",
+  "cargo_lock_sha256": "d5e4eac18bd1ed92dcc061b7d71e00ffd7fd185c6d4d9dd23cc369e5550acce6",
+  "library_main": "b170affa14e70d73f3d0834b2e06579dde70ca85",
+  "scope": "default zfstack feature; unchanged core library; example/runner only",
+  "stage1_note": "Final example compilation overlapped part of the discovery grid; no throughput comparison claimed. Final grid ran with no simultaneous build."
+}
