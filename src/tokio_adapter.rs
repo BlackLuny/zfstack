@@ -2646,6 +2646,7 @@ mod tests {
         refill_rounds: Arc<std::sync::atomic::AtomicU64>,
         stop_refilling: Arc<std::sync::atomic::AtomicBool>,
         load_ready: Arc<tokio::sync::Notify>,
+        ack_delay: std::time::Duration,
     }
 
     /// Accepted streams each send `per_conn` bytes over 64 KiB stream queues.
@@ -2656,13 +2657,18 @@ mod tests {
     /// Test-only pressure gate: fill the quota in the same owner turn that
     /// processes the selected SYN, then require that SYN to create debt.
     fn limited_server_with_forced_refusal(global: Arc<GlobalBudget>, profile: Profile, refuse_port: Option<u16>) -> LimitedServer {
+        limited_server_mode(global, profile, refuse_port, None)
+    }
+
+    fn limited_server_mode(global: Arc<GlobalBudget>, profile: Profile, refuse_port: Option<u16>, upstream: Option<SocketAddr>) -> LimitedServer {
         let mut refusal_observed = false;
         let refilling = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let ingress_refilling = refilling.clone();
         let refill_rounds = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let ingress_refill_rounds = refill_rounds.clone();
         global.ensure_egress_reserve(2 * 2048);
-        let limits = ResourceLimits { port_bytes: profile.port_bytes, peer_bytes: profile.peer_bytes, peer_max_connections: 128 };
+        let limits =
+            ResourceLimits { port_bytes: profile.port_bytes, peer_bytes: profile.peer_bytes, peer_max_connections: if upstream.is_some() { 512 } else { 128 } };
         let stream_cfg = StreamConfig { rx_cap: 64 * 1024, tx_cap: 64 * 1024, tx_low_watermark: 16 * 1024 };
         let (to_client_tx, to_client) = mpsc::unbounded_channel();
         let (ingress, ingress_rx) = mpsc::channel::<Ingress>(1024);
@@ -2740,6 +2746,11 @@ mod tests {
         tokio::spawn(async move {
             while let Some(mut s) = acc.accept().await {
                 tokio::spawn(async move {
+                    if let Some(addr) = upstream {
+                        let socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+                        let _ = s.splice(socket).await;
+                        return;
+                    }
                     let mut buf = vec![0u8; 16 * 1024];
                     let mut off = 0u64;
                     while off < per_conn {
@@ -2769,6 +2780,7 @@ mod tests {
             refill_rounds,
             stop_refilling: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             load_ready: Arc::new(tokio::sync::Notify::new()),
+            ack_delay: std::time::Duration::ZERO,
         }
     }
 
@@ -3016,6 +3028,7 @@ mod tests {
         let mut buf = vec![0u8; 64 * 1024];
         let deadline = tokio::time::Instant::now() + limit;
         let mut rounds = 0u64;
+        let mut delayed = VecDeque::new();
         loop {
             assert!(server.global.reserved() <= server.global.high(), "global budget exceeded");
             rounds += 1;
@@ -3039,7 +3052,7 @@ mod tests {
                     let flat_from = elapsed.saturating_sub(std::time::Duration::from_millis(250 * 7));
                     let overlaps_pause = pauses.iter().any(|&(conn, _start, end)| conn as usize == k && flat_from < end);
                     let live = s.len() - conn_since[k];
-                    if !overlaps_pause && k < ids.len() && !eof[k] && live >= 8 && s[s.len() - 8..].iter().all(|&v| v == s[s.len() - 1]) {
+                    if !overlaps_pause && k < ids.len() && recvd[k] > 0 && !eof[k] && live >= 8 && s[s.len() - 8..].iter().all(|&v| v == s[s.len() - 1]) {
                         let snap = server.handle.snapshot().await;
                         let tail = snap.as_ref().and_then(|sn| {
                             sn.tail_connections.iter().find(|t| ids.get(k) == Some(&t.id)).map(|t| {
@@ -3077,8 +3090,14 @@ mod tests {
                 SendResult::Accepted
             };
             c.run(now(), &mut sink);
-            if !out.is_empty() && server.ingress.send((server.iface, out)).await.is_err() {
-                return Err("server ingress closed".into());
+            if !out.is_empty() {
+                delayed.push_back((tokio::time::Instant::now() + server.ack_delay, out));
+            }
+            while delayed.front().is_some_and(|(at, _)| *at <= tokio::time::Instant::now()) {
+                let (_, out) = delayed.pop_front().unwrap();
+                if server.ingress.send((server.iface, out)).await.is_err() {
+                    return Err("server ingress closed".into());
+                }
             }
             while let Some(ev) = c.poll_event() {
                 if let Event::Closed(id, reason) = ev {
@@ -3158,6 +3177,68 @@ mod tests {
     /// of #674 even when the port is saturated at the per-connection floor
     /// (docs/design/0007 §3); 8 samples = 1.75 s without progress.
     const MAX_FLAT_SAMPLES: usize = 8;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue37_splice_streams_keep_progressing_with_delayed_acks() {
+        issue37_splice_delayed(64).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "full 256-stream splice comparison; 64 streams run in CI"]
+    async fn issue37_splice_256_streams_keep_progressing_with_delayed_acks() {
+        issue37_splice_delayed(256).await;
+    }
+
+    async fn issue37_splice_delayed(conns: u16) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let per_conn = 4 << 20;
+        let upstream = tokio::spawn(async move {
+            let data: Arc<[u8]> = (0..per_conn).map(pattern_byte).collect();
+            let mut writers = tokio::task::JoinSet::new();
+            for _ in 0..conns {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let data = data.clone();
+                writers.spawn(async move {
+                    socket.write_all(&data).await.unwrap();
+                    socket.shutdown().await.unwrap();
+                });
+            }
+            while let Some(result) = writers.join_next().await {
+                result.unwrap();
+            }
+        });
+        let port_bytes = u64::from(conns) * (128 << 10);
+        let profile = Profile { port_bytes, peer_bytes: port_bytes, peers: 1, charge_egress: true, per_conn };
+        let mut server = limited_server_mode(GlobalBudget::new(2 * port_bytes), profile, None, Some(addr));
+        server.ack_delay = std::time::Duration::from_millis(50);
+        let (samples, finished) = download_pauses(&mut server, 20000, conns, 0, &[], None, std::time::Duration::from_secs(40)).await.unwrap();
+        assert!(finished.iter().all(Option::is_some));
+        // Measure mid-transfer stalls, excluding connection setup and EOF.
+        // All streams must still finish within the overall deadline above.
+        let max_flat = samples
+            .iter()
+            .zip(&finished)
+            .map(|(s, end)| {
+                let live = window_samples(s, std::time::Duration::ZERO, end.unwrap());
+                let first = live.iter().position(|&bytes| bytes > 0).unwrap();
+                longest_flat(&live[first..])
+            })
+            .max()
+            .unwrap();
+        assert!(max_flat <= MAX_FLAT_SAMPLES);
+        let snap = server.handle.snapshot().await.unwrap();
+        eprintln!(
+            "issue37 splice: conns={conns} max_flat_samples={max_flat} last_eof={:?} share_blocked={}",
+            finished.iter().max().unwrap(),
+            snap.share_blocked
+        );
+        upstream.await.unwrap();
+        let global = server.global.clone();
+        server.task.shutdown_and_join().await.unwrap();
+        drop(server.to_client);
+        assert_eq!(global.reserved(), 0);
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn stopped_readers_do_not_starve_healthy_streams() {
