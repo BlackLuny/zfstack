@@ -857,10 +857,12 @@ impl Conn {
         let cap = self.sndbuf_limit(cfg).min(share);
         let logical = cap.saturating_sub(self.tx.len() as u64) as usize;
         if share == crate::budget::MIN_SEND_SHARE {
-            logical.min(self.tx.backing_space(share as usize))
-        } else {
-            logical
+            let backing = self.tx.backing_space(share as usize);
+            if backing < logical && !budget.can_pipeline_tx(self.peer) {
+                return backing;
+            }
         }
+        logical
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -3002,10 +3004,88 @@ mod rx_descriptor_tests {
     }
 
     #[test]
+    fn issue37_floor_uses_spare_memory_after_partial_ack() {
+        exercise(8 << 20, |conn, ctx| {
+            ctx.budget.set_limits(1 << 20, 1 << 20, 64);
+            for _ in 0..16 {
+                ctx.budget.sender_add(conn.peer);
+            }
+            assert_eq!(ctx.budget.send_share(conn.peer), crate::budget::MIN_SEND_SHARE);
+            assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![7; crate::buf::TX_BLOCK]));
+            conn.tx.consume(ctx.pool, 32 << 10);
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "spare memory must allow refilling a partially ACKed block");
+            conn.tx.consume(ctx.pool, conn.tx.len());
+        });
+    }
+
+    #[test]
+    fn issue37_floor_does_not_pin_small_writes_to_two_kib() {
+        exercise(8 << 20, |conn, ctx| {
+            ctx.budget.set_limits(1 << 20, 1 << 20, 64);
+            for _ in 0..16 {
+                ctx.budget.sender_add(conn.peer);
+            }
+            assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &[7; 2048]));
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), crate::buf::TX_BLOCK - 2048);
+            conn.tx.consume(ctx.pool, conn.tx.len());
+        });
+    }
+
+    #[test]
+    fn issue37_floor_keeps_one_full_backing_under_pressure_at_every_level() {
+        for level in [crate::budget::Level::Global, crate::budget::Level::Port, crate::budget::Level::Peer] {
+            let limit = 1 << 20;
+            let high = if level == crate::budget::Level::Global { limit } else { 2 * limit };
+            let port = if level == crate::budget::Level::Peer { high } else { limit };
+            exercise(high, |conn, ctx| {
+                ctx.budget.set_limits(port, limit, 64);
+                for _ in 0..32 {
+                    ctx.budget.sender_add(conn.peer);
+                }
+                assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![7; crate::buf::TX_BLOCK]));
+                conn.tx.consume(ctx.pool, 32 << 10);
+                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10);
+                let peer = if level == crate::budget::Level::Peer { conn.peer } else { PeerId(2) };
+                let held = ctx.budget.try_allocate(peer, limit * 3 / 4).unwrap();
+                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 0, "{level:?}");
+                conn.tx.consume(ctx.pool, conn.tx.len());
+                assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &[7; 2048]));
+                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), crate::buf::TX_BLOCK - 2048, "small prefix must not prevent one full block");
+                assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![7; crate::buf::TX_BLOCK - 2048]));
+                conn.tx.consume(ctx.pool, conn.tx.len());
+                drop(held);
+            });
+        }
+    }
+
+    #[test]
+    fn issue37_floor_reclaims_idle_cache_before_parking() {
+        exercise(8 << 20, |conn, ctx| {
+            ctx.budget.set_limits(1 << 20, 1 << 20, 64);
+            for _ in 0..16 {
+                ctx.budget.sender_add(conn.peer);
+            }
+            assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![7; crate::buf::TX_BLOCK]));
+            conn.tx.consume(ctx.pool, 32 << 10);
+            let mut cache = crate::buf::BlockPool::new(16);
+            let mut other = crate::buf::TxBuf::default();
+            assert!(other.push(&mut cache, ctx.budget, PeerId(2), &vec![9; 10 * crate::buf::TX_BLOCK]));
+            other.consume(&mut cache, other.len());
+            let global = ctx.budget.global().clone();
+            let epoch = global.cache_reclaim_epoch();
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 0);
+            assert!(global.cache_reclaim_epoch() > epoch, "the share gate must request reclaim before blocking pool reuse");
+            cache.reclaim();
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "cache release alone must restore send space");
+            conn.tx.consume(ctx.pool, conn.tx.len());
+        });
+    }
+
+    #[test]
     fn rx_progress_counts_adapter_unread_and_never_admits_out_of_order() {
         exercise(1 << 20, |conn, ctx| {
             let charge = crate::buf::rx_progress_charge(1500);
-            let lease = ctx.budget.try_allocate_kind(conn.peer, charge, crate::budget::AllocationKind::RxProgress).unwrap();
+            let lease = ctx.budget.memory_scope(conn.peer).try_rx_progress(charge).unwrap();
             conn.set_rx_progress(crate::buf::RxProgress::new(lease, charge));
             let global = ctx.budget.global().clone();
             let ceiling = global.high() - global.headroom(global.high(), crate::budget::Tier::Block);

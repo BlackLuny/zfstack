@@ -605,6 +605,9 @@ pub struct StackSnapshot {
     /// Admission state owed by the global, port and peer levels after
     /// refused connections (docs/design/0006 §2).
     pub admission_debt: [u64; 3],
+    /// Optional prepaid RX bytes: global, port, and this port's peers combined.
+    /// `failures_by_kind.rx_progress` counts skipped credits, not refused SYNs.
+    pub rx_progress_bytes: [u64; 3],
     pub active_connections: usize,
     pub adapter_streams: usize,
     /// Connections currently holding send-side bytes on this port, and how
@@ -1074,6 +1077,7 @@ where
                     record_waiters: self.shard.record_waiters(),
                     progress_reserve: budget.progress_reserve_active(),
                     admission_debt: budget.admission_debt(),
+                    rx_progress_bytes: budget.rx_progress_bytes(),
                     closes: self.closes,
                     aborts: self.aborts,
                     active_connections: self.shard.conn_count(),

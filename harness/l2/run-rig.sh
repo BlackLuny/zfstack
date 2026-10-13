@@ -2,6 +2,13 @@
 # Optional L2, on an explicitly designated Linux zfc-rig host. Caller must hold
 # that host's zfctest node lease. Does not touch the installed zf service/panel.
 set -euo pipefail
+if [[ "${L2_MODE:-load}" == idle ]]; then
+  # Worker and target need descriptors for every idle stream as well as load.
+  fd_needed=$((4 * (${L2_IDLE_CONNS:-1500} + ${L2_HEAVY_CONNS:-4} + 16)))
+  if [[ "$(ulimit -Sn)" != unlimited ]] && (( $(ulimit -Sn) < fd_needed )); then
+    ulimit -Sn "$fd_needed"
+  fi
+fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIG_SELF_DIR="${1:?usage: run-rig.sh /path/to/zfc-rig /path/to/worker /path/to/new-output}"
 WORKER_SOURCE="${2:?worker binary required}"
@@ -141,8 +148,14 @@ if [[ "${L2_CAPTURE:-0}" == 1 ]]; then
 fi
 python3 -c 'import json,time; print(json.dumps({"monotonic":time.monotonic(),"realtime":time.time()}))' > "$OUT/clock.json"
 nftpath_snapshot "$TOPO_ID" "$OUT/path-pre.json"
+load_script="$HERE/load.py"
+load_args=()
+if [[ "${L2_MODE:-load}" == idle ]]; then
+  load_script="$HERE/idle_load.py"
+  load_args+=(--idle-conns "${L2_IDLE_CONNS:-1500}" --ramp-budget "${L2_RAMP_SECS:-120}")
+fi
 set +e
-python3 "$HERE/load.py" run --host "$TOPO_IP_TARGET" --clients "${clients[@]}" \
+python3 "$load_script" run "${load_args[@]}" --host "$TOPO_IP_TARGET" --clients "${clients[@]}" \
   --worker-pid "$WPID" --out "$OUT/load" --conns "${L2_HEAVY_CONNS:-4}" \
   --request-timeout "${L2_REQUEST_TIMEOUT_SECS:-3}" \
   --baseline "${L2_BASELINE_SECS:-8}" --loaded "${L2_LOADED_SECS:-16}" --recovery "${L2_RECOVERY_SECS:-8}"

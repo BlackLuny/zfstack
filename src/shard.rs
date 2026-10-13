@@ -284,6 +284,8 @@ struct Slot {
 // tuple/timer/event descriptors. Growing containers need separate accounting.
 pub(crate) const ACTIVE_STATE_BYTES: u64 = std::mem::size_of::<Conn>() as u64 + 1024;
 
+type AdmittedMemory = (MemoryLease, Option<MemoryLease>, Option<Arc<crate::buf::RxProgress>>);
+
 /// DRR/pacing quantum clamp(rate × 1 ms, 2 MSS, max_quantum). A jumbo MSS (a
 /// 64 KiB TUN MTU) raises the ceiling to one segment so a quantum always fits one.
 fn quantum_for(rate: u64, mss: usize, max_quantum: usize) -> usize {
@@ -1095,7 +1097,9 @@ impl Shard {
         let tso = self.ts_offset(remote, local);
         let mut conn = Conn::new_passive(id, iface, peer, local, remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
-        conn.set_rx_progress(rx_progress);
+        if let Some(credit) = rx_progress {
+            conn.set_rx_progress(credit);
+        }
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.slots[idx as usize].permit = Some(permit);
         self.slots[idx as usize].active_memory = Some(active_memory);
@@ -1153,7 +1157,9 @@ impl Shard {
         let id = ConnId::new(idx, slot.gen);
         let mut conn = Conn::new_passive(id, old.iface, peer, old.local, old.remote, iss, tso, mtu, h.seq, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
-        conn.set_rx_progress(rx_progress);
+        if let Some(credit) = rx_progress {
+            conn.set_rx_progress(credit);
+        }
         slot.conn = Some(Box::new(conn));
         slot.active_memory = Some(active_memory);
         slot.sched.time_wait = false;
@@ -1308,7 +1314,9 @@ impl Shard {
         let syn = SynParams { mss: Some(mss), wscale, sack, ts };
         let mut conn = Conn::new_from_cookie(id, iface, peer, local, remote, Seq(cookie), tso, mtu, peer_isn, &syn, &self.cfg, now);
         conn.stream_memory = stream_memory;
-        conn.set_rx_progress(rx_progress);
+        if let Some(credit) = rx_progress {
+            conn.set_rx_progress(credit);
+        }
         conn.accepted = true;
         self.events.push_back(Event::Accepted(id));
         self.slots[idx as usize].conn = Some(Box::new(conn));
@@ -1536,12 +1544,7 @@ impl Shard {
     /// A refusal leaves an admission debt on the level that refused, so
     /// buffering there frees room for the peer's SYN retransmit instead of
     /// taking every released block back (docs/design/0006 §2).
-    fn admit_memory(
-        &mut self,
-        now: Instant,
-        key: (IfaceId, SocketAddr, SocketAddr),
-        peer: PeerId,
-    ) -> Option<(MemoryLease, Option<MemoryLease>, Arc<crate::buf::RxProgress>)> {
+    fn admit_memory(&mut self, now: Instant, key: (IfaceId, SocketAddr, SocketAddr), peer: PeerId) -> Option<AdmittedMemory> {
         let charge = crate::buf::rx_progress_charge(self.iface_mtu(key.0));
         let admitted = match self.try_admit_memory(peer, charge) {
             Err(_) if self.reclaim_own_cache() => self.try_admit_memory(peer, charge),
@@ -1556,7 +1559,7 @@ impl Shard {
                 Some(memory)
             }
             Err(level) => {
-                let bytes = ACTIVE_STATE_BYTES + self.stream_state_bytes + charge;
+                let bytes = ACTIVE_STATE_BYTES + self.stream_state_bytes;
                 let k = match pending {
                     Some(k) => k,
                     None if self.pending_admissions.len() < crate::budget::ADMIT_BURST as usize => {
@@ -1603,7 +1606,7 @@ impl Shard {
         self.slots.iter_mut().filter_map(|slot| slot.conn.as_mut()).map(|conn| conn.reclaim_idle_tx_index()).sum()
     }
 
-    fn try_admit_memory(&mut self, peer: PeerId, charge: u64) -> Result<(MemoryLease, Option<MemoryLease>, Arc<crate::buf::RxProgress>), Level> {
+    fn try_admit_memory(&mut self, peer: PeerId, charge: u64) -> Result<AdmittedMemory, Level> {
         let memory = self.budget.memory_scope(peer);
         let active = memory.try_allocate_level(ACTIVE_STATE_BYTES, crate::budget::AllocationKind::ActiveState)?;
         let stream = if self.stream_state_bytes == 0 {
@@ -1611,8 +1614,8 @@ impl Shard {
         } else {
             Some(memory.try_allocate_level(self.stream_state_bytes, crate::budget::AllocationKind::StreamState)?)
         };
-        let rx = memory.try_allocate_level(charge, crate::budget::AllocationKind::RxProgress)?;
-        Ok((active, stream, crate::buf::RxProgress::new(rx, charge)))
+        let rx = memory.try_rx_progress(charge).map(|lease| crate::buf::RxProgress::new(lease, charge));
+        Ok((active, stream, rx))
     }
 
     /// Drop admission debts whose peer did not retry within the hold, and
@@ -2150,7 +2153,9 @@ impl Shard {
         let tso = self.ts_offset(remote, local);
         let mut conn = Conn::new_active(id, iface, peer, local, remote, iss, tso, mtu, &self.cfg, now);
         conn.stream_memory = stream_memory;
-        conn.set_rx_progress(rx_progress);
+        if let Some(credit) = rx_progress {
+            conn.set_rx_progress(credit);
+        }
         self.slots[idx as usize].conn = Some(Box::new(conn));
         self.slots[idx as usize].permit = Some(permit);
         self.slots[idx as usize].active_memory = Some(active_memory);
@@ -2612,7 +2617,7 @@ mod admission_tests {
     }
 
     #[test]
-    fn rx_progress_admission_refusal_rolls_back_state_and_tracks_the_full_promise() {
+    fn issue37_optional_credit_never_refuses_admission_or_adds_debt() {
         for level in [Level::Global, Level::Port, Level::Peer] {
             let limit = 1 << 20;
             let high = if level == Level::Global { limit } else { 2 * limit };
@@ -2623,24 +2628,30 @@ mod admission_tests {
             sh.reserve_stream_state(1024);
             let iface = sh.add_iface(IfaceConfig::default());
             let charge = crate::buf::rx_progress_charge(1500);
-            let admission = ACTIVE_STATE_BYTES + 1024 + charge;
+            let admission = ACTIVE_STATE_BYTES + 1024;
             let peer = PeerId(1);
             let ceiling = limit - global.headroom(limit, crate::budget::Tier::Admit);
+            let key = (iface, "10.0.0.2:40000".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            // Enough state, but one byte short of the optional credit.
+            let blocker = sh.memory_handle(peer).try_allocate(ceiling - admission - charge + 1).unwrap();
+            let before = global.reserved();
+            let admitted = sh.admit_memory(Instant::ZERO, key, peer).unwrap();
+            assert!(admitted.2.is_none());
+            assert_eq!(global.reserved(), before + admission);
+            assert_eq!(sh.budget.rx_progress_bytes(), [0; 3]);
+            assert_eq!(sh.budget.admission_debt(), [0; 3]);
+            drop((admitted, blocker));
+            // State itself still fails transactionally, owing only state bytes.
             let blocker = sh.memory_handle(peer).try_allocate(ceiling - admission + 1).unwrap();
             let before = global.reserved();
-            let key = (iface, "10.0.0.2:40000".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
             assert!(sh.admit_memory(Instant::ZERO, key, peer).is_none());
-            assert_eq!(global.reserved(), before, "prepared core/stream leases must roll back when RX credit fails");
-            assert_eq!(sh.budget.stats().failures().rx_progress, 1);
-            let index = match level {
-                Level::Global => 0,
-                Level::Port => 1,
-                Level::Peer => 2,
-            };
+            assert_eq!(global.reserved(), before);
+            let index = level as usize;
             assert_eq!(sh.budget.admission_debt()[index], admission);
             drop(blocker);
             let admitted = sh.admit_memory(Instant::from_millis(1000), key, peer).unwrap();
-            assert_eq!(global.reserved(), admission);
+            assert!(admitted.2.is_some());
+            assert_eq!(global.reserved(), admission + charge);
             assert_eq!(sh.budget.admission_debt(), [0; 3]);
             drop(admitted);
             drop(sh);

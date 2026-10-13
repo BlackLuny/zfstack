@@ -45,11 +45,16 @@ const META_RESERVE: u64 = {
 /// pins compared to two blocks.
 pub const MIN_SEND_SHARE: u64 = crate::buf::TX_BLOCK as u64;
 
+/// Optional RX promises may occupy at most one eighth of each physical level.
+/// This leaves admission capacity for idle connections that use ordinary Bulk RX.
+pub const RX_PROGRESS_DIVISOR: u64 = 8;
+
 /// Physical use of one port or peer level. The global level keeps the same
 /// counters on [`GlobalBudget`].
 #[derive(Debug, Default)]
 pub struct LevelUse {
     used: AtomicU64,
+    rx_progress: AtomicU64,
     /// TX blocks and send records: the leases an ACK releases (docs/design/0006 §3).
     drain: AtomicU64,
     /// Admission state this level owes after refusing new connections
@@ -72,6 +77,7 @@ pub struct GlobalBudget {
     low: u64,
     pressure: u64,
     reserved: AtomicU64,
+    rx_progress: AtomicU64,
     /// Global counterparts of [`LevelUse::drain`] and [`LevelUse::debt`].
     drain: AtomicU64,
     admit_debt: AtomicU64,
@@ -149,6 +155,7 @@ impl GlobalBudget {
             low: ((high as u128 * 3) / 8) as u64,
             pressure: ((high as u128 * 5) / 8) as u64,
             reserved: AtomicU64::new(0),
+            rx_progress: AtomicU64::new(0),
             drain: AtomicU64::new(0),
             admit_debt: AtomicU64::new(0),
             drained: AtomicU64::new(0),
@@ -169,7 +176,7 @@ impl GlobalBudget {
             physical_waiting: AtomicUsize::new(0),
             egress_reserve: AtomicU64::new(DEFAULT_EGRESS_RESERVE),
             admit_reserve: AtomicU64::new(DEFAULT_ADMIT_RESERVE),
-            admit_minimum: AtomicU64::new(crate::shard::ACTIVE_STATE_BYTES + 1024 + crate::buf::RX_PROGRESS_MIN_CHARGE),
+            admit_minimum: AtomicU64::new(crate::shard::ACTIVE_STATE_BYTES + 1024),
             cache_reclaim_epoch: AtomicU64::new(0),
             cache_holders: Mutex::new(HashMap::new()),
         })
@@ -217,7 +224,9 @@ impl GlobalBudget {
     }
 
     pub(crate) fn ensure_rx_admit_reserve(&self, state: u64, rx: u64) {
-        self.admit_minimum.fetch_max(state.saturating_add(rx), Ordering::Relaxed);
+        // Credit is optional. Keep room for one promise in a normal burst,
+        // but small levels only need state to retain progress tiers.
+        self.admit_minimum.fetch_max(state, Ordering::Relaxed);
         self.ensure_admit_reserve(ADMIT_BURST.saturating_mul(state).saturating_add(rx));
     }
 
@@ -1154,6 +1163,16 @@ impl Budget {
         self.physical_port.used.load(Ordering::Relaxed)
     }
 
+    /// Prepaid RX bytes at global, port and all peers of this port. Exported
+    /// payload owners keep these promises charged after their connection closes.
+    pub fn rx_progress_bytes(&self) -> [u64; 3] {
+        [
+            self.global.rx_progress.load(Ordering::Relaxed),
+            self.physical_port.rx_progress.load(Ordering::Relaxed),
+            self.physical_peers.values().map(|p| p.rx_progress.load(Ordering::Relaxed)).sum(),
+        ]
+    }
+
     /// Admission state owed by the global, port and peer levels (the peer
     /// entry sums this port's peers).
     pub fn admission_debt(&self) -> [u64; 3] {
@@ -1208,6 +1227,24 @@ impl Budget {
         self.global.reserved().checked_add(bytes).is_some_and(|n| n <= self.global.global_limit(tier))
             && self.physical_used().checked_add(bytes).is_some_and(|n| n <= self.physical_port.limit(&self.global, self.port_limit, tier))
             && peer_fits
+    }
+
+    /// At the minimum logical send share, allow a second backing only while
+    /// all levels can leave a quarter free after that allocation. The Bulk
+    /// check also preserves admission debt and progress reserves on small levels.
+    pub(crate) fn can_pipeline_tx(&self, peer: PeerId) -> bool {
+        let extra = crate::buf::TX_FIRST_WRITE_CHARGE;
+        let fits = |used: u64, limit: u64| used.saturating_add(extra) <= limit - limit / 4;
+        let allowed = fits(self.global.reserved(), self.global.high)
+            && fits(self.physical_used(), self.port_limit)
+            && fits(self.physical_peers.get(&peer).map_or(0, |p| p.used.load(Ordering::Relaxed)), self.peer_limit)
+            && self.can_allocate(peer, extra, AllocationKind::AdapterTx);
+        if !allowed {
+            // A share gate runs before BlockPool::get can reuse/reclaim cached
+            // blocks. Do not let idle cache keep a writer parked at this gate.
+            self.global.request_cache_reclaim();
+        }
+        allowed
     }
 
     pub fn level(&self) -> Pressure {
@@ -1402,6 +1439,11 @@ impl MemoryHandle {
         self.peer.used.load(Ordering::Acquire)
     }
 
+    /// Optional prepaid RX promises still owned by this peer.
+    pub fn peer_rx_progress_bytes(&self) -> u64 {
+        self.peer.rx_progress.load(Ordering::Relaxed)
+    }
+
     /// Allocate at the admission tier. Paths that drain buffered bytes use
     /// [`Self::try_allocate_kind`] with their kind.
     pub fn try_allocate(&self, bytes: u64) -> Option<MemoryLease> {
@@ -1455,6 +1497,31 @@ pub(crate) struct MemoryScope<'a> {
 }
 
 impl MemoryScope<'_> {
+    /// Reserve an optional credit without letting idle connections consume the
+    /// entire level. Counter reservations roll back on either cap or physical
+    /// failure; only actual state failure may reject admission.
+    pub(crate) fn try_rx_progress(&self, bytes: u64) -> Option<RxProgressCredit> {
+        let counters = [(&self.global.rx_progress, self.global.high), (&self.port.rx_progress, self.port_limit), (&self.peer.rx_progress, self.peer_limit)];
+        for (i, (counter, limit)) in counters.iter().enumerate() {
+            if !reserve_amount(counter, limit / RX_PROGRESS_DIVISOR, bytes) {
+                for (counter, _) in &counters[..i] {
+                    counter.fetch_sub(bytes, Ordering::AcqRel);
+                }
+                self.stats.note(AllocationKind::RxProgress, None);
+                return None;
+            }
+        }
+        match self.try_allocate_level(bytes, AllocationKind::RxProgress) {
+            Ok(lease) => Some(RxProgressCredit { lease }),
+            Err(_) => {
+                for (counter, _) in counters {
+                    counter.fetch_sub(bytes, Ordering::AcqRel);
+                }
+                None
+            }
+        }
+    }
+
     #[inline]
     pub(crate) fn try_allocate_level(&self, bytes: u64, kind: AllocationKind) -> Result<MemoryLease, Level> {
         if let Some(level) = reserve_physical(self.global, self.port, self.peer, self.port_limit, self.peer_limit, bytes, kind) {
@@ -1471,6 +1538,20 @@ impl MemoryScope<'_> {
             cached: false,
             drain: kind.drains(),
         })
+    }
+}
+
+/// The credit cap follows the same lifetime as the physical promise, including
+/// payload slices retained outside the shard. It cannot be cached or reassigned.
+pub(crate) struct RxProgressCredit {
+    lease: MemoryLease,
+}
+
+impl Drop for RxProgressCredit {
+    fn drop(&mut self) {
+        self.lease.global.rx_progress.fetch_sub(self.lease.bytes, Ordering::AcqRel);
+        self.lease.port.rx_progress.fetch_sub(self.lease.bytes, Ordering::AcqRel);
+        self.lease.peer.as_ref().unwrap().rx_progress.fetch_sub(self.lease.bytes, Ordering::AcqRel);
     }
 }
 
@@ -1687,6 +1768,65 @@ impl Drop for AdmitDebt {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn issue37_credit_caps_roll_back_at_every_level_and_return_on_drop() {
+        let charge = crate::buf::rx_progress_charge(1500);
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let limit = 1 << 20;
+            let high = if level == Level::Global { limit } else { 2 * limit };
+            let port = if level == Level::Peer { high } else { limit };
+            let global = GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, limit, 4096);
+            let mut credits = Vec::new();
+            for _ in 0..limit / RX_PROGRESS_DIVISOR / charge {
+                credits.push(budget.memory_scope(PeerId(1)).try_rx_progress(charge).unwrap());
+            }
+            let before = budget.rx_progress_bytes();
+            assert_eq!(before, [limit / RX_PROGRESS_DIVISOR; 3]);
+            assert!(budget.memory_scope(PeerId(1)).try_rx_progress(charge).is_none());
+            assert_eq!(budget.rx_progress_bytes(), before, "{level:?} cap rollback");
+            assert_eq!(global.reserved(), before[0]);
+            let other = budget.memory_scope(PeerId(2)).try_rx_progress(charge);
+            assert_eq!(other.is_some(), level == Level::Peer, "another peer has independent credit capacity");
+            drop(other);
+            credits.pop();
+            let next = budget.memory_scope(PeerId(1)).try_rx_progress(charge).unwrap();
+            drop((next, credits));
+            assert_eq!(budget.rx_progress_bytes(), [0; 3]);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn issue37_credit_global_cap_is_shared_across_concurrent_shards() {
+        let global = GlobalBudget::new(1 << 20);
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let global = global.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let mut budget = Budget::new(global);
+                    let mut credits = Vec::new();
+                    for _ in 0..32 {
+                        if let Some(credit) = budget.memory_scope(PeerId(1)).try_rx_progress(8192) {
+                            credits.push(credit);
+                        }
+                    }
+                    barrier.wait();
+                    credits
+                })
+            })
+            .collect();
+        let credits: Vec<_> = threads.into_iter().flat_map(|t| t.join().unwrap()).collect();
+        assert_eq!(credits.len(), 16);
+        assert_eq!(global.rx_progress.load(Ordering::Relaxed), global.high() / RX_PROGRESS_DIVISOR);
+        drop(credits);
+        assert_eq!(global.rx_progress.load(Ordering::Relaxed), 0);
+        assert_eq!(global.reserved(), 0);
+    }
 
     #[test]
     fn memory_handle_reports_peer_ownership_not_port_cache() {

@@ -22,6 +22,21 @@ bash harness/l2/run-rig.sh /root/zfc-rig /absolute/path/to/candidate/zf-worker /
 
 RX 信用修复的 [12 组 ABBA 对比](results/2026-10-13-rx-credit/REPORT.md) 保持 3 秒超时和产品默认缓冲，覆盖 8 / 64 MiB，以及 8 MiB 下增加 50 ms 客户端上行延迟、持续加载 64 秒。`L2_UPLINK_DELAY_MS` 在每个客户端的 `wg0` 出方向加 netem，影响请求和下载 ACK；不是双向 WAN 仿真。`L2_BASELINE_SECS` / `L2_LOADED_SECS` / `L2_RECOVERY_SECS` 可调整观察窗口，默认仍为 8 / 16 / 8 秒。
 
+issue #37 增加两个必须单独比较的配置。空闲模式先在 peer 1 建立只连不发的连接，再运行原有四 peer 的下载与轻请求矩阵；全部测量结束后才关闭空闲连接，并检查 EOF/RST。`result.json.idle` 记录请求数、建立数、连接错误和最终存活数；建立不足或中途断开判失败，仍保留负载、路径和资源证据。脚本按连接数提高进程 fd 软限制，节点的硬限制必须足够。
+
+```sh
+# 8 MiB port + 1500 idle connections, then four downloads from peer 0.
+L2_MODE=idle L2_MEMORY_MB=16 L2_IDLE_CONNS=1500 L2_HEAVY_CONNS=4 \
+  bash harness/l2/run-rig.sh /root/zfc-rig /absolute/path/to/zf-worker /absolute/path/to/idle-output
+# Minimum send share, with and without 50 ms extra ACK-path delay.
+L2_MEMORY_MB=64 L2_HEAVY_CONNS=256 \
+  bash harness/l2/run-rig.sh /root/zfc-rig /absolute/path/to/zf-worker /absolute/path/to/floor-output
+L2_MEMORY_MB=64 L2_HEAVY_CONNS=256 L2_UPLINK_DELAY_MS=50 L2_LOADED_SECS=32 \
+  bash harness/l2/run-rig.sh /root/zfc-rig /absolute/path/to/zf-worker /absolute/path/to/rtt-output
+```
+
+每种配置按 base/candidate/candidate/base 运行，输出目录独立；不能用低并发的原有矩阵代替。空闲建连阶段默认最多 120 秒，可用 `L2_RAMP_SECS` 调整；这段不计入 goodput 分母。运行外层 timeout 时应包含该阶段。以上是复现入口，不代表当前修改已经完成真实 WG ABBA 实测。
+
 `L2_CAPTURE=1` 开启同端口轻 peer 的内层 TCP 与 target 载荷抓包，要求节点已有 `tcpdump`；同时记录单调钟/实时时钟映射及 server 请求序号时间线。共享前仅导出白名单案卷，排除密钥与 worker/controller 配置。以下比较器要求先生成 `analysis.json`，检查候选请求错误、各阶段推进、原始 3 秒截止时间、抓包丢包、重传、重流完整性、同一负载与固定二进制。它保留基线失败，不用成功请求分位数隐藏超时：
 
 ```sh

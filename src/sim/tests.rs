@@ -48,6 +48,33 @@ fn clean_download() {
 }
 
 #[test]
+fn issue37_idle_connections_leave_room_for_another_peer() {
+    let mut s = sim(3701, LinkParams::default(), LinkParams::default());
+    let port = 8 << 20;
+    s.a.shard.set_budget_limits(port, port, 4096);
+    s.a.shard.reserve_stream_state(1024);
+    for n in 0..1500u16 {
+        s.connect_as(PeerId(1), 40000 + n, AppConn::default());
+        if n % 50 == 49 {
+            s.run_until(s.now + Duration::from_millis(100));
+        }
+    }
+    assert_eq!(s.a.accepted.len(), 1500, "idle connections must not exhaust admission with RX credit");
+    let idle_bytes = s.a.shard.budget().physical_used();
+    s.a.accept_template = AppConn { to_send: 256 << 10, fin_after_send: true, ..Default::default() };
+    let downloads: Vec<_> = (0..4).map(|n| s.connect_as(PeerId(2), 42000 + n, AppConn::default())).collect();
+    s.run_until(s.now + secs(5));
+    for id in downloads {
+        assert_download_ok(&s.b.conns[&id], 256 << 10);
+    }
+    eprintln!("issue37 idle: admitted=1500 idle_bytes={idle_bytes} limit={port}");
+    assert!(s.a.shard.budget().physical_used() <= port);
+    let global = s.a.shard.budget().global().clone();
+    drop(s);
+    assert_eq!(global.reserved(), 0);
+}
+
+#[test]
 fn rx_progress_small_requests_cross_a_saturated_port_without_wire_retransmission() {
     for enabled in [false, true] {
         let mut s = sim(850, LinkParams::default(), LinkParams::default());
