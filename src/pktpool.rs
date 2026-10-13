@@ -17,12 +17,33 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+#[derive(Default)]
+struct FreeCache {
+    buffers: Vec<(Vec<u8>, MemoryLease)>,
+    idle: Option<IdleWindow>,
+}
+
+struct IdleWindow {
+    since: Instant,
+    // The LIFO prefix never borrowed during this observation window.
+    untouched: usize,
+}
+
+impl FreeCache {
+    fn note_tail_removal(&mut self) {
+        if let Some(idle) = &mut self.idle {
+            idle.untouched = idle.untouched.min(self.buffers.len());
+        }
+    }
+}
 
 struct Inner {
     buf_size: usize,
     max_cached: usize,
     memory: MemoryHandle,
-    free: Mutex<Vec<(Vec<u8>, MemoryLease)>>,
+    free: Mutex<FreeCache>,
     in_use: AtomicUsize,
 }
 
@@ -39,7 +60,7 @@ impl PacketPool {
     /// packet read (the device MTU plus any device header); at most
     /// `max_cached` idle buffers stay allocated (and charged).
     pub fn new(memory: MemoryHandle, buf_size: usize, max_cached: usize) -> Self {
-        PacketPool { inner: Arc::new(Inner { buf_size, max_cached, memory, free: Mutex::new(Vec::new()), in_use: AtomicUsize::new(0) }) }
+        PacketPool { inner: Arc::new(Inner { buf_size, max_cached, memory, free: Mutex::new(FreeCache::default()), in_use: AtomicUsize::new(0) }) }
     }
 
     pub fn buf_size(&self) -> usize {
@@ -48,7 +69,7 @@ impl PacketPool {
 
     /// Idle buffers currently cached.
     pub fn cached(&self) -> usize {
-        self.inner.free.lock().unwrap().len()
+        self.inner.free.lock().unwrap().buffers.len()
     }
 
     /// Buffers handed out and not yet back: being filled, queued for the
@@ -64,22 +85,25 @@ impl PacketPool {
         if target == 0 {
             let retired = {
                 let mut free = self.inner.free.lock().unwrap();
-                std::mem::take(&mut *free)
+                let retired = std::mem::take(&mut free.buffers);
+                free.note_tail_removal();
+                retired
             };
             let removed = retired.len();
             drop(retired);
             return removed;
         }
-        let mut remaining = self.inner.free.lock().unwrap().len().saturating_sub(target);
+        let mut remaining = self.cached().saturating_sub(target);
         let mut removed = 0;
         while remaining != 0 {
             let mut retired: [Option<(Vec<u8>, MemoryLease)>; 32] = std::array::from_fn(|_| None);
             let count = {
                 let mut free = self.inner.free.lock().unwrap();
-                let count = remaining.min(free.len().saturating_sub(target)).min(retired.len());
+                let count = remaining.min(free.buffers.len().saturating_sub(target)).min(retired.len());
                 for slot in &mut retired[..count] {
-                    *slot = free.pop();
+                    *slot = free.buffers.pop();
                 }
+                free.note_tail_removal();
                 count
             };
             if count == 0 {
@@ -92,11 +116,70 @@ impl PacketPool {
         removed
     }
 
+    /// Release historical free buffers that were never borrowed during an
+    /// observation window of at least `idle`. Keep at least `target` free
+    /// buffers and all buffers reused within the window. Only complete idle
+    /// can reach zero with a zero target; low-rate traffic retains its hot tail.
+    ///
+    /// The first call opts this shared pool into tracking and starts a window.
+    /// A single host maintenance loop should call this periodically, including
+    /// with no traffic, using a monotonic clock and stable settings. No task or
+    /// timer is started here. Late returns age through the next full window;
+    /// reclamation can therefore take two windows plus scheduling delay.
+    /// `idle == Duration::ZERO` observes the interval between calls.
+    ///
+    /// Tracking adds a minimum update under the existing get mutex, but no
+    /// per-packet clocks, atomics or additional locks. Destruction and budget
+    /// wakeups occur outside the mutex, in batches of at most 32 buffers.
+    /// Concurrent explicit trims and returns are safe; borrowed buffers are
+    /// never reclaimed. Empty free-list backing is also released.
+    pub fn trim_idle(&self, now: Instant, idle: Duration, target: usize) -> usize {
+        let mut removed = 0;
+        loop {
+            let mut retired: [Option<(Vec<u8>, MemoryLease)>; 32] = std::array::from_fn(|_| None);
+            let (done, backing) = {
+                let mut free = self.inner.free.lock().unwrap();
+                let len = free.buffers.len();
+                let Some(window) = free.idle.as_mut() else {
+                    free.idle = Some(IdleWindow { since: now, untouched: len });
+                    return removed;
+                };
+                if now.saturating_duration_since(window.since) < idle {
+                    return removed;
+                }
+                let count = window.untouched.min(len.saturating_sub(target)).min(retired.len());
+                for (slot, buffer) in retired.iter_mut().zip(free.buffers.drain(..count)) {
+                    *slot = Some(buffer);
+                }
+                let remaining = free.buffers.len();
+                let window = free.idle.as_mut().unwrap();
+                window.untouched -= count;
+                let done = window.untouched == 0 || remaining <= target;
+                if done {
+                    *window = IdleWindow { since: now, untouched: remaining };
+                }
+                let backing = (remaining == 0).then(|| std::mem::take(&mut free.buffers));
+                removed += count;
+                (done, backing)
+            };
+            drop(retired);
+            drop(backing);
+            if done {
+                return removed;
+            }
+        }
+    }
+
     /// An empty buffer, or `None` when the budget has no room for another or
     /// the allocation failed (the caller should stop reading the device until
     /// memory is released). A buffer's capacity never exceeds its charge.
     pub fn get(&self) -> Option<PacketBuf> {
-        let cached = self.inner.free.lock().unwrap().pop();
+        let cached = {
+            let mut free = self.inner.free.lock().unwrap();
+            let cached = free.buffers.pop();
+            free.note_tail_removal();
+            cached
+        };
         let (data, lease) = match cached {
             Some((mut data, lease)) => {
                 data.clear();
@@ -168,8 +251,8 @@ impl Drop for PacketBuf {
         let (Some(pool), Some(lease)) = (self.pool.take(), self.lease.take()) else { return };
         pool.in_use.fetch_sub(1, Ordering::Relaxed);
         let mut free = pool.free.lock().unwrap();
-        if free.len() < pool.max_cached {
-            free.push((std::mem::take(&mut self.data), lease));
+        if free.buffers.len() < pool.max_cached {
+            free.buffers.push((std::mem::take(&mut self.data), lease));
         }
         // Otherwise the buffer and its lease are released here.
     }
@@ -220,6 +303,116 @@ mod idle_trim_tests {
         budget::{Budget, GlobalBudget},
         PeerId,
     };
+
+    #[test]
+    fn low_rate_reclaims_history_but_preserves_hot_tail_and_budget() {
+        for target in [0, 2] {
+            let g = GlobalBudget::new(1 << 20);
+            let mut b = Budget::new(g.clone());
+            b.set_limits(1 << 20, 1 << 20, u32::MAX);
+            let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 128);
+            drop((0..128).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+            let start = Instant::now();
+            let idle = Duration::from_secs(10);
+            assert_eq!(p.trim_idle(start, idle, target), 0);
+            // The same hot buffer must survive, even with a zero target.
+            let hot = p.get().unwrap();
+            let address = hot.data.as_ptr();
+            drop(hot);
+            for second in 1..=30 {
+                let hot = p.get().unwrap();
+                assert_eq!(hot.data.as_ptr(), address);
+                drop(hot);
+                p.trim_idle(start + Duration::from_secs(second), idle, target);
+                assert_eq!(p.cached(), if second < 10 { 128 } else { target.max(1) });
+                assert_eq!(g.reserved(), p.cached() as u64 * 4096);
+            }
+            assert_eq!(p.in_use(), 0);
+            p.trim_cached_to(0);
+            assert_eq!(g.reserved(), 0);
+            assert_eq!(b.physical_used(), 0);
+        }
+    }
+
+    #[test]
+    fn full_reuse_above_floor_does_not_churn_and_late_returns_age() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 8);
+        drop((0..8).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+        let start = Instant::now();
+        let idle = Duration::from_secs(10);
+        p.trim_idle(start, idle, 2);
+        for cycle in 1..=3 {
+            drop((0..8).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+            assert_eq!(p.trim_idle(start + idle * cycle, idle, 2), 0);
+            assert_eq!(p.cached(), 8);
+        }
+        let held = (0..8).map(|_| p.get().unwrap()).collect::<Vec<_>>();
+        assert_eq!(p.trim_idle(start + idle * 4, idle, 0), 0);
+        assert_eq!(p.in_use(), 8);
+        assert_eq!(g.reserved(), 8 * 4096);
+        drop(held);
+        assert_eq!(p.trim_idle(start + idle * 5, idle, 0), 0, "late returns need a full window");
+        assert_eq!(p.trim_idle(start + idle * 6, idle, 0), 8);
+        assert_eq!(p.inner.free.lock().unwrap().buffers.capacity(), 0);
+        assert_eq!(g.reserved(), 0);
+    }
+
+    #[test]
+    fn explicit_tail_trim_does_not_age_new_returns_or_disable_tracking() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 8);
+        drop((0..8).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+        assert!(p.inner.free.lock().unwrap().idle.is_none(), "tracking is opt-in");
+        let start = Instant::now();
+        let idle = Duration::from_secs(10);
+        p.trim_idle(start, idle, 0);
+        assert_eq!(p.trim_cached_to(2), 6);
+        let held = (0..4).map(|_| p.get().unwrap()).collect::<Vec<_>>();
+        drop(held);
+        assert_eq!(p.trim_idle(start + idle, idle, 0), 0);
+        assert_eq!(p.trim_cached_to(0), 4);
+        drop(p.get().unwrap());
+        assert_eq!(p.trim_idle(start + idle * 2, idle, 0), 0);
+        assert_eq!(p.trim_idle(start + idle * 3, idle, 0), 1);
+        assert_eq!(g.reserved(), 0);
+    }
+
+    #[test]
+    fn zero_window_observes_between_ticks_and_target_is_a_floor() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 4);
+        drop((0..4).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+        let now = Instant::now();
+        assert_eq!(p.trim_idle(now, Duration::ZERO, 0), 0);
+        drop(p.get().unwrap());
+        assert_eq!(p.trim_idle(now, Duration::ZERO, 0), 3);
+        assert_eq!(p.trim_idle(now, Duration::ZERO, usize::MAX), 0);
+        assert_eq!(p.trim_idle(now, Duration::ZERO, 0), 1);
+        assert_eq!(g.reserved(), 0);
+    }
+
+    #[test]
+    fn idle_trim_wakes_outside_mutex_across_retirement_batches() {
+        let g = GlobalBudget::new(1 << 20);
+        let mut b = Budget::new(g.clone());
+        b.set_limits(1 << 20, 1 << 20, u32::MAX);
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 128);
+        drop((0..128).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+        let now = Instant::now();
+        p.trim_idle(now, Duration::from_secs(1), 0);
+        let wake = Arc::new(UnlockWake { pool: p.clone(), calls: AtomicUsize::new(0) });
+        let w = std::task::Waker::from(wake.clone());
+        let waiter = g.new_waiter_id();
+        g.register_waiter(waiter, g.release_epoch(), &w);
+        assert_eq!(p.trim_idle(now + Duration::from_secs(1), Duration::from_secs(1), 0), 128);
+        assert_eq!(wake.calls.load(Ordering::Relaxed), 1);
+        g.remove_waiter(waiter);
+        assert_eq!(g.reserved(), 0);
+    }
     #[test]
     fn free_only_trim_and_empty_backing() {
         let g = GlobalBudget::new(1 << 20);
@@ -242,7 +435,7 @@ mod idle_trim_tests {
         drop(held);
         assert_eq!(p.trim_cached_to(0), 2);
         assert_eq!(p.trim_cached_to(0), 0);
-        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(p.inner.free.lock().unwrap().buffers.capacity(), 0);
         assert_eq!(g.reserved(), 0);
         assert_eq!(b.physical_used(), 0);
     }
@@ -253,9 +446,9 @@ mod idle_trim_tests {
         let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 2);
         drop(p.get().unwrap());
         let held = p.get().unwrap();
-        assert!(p.inner.free.lock().unwrap().capacity() > 0);
+        assert!(p.inner.free.lock().unwrap().buffers.capacity() > 0);
         assert_eq!(p.trim_cached_to(0), 0);
-        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(p.inner.free.lock().unwrap().buffers.capacity(), 0);
         assert_eq!(g.reserved(), 4096);
         drop(held);
         p.trim_cached_to(0);
@@ -386,7 +579,11 @@ mod idle_trim_tests {
             threads.push(std::thread::spawn(move || {
                 barrier.wait();
                 for i in 0..512 {
-                    p.trim_cached_to((i + n) % 4);
+                    if n == 0 {
+                        p.trim_idle(Instant::now(), Duration::ZERO, i % 4);
+                    } else {
+                        p.trim_cached_to((i + n) % 4);
+                    }
                 }
             }));
         }
@@ -399,7 +596,7 @@ mod idle_trim_tests {
         assert_eq!(g.reserved(), p.cached() as u64 * 4096);
         assert_eq!(b.physical_used(), g.reserved());
         p.trim_cached_to(0);
-        assert_eq!(p.inner.free.lock().unwrap().capacity(), 0);
+        assert_eq!(p.inner.free.lock().unwrap().buffers.capacity(), 0);
         assert_eq!(g.reserved(), 0);
     }
 }
