@@ -1,9 +1,28 @@
-"""Tail-latency regressions using recorded exchanges, without network timing."""
+"""Loader regressions for burst admission and recorded tail latency."""
+import socket
 import threading
 import unittest
 from unittest.mock import Mock
 
 import issue23_tun_load as load
+
+
+class UpstreamBurstAdmission(unittest.TestCase):
+    def test_supported_burst_connects_before_handlers_are_scheduled(self):
+        # Hold off accept/handler scheduling entirely. The listener must still
+        # admit one supported wave; socketserver's default stalls at client 7.
+        server = load.Upstream(("127.0.0.1", 0), 1)
+        clients = []
+        try:
+            for _ in range(load.MAX_FLOWS):
+                client = socket.socket()
+                clients.append(client)
+                client.settimeout(1)
+                client.connect(server.server_address)
+        finally:
+            for client in clients:
+                client.close()
+            server.server_close()
 
 
 class MixedLatency(unittest.TestCase):
