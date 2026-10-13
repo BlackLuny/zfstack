@@ -26,6 +26,7 @@ EXPERIMENT_ENV = {
     "ZFBENCH_TX_CACHE_TRIM_SMALL", "ZFBENCH_TX_CACHE_SAMPLE_MS",
     "ZFBENCH_PACKET_POOL_TRIM_IDLE_MS", "ZFBENCH_PACKET_POOL_TRIM_TARGET",
     "ZFBENCH_GLOBAL_BYTES", "ZFBENCH_PORT_BYTES", "ZFBENCH_PEER_BYTES",
+    "ZFBENCH_TUN_PEERS",
 }
 TX_ENV = sorted(name for name in EXPERIMENT_ENV if name.startswith("ZFBENCH_TX_CACHE_TRIM_"))
 PACKET_ENV = ["ZFBENCH_PACKET_POOL_TRIM_IDLE_MS", "ZFBENCH_PACKET_POOL_TRIM_TARGET"]
@@ -103,6 +104,8 @@ def parse_experiment(items):
             raise CaseError("budgets require 0 < peer <= port <= global")
     if "ZFBENCH_TX_CACHE_SAMPLE_MS" in values and int(values["ZFBENCH_TX_CACHE_SAMPLE_MS"]) < 1000:
         raise CaseError("TX sampler interval must be >= 1000 ms")
+    if "ZFBENCH_TUN_PEERS" in values and values["ZFBENCH_TUN_PEERS"] != "4":
+        raise CaseError("ZFBENCH_TUN_PEERS must be 4")
     return values
 
 
@@ -135,6 +138,8 @@ def arguments():
     parser.add_argument("--idle-secs", "--idle", default="5")
     parser.add_argument("--idle-count", "--idlecount", type=int, default=0)
     parser.add_argument("--flows", type=int, default=8)
+    parser.add_argument("--peer-mode", choices=("single", "fanout", "noisy"), default="single")
+    parser.add_argument("--pressure-hold-secs", type=float, default=0.0)
     parser.add_argument("--rr-samples", "--rrsamples", type=int, default=1000)
     parser.add_argument("--rr-sizes", default="64,512,1400,4096")
     parser.add_argument("--rr-interval-ms", type=float, default=0.0)
@@ -181,6 +186,15 @@ def arguments():
     if sleeps + paced_rr + CLEANUP_RESERVE + 20 >= args.case_timeout_secs:
         raise CaseError("planned sleeps/RR pacing leave less than 20s for setup and workload; split this case")
     args.experiment = parse_experiment(args.experiment_env)
+    if not 0 <= args.pressure_hold_secs <= 5 or (args.pressure_hold_secs and args.peer_mode != "noisy"):
+        raise CaseError("pressure hold requires noisy mode and must be in 0..5 seconds")
+    if args.peer_mode != "single":
+        if not args.diagnostic or args.mixed_rr_interval_ms is None or args.flows < 4:
+            raise CaseError("multi-peer requires diagnostic mode, mixed RR and at least four flows")
+        if args.experiment.get("ZFBENCH_TUN_PEERS") != "4" or "ZFBENCH_TX_CACHE_SAMPLE_MS" not in args.experiment:
+            raise CaseError("multi-peer requires explicit ZFBENCH_TUN_PEERS=4 and sampler")
+    elif "ZFBENCH_TUN_PEERS" in args.experiment:
+        raise CaseError("ZFBENCH_TUN_PEERS requires multi-peer workload")
     if "ZFBENCH_TX_CACHE_SAMPLE_MS" in args.experiment and not args.diagnostic:
         raise CaseError("TX cache sampler requires --diagnostic; sampling must not enter performance statistics")
     if args.proxy_cpus & args.loader_cpus:
@@ -241,6 +255,7 @@ class Runner:
             "idle_connections": "closed", "flows": args.flows, "rr_samples": args.rr_samples,
             "rr_sizes": args.size_values, "rr_interval_ms": args.rr_interval_ms,
             "bulk_bytes_per_flow": args.bulk_bytes_per_flow, "direction": args.direction,
+            "peer_mode": args.peer_mode, "pressure_hold_secs": args.pressure_hold_secs,
             "mixed_rr_interval_ms": args.mixed_rr_interval_ms, "low_secs": args.low_secs,
             "low_interval_ms": args.low_interval_ms, "settle_secs": args.settle_secs,
             "socket_timeout_secs": args.socket_timeout_secs,
@@ -456,6 +471,16 @@ class Runner:
         addresses = self.json_ns(["-4", "-j", "addr", "show", "dev", DEVICE])
         if not any(a.get("local") == "172.19.0.1" and a.get("prefixlen") == 30 for row in addresses for a in row.get("addr_info", [])):
             raise CaseError("unexpected proxy TUN IPv4 address")
+        peer_routes = []
+        if self.args.peer_mode != "single":
+            for peer in range(1, 5):
+                source = f"172.19.1.{peer}"
+                self.ns_command(["-4", "addr", "add", source + "/32", "dev", "lo"])
+                route = self.json_ns(["-4", "-j", "route", "get", "198.18.0.2", "from", source])
+                if len(route) != 1 or route[0].get("dev") != DEVICE:
+                    raise CaseError("peer source does not route through the owned TUN")
+                peer_routes.append({"peer_id": peer, "source": source, "route": route})
+        self.meta["peer_routes"] = peer_routes
         route = self.json_ns(["-4", "-j", "route", "get", "198.18.0.2"])
         if len(route) != 1 or route[0].get("dev") != DEVICE:
             raise CaseError("target does not route through the owned TUN")
@@ -479,6 +504,7 @@ class Runner:
                        "--mtu", str(a.mtu), "--idle-secs", a.idle_secs, "--idle-connections", "closed", "--idle-count", str(a.idle_count),
                        "--flows", str(a.flows), "--rr-samples", str(a.rr_samples), "--rr-sizes", a.rr_sizes,
                        "--rr-interval-ms", str(a.rr_interval_ms), "--bulk-bytes-per-flow", str(a.bulk_bytes_per_flow),
+                       "--peer-mode", a.peer_mode, "--pressure-hold-secs", str(a.pressure_hold_secs),
                        "--direction", a.direction, "--low-secs", str(a.low_secs), "--low-interval-ms", str(a.low_interval_ms),
                        "--settle-secs", str(a.settle_secs), "--timeout-secs", str(a.socket_timeout_secs),
                        "--variant", a.variant, "--pair", str(a.pair), "--source-sha", a.source_sha,
@@ -546,7 +572,46 @@ class Runner:
         liveness = [row for row in rows if row.get("type") == "idle_liveness"]
         if len(liveness) != len(self.args.idle_values) + 2 or any(row.get("verified") != self.args.idle_count for row in liveness):
             raise CaseError("idle liveness verification missing or incomplete")
+        if self.args.peer_mode != "single":
+            self.validate_peers(rows)
         self.result.update(loader_summary=summaries[0], loader_records=len(rows), quiet_phases=len(quiet))
+
+    def validate_peers(self, rows):
+        sources = {f"172.19.1.{peer}" for peer in range(1, 5)}
+        bulk = [row for row in rows if row.get("type") == "bulk"]
+        directions = 2 if self.args.direction == "both" else 1
+        if len(bulk) != (len(self.args.idle_values) + 1) * directions:
+            raise CaseError("incomplete multi-peer bulk phases")
+        for row in bulk:
+            flows = row["per_flow"]
+            expected = sources if self.args.peer_mode == "fanout" else {"172.19.1.1"}
+            if {flow.get("source") for flow in flows} != expected or len(flows) != self.args.flows:
+                raise CaseError("bulk did not use the declared peer identities")
+            if any(flow["verified_bytes"] != self.args.bulk_bytes_per_flow for flow in flows):
+                raise CaseError("incomplete multi-peer payload verification")
+            probes = row.get("mixed_peers", [])
+            if len(probes) != 3 or {probe.get("source") for probe in probes} != sources - {"172.19.1.1"}:
+                raise CaseError("missing light peer probes")
+            if any(probe["fully_overlapping_samples"] < 1 for probe in probes):
+                raise CaseError("light peer made no completed progress during bulk")
+        samples = [json.loads(line.split(" ", 1)[1])
+                   for line in (self.out / "proxy.stderr").read_text().splitlines()
+                   if line.startswith("ZFBENCH_PEERS ")]
+        seen = set()
+        for sample in samples:
+            if {peer["peer_id"] for peer in sample["peers"]} != set(range(5)):
+                raise CaseError("incomplete peer budget sample")
+            for peer in sample["peers"]:
+                if not 0 <= peer["physical_bytes"] <= sample["peer_limit_bytes"]:
+                    raise CaseError("sampled peer physical ceiling exceeded")
+                if peer["peer_id"] == 0 and peer["egress_packets"]:
+                    raise CaseError("traffic fell back to reader peer 0")
+                if peer["physical_bytes"] > 0 and peer["egress_packets"] > 0:
+                    seen.add(peer["peer_id"])
+        if seen != {1, 2, 3, 4}:
+            raise CaseError("did not observe four real traffic peers with physical leases and egress")
+        self.result["peer_validation"] = {"traffic_peers": sorted(seen), "samples": len(samples),
+                                          "scope": "sampled hard ceilings and concurrent progress; no minimum bandwidth guarantee"}
 
     def stop_child(self, role, initial_signal=signal.SIGTERM):
         proc = self.children.get(role)

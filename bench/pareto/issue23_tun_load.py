@@ -51,9 +51,19 @@ def address(value):
     return host, int(port)
 
 
-def connect(target, timeout):
+def connect(target, timeout, source=None, receive_buffer=None):
     begin = time.perf_counter_ns()
-    sock = socket.create_connection(target, timeout)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(timeout)
+        if receive_buffer is not None:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer)
+        if source is not None:
+            sock.bind((source, 0))
+        sock.connect(target)
+    except BaseException:
+        sock.close()
+        raise
     elapsed = (time.perf_counter_ns() - begin) / 1e6
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 0)
@@ -214,9 +224,9 @@ class Handler(socketserver.BaseRequestHandler):
 
 
 class IdleConnection:
-    def __init__(self, target, timeout, identity):
+    def __init__(self, target, timeout, identity, source=None):
         self.identity = identity
-        self.sock, self.connect_ms = connect(target, timeout)
+        self.sock, self.connect_ms = connect(target, timeout, source)
         self.sock.sendall(HEADER.pack(MAGIC, b"I", 0, identity))
         if recv_exact(self.sock, 1) != b"I":
             raise RuntimeError("idle registration acknowledgement mismatch")
@@ -237,8 +247,8 @@ class IdleConnection:
 
 
 class Echo:
-    def __init__(self, target, size, timeout):
-        self.sock, self.connect_ms = connect(target, timeout)
+    def __init__(self, target, size, timeout, source=None):
+        self.sock, self.connect_ms = connect(target, timeout, source)
         self.size = size
         self.sequence = 0
         self.sock.sendall(HEADER.pack(MAGIC, b"E", size, 0))
@@ -281,7 +291,7 @@ class Echo:
 
 
 class MixedProbe:
-    def __init__(self, target, size, timeout, interval_ms):
+    def __init__(self, target, size, timeout, interval_ms, source=None):
         self.ready = threading.Event()
         self.start = threading.Event()
         self.stop = threading.Event()
@@ -292,7 +302,7 @@ class MixedProbe:
         def worker():
             echo = None
             try:
-                echo = Echo(target, size, timeout)
+                echo = Echo(target, size, timeout, source)
                 self.ready.set()
                 if not self.start.wait(timeout):
                     raise RuntimeError("mixed RR start barrier timed out")
@@ -343,7 +353,7 @@ class MixedProbe:
                 "raw_samples": self.samples, "started_during_bulk_samples": len(measured),
                 "fully_overlapping_samples": sum(sample["end_monotonic_ns"] <= end_ns for sample in measured),
                 "bulk_begin_monotonic_ns": begin_ns, "bulk_end_monotonic_ns": end_ns,
-                "note": "exchanges started during the bulk window enter latency, including late completions; one actual PeerId(0) in tunproxy"}
+                "note": "exchanges started during the bulk window enter latency, including late completions"}
 
 
 def percentiles(samples):
@@ -363,14 +373,18 @@ def percentiles(samples):
     }
 
 
-def bulk_flow(target, timeout, direction, flow, count):
+def bulk_flow(target, timeout, direction, flow, count, source=None, hold_secs=0):
     salt = (100 if direction == "down" else 500) + flow
-    sock, connect_ms = connect(target, timeout)
+    sock, connect_ms = connect(target, timeout, source, 4096 if hold_secs and direction == "down" else None)
     with sock:
         command = b"D" if direction == "down" else b"U"
         begin = time.perf_counter_ns()
         sock.sendall(HEADER.pack(MAGIC, command, count, salt))
         header_sent = time.perf_counter_ns()
+        hold_begin_unix_ns = time.time_ns()
+        if hold_secs and direction == "down":
+            time.sleep(hold_secs)
+        hold_end_unix_ns = time.time_ns()
         digest = hashlib.sha256()
         offset = 0
         first_response = None
@@ -402,6 +416,9 @@ def bulk_flow(target, timeout, direction, flow, count):
         finished = time.perf_counter_ns()
         return {
             "flow": flow,
+            "source": source,
+            "hold_begin_unix_ns": hold_begin_unix_ns,
+            "hold_end_unix_ns": hold_end_unix_ns,
             "direction": direction,
             "verified_bytes": offset,
             "sha256": digest.hexdigest(),
@@ -529,6 +546,8 @@ def main():
     parser.add_argument("--mixed-rr-interval-ms", type=float,
                         help="Opt in to one simultaneous RR flow during each bulk phase; uses the first rr-size")
     parser.add_argument("--flows", type=int, default=8)
+    parser.add_argument("--peer-mode", choices=("single", "fanout", "noisy"), default="single")
+    parser.add_argument("--pressure-hold-secs", type=float, default=0.0)
     parser.add_argument("--bulk-bytes-per-flow", type=int, default=8 << 20)
     parser.add_argument("--direction", choices=("down", "up", "both"), default="both")
     parser.add_argument("--timeout-secs", type=float, default=60.0)
@@ -566,6 +585,14 @@ def main():
 
     if args.mixed_rr_interval_ms is not None and args.mixed_rr_interval_ms < 1:
         raise RuntimeError("mixed-rr-interval-ms must be >= 1")
+
+    if not 0 <= args.pressure_hold_secs <= 5 or (args.pressure_hold_secs and args.peer_mode != "noisy"):
+        raise RuntimeError("pressure hold requires noisy mode and must be in 0..5 seconds")
+    if args.peer_mode != "single" and (args.mixed_rr_interval_ms is None or args.flows < 4):
+        raise RuntimeError("multi-peer requires mixed RR and at least four flows")
+
+    def source_for(index):
+        return None if args.peer_mode == "single" else f"172.19.1.{index % 4 + 1}"
 
     target, upstream_address = address(args.target), address(args.upstream)
     observer = Observer(args.proxy_pid, args.device, target)
@@ -638,7 +665,7 @@ def main():
         emit({"type": "snapshot", "stage": name + "_begin", "phase": number, "sample": before})
         for size in rr_sizes:
             if size not in echoes:
-                echoes[size] = Echo(target, size, args.timeout_secs)
+                echoes[size] = Echo(target, size, args.timeout_secs, source_for(0))
             echo = echoes[size]
             samples = []
             for _ in range(args.rr_samples):
@@ -657,23 +684,33 @@ def main():
             close_echoes()
         directions = ("down", "up") if args.direction == "both" else (args.direction,)
         for direction in directions:
-            mixed = None
+            mixed = []
             if args.mixed_rr_interval_ms is not None:
-                mixed = MixedProbe(target, rr_sizes[0], args.timeout_secs, args.mixed_rr_interval_ms)
+                try:
+                    for index in ([0] if args.peer_mode == "single" else [1, 2, 3]):
+                        source = source_for(index)
+                        mixed.append((source, MixedProbe(target, rr_sizes[0], args.timeout_secs, args.mixed_rr_interval_ms, source)))
+                except BaseException:
+                    for _, probe in mixed:
+                        probe.stop.set()
+                        probe.start.set()
+                        probe.thread.join(2 * args.timeout_secs + 1)
+                    raise
             bulk_before = observer.snapshot()
             generator_before = time.process_time()
             bulk_begin = time.monotonic()
             bulk_begin_ns = time.monotonic_ns()
             mixed_report = None
-            if mixed is not None:
-                mixed.start.set()
+            for _, probe in mixed:
+                probe.start.set()
             bulk_failed = False
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=args.flows) as executor:
                     futures = [
                         executor.submit(
                             bulk_flow, target, args.timeout_secs, direction,
-                            flow, args.bulk_bytes_per_flow
+                            flow, args.bulk_bytes_per_flow,
+                            source_for(flow if args.peer_mode == "fanout" else 0), args.pressure_hold_secs
                         )
                         for flow in range(args.flows)
                     ]
@@ -690,11 +727,15 @@ def main():
                     bulk_after = observer.snapshot()
                 except Exception as error:
                     secondary.append(("bulk_after_snapshot", error))
-                try:
-                    if mixed is not None:
-                        mixed_report = mixed.finish(bulk_begin_ns, bulk_end_ns)
-                except Exception as error:
-                    secondary.append(("mixed_finish", error))
+                mixed_reports = []
+                for source, probe in mixed:
+                    try:
+                        report = probe.finish(bulk_begin_ns, bulk_end_ns)
+                        report["source"] = source
+                        mixed_reports.append(report)
+                    except Exception as error:
+                        secondary.append(("mixed_finish", error))
+                mixed_report = mixed_reports[0] if mixed_reports else None
                 if secondary:
                     if bulk_failed:
                         for stage, error in secondary:
@@ -718,6 +759,7 @@ def main():
                 "tun_delta": delta["tun"],
                 "per_flow": reports,
                 "mixed_rr": mixed_report,
+                "mixed_peers": mixed_reports,
                 "before": bulk_before, "after": bulk_after,
                 "scope": "real TUN and whole proxy process; Python endpoints can limit throughput",
             })
@@ -743,7 +785,7 @@ def main():
         })
         population_begin = time.monotonic()
         for identity in range(args.idle_count):
-            idle_connections.append(IdleConnection(target, args.timeout_secs, identity))
+            idle_connections.append(IdleConnection(target, args.timeout_secs, identity, source_for(identity)))
         emit({"type": "idle_population", "requested": args.idle_count,
               "established": len(idle_connections),
               "connect_wall_sec": time.monotonic() - population_begin,
@@ -783,7 +825,7 @@ def main():
         close_echoes()
         server.wait_running_at_most(0, args.timeout_secs)
         if args.low_secs:
-            echo = Echo(target, rr_sizes[0], args.timeout_secs)
+            echo = Echo(target, rr_sizes[0], args.timeout_secs, source_for(0))
             before = observer.snapshot()
             samples = []
             low_begin = time.monotonic()
