@@ -64,6 +64,10 @@ impl Topology {
 pub struct IsolatePlan {
     pub ports: u16,
     pub per_port_shard: bool,
+    /// 0 keeps the ample isolate ceilings. A positive value is the global budget
+    /// in MiB; port and peer ceilings are half of it, matching the L2 8 MiB rig
+    /// (4 MiB port, 4 MiB peer).
+    pub budget_mb: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -73,15 +77,16 @@ pub struct Iso {
     pub heavy_conns: u16,
     pub placement: Placement,
     pub topology: Topology,
+    pub budget_mb: u64,
 }
 
 impl Iso {
     pub fn plan(&self) -> IsolatePlan {
-        IsolatePlan { ports: self.ports, per_port_shard: self.topology == Topology::PerPortShard }
+        IsolatePlan { ports: self.ports, per_port_shard: self.topology == Topology::PerPortShard, budget_mb: self.budget_mb }
     }
 }
 
-pub fn resolve(ports: u16, lights: u16, heavy_conns: u16, placement: Placement, topology: Topology) -> Result<Iso, String> {
+pub fn resolve(ports: u16, lights: u16, heavy_conns: u16, placement: Placement, topology: Topology, budget_mb: u64) -> Result<Iso, String> {
     if ports == 0 || ports > PORTS_MAX {
         return Err(format!("--ports must be 1..={PORTS_MAX}"));
     }
@@ -106,7 +111,10 @@ pub fn resolve(ports: u16, lights: u16, heavy_conns: u16, placement: Placement, 
         }
         _ => {}
     }
-    Ok(Iso { ports, lights, heavy_conns, placement, topology })
+    if budget_mb > 4096 {
+        return Err("--budget-mb must be 0 (ample) or <= 4096".into());
+    }
+    Ok(Iso { ports, lights, heavy_conns, placement, topology, budget_mb })
 }
 
 pub fn server_ip(port: u16) -> Ipv4Addr {
@@ -572,7 +580,7 @@ mod tests {
             connect_timeout: Duration::from_secs(1),
             client_cc: None,
         };
-        let iso = resolve(1, 0, 0, Placement::SameIface, Topology::SharedShard).unwrap();
+        let iso = resolve(1, 0, 0, Placement::SameIface, Topology::SharedShard, 0).unwrap();
         let out = test_isolate(&o, &iso, &mut |_| {});
         assert!(out.errors.is_empty(), "{:?}", out.errors);
         assert!(out.window_secs >= 1.0, "window was {} seconds", out.window_secs);
@@ -596,14 +604,14 @@ mod tests {
 
     #[test]
     fn cross_iface_lights_leave_port_zero() {
-        let iso = resolve(4, 3, 1, Placement::CrossIface, Topology::SharedShard).unwrap();
+        let iso = resolve(4, 3, 1, Placement::CrossIface, Topology::SharedShard, 0).unwrap();
         assert_eq!(heavy_user(), (0, 1));
         assert_eq!(light_user(0, &iso), (1, 2));
         assert_eq!(light_user(1, &iso), (2, 3));
         assert_eq!(light_user(2, &iso), (3, 4));
-        assert!(resolve(1, 1, 1, Placement::CrossIface, Topology::SharedShard).is_err());
-        assert!(resolve(4, 1, 1, Placement::CrossShard, Topology::SharedShard).is_err());
-        assert!(resolve(4, 1, 1, Placement::CrossShard, Topology::PerPortShard).is_ok());
+        assert!(resolve(1, 1, 1, Placement::CrossIface, Topology::SharedShard, 0).is_err());
+        assert!(resolve(4, 1, 1, Placement::CrossShard, Topology::SharedShard, 0).is_err());
+        assert!(resolve(4, 1, 1, Placement::CrossShard, Topology::PerPortShard, 0).is_ok());
     }
 
     fn ipv4(src: [u8; 4], dst: [u8; 4]) -> Vec<u8> {

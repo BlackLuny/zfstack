@@ -26,7 +26,7 @@ pub const DEFAULT_EGRESS_RESERVE: u64 = 8 * 1024;
 /// it is free again whenever bulk refills to its own limit. A host adapter
 /// raises it with its own stream state ([`GlobalBudget::ensure_admit_reserve`]).
 pub const ADMIT_BURST: u64 = 4;
-pub const DEFAULT_ADMIT_RESERVE: u64 = ADMIT_BURST * (crate::shard::ACTIVE_STATE_BYTES + 1024);
+pub const DEFAULT_ADMIT_RESERVE: u64 = ADMIT_BURST * (crate::shard::ACTIVE_STATE_BYTES + 1024) + crate::buf::RX_PROGRESS_MIN_CHARGE;
 /// Smallest growth that lets a drained connection record its next segment, or
 /// lets the adapter take one more RX chunk from the core.
 const META_RESERVE: u64 = {
@@ -102,6 +102,7 @@ pub struct GlobalBudget {
     physical_waiting: AtomicUsize,
     egress_reserve: AtomicU64,
     admit_reserve: AtomicU64,
+    admit_minimum: AtomicU64,
     /// Bumped when an allocation fails while idle TX blocks are cached. Each
     /// shard compares it on its next round and drops its idle blocks.
     cache_reclaim_epoch: AtomicU64,
@@ -168,6 +169,7 @@ impl GlobalBudget {
             physical_waiting: AtomicUsize::new(0),
             egress_reserve: AtomicU64::new(DEFAULT_EGRESS_RESERVE),
             admit_reserve: AtomicU64::new(DEFAULT_ADMIT_RESERVE),
+            admit_minimum: AtomicU64::new(crate::shard::ACTIVE_STATE_BYTES + 1024 + crate::buf::RX_PROGRESS_MIN_CHARGE),
             cache_reclaim_epoch: AtomicU64::new(0),
             cache_holders: Mutex::new(HashMap::new()),
         })
@@ -214,17 +216,23 @@ impl GlobalBudget {
         self.admit_reserve.fetch_max(bytes, Ordering::Relaxed);
     }
 
+    pub(crate) fn ensure_rx_admit_reserve(&self, state: u64, rx: u64) {
+        self.admit_minimum.fetch_max(state.saturating_add(rx), Ordering::Relaxed);
+        self.ensure_admit_reserve(ADMIT_BURST.saturating_mul(state).saturating_add(rx));
+    }
+
     /// Bytes a `tier` allocation must leave free below a level's `limit`
-    /// (docs/design/0005 §2). A level too small to hold the reserves twice
-    /// runs without them; [`Self::progress_reserve_active`] reports that.
+    /// Small levels keep one complete admission rather than disabling all
+    /// progress tiers when a four-connection burst no longer fits (§0010).
     pub fn headroom(&self, limit: u64, tier: Tier) -> u64 {
         let egress = self.egress_reserve.load(Ordering::Relaxed);
         let drain = egress.saturating_add(META_RESERVE);
         let block = drain.saturating_add(crate::buf::TX_FIRST_WRITE_CHARGE);
-        let admit = block.saturating_add(self.admit_reserve.load(Ordering::Relaxed));
-        if limit / 2 < admit {
+        let burst = self.admit_reserve.load(Ordering::Relaxed);
+        if limit / 2 < block.saturating_add(self.admit_minimum.load(Ordering::Relaxed)) {
             return 0;
         }
+        let admit = block.saturating_add(burst).min(limit / 2);
         match tier {
             Tier::Egress => 0,
             Tier::Drain => egress,
@@ -879,6 +887,7 @@ pub enum AllocationKind {
     Ooo,
     SendRecord,
     ActiveState,
+    RxProgress,
     Logical,
     Other,
     AdapterTx,
@@ -894,9 +903,12 @@ impl AllocationKind {
             AllocationKind::Egress => Tier::Egress,
             AllocationKind::SendRecord | AllocationKind::AdapterRx => Tier::Drain,
             AllocationKind::TxBlock | AllocationKind::TxIndex => Tier::Block,
-            AllocationKind::ActiveState | AllocationKind::Logical | AllocationKind::Other | AllocationKind::StreamState | AllocationKind::Stateless => {
-                Tier::Admit
-            }
+            AllocationKind::ActiveState
+            | AllocationKind::RxProgress
+            | AllocationKind::Logical
+            | AllocationKind::Other
+            | AllocationKind::StreamState
+            | AllocationKind::Stateless => Tier::Admit,
             AllocationKind::RxChunk | AllocationKind::Ooo | AllocationKind::AdapterTx => Tier::Bulk,
         }
     }
@@ -915,6 +927,7 @@ pub struct KindCounts {
     pub ooo: u64,
     pub send_record: u64,
     pub active_state: u64,
+    pub rx_progress: u64,
     pub logical: u64,
     pub other: u64,
     pub adapter_tx: u64,
@@ -934,6 +947,7 @@ impl KindCounts {
             AllocationKind::Ooo => &mut self.ooo,
             AllocationKind::SendRecord => &mut self.send_record,
             AllocationKind::ActiveState => &mut self.active_state,
+            AllocationKind::RxProgress => &mut self.rx_progress,
             AllocationKind::Logical => &mut self.logical,
             AllocationKind::Other => &mut self.other,
             AllocationKind::AdapterTx => &mut self.adapter_tx,
@@ -1082,6 +1096,7 @@ impl Budget {
             + f.ooo
             + f.send_record
             + f.active_state
+            + f.rx_progress
             + f.logical
             + f.other
             + f.adapter_tx
@@ -1142,7 +1157,15 @@ impl Budget {
             Level::Peer => Some(self.physical_peers.entry(peer).or_default().clone()),
         };
         let counter = owner.as_ref().map_or(&self.global.admit_debt, |l| &l.debt);
-        let cap = self.global.admit_reserve.load(Ordering::Relaxed);
+        let limit = match level {
+            Level::Global => self.global.high,
+            Level::Port => self.port_limit,
+            Level::Peer => self.peer_limit,
+        };
+        let headroom = self.global.headroom(limit, Tier::Bulk);
+        // Another shard may raise shared reserves between the two snapshots.
+        let cap =
+            if headroom == 0 { self.global.admit_reserve.load(Ordering::Relaxed) } else { headroom.saturating_sub(self.global.headroom(limit, Tier::Admit)) };
         let mut cur = counter.load(Ordering::Relaxed);
         let owed = loop {
             let add = bytes.min(cap.saturating_sub(cur));
@@ -2292,6 +2315,39 @@ mod tests {
         assert!(!budget.progress_reserve_active());
         let lease = budget.memory_handle(PeerId(1)).try_allocate(16 << 10).unwrap();
         drop(lease);
+    }
+
+    #[test]
+    fn rx_progress_small_shares_keep_drain_headroom_when_admission_burst_is_clamped() {
+        let global = GlobalBudget::new(8 << 20);
+        let limit = 204_800;
+        let state = 10_240;
+        let rx = crate::buf::RX_PROGRESS_MIN_CHARGE;
+        global.ensure_rx_admit_reserve(state, rx);
+        let admission = state + rx;
+        assert!(global.progress_reserve_active(limit));
+        let bulk = global.headroom(limit, Tier::Bulk);
+        let state_headroom = global.headroom(limit, Tier::Admit);
+        assert_eq!(bulk, limit / 2);
+        assert!(bulk - state_headroom >= admission);
+        for (high, port, peer) in [(limit, limit, limit), (2 * limit, limit, limit), (2 * limit, 2 * limit, limit)] {
+            let global = GlobalBudget::new(high);
+            global.ensure_rx_admit_reserve(state, rx);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, peer, 16);
+            assert!(budget.progress_reserve_active());
+            let memory = budget.memory_handle(PeerId(1));
+            let held = memory.try_allocate_kind(limit - global.headroom(limit, Tier::Bulk), AllocationKind::AdapterTx).unwrap();
+            let state = memory.try_allocate_kind(admission, AllocationKind::RxProgress).unwrap();
+            let block = memory.try_allocate_kind(crate::buf::TX_FIRST_WRITE_CHARGE, AllocationKind::TxBlock).unwrap();
+            assert!(global.reserved() <= high && budget.physical_used() <= port);
+            drop((held, state, block));
+            assert_eq!(global.reserved(), 0);
+            let debt = budget.admit_debt(PeerId(1), Level::Peer, u64::MAX);
+            assert_eq!(budget.admission_debt()[2], global.headroom(limit, Tier::Bulk) - global.headroom(limit, Tier::Admit));
+            drop(debt);
+            assert_eq!(budget.admission_debt(), [0; 3]);
+        }
     }
 
     #[test]

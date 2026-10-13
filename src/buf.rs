@@ -14,6 +14,8 @@ use crate::PeerId;
 use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
 use std::mem::MaybeUninit;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 pub const TX_BLOCK: usize = 64 * 1024;
 const SMALL_TX_BLOCK: usize = 2048;
@@ -21,6 +23,61 @@ const SMALL_TX_BLOCK: usize = 2048;
 pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64;
 pub(crate) const TX_FIRST_WRITE_CHARGE: u64 = TX_BLOCK_CHARGE + 8 * std::mem::size_of::<Block>() as u64;
 const CHUNK_METADATA_BYTES: u64 = 64;
+pub(crate) const RX_PROGRESS_MIN_CHARGE: u64 = 8 * 1024;
+const RX_PROGRESS_OWNER_BYTES: u64 = 128;
+const RX_PROGRESS_INDEX_BYTES: u64 = 16 * std::mem::size_of::<Bytes>() as u64;
+
+/// Prepaid on admission, including two packet owners and descriptor growth.
+pub(crate) fn rx_progress_charge(mtu: u16) -> u64 {
+    let packet = (mtu as u64).max(64).next_power_of_two();
+    RX_PROGRESS_MIN_CHARGE.max(2 * (packet + RX_PROGRESS_OWNER_BYTES) + RX_PROGRESS_INDEX_BYTES + RX_PROGRESS_OWNER_BYTES)
+}
+
+/// A connection's private physical promise. The root lease remains charged
+/// while either the connection or any exported payload owns this credit.
+pub(crate) struct RxProgress {
+    used: AtomicU64,
+    capacity: u64,
+    _lease: MemoryLease,
+}
+
+impl RxProgress {
+    pub(crate) fn new(lease: MemoryLease, charge: u64) -> Arc<Self> {
+        Arc::new(Self { used: AtomicU64::new(0), capacity: charge - RX_PROGRESS_OWNER_BYTES, _lease: lease })
+    }
+
+    fn borrow(self: &Arc<Self>, bytes: u64) -> Option<RxProgressLease> {
+        self.used.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| used.checked_add(bytes).filter(|n| *n <= self.capacity)).ok()?;
+        Some(RxProgressLease { credit: Arc::clone(self), bytes })
+    }
+}
+
+struct RxProgressLease {
+    credit: Arc<RxProgress>,
+    bytes: u64,
+}
+
+impl Drop for RxProgressLease {
+    fn drop(&mut self) {
+        self.credit.used.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
+}
+
+enum RxIndexLease {
+    Bulk { _lease: MemoryLease },
+    Progress { _lease: RxProgressLease },
+}
+
+struct ProgressPayload {
+    data: Vec<u8>,
+    _lease: RxProgressLease,
+}
+
+impl AsRef<[u8]> for ProgressPayload {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
+    }
+}
 const OOO_DESCRIPTOR_BYTES: u64 = 128;
 
 /// A TX block. Storage starts uninitialized: a short write into a fresh 64 KiB
@@ -244,6 +301,14 @@ impl TxBuf {
     /// Bytes of block memory held.
     pub fn allocated(&self) -> usize {
         self.blocks.front().map_or(0, |b| b.len() + (self.blocks.len() - 1) * TX_BLOCK)
+    }
+
+    /// At the one-block fairness floor, partial ACKs cannot admit a second
+    /// full block before the first backing is actually released.
+    pub(crate) fn backing_space(&self, limit: usize) -> usize {
+        let allocated = self.allocated();
+        let tail = allocated.saturating_sub(self.head + self.len);
+        tail + limit.saturating_sub(allocated) / TX_BLOCK * TX_BLOCK
     }
 
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
@@ -534,7 +599,7 @@ pub(crate) fn rx_ooo_payload_failure_budget(payload_len: usize) -> u64 {
 /// Field order releases the allocation before its lease, also on rollback.
 struct RxIndex {
     items: VecDeque<Bytes>,
-    lease: MemoryLease,
+    lease: RxIndexLease,
 }
 
 #[cfg(test)]
@@ -579,7 +644,8 @@ impl AsRef<[u8]> for ChargedChunk {
 pub struct RxQueue {
     q: VecDeque<Bytes>,
     /// Covers retained descriptor capacity, independently of payload owners.
-    index_lease: Option<MemoryLease>,
+    index_lease: Option<RxIndexLease>,
+    progress: Option<Arc<RxProgress>>,
     /// Slots promised to OOO owners at admission, before they can be SACKed.
     ooo_slots: usize,
     tail: BytesMut,
@@ -588,6 +654,54 @@ pub struct RxQueue {
 }
 
 impl RxQueue {
+    pub(crate) fn set_progress(&mut self, credit: Arc<RxProgress>) {
+        assert!(self.progress.is_none());
+        self.progress = Some(credit);
+    }
+
+    /// Fallback only for low-unread, in-order input. New bytes borrow this
+    /// connection's prepaid promise, never the TX drain/egress headroom.
+    pub(crate) fn push_progress(&mut self, data: &[u8]) -> bool {
+        if data.is_empty() || data.len() > RX_JUMBO_CHUNK {
+            return false;
+        }
+        let Some(credit) = self.progress.as_ref() else { return false };
+        let cap = data.len().next_power_of_two().max(64);
+        let Some(lease) = credit.borrow(cap as u64 + RX_PROGRESS_OWNER_BYTES) else { return false };
+        let mut payload = Vec::new();
+        if payload.try_reserve_exact(cap).is_err() || payload.capacity() > cap {
+            return false;
+        }
+        let Ok(index) = self.prepare_progress_index() else { return false };
+        payload.extend_from_slice(data);
+        self.commit_index(index);
+        self.push_existing_reserved(Bytes::from_owner(ProgressPayload { data: payload, _lease: lease }));
+        true
+    }
+
+    fn prepare_progress_index(&self) -> Result<Option<RxIndex>, ()> {
+        let slots = self.retained_slots().checked_add(1).and_then(|n| n.checked_add(self.ooo_slots)).ok_or(())?;
+        if slots <= self.q.capacity() && self.index_lease.is_some() {
+            return Ok(None);
+        }
+        let target = slots.max(self.q.capacity()).max(4).checked_next_power_of_two().ok_or(())?;
+        if target > 8 {
+            return Err(());
+        }
+        let bytes = (target * std::mem::size_of::<Bytes>() * 2) as u64;
+        let lease = self.progress.as_ref().ok_or(())?.borrow(bytes).ok_or(())?;
+        #[cfg(test)]
+        if FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.replace(false)) {
+            return Err(());
+        }
+        let mut items = VecDeque::new();
+        items.try_reserve_exact(target).map_err(|_| ())?;
+        if items.capacity() * std::mem::size_of::<Bytes>() > bytes as usize {
+            return Err(());
+        }
+        Ok(Some(RxIndex { items, lease: RxIndexLease::Progress { _lease: lease } }))
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -692,14 +806,22 @@ impl RxQueue {
     /// backing (a `PacketBuf`). Only the descriptor slot is reserved, so a
     /// failure leaves the queue and the receive edge as they were.
     pub fn push_leased(&mut self, b: Bytes, budget: &mut Budget, peer: PeerId) -> bool {
+        self.push_leased_with_progress(b, budget, peer, false).is_some()
+    }
+
+    pub(crate) fn push_leased_with_progress(&mut self, b: Bytes, budget: &mut Budget, peer: PeerId, progress: bool) -> Option<bool> {
         if b.is_empty() {
-            return true;
+            return Some(false);
         }
-        let Some(slots) = self.retained_slots().checked_add(1).and_then(|n| n.checked_add(self.ooo_slots)) else { return false };
-        let Ok(index) = self.prepare_index(slots, budget, peer) else { return false };
+        let slots = self.retained_slots().checked_add(1).and_then(|n| n.checked_add(self.ooo_slots))?;
+        let (index, borrowed) = match self.prepare_index(slots, budget, peer) {
+            Ok(index) => (index, false),
+            Err(()) if progress => (self.prepare_progress_index().ok()?, true),
+            Err(()) => return None,
+        };
         self.commit_index(index);
         self.push_existing_reserved(b);
-        true
+        Some(borrowed)
     }
 
     fn seal_charged_tail(&mut self) {
@@ -779,6 +901,7 @@ impl RxQueue {
         self.tail = BytesMut::new();
         self.charged_tail = None;
         self.len = 0;
+        self.progress = None;
     }
 
     fn trim_empty_index(&mut self) {
@@ -818,7 +941,7 @@ impl RxQueue {
         if items.capacity().checked_mul(std::mem::size_of::<Bytes>()).is_none_or(|actual| actual > bytes) {
             return Err(());
         }
-        Ok(Some(RxIndex { items, lease }))
+        Ok(Some(RxIndex { items, lease: RxIndexLease::Bulk { _lease: lease } }))
     }
 
     fn commit_index(&mut self, index: Option<RxIndex>) {
@@ -1972,6 +2095,164 @@ mod tests {
         let (next, disc) = q.pop_contiguous(199, &mut rx);
         assert_eq!((next, disc), (205, 1));
         assert_eq!(rx.len(), 30 + 6);
+    }
+}
+
+#[cfg(test)]
+mod rx_progress_tests {
+    use super::*;
+    use crate::budget::{AllocationKind, GlobalBudget, Level, Tier};
+
+    fn credit(budget: &mut Budget, peer: PeerId, mtu: u16) -> Arc<RxProgress> {
+        let charge = rx_progress_charge(mtu);
+        let lease = budget.try_allocate_kind(peer, charge, AllocationKind::RxProgress).unwrap();
+        RxProgress::new(lease, charge)
+    }
+
+    #[test]
+    fn rx_progress_tx_floor_counts_backing_until_the_last_byte_is_acked() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(0);
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![1; TX_BLOCK]));
+        tx.consume(&mut pool, 1);
+        assert_eq!(tx.len(), TX_BLOCK - 1);
+        assert_eq!(tx.backing_space(TX_BLOCK), 0, "a logical byte released by ACK is not a second physical block");
+        tx.consume(&mut pool, TX_BLOCK - 1);
+        assert_eq!(tx.backing_space(TX_BLOCK), TX_BLOCK);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[2; 32]));
+        assert_eq!(tx.backing_space(TX_BLOCK), SMALL_TX_BLOCK - 32);
+        tx.consume(&mut pool, 32);
+        drop(tx);
+        drop(pool);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_progress_survives_bulk_exhaustion_at_every_level_and_reuses_credit() {
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let limit = 1 << 20;
+            let high = if level == Level::Global { limit } else { 2 * limit };
+            let port = if level == Level::Peer { high } else { limit };
+            let global = GlobalBudget::new(high);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(port, limit, 16);
+            let peer = PeerId(1);
+            let credit = credit(&mut budget, peer, 1500);
+            let mut rx = RxQueue::default();
+            rx.set_progress(credit.clone());
+            let heavy = if level == Level::Peer { peer } else { PeerId(2) };
+            let used = global.reserved();
+            let ceiling = limit - global.headroom(limit, Tier::Block);
+            let blocker = budget.try_allocate_kind(heavy, ceiling - used, AllocationKind::TxBlock).unwrap();
+            let before = global.reserved();
+            for n in 0..32 {
+                let data = [n; 256];
+                assert!(!rx.push_charged(&data, &mut budget, peer));
+                assert!(rx.push_progress(&data));
+                let owner = rx.read_chunk(256).unwrap();
+                assert_eq!(&owner[..], &data);
+                drop(owner);
+                assert_eq!(global.reserved(), before);
+                assert!(credit.used.load(Ordering::Relaxed) <= RX_PROGRESS_INDEX_BYTES);
+            }
+            let failures = budget.stats().failures_by_level();
+            let index = match level {
+                Level::Global => 0,
+                Level::Port => 1,
+                Level::Peer => 2,
+            };
+            assert_eq!(failures[index], 32);
+            assert_eq!(failures.iter().sum::<u64>(), 32);
+            assert!(budget.physical_used() <= port && global.reserved() <= high);
+            rx.clear();
+            drop(credit);
+            drop(blocker);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn rx_progress_exported_slice_pins_credit_after_close_until_last_owner_drop() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let credit = credit(&mut budget, PeerId(1), 1500);
+        let other_credit = self::credit(&mut budget, PeerId(2), 1500);
+        let mut rx = RxQueue::default();
+        rx.set_progress(credit.clone());
+        assert!(rx.push_progress(&[9; 4096]));
+        let tiny = rx.read_chunk(1).unwrap();
+        drop(rx.read_chunk(4096));
+        assert!(rx.is_empty());
+        assert!(!rx.push_progress(&[8; 4096]), "logical consumption cannot return a still-exported backing");
+        let mut other = RxQueue::default();
+        other.set_progress(other_credit.clone());
+        assert!(other.push_progress(&[7; 256]), "a stalled reader cannot borrow another connection's credit");
+        rx.clear();
+        drop(credit);
+        assert_eq!(global.reserved(), 2 * RX_PROGRESS_MIN_CHARGE);
+        let clone = tiny.clone();
+        drop(tiny);
+        assert_eq!(global.reserved(), 2 * RX_PROGRESS_MIN_CHARGE);
+        std::thread::spawn(move || drop(clone)).join().unwrap();
+        assert_eq!(global.reserved(), RX_PROGRESS_MIN_CHARGE);
+        other.clear();
+        drop(other_credit);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_progress_descriptor_failure_rolls_back_payload_credit_and_order() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let credit = credit(&mut budget, PeerId(1), 1500);
+        let mut rx = RxQueue::default();
+        rx.set_progress(credit.clone());
+        FAIL_RX_INDEX_ALLOCATION.with(|fail| fail.set(true));
+        let before = global.reserved();
+        assert!(!rx.push_progress(&[1; 256]));
+        assert!(rx.is_empty());
+        assert_eq!(credit.used.load(Ordering::Relaxed), 0);
+        assert_eq!(global.reserved(), before);
+        assert!(rx.push_charged(&[2; 63], &mut budget, PeerId(1)));
+        assert!(rx.push_progress(&[3; 256]));
+        assert!(rx.push_charged(&[4; 129], &mut budget, PeerId(1)));
+        let mut got = vec![0; rx.len()];
+        let mut read = 0;
+        while read < got.len() {
+            let n = rx.read(&mut got[read..]);
+            assert!(n > 0);
+            read += n;
+        }
+        assert_eq!(got, [&[2; 63][..], &[3; 256], &[4; 129]].concat());
+        rx.clear();
+        drop(credit);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_progress_jumbo_credit_is_bounded_and_ooo_cannot_spend_it() {
+        let global = GlobalBudget::new(2 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(2 << 20, 2 << 20, 16);
+        let credit = credit(&mut budget, PeerId(1), u16::MAX);
+        let mut rx = RxQueue::default();
+        rx.set_progress(credit.clone());
+        assert!(rx.push_progress(&vec![1; u16::MAX as usize]));
+        assert!(rx.push_progress(&vec![2; u16::MAX as usize]));
+        assert!(!rx.push_progress(&vec![3; u16::MAX as usize]));
+        let used = credit.used.load(Ordering::Relaxed);
+        let ceiling = global.high() - global.headroom(global.high(), Tier::Block);
+        let blocker = budget.try_allocate_kind(PeerId(1), ceiling - global.reserved(), AllocationKind::TxBlock).unwrap();
+        let mut ooo = OooQueue::default();
+        assert!(ooo.insert_charged_for_rx(10, &[4; 256], &mut budget, PeerId(1), &mut rx).is_none());
+        assert_eq!(credit.used.load(Ordering::Relaxed), used);
+        assert_eq!(ooo.bytes(), 0);
+        rx.clear();
+        drop(credit);
+        drop(blocker);
+        assert_eq!(global.reserved(), 0);
     }
 }
 

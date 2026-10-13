@@ -203,6 +203,8 @@ pub struct ConnStats {
     pub dsacks: u64,
     pub ooo_segs: u64,
     pub dropped_no_mem: u64,
+    /// In-order packets retained using the connection's prepaid RX credit.
+    pub rx_progress_packets: u64,
     pub paws_drops: u64,
     pub challenge_acks: u64,
     /// ACKs not sent in reply to dropped pure ACKs / probes ([`OOW_ACK_INTERVAL`]).
@@ -451,6 +453,16 @@ pub(crate) struct SynParams {
 }
 
 impl Conn {
+    pub(crate) fn set_rx_progress(&mut self, credit: std::sync::Arc<crate::buf::RxProgress>) {
+        self.rx.set_progress(credit);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn disable_rx_progress(&mut self) {
+        assert!(self.rx.is_empty());
+        self.rx.clear();
+    }
+
     pub(crate) fn ready_for_time_wait_compaction(&self) -> bool {
         self.state == State::TimeWait
             && self.app_closed
@@ -841,8 +853,14 @@ impl Conn {
     }
 
     pub fn send_space(&self, cfg: &StackConfig, budget: &Budget) -> usize {
-        let cap = self.sndbuf_limit(cfg).min(budget.send_share(self.peer));
-        cap.saturating_sub(self.tx.len() as u64) as usize
+        let share = budget.send_share(self.peer);
+        let cap = self.sndbuf_limit(cfg).min(share);
+        let logical = cap.saturating_sub(self.tx.len() as u64) as usize;
+        if share == crate::budget::MIN_SEND_SHARE {
+            logical.min(self.tx.backing_space(share as usize))
+        } else {
+            logical
+        }
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -1614,8 +1632,8 @@ impl Conn {
         self.rcv_mss = self.rcv_mss.max(len as u32);
         let in_order = off as u64 == self.rcv_nxt;
 
-        // Memory: reserve before keeping the bytes (§6.3/§6.4). In-order data may use
-        // the per-connection progress reserve (2 MSS) beyond peer quota / pressure.
+        // Logical quotas stay hard. Low-unread in-order data can fall back to
+        // its prepaid physical RX credit (docs/design/0010), including backing.
         let level = ctx.budget.level_for(self.peer);
         let progress = in_order && self.rcv_charged < 2 * self.rcv_mss as u64;
         if !in_order && level >= Pressure::Pressure {
@@ -1630,10 +1648,21 @@ impl Conn {
         }
         if in_order {
             let was_empty = self.rx.is_empty();
-            let retained = match payload {
-                IngressPayload::Borrowed(v) => self.rx.push_charged(v, ctx.budget, self.peer),
-                IngressPayload::Owned(v) => self.rx.push_charged(&v, ctx.budget, self.peer),
-                IngressPayload::Leased(v) => self.rx.push_leased(v, ctx.budget, self.peer),
+            let (retained, borrowed) = match payload {
+                IngressPayload::Borrowed(v) => {
+                    let ordinary = self.rx.push_charged(v, ctx.budget, self.peer);
+                    let borrowed = !ordinary && progress && self.rx.push_progress(v);
+                    (ordinary || borrowed, borrowed)
+                }
+                IngressPayload::Owned(v) => {
+                    let ordinary = self.rx.push_charged(&v, ctx.budget, self.peer);
+                    let borrowed = !ordinary && progress && self.rx.push_progress(&v);
+                    (ordinary || borrowed, borrowed)
+                }
+                IngressPayload::Leased(v) => match self.rx.push_leased_with_progress(v, ctx.budget, self.peer, progress) {
+                    Some(borrowed) => (true, borrowed),
+                    None => (false, false),
+                },
             };
             if !retained {
                 ctx.budget.release(self.peer, len);
@@ -1641,6 +1670,7 @@ impl Conn {
                 self.ack_need = AckNeed::Now;
                 return;
             }
+            self.stats.rx_progress_packets += u64::from(borrowed);
             self.rcv_charged += len;
             self.stats.bytes_received += len;
             self.rcv_nxt += len;
@@ -2965,6 +2995,38 @@ mod rx_descriptor_tests {
         assert_eq!(ctx.budget.used, 0);
         assert_eq!(ctx.budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn rx_progress_counts_adapter_unread_and_never_admits_out_of_order() {
+        exercise(1 << 20, |conn, ctx| {
+            let charge = crate::buf::rx_progress_charge(1500);
+            let lease = ctx.budget.try_allocate_kind(conn.peer, charge, crate::budget::AllocationKind::RxProgress).unwrap();
+            conn.set_rx_progress(crate::buf::RxProgress::new(lease, charge));
+            let global = ctx.budget.global().clone();
+            let ceiling = global.high() - global.headroom(global.high(), crate::budget::Tier::Block);
+            let blocker = ctx.budget.try_allocate_kind(PeerId(2), ceiling - global.reserved(), crate::budget::AllocationKind::TxBlock).unwrap();
+            conn.process_data(Instant::ZERO, 7001, IngressPayload::Borrowed(&[9; 256]), false, ctx);
+            assert!(conn.ooo.is_none());
+            assert_eq!((conn.rcv_nxt, conn.stats.rx_progress_packets), (1, 0));
+            conn.process_data(Instant::ZERO, 1, IngressPayload::Borrowed(&[1; 2048]), false, ctx);
+            conn.process_data(Instant::ZERO, 2049, IngressPayload::Borrowed(&[2; 2048]), false, ctx);
+            assert_eq!(conn.rcv_nxt, 4097);
+            let first = conn.read_chunk_for_adapter(4096, ctx, Instant::ZERO).unwrap();
+            let second = conn.read_chunk_for_adapter(4096, ctx, Instant::ZERO).unwrap();
+            assert!(conn.rx.is_empty());
+            assert_eq!((conn.rcv_charged, conn.adapter_unread), (4096, 4096));
+            let drops = conn.stats.dropped_no_mem;
+            conn.process_data(Instant::ZERO, 4097, IngressPayload::Borrowed(&[3; 256]), false, ctx);
+            assert_eq!(conn.rcv_nxt, 4097, "moving bytes to the adapter cannot renew a slow reader's eligibility");
+            assert_eq!(conn.stats.dropped_no_mem, drops + 1);
+            drop((first, second));
+            conn.consume_adapter(4096, ctx, Instant::ZERO);
+            conn.process_data(Instant::ZERO, 4097, IngressPayload::Borrowed(&[3; 256]), false, ctx);
+            assert_eq!((conn.rcv_nxt, conn.stats.rx_progress_packets), (4353, 3));
+            assert!(global.reserved() <= global.high());
+            drop(blocker);
+        });
     }
 
     #[test]

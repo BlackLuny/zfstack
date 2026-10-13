@@ -1,0 +1,94 @@
+{
+  "performance_core_sha256": "d1dba567d9843d4173ba6c1d22fe0220edf04ea229735ea6c7b1f56196ed9f43",
+  "final_core_sha256": "dab72bf076ac94e9fd89f36539df0743c7fb28fd7ef082f3c142eb2049ad56c4",
+  "remote_compile": [
+    {
+      "task_id": "t-01M4RTHBS6VYJTFDRA88DXCNG4",
+      "command": "cargo test -p zfstack --release --features tokio -- --nocapture",
+      "status": "success",
+      "library_passed": 193,
+      "library_ignored": 3,
+      "integration_passed": 1
+    },
+    {
+      "task_id": "t-01M4RSBPE8EDVWXXSVBTCC4M7R",
+      "command": "cargo test -p zfstack --release --features tokio -- --nocapture",
+      "status": "success",
+      "note": "performance build core; same test counts"
+    },
+    {
+      "task_id": "t-01M4RSEBBCENHF9WRHARBNRJZD",
+      "command": "cargo test -p zfstack --release --features tokio,test-peer --test rx_capacity_lifecycle -- --nocapture",
+      "status": "success",
+      "passed": 2
+    },
+    {
+      "task_id": "t-01M4RSEBC36EHV5SGTWH2W3YKT",
+      "command": "cargo test -p zfharness --release",
+      "status": "success",
+      "passed": 13
+    },
+    {
+      "task_id": "t-01M4RT7T4KM849GMZVRFTEWHFN",
+      "command": "cargo run -p zfharness --release -- l0 --scenario matrix --full --format md",
+      "status": "success",
+      "passed": 20
+    },
+    {
+      "task_id": "t-01M4RSE9S49ZKDSAEEV1WY300D",
+      "command": "cargo check -p zfstack --no-default-features --message-format=json",
+      "status": "success"
+    },
+    {
+      "task_id": "t-01M4RSDGF8WD3RD5QNT5VVCR8V",
+      "command": "cargo clippy --workspace --all-targets --features zfstack/tokio --message-format=json",
+      "status": "success",
+      "warnings": 69
+    },
+    {
+      "task_id": "t-01M4RTPRWCQGTDZMVVRNQ6E0K8",
+      "command": "cargo test -p zfbench --release",
+      "status": "success",
+      "passed": 9,
+      "note": "after integrating the incoming L1 budget knob"
+    }
+  ],
+  "python_comparison_tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s harness/l2 -p 'test_*.py'",
+    "passed": 6
+  },
+  "comparison": {
+    "cases": 12,
+    "status": "success",
+    "timeout_sec": 3,
+    "capture_kernel_drops": 0,
+    "candidate_light_request_retransmissions": 0
+  },
+  "gitnexus": {
+    "status": "unavailable",
+    "reason": "zfstack is not indexed; impact and detect_changes return repository not found",
+    "fallback": "source/caller review and targeted/full runtime tests"
+  },
+  "final_l2": {
+    "case": "final-small",
+    "status": "success",
+    "worker_sha256": "a8ccf0854e78407e1124f198cab0c57e9feb9244175728f50c86f2bc4de1ff10",
+    "loaded_requests": 1593,
+    "loaded_p99_ms": 10.507993400096893,
+    "loaded_max_ms": 35.357531160116196,
+    "light_request_retransmissions": 0,
+    "core_build_sha256": "dab72bf076ac94e9fd89f36539df0743c7fb28fd7ef082f3c142eb2049ad56c4",
+    "ci_source_sha256": "5b80bbb5ae9fff90214d74e9ae204c07a776b763c25f669c16aa3e6655ba2153",
+    "note": "Only the three CI-requested layout/optional trailing comma edits differ from final-source.patch; no behavior changes."
+  },
+  "github_ci": {
+    "head": "fb7a156bf494b7cb7bddcc7bb0d199ac367e5e6f",
+    "run": 38300862362,
+    "status": "success",
+    "jobs": [
+      "fmt + clippy",
+      "test",
+      "zfbench build + unit tests"
+    ]
+  }
+}

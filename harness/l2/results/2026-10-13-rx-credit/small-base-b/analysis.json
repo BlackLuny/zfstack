@@ -1,0 +1,1268 @@
+{
+  "case": "small-base-b",
+  "ok": true,
+  "heavy_mbps": 1467.469452,
+  "loaded_n": 121,
+  "loaded_max_ms": 1513.6419087648392,
+  "loaded_p99_ms": 878.9960891008377,
+  "slow_over_100ms": 41,
+  "requests_retransmitted": 41,
+  "pcap_inner_packets": 3465,
+  "pcap_target_payloads": 3924,
+  "target_events_peer1": 1705,
+  "slow_request_inbound_fraction_min": 0.9700683414830696,
+  "slow_request_inbound_fraction_median": 0.9807790093794793,
+  "capture_stats": {
+    "light-capture.log": "tcpdump: listening on wg0, link-type RAW (Raw IP), snapshot length 512 bytes\n3465 packets captured\n3544 packets received by filter\n0 packets dropped by kernel\n",
+    "target-capture.log": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 384 bytes\n3924 packets captured\n3992 packets received by filter\n0 packets dropped by kernel\n"
+  },
+  "slow_requests": [
+    {
+      "seq": 865,
+      "phase": "loaded",
+      "start_sec": 15.458917193114758,
+      "latency_ms": 1513.6419087648392,
+      "inner_request_at_sec": [
+        15.458968,
+        15.67708,
+        16.10108,
+        16.965086
+      ],
+      "inner_request_intervals_ms": [
+        218.112,
+        424.0,
+        864.006
+      ],
+      "target_req_ms": 1506.704494357109,
+      "target_reply_ms": 1506.8554133176804,
+      "inner_reply_ms": 1513.582393527031,
+      "server_receive_ms": 1506.8455711007118,
+      "server_work_ms": 0.04286319017410278,
+      "request_first_ack_ms": 1513.582393527031,
+      "request_wire_tcp_seq": 2337151370,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 15.458967663347721,
+          "dup_ack_delay_ms": 5.357027053833008,
+          "window_raw": 255
+        },
+        {
+          "request_at_sec": 15.677079655230045,
+          "dup_ack_delay_ms": 5.357980728149414,
+          "window_raw": 255
+        },
+        {
+          "request_at_sec": 16.101079680025578,
+          "dup_ack_delay_ms": 6.303071975708008,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 845,
+      "phase": "loaded",
+      "start_sec": 12.478598974645138,
+      "latency_ms": 878.9960891008377,
+      "inner_request_at_sec": [
+        12.478663,
+        12.689079,
+        12.905079,
+        13.353114
+      ],
+      "inner_request_intervals_ms": [
+        210.416,
+        216.0,
+        448.035
+      ],
+      "target_req_ms": 875.3047734498978,
+      "target_reply_ms": 875.4537850618362,
+      "inner_reply_ms": 878.9387494325638,
+      "server_receive_ms": 875.445656478405,
+      "server_work_ms": 0.03406032919883728,
+      "request_first_ack_ms": 878.9387494325638,
+      "request_wire_tcp_seq": 2337146250,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 12.478662706911564,
+          "dup_ack_delay_ms": 4.775047302246094,
+          "window_raw": 251
+        },
+        {
+          "request_at_sec": 12.689078785479069,
+          "dup_ack_delay_ms": 5.407810211181641,
+          "window_raw": 251
+        },
+        {
+          "request_at_sec": 12.905078627169132,
+          "dup_ack_delay_ms": 4.431009292602539,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 842,
+      "phase": "loaded",
+      "start_sec": 11.58344977721572,
+      "latency_ms": 875.0722259283066,
+      "inner_request_at_sec": [
+        11.583499,
+        11.793078,
+        12.005078,
+        12.453082
+      ],
+      "inner_request_intervals_ms": [
+        209.579,
+        212.0,
+        448.004
+      ],
+      "target_req_ms": 869.9670247733593,
+      "target_reply_ms": 870.0988702476025,
+      "inner_reply_ms": 875.0307969748974,
+      "server_receive_ms": 870.0893372297287,
+      "server_work_ms": 0.11359900236129761,
+      "request_first_ack_ms": 875.0307969748974,
+      "request_wire_tcp_seq": 2337145482,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 11.583498694002628,
+          "dup_ack_delay_ms": 4.540920257568359,
+          "window_raw": 254
+        },
+        {
+          "request_at_sec": 11.793077684938908,
+          "dup_ack_delay_ms": 3.448009490966797,
+          "window_raw": 254
+        },
+        {
+          "request_at_sec": 12.005077578127384,
+          "dup_ack_delay_ms": 4.265069961547852,
+          "window_raw": 254
+        }
+      ]
+    },
+    {
+      "seq": 880,
+      "phase": "loaded",
+      "start_sec": 18.798547253012657,
+      "latency_ms": 858.9601032435894,
+      "inner_request_at_sec": [
+        18.798605,
+        19.009079,
+        19.221083,
+        19.653081
+      ],
+      "inner_request_intervals_ms": [
+        210.474,
+        212.004,
+        431.998
+      ],
+      "target_req_ms": 855.2374765276909,
+      "target_reply_ms": 855.3705140948296,
+      "inner_reply_ms": 858.9243814349174,
+      "server_receive_ms": 855.330616235733,
+      "server_work_ms": 0.07638707756996155,
+      "request_first_ack_ms": 858.9243814349174,
+      "request_wire_tcp_seq": 2337155210,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 18.79860470443964,
+          "dup_ack_delay_ms": 4.101991653442383,
+          "window_raw": 252
+        },
+        {
+          "request_at_sec": 19.009078718721867,
+          "dup_ack_delay_ms": 4.225969314575195,
+          "window_raw": 252
+        },
+        {
+          "request_at_sec": 19.221082665026188,
+          "dup_ack_delay_ms": 4.4689178466796875,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 876,
+      "phase": "loaded",
+      "start_sec": 17.49136148020625,
+      "latency_ms": 854.4836863875389,
+      "inner_request_at_sec": [
+        17.491454,
+        17.701078,
+        17.91308,
+        18.341081
+      ],
+      "inner_request_intervals_ms": [
+        209.624,
+        212.002,
+        428.001
+      ],
+      "target_req_ms": 850.5071364343166,
+      "target_reply_ms": 850.7353030145168,
+      "inner_reply_ms": 854.435320943594,
+      "server_receive_ms": 850.6921492516994,
+      "server_work_ms": 0.07855892181396484,
+      "request_first_ack_ms": 854.435320943594,
+      "request_wire_tcp_seq": 2337154186,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 17.491453625261784,
+          "dup_ack_delay_ms": 4.538059234619141,
+          "window_raw": 256
+        },
+        {
+          "request_at_sec": 17.701077677309513,
+          "dup_ack_delay_ms": 4.444122314453125,
+          "window_raw": 256
+        },
+        {
+          "request_at_sec": 17.9130797162652,
+          "dup_ack_delay_ms": 4.581928253173828,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 847,
+      "phase": "loaded",
+      "start_sec": 13.57418629527092,
+      "latency_ms": 680.0509765744209,
+      "inner_request_at_sec": [
+        13.574248,
+        13.797083,
+        14.249081
+      ],
+      "inner_request_intervals_ms": [
+        222.835,
+        451.998
+      ],
+      "target_req_ms": 675.4984930157661,
+      "target_reply_ms": 675.620324909687,
+      "inner_reply_ms": 680.0084188580513,
+      "server_receive_ms": 675.6109595298767,
+      "server_work_ms": 0.03992021083831787,
+      "request_first_ack_ms": 680.0084188580513,
+      "request_wire_tcp_seq": 2337146762,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 13.57424757629633,
+          "dup_ack_delay_ms": 3.316164016723633,
+          "window_raw": 255
+        },
+        {
+          "request_at_sec": 13.797082640230656,
+          "dup_ack_delay_ms": 6.210088729858398,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 890,
+      "phase": "loaded",
+      "start_sec": 20.3650217987597,
+      "latency_ms": 434.43579599261284,
+      "inner_request_at_sec": [
+        20.365124,
+        20.58108,
+        20.793081
+      ],
+      "inner_request_intervals_ms": [
+        215.956,
+        212.001
+      ],
+      "target_req_ms": 428.9017952978611,
+      "target_reply_ms": 429.06296625733376,
+      "inner_reply_ms": 434.3789853155613,
+      "server_receive_ms": 429.05212193727493,
+      "server_work_ms": 0.03863871097564697,
+      "request_first_ack_ms": 434.3789853155613,
+      "request_wire_tcp_seq": 2337157770,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 20.365123726427555,
+          "dup_ack_delay_ms": 4.991054534912109,
+          "window_raw": 254
+        },
+        {
+          "request_at_sec": 20.581079699099064,
+          "dup_ack_delay_ms": 6.057977676391602,
+          "window_raw": 254
+        }
+      ]
+    },
+    {
+      "seq": 879,
+      "phase": "loaded",
+      "start_sec": 18.36591139063239,
+      "latency_ms": 432.5658939778805,
+      "inner_request_at_sec": [
+        18.36596,
+        18.577147,
+        18.793095
+      ],
+      "inner_request_intervals_ms": [
+        211.187,
+        215.948
+      ],
+      "target_req_ms": 427.99241468310356,
+      "target_reply_ms": 428.15525457262993,
+      "inner_reply_ms": 432.52022191882133,
+      "server_receive_ms": 428.1423129141331,
+      "server_work_ms": 0.04346668720245361,
+      "request_first_ack_ms": 432.52022191882133,
+      "request_wire_tcp_seq": 2337154954,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 18.365959621965885,
+          "dup_ack_delay_ms": 4.09698486328125,
+          "window_raw": 253
+        },
+        {
+          "request_at_sec": 18.577146746218204,
+          "dup_ack_delay_ms": 5.241870880126953,
+          "window_raw": 253
+        }
+      ]
+    },
+    {
+      "seq": 839,
+      "phase": "loaded",
+      "start_sec": 10.711408998817205,
+      "latency_ms": 428.98103967309,
+      "inner_request_at_sec": [
+        10.711467,
+        10.92108,
+        11.13308
+      ],
+      "inner_request_intervals_ms": [
+        209.613,
+        212.0
+      ],
+      "target_req_ms": 422.2596399486065,
+      "target_reply_ms": 422.48375341296196,
+      "inner_reply_ms": 428.9317838847637,
+      "server_receive_ms": 422.47094213962555,
+      "server_work_ms": 0.04693120718002319,
+      "request_first_ack_ms": 428.9317838847637,
+      "request_wire_tcp_seq": 2337144714,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 10.711466766893864,
+          "dup_ack_delay_ms": 4.684925079345703,
+          "window_raw": 251
+        },
+        {
+          "request_at_sec": 10.921079613268375,
+          "dup_ack_delay_ms": 4.5070648193359375,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 917,
+      "phase": "loaded",
+      "start_sec": 23.369380217045546,
+      "latency_ms": 428.4335896372795,
+      "inner_request_at_sec": [
+        23.369468,
+        23.581082,
+        23.793081
+      ],
+      "inner_request_intervals_ms": [
+        211.614,
+        211.999
+      ],
+      "target_req_ms": 424.1824112832546,
+      "target_reply_ms": 424.3764840066433,
+      "inner_reply_ms": 428.373571485281,
+      "server_receive_ms": 424.3676848709583,
+      "server_work_ms": 0.03565475344657898,
+      "request_first_ack_ms": 428.373571485281,
+      "request_wire_tcp_seq": 2337164682,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 23.369467712938786,
+          "dup_ack_delay_ms": 4.344940185546875,
+          "window_raw": 251
+        },
+        {
+          "request_at_sec": 23.581081606447697,
+          "dup_ack_delay_ms": 3.9081573486328125,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 874,
+      "phase": "loaded",
+      "start_sec": 17.053282476961613,
+      "latency_ms": 428.01377922296524,
+      "inner_request_at_sec": [
+        17.053332,
+        17.265081,
+        17.47708
+      ],
+      "inner_request_intervals_ms": [
+        211.749,
+        211.999
+      ],
+      "target_req_ms": 424.6671199798584,
+      "target_reply_ms": 424.8220920562744,
+      "inner_reply_ms": 427.9172420501709,
+      "server_receive_ms": 424.81477186083794,
+      "server_work_ms": 0.027764588594436646,
+      "request_first_ack_ms": 427.9172420501709,
+      "request_wire_tcp_seq": 2337153674,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 17.053331591188908,
+          "dup_ack_delay_ms": 4.749059677124023,
+          "window_raw": 252
+        },
+        {
+          "request_at_sec": 17.26508066803217,
+          "dup_ack_delay_ms": 4.509925842285156,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 909,
+      "phase": "loaded",
+      "start_sec": 22.659664042294025,
+      "latency_ms": 427.4376295506954,
+      "inner_request_at_sec": [
+        22.65974,
+        22.869079,
+        23.081079
+      ],
+      "inner_request_intervals_ms": [
+        209.339,
+        212.0
+      ],
+      "target_req_ms": 422.090619802475,
+      "target_reply_ms": 422.20768332481384,
+      "inner_reply_ms": 427.39757895469666,
+      "server_receive_ms": 422.1986457705498,
+      "server_work_ms": 0.03249943256378174,
+      "request_first_ack_ms": 427.39757895469666,
+      "request_wire_tcp_seq": 2337162634,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 22.659739710390568,
+          "dup_ack_delay_ms": 5.589008331298828,
+          "window_raw": 253
+        },
+        {
+          "request_at_sec": 22.869078613817692,
+          "dup_ack_delay_ms": 5.192995071411133,
+          "window_raw": 253
+        }
+      ]
+    },
+    {
+      "seq": 824,
+      "phase": "loaded",
+      "start_sec": 8.884814940392971,
+      "latency_ms": 427.06795781850815,
+      "inner_request_at_sec": [
+        8.884885,
+        9.093084,
+        9.30508
+      ],
+      "inner_request_intervals_ms": [
+        208.199,
+        211.996
+      ],
+      "target_req_ms": 420.7327514886856,
+      "target_reply_ms": 420.9118038415909,
+      "inner_reply_ms": 427.0186573266983,
+      "server_receive_ms": 420.90312018990517,
+      "server_work_ms": 0.04431605339050293,
+      "request_first_ack_ms": 427.0186573266983,
+      "request_wire_tcp_seq": 2337140874,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 8.88488457351923,
+          "dup_ack_delay_ms": 5.2700042724609375,
+          "window_raw": 254
+        },
+        {
+          "request_at_sec": 9.09308359771967,
+          "dup_ack_delay_ms": 3.7031173706054688,
+          "window_raw": 254
+        }
+      ]
+    },
+    {
+      "seq": 838,
+      "phase": "loaded",
+      "start_sec": 10.284557070583105,
+      "latency_ms": 426.78098380565643,
+      "inner_request_at_sec": [
+        10.284613,
+        10.49308,
+        10.705081
+      ],
+      "inner_request_intervals_ms": [
+        208.467,
+        212.001
+      ],
+      "target_req_ms": 421.10372707247734,
+      "target_reply_ms": 421.2365262210369,
+      "inner_reply_ms": 426.69058963656425,
+      "server_receive_ms": 421.22795432806015,
+      "server_work_ms": 0.03816559910774231,
+      "request_first_ack_ms": 426.69058963656425,
+      "request_wire_tcp_seq": 2337144458,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 10.284612633287907,
+          "dup_ack_delay_ms": 3.3910274505615234,
+          "window_raw": 252
+        },
+        {
+          "request_at_sec": 10.493079639971256,
+          "dup_ack_delay_ms": 6.183147430419922,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 904,
+      "phase": "loaded",
+      "start_sec": 21.983675681054592,
+      "latency_ms": 426.6916997730732,
+      "inner_request_at_sec": [
+        21.983766,
+        22.193077,
+        22.40508
+      ],
+      "inner_request_intervals_ms": [
+        209.311,
+        212.003
+      ],
+      "target_req_ms": 421.9329506158829,
+      "target_reply_ms": 422.0879226922989,
+      "inner_reply_ms": 426.6200214624405,
+      "server_receive_ms": 422.0776781439781,
+      "server_work_ms": 0.04325062036514282,
+      "request_first_ack_ms": 426.6200214624405,
+      "request_wire_tcp_seq": 2337161354,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 21.983765579760075,
+          "dup_ack_delay_ms": 5.075216293334961,
+          "window_raw": 252
+        },
+        {
+          "request_at_sec": 22.193076588213444,
+          "dup_ack_delay_ms": 6.492137908935547,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 894,
+      "phase": "loaded",
+      "start_sec": 21.242659024894238,
+      "latency_ms": 231.75014927983284,
+      "inner_request_at_sec": [
+        21.242702,
+        21.469081
+      ],
+      "inner_request_intervals_ms": [
+        226.379
+      ],
+      "target_req_ms": 227.2956818342209,
+      "target_reply_ms": 227.4187058210373,
+      "inner_reply_ms": 231.6906899213791,
+      "server_receive_ms": 227.4085357785225,
+      "server_work_ms": 0.03693625330924988,
+      "request_first_ack_ms": 231.6906899213791,
+      "request_wire_tcp_seq": 2337158794,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 21.24270174652338,
+          "dup_ack_delay_ms": 4.642009735107422,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 841,
+      "phase": "loaded",
+      "start_sec": 11.355027928948402,
+      "latency_ms": 228.35494205355644,
+      "inner_request_at_sec": [
+        11.355081,
+        11.577081
+      ],
+      "inner_request_intervals_ms": [
+        222.0
+      ],
+      "target_req_ms": 223.0047807097435,
+      "target_reply_ms": 223.1406792998314,
+      "inner_reply_ms": 228.2976731657982,
+      "server_receive_ms": 223.13161194324493,
+      "server_work_ms": 0.03523379564285278,
+      "request_first_ack_ms": 228.2976731657982,
+      "request_wire_tcp_seq": 2337145226,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 11.35508058220148,
+          "dup_ack_delay_ms": 4.701137542724609,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 854,
+      "phase": "loaded",
+      "start_sec": 14.517987288534641,
+      "latency_ms": 224.72690790891647,
+      "inner_request_at_sec": [
+        14.518025,
+        14.737084
+      ],
+      "inner_request_intervals_ms": [
+        219.059
+      ],
+      "target_req_ms": 223.06936979293823,
+      "target_reply_ms": 223.1733202934265,
+      "inner_reply_ms": 224.5914340019226,
+      "server_receive_ms": 223.16481173038483,
+      "server_work_ms": 0.04968419671058655,
+      "request_first_ack_ms": 224.5914340019226,
+      "request_wire_tcp_seq": 2337148554,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 14.518024660646915,
+          "dup_ack_delay_ms": 5.123138427734375,
+          "window_raw": 254
+        }
+      ]
+    },
+    {
+      "seq": 834,
+      "phase": "loaded",
+      "start_sec": 9.605867370963097,
+      "latency_ms": 223.9888198673725,
+      "inner_request_at_sec": [
+        9.605923,
+        9.825082
+      ],
+      "inner_request_intervals_ms": [
+        219.159
+      ],
+      "target_req_ms": 219.7282239794731,
+      "target_reply_ms": 219.8803350329399,
+      "inner_reply_ms": 223.94131869077682,
+      "server_receive_ms": 219.87147629261017,
+      "server_work_ms": 0.07139891386032104,
+      "request_first_ack_ms": 223.94131869077682,
+      "request_wire_tcp_seq": 2337143434,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 9.605922676622868,
+          "dup_ack_delay_ms": 4.210948944091797,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 836,
+      "phase": "loaded",
+      "start_sec": 10.051483031362295,
+      "latency_ms": 223.00003096461296,
+      "inner_request_at_sec": [
+        10.051529,
+        10.269081
+      ],
+      "inner_request_intervals_ms": [
+        217.552
+      ],
+      "target_req_ms": 217.93876215815544,
+      "target_reply_ms": 218.02769228816032,
+      "inner_reply_ms": 222.95556589961052,
+      "server_receive_ms": 218.0192396044731,
+      "server_work_ms": 0.030685216188430786,
+      "request_first_ack_ms": 222.95556589961052,
+      "request_wire_tcp_seq": 2337143946,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 10.051528669893742,
+          "dup_ack_delay_ms": 4.750967025756836,
+          "window_raw": 254
+        }
+      ]
+    },
+    {
+      "seq": 911,
+      "phase": "loaded",
+      "start_sec": 23.097171515226364,
+      "latency_ms": 222.13978320360184,
+      "inner_request_at_sec": [
+        23.097283,
+        23.313078
+      ],
+      "inner_request_intervals_ms": [
+        215.795
+      ],
+      "target_req_ms": 216.48407727479935,
+      "target_reply_ms": 216.66527539491653,
+      "inner_reply_ms": 222.10026532411575,
+      "server_receive_ms": 216.65561944246292,
+      "server_work_ms": 0.03410130739212036,
+      "request_first_ack_ms": 222.10026532411575,
+      "request_wire_tcp_seq": 2337163146,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 23.097282625734806,
+          "dup_ack_delay_ms": 4.374980926513672,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 835,
+      "phase": "loaded",
+      "start_sec": 9.82999413460493,
+      "latency_ms": 221.42092883586884,
+      "inner_request_at_sec": [
+        9.830051,
+        10.04508
+      ],
+      "inner_request_intervals_ms": [
+        215.029
+      ],
+      "target_req_ms": 215.75646102428436,
+      "target_reply_ms": 216.48244559764862,
+      "inner_reply_ms": 221.35452926158905,
+      "server_receive_ms": 216.47262573242188,
+      "server_work_ms": 0.04209950566291809,
+      "request_first_ack_ms": 221.35452926158905,
+      "request_wire_tcp_seq": 2337143690,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 9.830050684511662,
+          "dup_ack_delay_ms": 4.075050354003906,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 901,
+      "phase": "loaded",
+      "start_sec": 21.742693439126015,
+      "latency_ms": 220.9153026342392,
+      "inner_request_at_sec": [
+        21.742746,
+        21.957078
+      ],
+      "inner_request_intervals_ms": [
+        214.332
+      ],
+      "target_req_ms": 215.46121686697006,
+      "target_reply_ms": 216.40630811452866,
+      "inner_reply_ms": 220.853291451931,
+      "server_receive_ms": 216.39684215188026,
+      "server_work_ms": 0.04641339182853699,
+      "request_first_ack_ms": 220.853291451931,
+      "request_wire_tcp_seq": 2337160586,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 21.742745615541935,
+          "dup_ack_delay_ms": 4.7321319580078125,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 821,
+      "phase": "loaded",
+      "start_sec": 8.645524248480797,
+      "latency_ms": 219.22099962830544,
+      "inner_request_at_sec": [
+        8.645597,
+        8.85708
+      ],
+      "inner_request_intervals_ms": [
+        211.483
+      ],
+      "target_req_ms": 212.6593515276909,
+      "target_reply_ms": 212.74852007627487,
+      "inner_reply_ms": 219.18033808469772,
+      "server_receive_ms": 212.73986622691154,
+      "server_work_ms": 0.037122517824172974,
+      "request_first_ack_ms": 219.18033808469772,
+      "request_wire_tcp_seq": 2337140106,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 8.645596720278263,
+          "dup_ack_delay_ms": 4.75001335144043,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 905,
+      "phase": "loaded",
+      "start_sec": 22.41043819859624,
+      "latency_ms": 219.16133165359497,
+      "inner_request_at_sec": [
+        22.410497,
+        22.621079
+      ],
+      "inner_request_intervals_ms": [
+        210.582
+      ],
+      "target_req_ms": 213.19444850087166,
+      "target_reply_ms": 213.81743624806404,
+      "inner_reply_ms": 219.13059428334236,
+      "server_receive_ms": 213.79952132701874,
+      "server_work_ms": 0.05336850881576538,
+      "request_first_ack_ms": 219.13059428334236,
+      "request_wire_tcp_seq": 2337161610,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 22.410496689379215,
+          "dup_ack_delay_ms": 4.127979278564453,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 862,
+      "phase": "loaded",
+      "start_sec": 15.016283355653286,
+      "latency_ms": 218.2958535850048,
+      "inner_request_at_sec": [
+        15.01635,
+        15.229079
+      ],
+      "inner_request_intervals_ms": [
+        212.729
+      ],
+      "target_req_ms": 213.45843374729156,
+      "target_reply_ms": 213.62341940402985,
+      "inner_reply_ms": 218.26328337192535,
+      "server_receive_ms": 213.61501887440681,
+      "server_work_ms": 0.11709332466125488,
+      "request_first_ack_ms": 218.26328337192535,
+      "request_wire_tcp_seq": 2337150602,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 15.016349770128727,
+          "dup_ack_delay_ms": 5.411863327026367,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 898,
+      "phase": "loaded",
+      "start_sec": 21.504506934434175,
+      "latency_ms": 218.1214690208435,
+      "inner_request_at_sec": [
+        21.504573,
+        21.717124
+      ],
+      "inner_request_intervals_ms": [
+        212.551
+      ],
+      "target_req_ms": 213.10674026608467,
+      "target_reply_ms": 213.2466919720173,
+      "inner_reply_ms": 218.06680038571358,
+      "server_receive_ms": 213.2369577884674,
+      "server_work_ms": 0.04032999277114868,
+      "request_first_ack_ms": 218.06680038571358,
+      "request_wire_tcp_seq": 2337159818,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 21.504572607576847,
+          "dup_ack_delay_ms": 3.802061080932617,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 893,
+      "phase": "loaded",
+      "start_sec": 21.02502304688096,
+      "latency_ms": 217.56990253925323,
+      "inner_request_at_sec": [
+        21.025102,
+        21.237079
+      ],
+      "inner_request_intervals_ms": [
+        211.977
+      ],
+      "target_req_ms": 212.6576043665409,
+      "target_reply_ms": 212.75368705391884,
+      "inner_reply_ms": 217.5246812403202,
+      "server_receive_ms": 212.74351701140404,
+      "server_work_ms": 0.06204843521118164,
+      "request_first_ack_ms": 217.5246812403202,
+      "request_wire_tcp_seq": 2337158538,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 21.025101639330387,
+          "dup_ack_delay_ms": 4.537105560302734,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 881,
+      "phase": "loaded",
+      "start_sec": 19.65757792070508,
+      "latency_ms": 216.90982207655907,
+      "inner_request_at_sec": [
+        19.657624,
+        19.869079
+      ],
+      "inner_request_intervals_ms": [
+        211.455
+      ],
+      "target_req_ms": 211.8998058140278,
+      "target_reply_ms": 212.03165128827095,
+      "inner_reply_ms": 216.8477065861225,
+      "server_receive_ms": 212.02389895915985,
+      "server_work_ms": 0.028714537620544434,
+      "request_first_ack_ms": 216.8477065861225,
+      "request_wire_tcp_seq": 2337155466,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 19.65762374550104,
+          "dup_ack_delay_ms": 3.2989978790283203,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 804,
+      "phase": "loaded",
+      "start_sec": 8.061768312007189,
+      "latency_ms": 216.59616753458977,
+      "inner_request_at_sec": [
+        8.061907,
+        8.27308
+      ],
+      "inner_request_intervals_ms": [
+        211.173
+      ],
+      "target_req_ms": 211.70230582356453,
+      "target_reply_ms": 211.86133101582527,
+      "inner_reply_ms": 216.52527526021004,
+      "server_receive_ms": 211.85168251395226,
+      "server_work_ms": 0.06177276372909546,
+      "request_first_ack_ms": 216.52527526021004,
+      "request_wire_tcp_seq": 2337135754,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 8.061906792223454,
+          "dup_ack_delay_ms": 8.989810943603516,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 846,
+      "phase": "loaded",
+      "start_sec": 13.35766563937068,
+      "latency_ms": 216.44694358110428,
+      "inner_request_at_sec": [
+        13.357712,
+        13.569101
+      ],
+      "inner_request_intervals_ms": [
+        211.389
+      ],
+      "target_req_ms": 211.9351588189602,
+      "target_reply_ms": 212.04602345824242,
+      "inner_reply_ms": 216.38810262084007,
+      "server_receive_ms": 212.03749626874924,
+      "server_work_ms": 0.03318488597869873,
+      "request_first_ack_ms": 216.38810262084007,
+      "request_wire_tcp_seq": 2337146506,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 13.357711769640446,
+          "dup_ack_delay_ms": 3.693819046020508,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 813,
+      "phase": "loaded",
+      "start_sec": 8.358430676162243,
+      "latency_ms": 216.2032350897789,
+      "inner_request_at_sec": [
+        8.358485,
+        8.56908
+      ],
+      "inner_request_intervals_ms": [
+        210.595
+      ],
+      "target_req_ms": 211.04709804058075,
+      "target_reply_ms": 211.18299663066864,
+      "inner_reply_ms": 216.14210307598114,
+      "server_receive_ms": 211.17130666971207,
+      "server_work_ms": 0.03886595368385315,
+      "request_first_ack_ms": 216.14210307598114,
+      "request_wire_tcp_seq": 2337138058,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 8.358484722673893,
+          "dup_ack_delay_ms": 4.6749114990234375,
+          "window_raw": 253
+        }
+      ]
+    },
+    {
+      "seq": 888,
+      "phase": "loaded",
+      "start_sec": 20.139551356434822,
+      "latency_ms": 215.40695056319237,
+      "inner_request_at_sec": [
+        20.139614,
+        20.349079
+      ],
+      "inner_request_intervals_ms": [
+        209.465
+      ],
+      "target_req_ms": 210.5562910437584,
+      "target_reply_ms": 210.75322479009628,
+      "inner_reply_ms": 215.37544578313828,
+      "server_receive_ms": 210.74440330266953,
+      "server_work_ms": 0.03207102417945862,
+      "request_first_ack_ms": 215.37544578313828,
+      "request_wire_tcp_seq": 2337157258,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 20.13961360603571,
+          "dup_ack_delay_ms": 4.636049270629883,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 891,
+      "phase": "loaded",
+      "start_sec": 20.79952435195446,
+      "latency_ms": 215.39044380187988,
+      "inner_request_at_sec": [
+        20.79957,
+        21.009079
+      ],
+      "inner_request_intervals_ms": [
+        209.509
+      ],
+      "target_req_ms": 210.2772518992424,
+      "target_reply_ms": 210.37738770246506,
+      "inner_reply_ms": 215.34722298383713,
+      "server_receive_ms": 210.3688009083271,
+      "server_work_ms": 0.03407895565032959,
+      "request_first_ack_ms": 215.34722298383713,
+      "request_wire_tcp_seq": 2337158026,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 20.799569584429264,
+          "dup_ack_delay_ms": 4.904031753540039,
+          "window_raw": 253
+        }
+      ]
+    },
+    {
+      "seq": 886,
+      "phase": "loaded",
+      "start_sec": 19.91456511616707,
+      "latency_ms": 214.9171307682991,
+      "inner_request_at_sec": [
+        19.914609,
+        20.125089
+      ],
+      "inner_request_intervals_ms": [
+        210.48
+      ],
+      "target_req_ms": 211.1765816807747,
+      "target_reply_ms": 211.3606408238411,
+      "inner_reply_ms": 214.86348658800125,
+      "server_receive_ms": 211.35126799345016,
+      "server_work_ms": 0.059235841035842896,
+      "request_first_ack_ms": 214.86348658800125,
+      "request_wire_tcp_seq": 2337156746,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 19.91460869461298,
+          "dup_ack_delay_ms": 5.599021911621094,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 840,
+      "phase": "loaded",
+      "start_sec": 11.14045761525631,
+      "latency_ms": 214.49466794729233,
+      "inner_request_at_sec": [
+        11.140496,
+        11.349082
+      ],
+      "inner_request_intervals_ms": [
+        208.586
+      ],
+      "target_req_ms": 208.9090272784233,
+      "target_reply_ms": 209.40517634153366,
+      "inner_reply_ms": 214.4310399889946,
+      "server_receive_ms": 209.3970887362957,
+      "server_work_ms": 0.07171928882598877,
+      "request_first_ack_ms": 214.4310399889946,
+      "request_wire_tcp_seq": 2337144970,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 11.140495754778385,
+          "dup_ack_delay_ms": 5.019903182983398,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 864,
+      "phase": "loaded",
+      "start_sec": 15.244645643979311,
+      "latency_ms": 214.20051157474518,
+      "inner_request_at_sec": [
+        15.2447,
+        15.45308
+      ],
+      "inner_request_intervals_ms": [
+        208.38
+      ],
+      "target_req_ms": 208.99908617138863,
+      "target_reply_ms": 209.17599275708199,
+      "inner_reply_ms": 214.15703371167183,
+      "server_receive_ms": 209.1589868068695,
+      "server_work_ms": 0.0519677996635437,
+      "request_first_ack_ms": 214.15703371167183,
+      "request_wire_tcp_seq": 2337151114,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 15.244699694216251,
+          "dup_ack_delay_ms": 4.594087600708008,
+          "window_raw": 256
+        }
+      ]
+    },
+    {
+      "seq": 833,
+      "phase": "loaded",
+      "start_sec": 9.391944024711847,
+      "latency_ms": 213.84503319859505,
+      "inner_request_at_sec": [
+        9.391999,
+        9.601083
+      ],
+      "inner_request_intervals_ms": [
+        209.084
+      ],
+      "target_req_ms": 209.75077524781227,
+      "target_reply_ms": 209.8315991461277,
+      "inner_reply_ms": 213.799599558115,
+      "server_receive_ms": 209.82211455702782,
+      "server_work_ms": 0.051293522119522095,
+      "request_first_ack_ms": 213.799599558115,
+      "request_wire_tcp_seq": 2337143178,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 9.391998745501041,
+          "dup_ack_delay_ms": 6.260871887207031,
+          "window_raw": 251
+        }
+      ]
+    },
+    {
+      "seq": 853,
+      "phase": "loaded",
+      "start_sec": 14.304301626980305,
+      "latency_ms": 213.61961215734482,
+      "inner_request_at_sec": [
+        14.304353,
+        14.513077
+      ],
+      "inner_request_intervals_ms": [
+        208.724
+      ],
+      "target_req_ms": 209.01617407798767,
+      "target_reply_ms": 209.16900038719177,
+      "inner_reply_ms": 213.5811746120453,
+      "server_receive_ms": 209.1594748198986,
+      "server_work_ms": 0.03807246685028076,
+      "request_first_ack_ms": 213.5811746120453,
+      "request_wire_tcp_seq": 2337148298,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 14.3043527379632,
+          "dup_ack_delay_ms": 5.1288604736328125,
+          "window_raw": 255
+        }
+      ]
+    },
+    {
+      "seq": 856,
+      "phase": "loaded",
+      "start_sec": 14.752781331539154,
+      "latency_ms": 213.43254670500755,
+      "inner_request_at_sec": [
+        14.752832,
+        14.961078
+      ],
+      "inner_request_intervals_ms": [
+        208.246
+      ],
+      "target_req_ms": 208.81441980600357,
+      "target_reply_ms": 208.909310400486,
+      "inner_reply_ms": 213.38943392038345,
+      "server_receive_ms": 208.8995762169361,
+      "server_work_ms": 0.036306679248809814,
+      "request_first_ack_ms": 213.38943392038345,
+      "request_wire_tcp_seq": 2337149066,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 14.752831675112247,
+          "dup_ack_delay_ms": 4.359960556030273,
+          "window_raw": 252
+        }
+      ]
+    },
+    {
+      "seq": 920,
+      "phase": "loaded",
+      "start_sec": 23.817881651222706,
+      "latency_ms": 211.41250804066658,
+      "inner_request_at_sec": [
+        23.817935,
+        24.029077
+      ],
+      "inner_request_intervals_ms": [
+        211.142
+      ],
+      "target_req_ms": 211.27906441688538,
+      "target_reply_ms": 211.3150656223297,
+      "inner_reply_ms": 211.38492226600647,
+      "server_receive_ms": 211.30900457501411,
+      "server_work_ms": 0.024195760488510132,
+      "request_first_ack_ms": 211.38492226600647,
+      "request_wire_tcp_seq": 2337165450,
+      "rejected_attempts": [
+        {
+          "request_at_sec": 23.81793472915888,
+          "dup_ack_delay_ms": 3.634929656982422,
+          "window_raw": 254
+        }
+      ]
+    }
+  ]
+}
