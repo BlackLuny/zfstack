@@ -38,11 +38,11 @@ pub(crate) fn rx_progress_charge(mtu: u16) -> u64 {
 pub(crate) struct RxProgress {
     used: AtomicU64,
     capacity: u64,
-    _lease: MemoryLease,
+    _lease: crate::budget::RxProgressCredit,
 }
 
 impl RxProgress {
-    pub(crate) fn new(lease: MemoryLease, charge: u64) -> Arc<Self> {
+    pub(crate) fn new(lease: crate::budget::RxProgressCredit, charge: u64) -> Arc<Self> {
         Arc::new(Self { used: AtomicU64::new(0), capacity: charge - RX_PROGRESS_OWNER_BYTES, _lease: lease })
     }
 
@@ -426,7 +426,11 @@ impl TxBuf {
     pub(crate) fn backing_space(&self, limit: usize) -> usize {
         let allocated = self.allocated();
         let tail = allocated.saturating_sub(self.head + self.len);
-        tail + limit.saturating_sub(allocated) / TX_BLOCK * TX_BLOCK
+        // A small first write must not turn a 64 KiB floor into a 2 KiB
+        // stop-and-wait window. Permit that prefix plus one full block even
+        // under pressure; the logical share and physical caps still apply.
+        let prefix = self.blocks.front().filter(|b| b.len() == SMALL_TX_BLOCK).map_or(0, |b| b.len());
+        tail + limit.saturating_sub(allocated - prefix) / TX_BLOCK * TX_BLOCK
     }
 
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
@@ -2354,7 +2358,7 @@ mod rx_progress_tests {
 
     fn credit(budget: &mut Budget, peer: PeerId, mtu: u16) -> Arc<RxProgress> {
         let charge = rx_progress_charge(mtu);
-        let lease = budget.try_allocate_kind(peer, charge, AllocationKind::RxProgress).unwrap();
+        let lease = budget.memory_scope(peer).try_rx_progress(charge).unwrap();
         RxProgress::new(lease, charge)
     }
 
@@ -2371,7 +2375,7 @@ mod rx_progress_tests {
         tx.consume(&mut pool, TX_BLOCK - 1);
         assert_eq!(tx.backing_space(TX_BLOCK), TX_BLOCK);
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[2; 32]));
-        assert_eq!(tx.backing_space(TX_BLOCK), SMALL_TX_BLOCK - 32);
+        assert_eq!(tx.backing_space(TX_BLOCK), TX_BLOCK + SMALL_TX_BLOCK - 32);
         tx.consume(&mut pool, 32);
         drop(tx);
         drop(pool);
@@ -2441,14 +2445,17 @@ mod rx_progress_tests {
         rx.clear();
         drop(credit);
         assert_eq!(global.reserved(), 2 * RX_PROGRESS_MIN_CHARGE);
+        assert_eq!(budget.rx_progress_bytes(), [2 * RX_PROGRESS_MIN_CHARGE; 3]);
         let clone = tiny.clone();
         drop(tiny);
         assert_eq!(global.reserved(), 2 * RX_PROGRESS_MIN_CHARGE);
         std::thread::spawn(move || drop(clone)).join().unwrap();
         assert_eq!(global.reserved(), RX_PROGRESS_MIN_CHARGE);
+        assert_eq!(budget.rx_progress_bytes(), [RX_PROGRESS_MIN_CHARGE; 3]);
         other.clear();
         drop(other_credit);
         assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.rx_progress_bytes(), [0; 3]);
     }
 
     #[test]

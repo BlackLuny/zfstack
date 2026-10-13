@@ -42,7 +42,7 @@ jobs:
       # The library must also build without optional features.
       - run: cargo build -p zfstack --no-default-features
       # Release: the simulator scenarios move hundreds of MiB and are slow in debug.
-      - run: cargo test -p zfstack --release --features tokio
+      - run: cargo test -p zfstack --release --features tokio,test-peer
 
   bench:
     name: zfbench build + unit tests
