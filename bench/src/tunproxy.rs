@@ -354,6 +354,20 @@ fn spawn_tx_cache_sampler(
             // One bounded control request per interval; no catch-up bursts.
             tokio::time::sleep(interval).await;
             let Some(snap) = handle.snapshot().await else { break };
+            eprintln!(
+                "ZFBENCH_CONNECTIONS {}",
+                serde_json::json!({
+                        "elapsed_ms": start.elapsed().as_millis(),
+                        "close_counts": format!("{:?}", snap.closes),
+                        "abort_counts": format!("{:?}", snap.aborts),
+                        "physical_waiters": format!("{:?}", snap.waiters),
+                        "failures_by_kind": format!("{:?}", snap.failures_by_kind),
+                        "active_connections": snap.active_connections,
+                        "adapter_streams": snap.adapter_streams,
+                        "rst_sent": snap.stats.rst_sent,
+                        "tail_connections": format!("{:?}", snap.tail_connections),
+                })
+            );
             // Separate low-frequency reads, not an atomic pool/global snapshot.
             // in_use includes the reader spare, queued packets and retained slices.
             let packet_cached = packet_pool.cached();
@@ -576,7 +590,9 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
                 };
                 let _ = up.set_nodelay(true);
                 if splice {
-                    let _ = down.splice(up).await;
+                    if let Err(error) = down.splice(up).await {
+                        eprintln!("zfbench tun-proxy: splice failed: {error}");
+                    }
                 } else {
                     let _ = tokio::io::copy_bidirectional_with_sizes(&mut down, &mut up, relay_buf, relay_buf).await;
                 }
