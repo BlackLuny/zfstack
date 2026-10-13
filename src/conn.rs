@@ -806,7 +806,7 @@ impl Conn {
         }
         .max(cfg.min_prefetch as u64)
         .min(cfg.prefetch_max as u64);
-        win.saturating_add(prefetch)
+        win.saturating_add(prefetch).min(cfg.max_snd_buf)
     }
 
     /// Send-side bytes this connection is charged with for the sender tally:
@@ -892,7 +892,7 @@ impl Conn {
             && self.accepted
             && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
-            && self.send_space(cfg, budget) >= cfg.write_low_watermark as usize
+            && self.send_space(cfg, budget) >= cfg.send_low_watermark()
         {
             self.want_write = false;
             ev.push_back(Event::Writable(self.id));
@@ -907,7 +907,7 @@ impl Conn {
             && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
             && budget.send_share(self.peer) < self.sndbuf_limit(cfg)
-            && self.send_space(cfg, budget) < cfg.write_low_watermark as usize
+            && self.send_space(cfg, budget) < cfg.send_low_watermark()
     }
 
     /// The adapter parked the app writer while this connection held its whole
@@ -2969,10 +2969,13 @@ mod rx_descriptor_tests {
     use crate::budget::GlobalBudget;
 
     fn exercise(high: u64, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
+        exercise_config(high, StackConfig::default(), run);
+    }
+
+    fn exercise_config(high: u64, cfg: StackConfig, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
         let global = GlobalBudget::new(high);
         let mut budget = Budget::new(global.clone());
         budget.set_limits(high, high, 8);
-        let cfg = StackConfig::default();
         let mut pool = BlockPool::new(0);
         let mut events = VecDeque::new();
         let mut conn = Conn::new_from_cookie(
@@ -2992,6 +2995,7 @@ mod rx_descriptor_tests {
         let mut ctx = Ctx { cfg: &cfg, pool: &mut pool, budget: &mut budget, events: &mut events };
         run(&mut conn, &mut ctx);
         conn.destroy(&mut ctx);
+        drop(conn); // TX descriptor capacity is owned until the connection drops.
         assert_eq!(ctx.budget.used, 0);
         assert_eq!(ctx.budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
@@ -3120,5 +3124,159 @@ mod rx_descriptor_tests {
                 assert_eq!(ctx.budget.physical_used(), 0);
             });
         }
+    }
+
+    #[test]
+    fn tx_capacity_default_preserves_legacy_limits_and_watermark() {
+        for cfg in [StackConfig::default(), StackConfig::client()] {
+            assert_eq!(cfg.max_snd_buf, u64::MAX);
+            exercise_config(64 << 20, cfg, |conn, ctx| {
+                for algo in [crate::CcAlgo::Cubic, crate::CcAlgo::Bbr, crate::CcAlgo::Brutal(u64::MAX)] {
+                    conn.cc = crate::cc::new_cc(algo, 1460, 10);
+                    for sampled in [false, true] {
+                        conn.rtt.has_sample = sampled;
+                        conn.rtt.srtt = Duration::from_micros(100);
+                        for inflight in [0, 65536, 8 << 20, u32::MAX as u64] {
+                            conn.snd_nxt = conn.snd_una + inflight;
+                            let cfg = ctx.cfg;
+                            let win = inflight.max(conn.cc.cwnd()).min(cfg.max_snd_inflight as u64);
+                            let prefetch = match conn.pacing_rate() {
+                                Some(r) => ((r as u128 * cfg.prefetch_time.as_nanos()) / 1_000_000_000).min(u64::MAX as u128) as u64,
+                                None => (cfg.min_prefetch as u64).max(conn.cc.cwnd()),
+                            }
+                            .max(cfg.min_prefetch as u64)
+                            .min(cfg.prefetch_max as u64);
+                            assert_eq!(conn.sndbuf_limit(cfg), win + prefetch);
+                            assert_eq!(cfg.send_low_watermark(), cfg.write_low_watermark as usize);
+                            let mut capped = cfg.clone();
+                            capped.max_snd_buf = 4097;
+                            assert_eq!(conn.sndbuf_limit(&capped), (win + prefetch).min(4097));
+                            capped.max_snd_buf = win + prefetch + 1;
+                            assert_eq!(conn.sndbuf_limit(&capped), win + prefetch, "a cap cannot enlarge the natural limit");
+                        }
+                    }
+                }
+                let mut wide = ctx.cfg.clone();
+                wide.max_snd_inflight = u32::MAX;
+                wide.min_prefetch = u32::MAX;
+                wide.prefetch_max = u32::MAX;
+                assert_eq!(conn.sndbuf_limit(&wide), 2 * u32::MAX as u64, "default must not truncate to u32");
+                wide.write_low_watermark = 0;
+                assert_eq!(wide.send_low_watermark(), 0, "preserve the old zero-watermark behavior");
+            });
+        }
+    }
+
+    #[test]
+    fn tx_capacity_partial_writes_and_writable_after_drain() {
+        for cap in [1, 4097, 65537, 256 * 1024] {
+            let cfg = StackConfig { max_snd_buf: cap, min_prefetch: 512 * 1024, ..StackConfig::default() };
+            exercise_config(64 << 20, cfg, |conn, ctx| {
+                conn.accepted = true;
+                let cap = cap as usize;
+                assert_eq!(ctx.budget.physical_used(), 0, "configuration must not preallocate");
+                assert_eq!(conn.write(&vec![7; cap + 1], ctx), WriteResult::Written(cap));
+                assert_eq!((conn.tx.len(), conn.tx_charged, ctx.budget.used), (cap, cap as u64, cap as u64));
+                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 0);
+                assert_eq!(conn.write(&[1], ctx), WriteResult::WouldBlock);
+                assert_eq!(conn.write_with(1, ctx, |_| -> Result<usize, ()> { panic!("called while full") }), Ok(WriteResult::WouldBlock));
+                assert!(!conn.share_write_blocked(ctx.cfg, ctx.budget), "capacity is not a physical/share failure");
+                conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+                assert!(ctx.events.is_empty());
+                let threshold = ctx.cfg.send_low_watermark();
+                // Mimic ACK reclamation; actual ACK/event-driven retries are
+                // independently covered by the simulator and Tokio tests.
+                for (step, n) in [threshold - 1, 1].into_iter().enumerate() {
+                    conn.tx.consume(ctx.pool, n);
+                    conn.tx_charged -= n as u64;
+                    ctx.budget.release(conn.peer, n as u64);
+                    conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+                    if step == 0 {
+                        assert!(ctx.events.is_empty());
+                    }
+                }
+                assert_eq!(ctx.events.pop_front(), Some(Event::Writable(conn.id)));
+                conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+                assert!(ctx.events.is_empty(), "edge must only fire once");
+                let result = conn.write_with(cap + 1, ctx, |[a, b]| {
+                    assert_eq!(a.len() + b.len(), threshold);
+                    a.fill(9);
+                    b.fill(9);
+                    Ok::<_, ()>(threshold)
+                });
+                assert_eq!(result, Ok(WriteResult::Written(threshold)));
+                assert_eq!(conn.tx.len(), cap);
+            });
+        }
+    }
+
+    #[test]
+    fn tx_capacity_write_with_short_fill_error_and_abort_release_credit() {
+        let cfg = StackConfig { max_snd_buf: 4097, ..StackConfig::default() };
+        exercise_config(64 << 20, cfg, |conn, ctx| {
+            let result = conn.write_with(8192, ctx, |[a, b]| {
+                assert_eq!(a.len() + b.len(), 4097);
+                Err::<usize, _>("readv error")
+            });
+            assert_eq!(result, Err("readv error"));
+            assert_eq!((conn.tx.len(), conn.tx_charged, ctx.budget.used), (0, 0, 0));
+            let result = conn.write_with(8192, ctx, |[a, _]| {
+                a[..17].fill(3);
+                Ok::<_, ()>(17)
+            });
+            assert_eq!(result, Ok(WriteResult::Written(17)));
+            assert_eq!((conn.tx.len(), conn.tx_charged, ctx.budget.used), (17, 17, 17));
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 4080);
+            conn.abort(ctx);
+            assert_eq!(ctx.budget.used, 0);
+            assert_eq!(conn.write_with(1, ctx, |_| -> Result<usize, ()> { panic!("called after abort") }), Ok(WriteResult::Closed));
+        });
+    }
+
+    #[test]
+    fn tx_capacity_zero_disables_writes_without_spurious_wakeup() {
+        for low in [0, 16 * 1024] {
+            let cfg = StackConfig { max_snd_buf: 0, write_low_watermark: low, ..StackConfig::default() };
+            exercise_config(64 << 20, cfg, |conn, ctx| {
+                conn.accepted = true;
+                assert_eq!(conn.write(&[1], ctx), WriteResult::WouldBlock);
+                assert_eq!(conn.write_with(1, ctx, |_| -> Result<usize, ()> { panic!("zero capacity") }), Ok(WriteResult::WouldBlock));
+                conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+                assert!(ctx.events.is_empty());
+                assert!(!conn.share_write_blocked(ctx.cfg, ctx.budget));
+                assert_eq!((ctx.budget.used, ctx.budget.physical_used()), (0, 0));
+            });
+        }
+    }
+
+    #[test]
+    fn tx_capacity_does_not_bypass_share_or_physical_admission() {
+        let cfg = StackConfig { max_snd_buf: 1 << 20, min_prefetch: 1 << 20, ..StackConfig::default() };
+        exercise_config(64 << 20, cfg, |conn, ctx| {
+            conn.accepted = true;
+            ctx.budget.set_limits(1 << 20, 1 << 20, 8);
+            ctx.budget.sender_add(PeerId(2));
+            let share = ctx.budget.send_share(conn.peer);
+            assert!(share < ctx.cfg.max_snd_buf);
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), share as usize);
+            let ceiling = (1 << 20) - ctx.budget.global().headroom(1 << 20, crate::budget::Tier::Block);
+            let blocker = ctx.budget.try_allocate_kind(conn.peer, ceiling, crate::budget::AllocationKind::TxBlock).unwrap();
+            assert_eq!(conn.write(&[1], ctx), WriteResult::MemoryBlocked);
+            assert_eq!(ctx.budget.used, 0);
+            assert_eq!(conn.write_with(1, ctx, |_| -> Result<usize, ()> { panic!("physical admission failed") }), Ok(WriteResult::MemoryBlocked));
+            assert_eq!(ctx.budget.used, 0);
+            drop(blocker);
+            loop {
+                match conn.write(&[2; 65536], ctx) {
+                    WriteResult::Written(_) => continue,
+                    WriteResult::QuotaBlocked => break,
+                    other => panic!("expected share backpressure, got {other:?}"),
+                }
+            }
+            assert!(conn.share_write_blocked(ctx.cfg, ctx.budget));
+            ctx.budget.sender_del(PeerId(2));
+            conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+            assert_eq!(ctx.events.pop_front(), Some(Event::Writable(conn.id)));
+        });
     }
 }

@@ -8,3 +8,23 @@
 - 代理客户端场景（TUN 卸载、零拷贝收发、驱动内 splice，与 sing-box 1.15 对比）：[`docs/design/0008-client-profile.md`](docs/design/0008-client-profile.md)
 - 多租户混合负载 harness（sans-IO，不经 WireGuard）：[`harness/README.md`](harness/README.md)
 - 状态：设计 v0.3（已过一轮外部评审），S0 未开始
+
+## 独立 TX 容量上限
+
+通过 `StackConfig::max_snd_buf` 设置每连接核心 TX 队列上限，单位为字节：
+
+```rust
+let mut cfg = zfstack::StackConfig::client();
+cfg.max_snd_buf = 256 * 1024; // 示例：按实际链路测试后选择容量
+```
+
+`default()` 和 `client()` 均默认为 `u64::MAX`，不增加额外限制，保持原有行为。
+实际容量仍取窗口/预取上限、该配置与预算公平份额的最小值；本项不会扩大已有上限，
+也不修改 `max_snd_inflight`、预取参数或全局/端口/peer 物理预算。
+它统计已发送未确认和待发送数据，不包含 Tokio adapter 队列；物理块按分配粒度计费，
+缓存也可保留，因此它不是物理内存硬上限。
+
+可设置任意字节数，无需按块对齐。小于 `write_low_watermark` 时，Writable 阈值相应降低，
+避免小缓冲写满后无法恢复；设为零会阻止向核心 TX 队列写入且不发 Writable，
+接收和控制包不受此限制。Tokio adapter 仍可先接收数据至其自身队列上限。
+较小容量可能限制高 BDP 链路吞吐，不自动调整生产默认。

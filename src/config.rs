@@ -13,11 +13,19 @@ pub struct StackConfig {
     pub max_rcv_buf: u32,
     /// Per-connection cap on sent-but-unacknowledged bytes (§6.5).
     pub max_snd_inflight: u32,
+    /// Per-connection core TX byte ceiling (unacknowledged + unsent).
+    /// Applied in addition to the window/prefetch limit and budget fair share.
+    /// `u64::MAX` adds no limit (default); zero admits no writes into the core.
+    /// This is a logical limit, not a physical allocation/cache or adapter-queue
+    /// limit. It neither reserves memory nor changes any physical budget.
+    pub max_snd_buf: u64,
     /// Unsent prefetch horizon, additionally bounded by `prefetch_max`.
     pub prefetch_time: Duration,
     pub min_prefetch: u32,
     pub prefetch_max: u32,
-    /// Writable events fire when at least this much send space is free (§4.4).
+    /// Writable events fire when at least this much send space is free (§4.4),
+    /// capped by a nonzero `max_snd_buf` so small buffers can resume writing.
+    /// A zero `max_snd_buf` never fires Writable.
     pub write_low_watermark: u32,
     pub min_rto: Duration,
     pub max_rto: Duration,
@@ -62,6 +70,7 @@ impl Default for StackConfig {
             init_rcv_wnd: 64 * 1024,
             max_rcv_buf: 16 << 20,
             max_snd_inflight: 16 << 20,
+            max_snd_buf: u64::MAX,
             prefetch_time: Duration::from_millis(20),
             min_prefetch: 64 * 1024,
             // Preserve the library's original behavior unless the host sets a cap.
@@ -96,6 +105,15 @@ impl Default for StackConfig {
 }
 
 impl StackConfig {
+    pub(crate) fn send_low_watermark(&self) -> usize {
+        if self.max_snd_buf == 0 {
+            // No send space can become available, even with a zero watermark.
+            1
+        } else {
+            (self.write_low_watermark as u64).min(self.max_snd_buf) as usize
+        }
+    }
+
     /// Proxy-client profile: terminating the local OS's TCP on a TUN device
     /// (docs/design/0008). The peer is the local kernel, so the path is
     /// lossless with an RTT of tens of microseconds and any MTU up to 65535;
