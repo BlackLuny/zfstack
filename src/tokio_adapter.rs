@@ -1988,6 +1988,15 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn echo_roundtrip_through_async_handles() {
+        echo_roundtrip_with_tx_capacity(u64::MAX).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tx_capacity_async_writer_resumes_below_low_watermark() {
+        echo_roundtrip_with_tx_capacity(4097).await;
+    }
+
+    async fn echo_roundtrip_with_tx_capacity(cap: u64) {
         let (to_client_tx, mut to_client_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let egress = move |_i: IfaceId, _p: PeerId, pkt: &OutPacket<'_>| {
             let _ = to_client_tx.send(pkt.to_vec());
@@ -1997,6 +2006,7 @@ mod tests {
         // still has egress work; otherwise the two directions deadlock.
         let mut server_cfg = StackConfig::default();
         server_cfg.round_bytes_cap = 1500;
+        server_cfg.max_snd_buf = cap;
         let (h, mut acc, ids) = spawn(server_cfg, StreamConfig::default(), vec![IfaceConfig::default()], egress);
         let initial = h.snapshot().await.unwrap();
         assert_eq!(initial.active_connections, 0);
@@ -2217,7 +2227,21 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn splice_relays_both_directions_and_half_closes() {
-        for (cfg, mtu, tso) in [(StackConfig::default(), 1420u16, 0u32), (StackConfig::client(), 65535, 0), (StackConfig::client(), 1500, 65_000)] {
+        splice_roundtrips(vec![(StackConfig::default(), 1420u16, 0u32), (StackConfig::client(), 65535, 0), (StackConfig::client(), 1500, 65_000)])
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tx_capacity_splice_roundtrips_and_half_closes() {
+        let cases = [(4097, 1500, 0), (65537, 65535, 0), (256 * 1024, 1500, 65_000)]
+            .into_iter()
+            .map(|(cap, mtu, tso)| (StackConfig { max_snd_buf: cap, ..StackConfig::client() }, mtu, tso))
+            .collect();
+        splice_roundtrips(cases).await;
+    }
+
+    async fn splice_roundtrips(cases: Vec<(StackConfig, u16, u32)>) {
+        for (cfg, mtu, tso) in cases {
             // Upstream: echo until EOF, then close.
             let up = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let up_addr = up.local_addr().unwrap();

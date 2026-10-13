@@ -1283,3 +1283,84 @@ fn zero_window_data_probe_is_answered() {
     });
     assert_eq!(acks, vec![(seq, 0)], "data probe into a zero window was not ACKed");
 }
+
+#[test]
+fn tx_capacity_eight_flows_survive_loss_reorder_fin_and_release() {
+    for cap in [4097, 65537, 256 * 1024] {
+        let cfg = StackConfig { max_snd_buf: cap, ..StackConfig::client() };
+        let p = LinkParams { loss: 0.01, reorder: 0.02, duplicate: 0.01, ..Default::default() };
+        let mut s = Sim::new(929, cfg.clone(), cfg, p.clone(), p);
+        s.a.accept_template = AppConn { to_send: 256 * 1024 + 17, fin_after_send: true, ..Default::default() };
+        for i in 0..8 {
+            s.connect_as(
+                PeerId(1 + i % 2),
+                46000 + i as u16,
+                AppConn {
+                    to_send: 64 * 1024 + 9,
+                    fin_after_send: true,
+                    read_paused_until: s.now + Duration::from_millis(500),
+                    ..Default::default()
+                },
+            );
+        }
+        for _ in 0..3000 {
+            s.run_until(s.now + Duration::from_millis(10));
+            for side in [&s.a, &s.b] {
+                for id in side.conns.keys() {
+                    if let Some(info) = side.shard.info(*id) {
+                        assert!(info.tx_queued as u64 <= cap);
+                    }
+                }
+            }
+            if s.b.conns.values().all(|c| c.eof) && s.a.conns.values().all(|c| c.eof) {
+                break;
+            }
+        }
+        assert_eq!(s.a.conns.len(), 8);
+        for c in s.b.conns.values() {
+            assert_download_ok(c, 256 * 1024 + 17);
+        }
+        for c in s.a.conns.values() {
+            assert_download_ok(c, 64 * 1024 + 9);
+        }
+        assert!(s.ab.stats.random_drops > 0 && s.ba.stats.random_drops > 0);
+        s.run_until(s.now + secs(70));
+        assert_eq!((s.a.shard.conn_count(), s.b.shard.conn_count()), (0, 0));
+        assert_eq!((s.a.shard.budget().used, s.b.shard.budget().used), (0, 0));
+        let a = s.a.shard.budget().global().clone();
+        let b = s.b.shard.budget().global().clone();
+        drop(s);
+        assert_eq!((a.reserved(), b.reserved()), (0, 0));
+    }
+}
+
+#[test]
+fn tx_capacity_abort_with_outstanding_data_sends_reset_and_releases() {
+    let cfg = StackConfig { max_snd_buf: 4097, ..StackConfig::client() };
+    let mut s = Sim::new(930, cfg.clone(), cfg, LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { to_send: 1 << 20, ..Default::default() };
+    let cid = s.connect(46000, AppConn { read_paused_until: Instant::MAX, ..Default::default() });
+    s.run_until(s.now + Duration::from_millis(100));
+    let sid = s.a.accepted[0];
+    assert!(s.a.shard.info(sid).unwrap().tx_queued > 0);
+    s.a.shard.abort(sid);
+    s.a.conns.remove(&sid);
+    s.run_until(s.now + secs(1));
+    assert_eq!(s.b.conns[&cid].closed, Some(CloseReason::Reset));
+    assert_eq!(s.a.shard.budget().used, 0);
+    let a = s.a.shard.budget().global().clone();
+    let b = s.b.shard.budget().global().clone();
+    drop(s);
+    assert_eq!((a.reserved(), b.reserved()), (0, 0));
+}
+
+#[test]
+fn tx_capacity_zero_still_receives_data_and_exchanges_fin() {
+    let cfg = StackConfig { max_snd_buf: 0, ..StackConfig::client() };
+    let mut s = Sim::new(931, cfg, StackConfig::client(), LinkParams::default(), LinkParams::default());
+    s.a.accept_template = AppConn { fin_after_send: true, ..Default::default() };
+    let id = s.connect(46000, AppConn { to_send: 128 * 1024 + 1, fin_after_send: true, ..Default::default() });
+    s.run_until(s.now + secs(10));
+    assert_download_ok(&s.b.conns[&id], 0);
+    assert_download_ok(&s.a.conns[&s.a.accepted[0]], 128 * 1024 + 1);
+}
