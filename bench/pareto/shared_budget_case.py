@@ -92,6 +92,8 @@ def main():
     parser.add_argument('--flows', type=int, choices=range(2, 33), default=8)
     parser.add_argument('--trim', action='store_true')
     parser.add_argument('--ingress-capacity', type=int, choices=range(1, 65537), default=4096, metavar='1..65536')
+    parser.add_argument('--tun-queue-len', type=int, choices=range(0, 65537), default=4096, metavar='0..65536',
+                        help='zero preserves kernel default for diagnostic controls')
     parser.add_argument('--allow-ingress-drops', action='store_true',
                         help='diagnostic overload controls only; never clean acceptance')
     args = parser.parse_args()
@@ -116,7 +118,7 @@ def main():
         ip('-n', ns, 'link', 'set', 'lo', 'up')
         argv = ['ip', 'netns', 'exec', ns, str(binary), '--mtu', str(args.mtu), '--global-mib', str(args.global_mib),
                 '--rounds', str(args.rounds), '--flows', str(args.flows),
-                '--ingress-capacity', str(args.ingress_capacity)]
+                '--ingress-capacity', str(args.ingress_capacity), '--tun-queue-len', str(args.tun_queue_len)]
         if args.trim:
             argv.append('--trim')
         result['command'] = argv

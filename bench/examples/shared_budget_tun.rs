@@ -32,6 +32,9 @@ struct Opts {
     /// Bounded host packets per port, outside the stack ledger.
     #[arg(long, default_value_t = 4096, value_parser = clap::value_parser!(u32).range(1..=65536))]
     ingress_capacity: u32,
+    /// Kernel TUN queue bound; zero preserves the kernel default for controls.
+    #[arg(long, default_value_t = 4096, value_parser = clap::value_parser!(u32).range(0..=65536))]
+    tun_queue_len: u32,
 }
 const DEVICE: &str = "zfmp0";
 const BYTES: usize = 1 << 20;
@@ -48,7 +51,7 @@ fn command(args: &[&str]) -> io::Result<()> {
         Err(io::Error::other(String::from_utf8_lossy(&out.stderr).into_owned()))
     }
 }
-fn open_tun(mtu: u16) -> io::Result<Arc<OwnedFd>> {
+fn open_tun(mtu: u16, queue_len: u32) -> io::Result<Arc<OwnedFd>> {
     #[repr(C)]
     struct IfReq {
         name: [u8; libc::IFNAMSIZ],
@@ -68,6 +71,9 @@ fn open_tun(mtu: u16) -> io::Result<Arc<OwnedFd>> {
     command(&["addr", "add", "10.222.0.1/32", "dev", DEVICE])?;
     command(&["link", "set", DEVICE, "mtu", &mtu.to_string(), "up"])?;
     command(&["route", "add", "10.223.0.0/16", "dev", DEVICE])?;
+    if queue_len != 0 {
+        command(&["link", "set", DEVICE, "txqueuelen", &queue_len.to_string()])?;
+    }
     Ok(fd)
 }
 fn classify(packet: &[u8]) -> Option<usize> {
@@ -400,10 +406,11 @@ async fn parked(port: &Port, client: &Client, round: u16, phase: &str) -> u64 {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     let opts = Opts::parse();
-    let fd = open_tun(opts.mtu)?;
+    let fd = open_tun(opts.mtu, opts.tun_queue_len)?;
     let global = GlobalBudget::new(opts.global_mib << 20);
     emit(json!({"type":"config","mtu":opts.mtu,"global_bytes":global.high(),"port_bytes":global.high(),
         "peer_bytes":global.high(),"flows_per_port":opts.flows,"rounds":opts.rounds,"trim":opts.trim,
+        "tun_queue_len":std::fs::read_to_string(format!("/sys/class/net/{DEVICE}/tx_queue_len"))?.trim().parse::<u32>().map_err(io::Error::other)?,
         "ingress_capacity":opts.ingress_capacity,"bytes_per_flow":BYTES,"peer_id_on_both_ports":7,"scope":"two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG"}));
     for round in 0..opts.rounds {
         let errors = Arc::new(AtomicU64::new(0));
@@ -433,7 +440,8 @@ async fn main() -> io::Result<()> {
             client.finish()?;
         }
         assert!(global_failures.iter().sum::<u64>() > 0, "natural workload did not reach global pressure");
-        emit(json!({"type":"natural_done","round":round,"verified_bytes":2 * opts.flows as usize * BYTES,"global_failures":global_failures}));
+        emit(json!({"type":"natural_done","round":round,"verified_bytes":2 * opts.flows as usize * BYTES,"global_failures":global_failures,
+            "tun_tx_dropped":tun_tx_dropped()? - kernel_drops_before}));
 
         let ready = Client::prepare(1, 199)?;
         let held = fill(&ports[0].memory).await;
