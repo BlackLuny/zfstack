@@ -84,6 +84,39 @@ type Batch = Vec<(PacketBuf, usize, RxChecksum)>;
 /// Idle packet buffers kept (and charged) by the reader's pool.
 const POOL_CACHED: usize = 128;
 
+/// Diagnostic-only source identities, configured by the owned TUN case runner.
+/// These are not authenticated peers and must not be used as a production ACL.
+#[derive(Clone, Copy, Debug)]
+struct PeerMode(bool);
+
+impl PeerMode {
+    fn from_value(value: Option<&str>) -> io::Result<Self> {
+        match value {
+            None => Ok(Self(false)),
+            Some("4") => Ok(Self(true)),
+            _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_TUN_PEERS must be unset or 4")),
+        }
+    }
+
+    fn classify(self, packet: &[u8]) -> Option<PeerId> {
+        if !self.0 {
+            return Some(PeerId(0));
+        }
+        // The stack still validates the complete IP/TCP packet and checksum.
+        // Unknown addresses never fall back to the reader's accounting peer.
+        if packet.len() >= 20 && packet[0] >> 4 == 4 && packet[12..15] == [172, 19, 1] && (1..=4).contains(&packet[15]) {
+            Some(PeerId(packet[15] as u64))
+        } else {
+            None
+        }
+    }
+}
+
+struct PeerSamples {
+    memory: Vec<zfstack::budget::MemoryHandle>,
+    egress: std::sync::Arc<[std::sync::atomic::AtomicU64; 5]>,
+}
+
 /// Experimental settings. Both variables are required to enable trimming:
 /// ZFBENCH_PACKET_POOL_TRIM_IDLE_MS and ZFBENCH_PACKET_POOL_TRIM_TARGET.
 /// There are deliberately no experimental defaults.
@@ -347,6 +380,7 @@ fn spawn_tx_cache_sampler(
     packet_pool: PacketPool,
     peer_memory: zfstack::budget::MemoryHandle,
     limits: ResourceLimits,
+    peers: Option<PeerSamples>,
 ) {
     tokio::spawn(async move {
         let start = std::time::Instant::now();
@@ -354,6 +388,30 @@ fn spawn_tx_cache_sampler(
             // One bounded control request per interval; no catch-up bursts.
             tokio::time::sleep(interval).await;
             let Some(snap) = handle.snapshot().await else { break };
+            if let Some(peers) = &peers {
+                let rows: Vec<_> = peers
+                    .memory
+                    .iter()
+                    .enumerate()
+                    .map(|(id, memory)| {
+                        serde_json::json!({
+                            "peer_id": id,
+                            "physical_bytes": memory.peer_physical_used(),
+                            "egress_packets": peers.egress[id].load(std::sync::atomic::Ordering::Relaxed),
+                        })
+                    })
+                    .collect();
+                eprintln!(
+                    "ZFBENCH_PEERS {}",
+                    serde_json::json!({
+                        "elapsed_ms": start.elapsed().as_millis(),
+                        "unix_ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                        "peers": rows,
+                        "peer_limit_bytes": limits.peer_bytes,
+                        "scope": "one shard; source 172.19.1.N maps to PeerId(N), N=1..4; peer 0 is the bounded reader pool; separate non-atomic reads",
+                    })
+                );
+            }
             eprintln!(
                 "ZFBENCH_CONNECTIONS {}",
                 serde_json::json!({
@@ -394,7 +452,7 @@ fn spawn_tx_cache_sampler(
                     "send_share_blocked": snap.share_blocked,
                     "senders": snap.senders,
                     "sample_coherence": "separate reads; validate conservation during settled quiet only",
-                    "scope": "one tunproxy shard and one PeerId(0); not a multi-peer fairness test",
+                    "scope": if peers.is_some() { "one shard; PeerId(0) is reader storage only; see ZFBENCH_PEERS for four traffic peers" } else { "one tunproxy shard and one PeerId(0); not a multi-peer fairness test" },
                     "large_cached": snap.tx_cache.large_cached,
                     "small_cached": snap.tx_cache.small_cached,
                     "large_capacity": snap.tx_cache.large_capacity,
@@ -460,7 +518,7 @@ impl BudgetDraft {
         Ok(Self { bytes: Some(bytes) })
     }
 
-    fn create(self) -> (std::sync::Arc<zfstack::budget::GlobalBudget>, ResourceLimits) {
+    fn create(self, peer_mode: PeerMode) -> (std::sync::Arc<zfstack::budget::GlobalBudget>, ResourceLimits) {
         let global = match self.bytes {
             Some(bytes) => zfstack::budget::GlobalBudget::new(bytes[0]),
             None => zfstack::budget::GlobalBudget::from_system(),
@@ -472,7 +530,7 @@ impl BudgetDraft {
             serde_json::json!({
                 "global_bytes": high, "port_bytes": bytes[1], "peer_bytes": bytes[2],
                 "peer_id": 0, "peer_max_connections": u32::MAX,
-                "scope": "one tunproxy shard and one PeerId(0); configured ceilings are not usage",
+                "scope": if peer_mode.0 { "four source-mapped traffic peers plus reader PeerId(0); ceilings are not usage" } else { "one tunproxy shard and one PeerId(0); configured ceilings are not usage" },
             })
         );
         let limits = ResourceLimits { port_bytes: bytes[1], peer_bytes: bytes[2], peer_max_connections: u32::MAX };
@@ -486,6 +544,7 @@ fn start_stack(
     fd: RawFd,
     tx_experiment: TxCacheExperiment,
     bench_budget: BudgetDraft,
+    peer_mode: PeerMode,
     #[cfg(feature = "packet-pool-idle-trim")] idle_trim: Option<PacketPoolTrimConfig>,
 ) -> Stack {
     let (mtu, vnet, tso) = (o.mtu, o.vnet_hdr, o.tso);
@@ -495,9 +554,18 @@ fn start_stack(
     // checksums like sing-box does; with one, the header says per packet.
     let trust = o.client_profile && !vnet;
     let (tx, rx) = tokio::sync::mpsc::channel::<Batch>(BATCH_QUEUE);
-    let (global, limits) = bench_budget.create();
-    let egress = move |_: IfaceId, _: PeerId, p: &OutPacket<'_>| write_packet(fd, p, vnet);
-    let (handle, acceptor, ids, task, memory) = tokio_adapter::spawn_with_source_factory(
+    let (global, limits) = bench_budget.create(peer_mode);
+    let egress_counts = peer_mode.0.then(|| std::sync::Arc::new(std::array::from_fn::<_, 5, _>(|_| std::sync::atomic::AtomicU64::new(0))));
+    let counts = egress_counts.clone();
+    let egress = move |_: IfaceId, peer: PeerId, p: &OutPacket<'_>| {
+        if let Some(counts) = &counts {
+            if let Some(count) = counts.get(peer.0 as usize) {
+                count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        write_packet(fd, p, vnet)
+    };
+    let (handle, acceptor, ids, task, (memory, peer_samples)) = tokio_adapter::spawn_with_source_factory(
         client_config(o.client_profile),
         StreamConfig::default(),
         vec![IfaceConfig { mtu }],
@@ -505,14 +573,26 @@ fn start_stack(
             if let Some(policy) = tx_experiment.trim {
                 shard.set_tx_cache_trim(Some(policy)).expect("validated experimental TX cache trim");
             }
-            (egress, shard.memory_handle(PeerId(0)))
+            let samples = egress_counts.map(|egress| PeerSamples { memory: (0..=4).map(|id| shard.memory_handle(PeerId(id))).collect(), egress });
+            (egress, (shard.memory_handle(PeerId(0)), samples))
         },
         global,
         limits,
         rx,
         move |shard, now, batch: Batch| {
             for (b, start, csum) in batch {
-                shard.ingress_buf(now, IfaceId(0), PeerId(0), b, start, csum);
+                if let Some(packet) = b.get(start..) {
+                    if let Some(peer) = peer_mode.classify(packet) {
+                        if peer_mode.0 {
+                            // Reader buffers belong to peer 0. Borrowing copies
+                            // retained payload into the actual peer's ledger,
+                            // matching zfc's shared external RX-pool contract.
+                            shard.ingress_borrowed_with(now, IfaceId(0), peer, packet, csum);
+                        } else {
+                            shard.ingress_buf(now, IfaceId(0), peer, b, start, csum);
+                        }
+                    }
+                }
             }
         },
     );
@@ -536,7 +616,7 @@ fn start_stack(
         })
         .unwrap();
     if let Some(interval) = tx_experiment.sample {
-        spawn_tx_cache_sampler(handle.clone(), interval, sample_packet_pool.unwrap(), sample_memory.unwrap(), limits);
+        spawn_tx_cache_sampler(handle.clone(), interval, sample_packet_pool.unwrap(), sample_memory.unwrap(), limits, peer_samples);
     }
     Stack { acceptor, _handle: handle, _task: task }
 }
@@ -544,6 +624,11 @@ fn start_stack(
 pub fn run(o: ProxyOpts) -> io::Result<()> {
     // Validate budget settings before any TUN deletion, creation or configuration.
     let bench_budget = BudgetDraft::from_env()?;
+    let peer_value = std::env::var("ZFBENCH_TUN_PEERS").map(Some).or_else(|error| match error {
+        std::env::VarError::NotPresent => Ok(None),
+        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_TUN_PEERS must be UTF-8")),
+    })?;
+    let peer_mode = PeerMode::from_value(peer_value.as_deref())?;
     // Validate all TX settings before deleting, creating or configuring any TUN.
     let tx_experiment = TxCacheExperiment::from_env()?;
     // Reject incomplete experimental settings before changing the TUN device.
@@ -563,9 +648,9 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
             let drt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
             drt.block_on(async move {
                 #[cfg(feature = "packet-pool-idle-trim")]
-                let stack = start_stack(&o, fd, tx_experiment, bench_budget, idle_trim);
+                let stack = start_stack(&o, fd, tx_experiment, bench_budget, peer_mode, idle_trim);
                 #[cfg(not(feature = "packet-pool-idle-trim"))]
-                let stack = start_stack(&o, fd, tx_experiment, bench_budget);
+                let stack = start_stack(&o, fd, tx_experiment, bench_budget, peer_mode);
                 let _ = stx.send(stack);
                 std::future::pending::<()>().await
             })
@@ -574,9 +659,9 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
     } else {
         let _g = rt.enter();
         #[cfg(feature = "packet-pool-idle-trim")]
-        let stack = start_stack(&o, fd, tx_experiment, bench_budget, idle_trim);
+        let stack = start_stack(&o, fd, tx_experiment, bench_budget, peer_mode, idle_trim);
         #[cfg(not(feature = "packet-pool-idle-trim"))]
-        let stack = start_stack(&o, fd, tx_experiment, bench_budget);
+        let stack = start_stack(&o, fd, tx_experiment, bench_budget, peer_mode);
         stack
     };
     let mut acceptor = stack.acceptor;
@@ -605,6 +690,34 @@ pub fn run(o: ProxyOpts) -> io::Result<()> {
 #[cfg(test)]
 mod tx_cache_experiment_tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_peers_are_distinct_and_unknown_sources_are_not_admitted() {
+        let on = PeerMode::from_value(Some("4")).unwrap();
+        let off = PeerMode::from_value(None).unwrap();
+        let mut packet = [0u8; 20];
+        packet[0] = 0x45;
+        packet[12..15].copy_from_slice(&[172, 19, 1]);
+        for id in 1..=4 {
+            packet[15] = id;
+            assert_eq!(on.classify(&packet), Some(PeerId(id as u64)));
+            assert_eq!(off.classify(&packet), Some(PeerId(0)));
+        }
+        for id in [0, 5, 255] {
+            packet[15] = id;
+            assert_eq!(on.classify(&packet), None);
+        }
+        packet[15] = 1;
+        packet[12] = 127;
+        assert_eq!(on.classify(&packet), None);
+        packet[12] = 172;
+        packet[0] = 0x60;
+        assert_eq!(on.classify(&packet), None);
+        assert_eq!(on.classify(&packet[..16]), None);
+        for value in ["", "0", "1", "5", "04"] {
+            assert!(PeerMode::from_value(Some(value)).is_err());
+        }
+    }
 
     #[test]
     fn tx_settings_are_explicit_and_sampler_can_observe_disabled_policy() {
