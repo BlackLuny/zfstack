@@ -330,13 +330,14 @@ class MixedProbe:
         if self.error:
             raise RuntimeError(f"mixed RR error: {self.error}")
         measured = [sample for sample in self.samples
-                    if begin_ns <= sample["begin_monotonic_ns"] and sample["end_monotonic_ns"] <= end_ns]
+                    if begin_ns <= sample["begin_monotonic_ns"] < end_ns]
         if not measured:
-            raise RuntimeError("no complete RR exchange overlapped the bulk window")
+            raise RuntimeError("no RR exchange started during the bulk window")
         return {"latency": percentiles([sample["rtt_us"] for sample in measured]),
-                "raw_samples": self.samples, "fully_overlapping_samples": len(measured),
+                "raw_samples": self.samples, "started_during_bulk_samples": len(measured),
+                "fully_overlapping_samples": sum(sample["end_monotonic_ns"] <= end_ns for sample in measured),
                 "bulk_begin_monotonic_ns": begin_ns, "bulk_end_monotonic_ns": end_ns,
-                "note": "only exchanges wholly inside the bulk window enter latency; one actual PeerId(0) in tunproxy"}
+                "note": "exchanges started during the bulk window enter latency, including late completions; one actual PeerId(0) in tunproxy"}
 
 
 def percentiles(samples):
