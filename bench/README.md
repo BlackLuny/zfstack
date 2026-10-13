@@ -363,6 +363,31 @@ measured wall interval after the light users have connected
 global ceiling and 4 MiB port/peer ceilings, the shape of the open L2
 same-port stall.
 
+### Shared-budget driver release and cancellation probe
+
+`shared_budget_tun` runs two production Tokio adapters on separate OS threads,
+sharing one `GlobalBudget`. Real kernel TCP clients use one TUN and two logical
+port instances; both ports deliberately reuse `PeerId(7)`. It checks natural
+global-budget pressure, an explicitly injected host-buffer release gate,
+cancellation of a parked application writer, and ledger/permit return to zero
+before rebuilding the drivers. This is a bounded diagnostic, not a throughput
+or WireGuard benchmark.
+
+```sh
+cargo build --locked -p zfbench --release --example shared_budget_tun
+sudo python3 bench/pareto/shared_budget_case.py \
+  --binary target/release/examples/shared_budget_tun \
+  --outdir /tmp/shared-budget-new-case --source-sha "$(git rev-parse HEAD)" \
+  --mtu 1500 --global-mib 1 --rounds 3
+```
+
+Run the wrapper on a dedicated Linux rig with TUN/netns privileges. It owns a
+fresh namespace, records the binary hash, validates every round, and removes
+its namespace after bounded process cleanup. Do not run the example directly
+in an existing network namespace. Add `--trim` only for an explicit TX-policy
+configuration check; the short rounds do not establish automatic cache decay.
+See the [recorded matrix and limits](results/2026-10-13-shared-budget/README.md).
+
 ## Caveats (read before trusting numbers)
 
 - **Timing precision.** Deliveries are about 15–25 µs late on average under

@@ -1,0 +1,608 @@
+{
+  "cases": [
+    {
+      "name": "matrix-1500-1-0",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 1048576,
+        "mtu": 1500,
+        "peer_bytes": 1048576,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 1048576,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": false,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2128,
+          2120,
+          2133
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 1039224,
+      "natural_global_failures": [
+        [
+          100,
+          111
+        ],
+        [
+          85,
+          52
+        ],
+        [
+          141,
+          147
+        ]
+      ],
+      "reader_queue_drops": [
+        0,
+        0,
+        0
+      ],
+      "port_a_survived_cancel_bytes": [
+        1012736,
+        1012736,
+        1012736
+      ],
+      "injected_host_bytes": [
+        1013248,
+        1013248,
+        1013248
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 2.8878081849998125,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-1500-1-1",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 1048576,
+        "mtu": 1500,
+        "peer_bytes": 1048576,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 1048576,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": true,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2154,
+          2115,
+          2110
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 1039224,
+      "natural_global_failures": [
+        [
+          204,
+          195
+        ],
+        [
+          153,
+          211
+        ],
+        [
+          212,
+          201
+        ]
+      ],
+      "reader_queue_drops": [
+        0,
+        0,
+        0
+      ],
+      "port_a_survived_cancel_bytes": [
+        1012736,
+        1012736,
+        1012736
+      ],
+      "injected_host_bytes": [
+        1013248,
+        1013248,
+        1013248
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 2.948413303000052,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-1500-2-0",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 2097152,
+        "mtu": 1500,
+        "peer_bytes": 2097152,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 2097152,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": false,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2144,
+          2119,
+          2225
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 2087800,
+      "natural_global_failures": [
+        [
+          33,
+          13
+        ],
+        [
+          8,
+          15
+        ],
+        [
+          2,
+          13
+        ]
+      ],
+      "reader_queue_drops": [
+        0,
+        0,
+        0
+      ],
+      "port_a_survived_cancel_bytes": [
+        2061312,
+        2061312,
+        2061312
+      ],
+      "injected_host_bytes": [
+        2061824,
+        2061824,
+        2061824
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 2.885908942000242,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-1500-2-1",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 2097152,
+        "mtu": 1500,
+        "peer_bytes": 2097152,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 2097152,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": true,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2126,
+          2152,
+          2136
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 2087800,
+      "natural_global_failures": [
+        [
+          17,
+          36
+        ],
+        [
+          16,
+          26
+        ],
+        [
+          57,
+          70
+        ]
+      ],
+      "reader_queue_drops": [
+        0,
+        0,
+        0
+      ],
+      "port_a_survived_cancel_bytes": [
+        2061312,
+        2061312,
+        2061312
+      ],
+      "injected_host_bytes": [
+        2061824,
+        2061824,
+        2061824
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 2.9912706330005676,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-512-1-0",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 1048576,
+        "mtu": 512,
+        "peer_bytes": 1048576,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 1048576,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": false,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2620,
+          7435,
+          2131
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 1039224,
+      "natural_global_failures": [
+        [
+          393,
+          369
+        ],
+        [
+          384,
+          280
+        ],
+        [
+          135,
+          194
+        ]
+      ],
+      "reader_queue_drops": [
+        394,
+        283,
+        580
+      ],
+      "port_a_survived_cancel_bytes": [
+        1012736,
+        1012736,
+        1012736
+      ],
+      "injected_host_bytes": [
+        1013248,
+        1013248,
+        1013248
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 3.3524557509999795,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-512-1-1",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 1048576,
+        "mtu": 512,
+        "peer_bytes": 1048576,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 1048576,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": true,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2301,
+          2509,
+          2162
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 1039224,
+      "natural_global_failures": [
+        [
+          354,
+          328
+        ],
+        [
+          407,
+          347
+        ],
+        [
+          232,
+          428
+        ]
+      ],
+      "reader_queue_drops": [
+        274,
+        784,
+        1674
+      ],
+      "port_a_survived_cancel_bytes": [
+        1012736,
+        1012736,
+        1012736
+      ],
+      "injected_host_bytes": [
+        1013248,
+        1013248,
+        1013248
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 3.3999553200001174,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-512-2-0",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 2097152,
+        "mtu": 512,
+        "peer_bytes": 2097152,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 2097152,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": false,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2347,
+          244,
+          2270
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 2087800,
+      "natural_global_failures": [
+        [
+          32,
+          59
+        ],
+        [
+          17,
+          67
+        ],
+        [
+          51,
+          15
+        ]
+      ],
+      "reader_queue_drops": [
+        2185,
+        315,
+        315
+      ],
+      "port_a_survived_cancel_bytes": [
+        2061312,
+        2061312,
+        2061312
+      ],
+      "injected_host_bytes": [
+        2061824,
+        2061824,
+        2061824
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 3.217828339999869,
+      "cleanup_ok": true
+    },
+    {
+      "name": "matrix-512-2-1",
+      "source_sha": "b69bbfb1d2e438dfb23a8fdff5c4c775e5da26c5",
+      "binary_sha256": "ae4e93c23afc994bb9ddd33b6c84449fda336bcbb388f2313a7234cd056e0dc9",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 2097152,
+        "mtu": 512,
+        "peer_bytes": 2097152,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 2097152,
+        "rounds": 3,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": true,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 3,
+        "natural_verified_bytes": 50331648,
+        "release_verified_bytes": 3145728,
+        "release_observed_us": [
+          2283,
+          2281,
+          2880
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 2087800,
+      "natural_global_failures": [
+        [
+          42,
+          45
+        ],
+        [
+          38,
+          63
+        ],
+        [
+          43,
+          38
+        ]
+      ],
+      "reader_queue_drops": [
+        632,
+        1370,
+        1155
+      ],
+      "port_a_survived_cancel_bytes": [
+        2061312,
+        2061312,
+        2061312
+      ],
+      "injected_host_bytes": [
+        2061824,
+        2061824,
+        2061824
+      ],
+      "held_response_bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_sec": 2.987255041000026,
+      "cleanup_ok": true
+    },
+    {
+      "name": "probe-1500-1-off",
+      "source_sha": "6c20ee7c37715138b1ce11aa1b251017e5eb63df",
+      "binary_sha256": "2954e024805dd9f81c56cd6d2bc29cfc906117e50f9b9cc82a2b7d58d5719535",
+      "config": {
+        "bytes_per_flow": 1048576,
+        "flows_per_port": 8,
+        "global_bytes": 1048576,
+        "mtu": 1500,
+        "peer_bytes": 1048576,
+        "peer_id_on_both_ports": 7,
+        "port_bytes": 1048576,
+        "rounds": 1,
+        "scope": "two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG",
+        "trim": false,
+        "type": "config"
+      },
+      "validation": {
+        "rounds": 1,
+        "natural_verified_bytes": 16777216,
+        "release_verified_bytes": 1048576,
+        "release_observed_us": [
+          2344
+        ],
+        "ledger_zero_every_round": true
+      },
+      "peak_sampled_global_bytes": 1039224,
+      "natural_global_failures": [
+        [
+          244,
+          297
+        ]
+      ],
+      "reader_queue_drops": [
+        0
+      ],
+      "port_a_survived_cancel_bytes": [
+        1012736
+      ],
+      "injected_host_bytes": [
+        1013248
+      ],
+      "held_response_bytes": [
+        0,
+        0
+      ],
+      "elapsed_sec": 1.0101963750003051,
+      "cleanup_ok": true
+    }
+  ],
+  "matrix_rounds": 24,
+  "matrix_verified_bytes": 427819008,
+  "scope": "real kernel TCP; two Tokio driver OS threads; injected host-buffer gate is separate from natural traffic; ledger is not total RSS"
+}
