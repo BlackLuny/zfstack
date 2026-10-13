@@ -21,6 +21,7 @@ class SharedBudgetEvidence(unittest.TestCase):
              'epoch_before': 10, 'epoch_after': 11, 'verified_bytes': 10, 'wake_observed_us': 2000},
             {'type': 'round_done', 'round': 0, 'peer_b_after_cancel': 0, 'global_reserved': 0,
              'global_cached': 0, 'time_wait_bytes': 0, 'connection_counts': [0, 0],
+             'ingress_queue_drops': 0, 'tun_tx_dropped': 0,
              'cancelled_app_writers': 1, 'peer_a_survived_bytes': 50},
             {'type': 'summary', 'ok': True, 'ledger_zero': True, 'rounds': 1},
         ]
@@ -29,6 +30,21 @@ class SharedBudgetEvidence(unittest.TestCase):
         report = validate(self.rows, 1)
         self.assertEqual(report['natural_verified_bytes'], 40)
         self.assertTrue(report['ledger_zero_every_round'])
+
+    def test_tcp_completion_cannot_hide_host_or_kernel_packet_loss(self):
+        for field in ['ingress_queue_drops', 'tun_tx_dropped']:
+            rows = copy.deepcopy(self.rows)
+            next(row for row in rows if row['type'] == 'round_done')[field] = 1
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'ingress drops'):
+                validate(rows, 1)
+            report = validate(rows, 1, allow_ingress_drops=True)
+            self.assertFalse(report['clean_ingress'])
+            self.assertEqual(report[field], 1)
+
+    def test_missing_drop_evidence_is_not_assumed_lossless(self):
+        del next(row for row in self.rows if row['type'] == 'round_done')['tun_tx_dropped']
+        with self.assertRaises(KeyError):
+            validate(self.rows, 1)
 
     def test_idle_transfer_without_a_real_waiter_is_rejected(self):
         for row in self.rows:

@@ -18,7 +18,7 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def validate(rows, rounds):
+def validate(rows, rounds, allow_ingress_drops=False):
     configs = [row for row in rows if row.get('type') == 'config']
     summaries = [row for row in rows if row.get('type') == 'summary']
     if len(configs) != 1 or len(summaries) != 1 or rows[-1] != summaries[0]:
@@ -58,7 +58,17 @@ def validate(rows, rounds):
             raise ValueError('no cross-port release observed')
         if row['verified_bytes'] != config['bytes_per_flow'] or row['wake_observed_us'] >= 2_100_000:
             raise ValueError('release did not recover complete payload within bound')
+    ingress_drops = 0
+    kernel_drops = 0
     for row in groups['round_done']:
+        drops = row['ingress_queue_drops']
+        device_drops = row['tun_tx_dropped']
+        if drops < 0 or device_drops < 0:
+            raise ValueError('invalid ingress drop counters')
+        ingress_drops += drops
+        kernel_drops += device_drops
+        if not allow_ingress_drops and (drops or device_drops):
+            raise ValueError('ingress drops invalidate clean acceptance; use explicit diagnostic override')
         if any(row[name] != 0 for name in ['peer_b_after_cancel', 'global_reserved', 'global_cached', 'time_wait_bytes']):
             raise ValueError('lifecycle ledger not zero')
         if row['connection_counts'] != [0, 0] or row['cancelled_app_writers'] < 1 or row['peer_a_survived_bytes'] <= 0:
@@ -66,7 +76,9 @@ def validate(rows, rounds):
     return {'rounds': rounds, 'natural_verified_bytes': sum(row['verified_bytes'] for row in groups['natural_done']),
             'release_verified_bytes': sum(row['verified_bytes'] for row in groups['release_done']),
             'release_observed_us': [row['wake_observed_us'] for row in groups['release_done']],
-            'ledger_zero_every_round': True}
+            'ledger_zero_every_round': True, 'ingress_queue_drops': ingress_drops,
+            'tun_tx_dropped': kernel_drops, 'clean_ingress': ingress_drops == kernel_drops == 0,
+            'allow_ingress_drops': allow_ingress_drops}
 
 
 def main():
@@ -79,6 +91,9 @@ def main():
     parser.add_argument('--rounds', type=int, choices=range(1, 11), default=3)
     parser.add_argument('--flows', type=int, choices=range(2, 33), default=8)
     parser.add_argument('--trim', action='store_true')
+    parser.add_argument('--ingress-capacity', type=int, choices=range(1, 65537), default=4096, metavar='1..65536')
+    parser.add_argument('--allow-ingress-drops', action='store_true',
+                        help='diagnostic overload controls only; never clean acceptance')
     args = parser.parse_args()
     if os.geteuid() != 0 or not re.fullmatch('[0-9a-f]{40}', args.source_sha):
         raise ValueError('requires root in dedicated rig and full source SHA')
@@ -100,7 +115,8 @@ def main():
         created = True
         ip('-n', ns, 'link', 'set', 'lo', 'up')
         argv = ['ip', 'netns', 'exec', ns, str(binary), '--mtu', str(args.mtu), '--global-mib', str(args.global_mib),
-                '--rounds', str(args.rounds), '--flows', str(args.flows)]
+                '--rounds', str(args.rounds), '--flows', str(args.flows),
+                '--ingress-capacity', str(args.ingress_capacity)]
         if args.trim:
             argv.append('--trim')
         result['command'] = argv
@@ -112,7 +128,7 @@ def main():
         if code != 0:
             raise ValueError(f'probe exited {code}')
         rows = [json.loads(line) for line in (args.outdir / 'probe.jsonl').read_text().splitlines()]
-        result['validation'] = validate(rows, args.rounds)
+        result['validation'] = validate(rows, args.rounds, args.allow_ingress_drops)
         if digest(binary) != result['binary_sha256']:
             raise ValueError('binary changed during run')
         # Nonpersistent TUN must disappear through normal owned-fd release.

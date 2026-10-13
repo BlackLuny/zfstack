@@ -29,6 +29,9 @@ struct Opts {
     flows: u16,
     #[arg(long)]
     trim: bool,
+    /// Bounded host packets per port, outside the stack ledger.
+    #[arg(long, default_value_t = 4096, value_parser = clap::value_parser!(u32).range(1..=65536))]
+    ingress_capacity: u32,
 }
 const DEVICE: &str = "zfmp0";
 const BYTES: usize = 1 << 20;
@@ -115,7 +118,7 @@ impl Port {
         let join = std::thread::Builder::new().name(format!("budget-port-{index}")).spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
             rt.block_on(async move {
-                let (input, rx) = mpsc::channel::<Vec<u8>>(256);
+                let (input, rx) = mpsc::channel::<Vec<u8>>(opts.ingress_capacity as usize);
                 let limits = ResourceLimits { port_bytes: global.high(), peer_bytes: global.high(), peer_max_connections: 128 };
                 let (handle, mut acceptor, _, task, memory) = tokio_adapter::spawn_with_source_factory(
                     StackConfig::default(),
@@ -214,18 +217,39 @@ impl Drop for Port {
         let _ = self.stop();
     }
 }
+#[derive(Default)]
+struct ReaderStats {
+    received: [u64; 2],
+    drops: [u64; 2],
+    ack_only_drops: [u64; 2],
+    dropped_bytes: [u64; 2],
+    closed: [u64; 2],
+    high_water: [usize; 2],
+}
+impl ReaderStats {
+    fn record_drop(&mut self, port: usize, packet: &[u8]) {
+        self.drops[port] += 1;
+        self.dropped_bytes[port] += packet.len() as u64;
+        if let Ok(ip) = zfstack::wire::parse_ip(packet) {
+            if let Ok(tcp) = zfstack::wire::parse_tcp(packet, &ip) {
+                if tcp.flags == 0x10 && tcp.data_off == ip.l4_len {
+                    self.ack_only_drops[port] += 1;
+                }
+            }
+        }
+    }
+}
 struct Reader {
     stop: Arc<AtomicBool>,
-    join: Option<std::thread::JoinHandle<()>>,
-    drops: Arc<AtomicU64>,
+    join: Option<std::thread::JoinHandle<ReaderStats>>,
 }
 impl Reader {
     fn start(fd: Arc<OwnedFd>, ports: &[Port; 2]) -> Self {
         let senders = [ports[0].input.clone(), ports[1].input.clone()];
         let stop = Arc::new(AtomicBool::new(false));
-        let drops = Arc::new(AtomicU64::new(0));
-        let (stopping, dropped) = (stop.clone(), drops.clone());
+        let stopping = stop.clone();
         let join = std::thread::spawn(move || {
+            let mut stats = ReaderStats::default();
             let mut buf = [0; 2048];
             while !stopping.load(Relaxed) {
                 let mut pfd = libc::pollfd { fd: fd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
@@ -237,24 +261,38 @@ impl Reader {
                     continue;
                 }
                 if let Some(port) = classify(&buf[..count as usize]) {
-                    if let Err(error) = senders[port].try_send(buf[..count as usize].to_vec()) {
-                        if matches!(error, mpsc::error::TrySendError::Full(_)) {
-                            dropped.fetch_add(1, Relaxed);
+                    stats.received[port] += 1;
+                    // Never block both ports behind one saturated/closed driver.
+                    // Overload is measured and rejected by the acceptance runner.
+                    match senders[port].try_send(buf[..count as usize].to_vec()) {
+                        Ok(()) => {
+                            let occupied = senders[port].max_capacity() - senders[port].capacity();
+                            stats.high_water[port] = stats.high_water[port].max(occupied);
                         }
+                        Err(mpsc::error::TrySendError::Full(packet)) => {
+                            stats.high_water[port] = senders[port].max_capacity();
+                            stats.record_drop(port, &packet);
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => stats.closed[port] += 1,
                     }
                 }
             }
+            stats
         });
-        Self { stop, join: Some(join), drops }
+        Self { stop, join: Some(join) }
+    }
+    fn stop(&mut self) -> ReaderStats {
+        self.stop.store(true, Relaxed);
+        self.join.take().map(|join| join.join().expect("reader panic")).unwrap_or_default()
     }
 }
 impl Drop for Reader {
     fn drop(&mut self) {
-        self.stop.store(true, Relaxed);
-        if let Some(join) = self.join.take() {
-            join.join().expect("reader panic");
-        }
+        self.stop();
     }
+}
+fn tun_tx_dropped() -> io::Result<u64> {
+    std::fs::read_to_string(format!("/sys/class/net/{DEVICE}/statistics/tx_dropped"))?.trim().parse().map_err(io::Error::other)
 }
 struct Client {
     bytes: Arc<AtomicU64>,
@@ -366,12 +404,13 @@ async fn main() -> io::Result<()> {
     let global = GlobalBudget::new(opts.global_mib << 20);
     emit(json!({"type":"config","mtu":opts.mtu,"global_bytes":global.high(),"port_bytes":global.high(),
         "peer_bytes":global.high(),"flows_per_port":opts.flows,"rounds":opts.rounds,"trim":opts.trim,
-        "bytes_per_flow":BYTES,"peer_id_on_both_ports":7,"scope":"two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG"}));
+        "ingress_capacity":opts.ingress_capacity,"bytes_per_flow":BYTES,"peer_id_on_both_ports":7,"scope":"two independent Tokio driver OS threads; shared GlobalBudget; kernel TCP over one TUN; borrowed ingress; no WG"}));
     for round in 0..opts.rounds {
         let errors = Arc::new(AtomicU64::new(0));
         let mut ports =
             [Port::start(fd.clone(), global.clone(), &opts, 0, errors.clone())?, Port::start(fd.clone(), global.clone(), &opts, 1, errors.clone())?];
-        let reader = Reader::start(fd.clone(), &ports);
+        let kernel_drops_before = tun_tx_dropped()?;
+        let mut reader = Reader::start(fd.clone(), &ports);
         let mut ready = Vec::new();
         for flow in 0..opts.flows {
             for port in 0..2 {
@@ -428,13 +467,17 @@ async fn main() -> io::Result<()> {
         assert!(remaining_a > 0, "port A buffers must survive cancellation of the same peer id on B");
         drop(held);
         ports[0].stop()?;
-        let ingress_queue_drops = reader.drops.load(Relaxed);
-        drop(reader);
+        let ingress = reader.stop(); // Join before sampling: no late counter race.
+        let ingress_queue_drops: u64 = ingress.drops.iter().sum();
+        let kernel_drops = tun_tx_dropped()? - kernel_drops_before;
         assert_eq!(errors.load(Relaxed), 0, "TUN writes failed");
         let counts = global.connection_counts();
         assert_eq!((global.reserved(), global.cached_bytes(), counts, global.time_wait_bytes_reserved()), (0, 0, (0, 0), 0));
         emit(json!({"type":"round_done","round":round,"cancelled_after_bytes":before,"cancelled_app_writers":ports[1].apps.cancelled.load(Relaxed),
-            "ingress_queue_drops":ingress_queue_drops,"peer_b_after_cancel":0,"peer_a_survived_bytes":remaining_a,"global_reserved":global.reserved(),
+            "ingress_queue_drops":ingress_queue_drops,"ingress_received":ingress.received,
+            "ingress_drops_by_port":ingress.drops,"ingress_ack_only_drops":ingress.ack_only_drops,
+            "ingress_dropped_bytes":ingress.dropped_bytes,"ingress_closed":ingress.closed,
+            "ingress_high_water":ingress.high_water,"tun_tx_dropped":kernel_drops,"peer_b_after_cancel":0,"peer_a_survived_bytes":remaining_a,"global_reserved":global.reserved(),
             "global_cached":global.cached_bytes(),"connection_counts":counts,"time_wait_bytes":global.time_wait_bytes_reserved()}));
     }
     drop(fd);
