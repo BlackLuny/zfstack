@@ -22,6 +22,7 @@ import time
 HEADER = struct.Struct("<4sc3xQQ")
 MAGIC = b"ZF23"
 CHUNK = 65536
+MAX_FLOWS = 64
 PATTERN = bytes(range(251)) * ((CHUNK + 250) // 251 + 2)
 
 
@@ -61,6 +62,11 @@ def connect(target, timeout):
 
 
 class Upstream(socketserver.ThreadingTCPServer):
+    # The default socketserver backlog is only five. A supported 64-flow
+    # burst can overflow it while Python is starting handlers, introducing
+    # upstream SYN retries/resets unrelated to the proxy under test. Leave
+    # room for the bulk wave and simultaneous light requests.
+    request_queue_size = 2 * MAX_FLOWS
     allow_reuse_address = True
     daemon_threads = True
 
@@ -538,7 +544,7 @@ def main():
         raise RuntimeError("invalid idle duration")
     if not rr_sizes or any(value < 1 or value > CHUNK for value in rr_sizes):
         raise RuntimeError("RR sizes must be in 1..65536")
-    if not 1 <= args.flows <= 64 or args.bulk_bytes_per_flow <= 0:
+    if not 1 <= args.flows <= MAX_FLOWS or args.bulk_bytes_per_flow <= 0:
         raise RuntimeError("invalid bulk workload")
     if args.rr_samples < 1 or args.settle_secs < 0 or args.low_secs < 0:
         raise RuntimeError("invalid sample count or duration")
@@ -729,6 +735,7 @@ def main():
             "cpu_tick_hz": observer.hz,
             "proxy_identity": observer.proc(),
             "actual_tun_mtu": actual_mtu,
+            "upstream_backlog": server.request_queue_size,
             "same_proxy_required": True,
             "keepalive_note": "zfstack default/client keepalive_idle=25s, interval=25s; held mode retains these defaults",
             "idle_sampling": "only boundaries; no proxy notification or network request during quiet sleep",
