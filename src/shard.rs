@@ -325,6 +325,9 @@ struct WakeStats {
 
 /// Experimental TX-pool idle trim. No policy is installed by default.
 /// The host must honor Shard::next_deadline(), including during complete idle.
+/// Any successful block get/put restarts the shared idle clock for both size
+/// classes. This policy does not shrink historical caches under continuous
+/// low-rate traffic, even when that traffic only uses the small-block class.
 #[derive(Clone, Copy, Debug)]
 pub struct TxCacheTrimPolicy {
     pub check_interval: Duration,
