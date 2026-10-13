@@ -42,11 +42,20 @@ cargo test -p zfstack --release --features tokio,test-peer --test issue37_throug
 cargo test -p zfstack --release --features tokio,test-peer --test issue37_throughput -- --ignored --nocapture
 ```
 
+本次也显式运行了默认忽略的 256 连接扩展用例，结果通过：
+
+| 写入大小 | 修复后有效吞吐 | 32 MiB 端口采样峰值 |
+|---|---:|---:|
+| 1 KiB | 1.283 Gbps（160,317,800 B/s） | 26,224,384 B |
+| 64 KiB | 1.607 Gbps（200,869,968 B/s） | 33,545,440 B |
+
+两组均完成字节、不变量、无队列丢包、硬上限和最终释放检查。完整规模的表仅报告候选结果，没有将其与不同配置的 64 流基线直接比较。
+
 ## 验证与边界
 
 - 完整核心库测试：238 通过，3 个仓库既有用例默认忽略。包括 409600 B peer 的停读邻居隔离、晚到连接、受压小请求信用及其关闭信用负对照、cookie / TIME_WAIT 替换、准入欠账、Tokio writer/splice。
 - 新增三层信用上限与失败回滚、跨 shard 并发信用上限、外部切片最后 owner 释放、受压整块限制、小首块和缓存回收回归。
 - `cargo build -p zfstack --no-default-features`；`cargo fmt --all -- --check`；`cargo clippy --workspace --all-targets --features zfstack/tokio`。
-- `zfharness` 的 14 项测试；`zfbench` 的 release 构建和测试（含 all-features）；Python L2 8 项、bench/pareto 29 项测试；L2 shell 语法检查。
+- 生命周期/trace 集成测试 3 项通过；`zfharness` 14 项通过；`zfbench` release 构建通过，默认 14 项及 all-features 18 项通过；Python L2 8 项、bench/pareto 29 项通过；L2 shell 语法检查通过。
 
 当前环境没有 `/dev/net/tun`、WireGuard 工具、zfc-rig 或所测 worker，因此没有运行真实 WG ABBA。新增 [L2 空闲模式与 RTT 命令](../../harness/l2/README.md) 保留原来的四 peer 轻请求、下载校验、路径与资源证据，额外检查空闲连接建立数和最终存活数。其 socket 逻辑已有本地回环测试；完整 netns/worker 接线仍须在指定的 rig 节点验证。
