@@ -2,7 +2,7 @@
 """One bounded issue-23 TUN case in a fresh, exclusively owned Linux netns.
 
 Install as bench/pareto/issue23_tun_case.py. This runner does not build binaries.
-Requires root, iproute2, taskset, six allowed CPUs (0..5), and a hard nofile limit
+Requires root, iproute2, taskset, explicitly available CPUs, and a hard nofile limit
 of at least 4096. Every namespace, process and output belongs to this case.
 An outer root operation should additionally use `timeout -k 5s 250s ...`.
 """
@@ -30,8 +30,6 @@ EXPERIMENT_ENV = {
 TX_ENV = sorted(name for name in EXPERIMENT_ENV if name.startswith("ZFBENCH_TX_CACHE_TRIM_"))
 PACKET_ENV = ["ZFBENCH_PACKET_POOL_TRIM_IDLE_MS", "ZFBENCH_PACKET_POOL_TRIM_TARGET"]
 BUDGET_ENV = ["ZFBENCH_GLOBAL_BYTES", "ZFBENCH_PORT_BYTES", "ZFBENCH_PEER_BYTES"]
-PROXY_CPUS = {0, 1}
-LOADER_CPUS = {2, 3, 4, 5}
 TARGET = "198.18.0.2:5201"
 UPSTREAM = "127.0.0.1:5201"
 DEVICE = "zfcT"
@@ -108,6 +106,15 @@ def parse_experiment(items):
     return values
 
 
+def parse_cpus(value):
+    if not re.fullmatch(r"[0-9]+(?:,[0-9]+)*", value):
+        raise argparse.ArgumentTypeError("CPUs must be a comma-separated list of nonnegative integers")
+    values = [int(item) for item in value.split(",")]
+    if len(set(values)) != len(values):
+        raise argparse.ArgumentTypeError("CPU list contains duplicates")
+    return set(values)
+
+
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
@@ -122,6 +129,8 @@ def arguments():
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--build-flags-json", "--build-flags", required=True,
                         help="JSON object copied from the verified build manifest")
+    parser.add_argument("--proxy-cpus", type=parse_cpus, default=parse_cpus("0,1"))
+    parser.add_argument("--loader-cpus", type=parse_cpus, default=parse_cpus("2,3,4,5"))
     parser.add_argument("--mtu", type=int, choices=(512, 1500, 65535), default=1500)
     parser.add_argument("--idle-secs", "--idle", default="5")
     parser.add_argument("--idle-count", "--idlecount", type=int, default=0)
@@ -172,6 +181,10 @@ def arguments():
     if sleeps + paced_rr + CLEANUP_RESERVE + 20 >= args.case_timeout_secs:
         raise CaseError("planned sleeps/RR pacing leave less than 20s for setup and workload; split this case")
     args.experiment = parse_experiment(args.experiment_env)
+    if "ZFBENCH_TX_CACHE_SAMPLE_MS" in args.experiment and not args.diagnostic:
+        raise CaseError("TX cache sampler requires --diagnostic; sampling must not enter performance statistics")
+    if args.proxy_cpus & args.loader_cpus:
+        raise CaseError("proxy and loader CPU sets must be disjoint")
     try:
         args.build_flags = json.loads(args.build_flags_json)
     except json.JSONDecodeError as error:
@@ -231,7 +244,7 @@ class Runner:
             "mixed_rr_interval_ms": args.mixed_rr_interval_ms, "low_secs": args.low_secs,
             "low_interval_ms": args.low_interval_ms, "settle_secs": args.settle_secs,
             "socket_timeout_secs": args.socket_timeout_secs,
-            "proxy_cpus": sorted(PROXY_CPUS), "loader_cpus": sorted(LOADER_CPUS),
+            "proxy_cpus": sorted(args.proxy_cpus), "loader_cpus": sorted(args.loader_cpus),
             "proxy_flags": ["client-profile", "proxy-workers=1", "splice", "vnet-hdr", "driver-thread"],
             "controlled_env": controlled_env, "diagnostic": args.diagnostic, "tcpdump": args.tcpdump,
         }
@@ -253,8 +266,8 @@ class Runner:
                      "runner_argv": list(sys.argv),
                      "proxy_environment": self.proxy_env, "proxy_env": self.proxy_env, "loader_environment": self.base_env,
                      "inherited_zfbench_names_removed": sorted(name for name in os.environ if name.startswith("ZFBENCH_")),
-                     "requested": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
-                     "cpu_affinity": {"proxy": sorted(PROXY_CPUS), "loader": sorted(LOADER_CPUS)},
+                     "requested": {key: str(value) if isinstance(value, Path) else sorted(value) if isinstance(value, set) else value for key, value in vars(args).items()},
+                     "cpu_affinity": {"proxy": sorted(args.proxy_cpus), "loader": sorted(args.loader_cpus)},
                      "pool_accounting_note": "live connections and PacketPool in_use are not free cache; global_cached_bytes excludes baseline PacketPool free buffers"}
 
     def event(self, kind, **values):
@@ -310,8 +323,8 @@ class Runner:
         self.loader = self.args.loader.resolve(strict=True)
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK) or not self.loader.is_file():
             raise CaseError("binary must be executable and loader must be a regular file")
-        if not PROXY_CPUS.union(LOADER_CPUS).issubset(os.sched_getaffinity(0)):
-            raise CaseError("required CPUs 0..5 are not all allowed; affinity is not silently changed")
+        if not self.args.proxy_cpus.union(self.args.loader_cpus).issubset(os.sched_getaffinity(0)):
+            raise CaseError("requested CPUs are not all allowed; affinity is not silently changed")
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         if hard != resource.RLIM_INFINITY and hard < 4096:
             raise CaseError("hard nofile limit is below 4096; refusing to raise the hard limit")
@@ -384,12 +397,12 @@ class Runner:
         exclusive_json(self.out / "ownership.json", {"namespace": self.ns, "identity": self.ns_identity,
                                                       "creator_pid": os.getpid(), "created_unix_ns": time.time_ns()})
         self.ns_command(["link", "set", "lo", "up"])
-        argv = [self.ip, "netns", "exec", self.ns, self.taskset, "-c", "0,1", str(self.binary),
+        argv = [self.ip, "netns", "exec", self.ns, self.taskset, "-c", ",".join(map(str, sorted(self.args.proxy_cpus))), str(self.binary),
                 "--tun-proxy", "--client-profile", "--proxy-upstream", UPSTREAM,
                 "--tun-mtu", str(self.args.mtu), "--proxy-workers", "1", "--splice", "--vnet-hdr", "--driver-thread"]
         proxy = self.spawn("proxy", argv, self.proxy_env)
         self.wait_ready(proxy, lambda: "zfbench tun-proxy: ready on zfcT" in (self.out / "proxy.stderr").read_text(errors="replace"), "proxy")
-        self.verify_child("proxy", PROXY_CPUS)
+        self.verify_child("proxy", self.args.proxy_cpus)
         link = self.json_ns(["-j", "link", "show", "dev", DEVICE])
         if len(link) != 1 or link[0]["mtu"] != self.args.mtu:
             raise CaseError("TUN MTU does not match requested MTU")
@@ -461,7 +474,7 @@ class Runner:
 
     def workload(self):
         a = self.args
-        loader_argv = [self.ip, "netns", "exec", self.ns, self.taskset, "-c", "2,3,4,5", sys.executable, "-B", str(self.loader),
+        loader_argv = [self.ip, "netns", "exec", self.ns, self.taskset, "-c", ",".join(map(str, sorted(self.args.loader_cpus))), sys.executable, "-B", str(self.loader),
                        "--proxy-pid", str(self.children["proxy"].pid), "--device", DEVICE, "--target", TARGET, "--upstream", UPSTREAM,
                        "--mtu", str(a.mtu), "--idle-secs", a.idle_secs, "--idle-connections", "closed", "--idle-count", str(a.idle_count),
                        "--flows", str(a.flows), "--rr-samples", str(a.rr_samples), "--rr-sizes", a.rr_sizes,
@@ -473,7 +486,7 @@ class Runner:
         if a.mixed_rr_interval_ms is not None:
             loader_argv += ["--mixed-rr-interval-ms", str(a.mixed_rr_interval_ms)]
         loader = self.spawn("loader", loader_argv, self.base_env)
-        self.verify_child("loader", LOADER_CPUS)
+        self.verify_child("loader", self.args.loader_cpus)
         exclusive_json(self.out / "metadata.json", self.meta)
         while loader.poll() is None:
             self.check()

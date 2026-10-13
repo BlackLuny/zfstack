@@ -143,6 +143,7 @@ pub struct Config {
     /// Cap the load-generator's receive buffer so a paused reader actually
     /// advertises a zero window. `None` keeps the default server profile.
     pub client_max_rcv: Option<u32>,
+    pub tx_cache_trim: Option<zfstack::TxCacheTrimPolicy>,
 }
 
 impl Config {
@@ -163,6 +164,7 @@ impl Config {
             rebuild: None,
             step_cap: 2_000_000,
             client_max_rcv: None,
+            tx_cache_trim: None,
         }
     }
 }
@@ -463,6 +465,9 @@ impl World {
         for i in 0..nservers {
             let mut shard = Shard::with_budget_seeded(stack.clone(), std::sync::Arc::clone(&global), cfg.seed ^ (0xA5A5_0000_0000_0000 | i as u64));
             shard.set_budget_limits(cfg.limits.port, cfg.limits.peer, cfg.limits.peer_max_conns);
+            if let Err(error) = shard.set_tx_cache_trim(cfg.tx_cache_trim) {
+                errors.push(format!("shard {i}: {error}"));
+            }
             if !shard.budget().progress_reserve_active() {
                 errors.push(format!("shard {i} progress reserve is inactive; raise port/peer limits above 2·H4"));
             }

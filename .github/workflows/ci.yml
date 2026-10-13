@@ -57,5 +57,6 @@ jobs:
       # builds zfbench and runs its unit tests.
       - run: cargo test -p zfharness --release
       - run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s harness/l2 -p 'test_*.py'
+      - run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s bench/pareto -p 'test_*.py'
       - run: cargo build -p zfbench --release
       - run: cargo test -p zfbench --release
