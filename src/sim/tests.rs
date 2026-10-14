@@ -1386,3 +1386,58 @@ fn tx_capacity_zero_still_receives_data_and_exchanges_fin() {
     assert_download_ok(&s.b.conns[&id], 0);
     assert_download_ok(&s.a.conns[&s.a.accepted[0]], 128 * 1024 + 1);
 }
+
+#[test]
+fn stale_share_wait_epoch_does_not_self_wake_after_unrelated_release() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::task::{Wake, Waker};
+    struct Count(AtomicUsize);
+    impl Wake for Count {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let mut cfg = StackConfig::default();
+    cfg.min_prefetch = 1 << 20;
+    cfg.prefetch_max = 1 << 20;
+    let mut s = Sim::new(67402, cfg, StackConfig::default(), LinkParams::default(), LinkParams::default());
+    s.a.shard.set_budget_limits(819_200, 819_200, 128);
+    s.connect(41001, AppConn::default());
+    s.connect(41002, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(100));
+    let x = s.a.accepted[0];
+    let y = s.a.accepted[1];
+    assert_eq!(s.a.shard.write(x, &vec![1; 16 << 10]), WriteResult::Written(16 << 10));
+    assert_eq!(s.a.shard.write(y, &vec![1; 16 << 10]), WriteResult::Written(16 << 10));
+    let room = s.a.shard.send_space(x);
+    assert_eq!(s.a.shard.write(x, &vec![1; room]), WriteResult::Written(room));
+    assert_eq!(s.a.shard.write(x, &[1]), WriteResult::QuotaBlocked);
+    while s.a.shard.poll_event().is_some() {}
+    let mut sink = |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Full;
+    let global = s.a.shard.budget().global().clone();
+    let id = global.new_waiter_id();
+    let count = Arc::new(Count(AtomicUsize::new(0)));
+    let waker = Waker::from(count.clone());
+    // One unrelated release, then a bare driver loop: run, re-register. `run`
+    // must refresh the handed-out epoch so no registration wakes at once.
+    drop(s.a.shard.memory_handle(PeerId(2)).try_allocate(1).unwrap());
+    let mut wakes = Vec::new();
+    for _ in 0..5 {
+        s.a.shard.run(s.now, &mut sink);
+        while s.a.shard.poll_event().is_some() {}
+        let before = count.0.load(Ordering::SeqCst);
+        let epoch = s.a.shard.budget_wait_epoch().expect("still share-blocked");
+        global.register_waiter(id, epoch, &waker);
+        wakes.push(count.0.load(Ordering::SeqCst) - before);
+    }
+    global.remove_waiter(id);
+    assert!(wakes.iter().all(|&w| w == 0), "bare driver keeps self-waking: {wakes:?}");
+    // Share growth from a sender exit must still wake x.
+    s.a.shard.abort(y);
+    s.a.shard.run(s.now, &mut sink);
+    assert!(std::iter::from_fn(|| s.a.shard.poll_event()).any(|ev| matches!(ev, Event::Writable(i) if i == x)));
+}

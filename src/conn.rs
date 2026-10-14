@@ -886,12 +886,21 @@ impl Conn {
         }
     }
 
+    fn send_low_watermark(&self, cfg: &StackConfig, budget: &Budget) -> usize {
+        let share = budget.send_share(self.peer);
+        if share == 0 {
+            1
+        } else {
+            (cfg.send_low_watermark() as u64).min(share) as usize
+        }
+    }
+
     pub(crate) fn notify_writable(&mut self, ev: &mut VecDeque<Event>, cfg: &StackConfig, budget: &Budget) {
         if self.want_write
             && self.accepted
             && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
-            && self.send_space(cfg, budget) >= cfg.send_low_watermark()
+            && self.send_space(cfg, budget) >= self.send_low_watermark(cfg, budget)
         {
             self.want_write = false;
             ev.push_back(Event::Writable(self.id));
@@ -906,7 +915,7 @@ impl Conn {
             && self.fin_off.is_none()
             && matches!(self.state, State::Established | State::CloseWait | State::SynReceived)
             && budget.send_share(self.peer) < self.sndbuf_limit(cfg)
-            && self.send_space(cfg, budget) < cfg.send_low_watermark()
+            && self.send_space(cfg, budget) < self.send_low_watermark(cfg, budget).max(1)
     }
 
     /// The adapter parked the app writer while this connection held its whole

@@ -1025,6 +1025,9 @@ pub struct Budget {
     /// Connections currently holding send-side bytes on this port
     /// (docs/design/0007 §2.2).
     senders: u32,
+    /// Monotonic counter bumped whenever a sender leaves or limits change so
+    /// share-blocked writers only re-evaluate when their share can grow.
+    share_epoch: u64,
     stats: Arc<PortStats>,
 }
 
@@ -1042,6 +1045,7 @@ impl Budget {
             peer_limit,
             peer_max_conns: 4096,
             senders: 0,
+            share_epoch: 0,
             stats: Arc::default(),
         }
     }
@@ -1055,6 +1059,7 @@ impl Budget {
         self.port_limit = port_bytes;
         self.peer_limit = peer_bytes;
         self.peer_max_conns = peer_max_conns;
+        self.share_epoch = self.share_epoch.wrapping_add(1);
     }
 
     pub fn global(&self) -> &Arc<GlobalBudget> {
@@ -1277,6 +1282,10 @@ impl Budget {
         self.peers.entry(peer).or_default().senders += 1;
     }
 
+    pub(crate) fn share_epoch(&self) -> u64 {
+        self.share_epoch
+    }
+
     /// A connection emptied its send side or went away: every other sender's
     /// share just grew, so parked senders re-evaluate.
     pub(crate) fn sender_del(&mut self, peer: PeerId) {
@@ -1287,6 +1296,7 @@ impl Budget {
                 self.peers.remove(&peer);
             }
         }
+        self.share_epoch = self.share_epoch.wrapping_add(1);
         self.global.wake_waiters();
     }
 
