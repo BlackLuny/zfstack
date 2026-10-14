@@ -579,6 +579,7 @@ mod tests {
             concurrency: 1,
             connect_timeout: Duration::from_secs(1),
             client_cc: None,
+            short_bytes: 65536,
         };
         let iso = resolve(1, 0, 0, Placement::SameIface, Topology::SharedShard, 0).unwrap();
         let out = test_isolate(&o, &iso, &mut |_| {});

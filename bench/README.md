@@ -319,21 +319,32 @@ same way (utime+stime and VmRSS/VmHWM from `/proc/<pid>`):
 |---|---|
 | `direct` | none: loopback to the server (kernel-only reference) |
 | `zfstack` / `zfstack-client` | `zfbench --tun-proxy` with `StackConfig::default()` / `StackConfig::client()`, tokio runtime, relay task per connection (`--relay-buf-kb`) or `--splice` (`TcpStream::splice`, relay inside the stack driver) |
-| `singbox-go` / `singbox-gvisor` / `singbox-system` | sing-box (`--singbox PATH`) with a TUN inbound (`stack` option) and a direct outbound whose rule overrides the destination to 127.0.0.1 |
+| `singbox-go` / `singbox-gvisor` / `singbox-system` | sing-box (`--singbox PATH`) with a TUN inbound (`stack` option) and a direct outbound whose rule overrides the destination to 127.0.0.1. Latest 1.15 official linux-amd64 builds drop `with_gvisor`; `go` is the default stack. |
+| `lwip` | C lwIP 2.2.1 TUN proxy (`bench/c-stacks/lwip-tun-proxy`, `--lwip PATH`), same topology as zfstack tun-proxy |
+| `hev` | hev-socks5-tunnel (C tun2socks) plus `socks5-override` (`--hev` / `--socks5-override`) so CONNECT is forced to 127.0.0.1:5201 |
 
 Flags: `--tun-mtu` (default 65535, sing-box's Linux default), `--proxy-workers`
 (tokio workers / `GOMAXPROCS`), and for zfstack `--vnet-hdr` (TUN with
 `IFF_VNET_HDR` + checksum offload) and `--tso` (also TSO both ways). Tests:
-`down`, `up`, `mixed`, `connect` as above, plus `idle` (hold `--conns` idle
-connections and report proxy RSS per connection).
+`down`, `up`, `mixed` (bulk download + RR), `mixed-bi` (download + upload + RR),
+`connect`, `idle`, and `short` (`--conns` downloads of `--short-bytes`).
+Idle holds `--conns` sockets in the harness and the proxy; zfbench raises
+`RLIMIT_NOFILE` to 262144 at startup so 4000 idle connections do not hit EMFILE.
 
 ```sh
-# sing-box 1.15 with the gvisor build tag
-GOBIN=$PWD go install -tags with_gvisor github.com/sagernet/sing-box/cmd/sing-box@v1.15.0-alpha.10
+# C stacks + latest sing-box
+bench/c-stacks/build.sh
 B=target/release/zfbench
-$B --client-proxy singbox-go --singbox ./sing-box --test down --secs 8 --warmup 2
-$B --client-proxy zfstack-client --splice --vnet-hdr --test up --secs 8 --warmup 2
-$B --client-proxy zfstack-client --splice --vnet-hdr --test idle --conns 2000
+SB=bench/third_party/bin/sing-box
+$B --client-proxy singbox-go --singbox $SB --test down --secs 8 --warmup 2
+$B --client-proxy zfstack-client --splice --vnet-hdr --driver-thread --test up --secs 8 --warmup 2
+$B --client-proxy lwip --lwip bench/third_party/bin/lwip-tun-proxy --test mixed --secs 8 --warmup 2
+$B --client-proxy hev --hev bench/third_party/bin/hev-socks5-tunnel \
+   --socks5-override bench/third_party/bin/socks5-override --test down --secs 8 --warmup 2
+sudo ZFBENCH_LWIP=bench/third_party/bin/lwip-tun-proxy \
+     ZFBENCH_HEV=bench/third_party/bin/hev-socks5-tunnel \
+     ZFBENCH_SOCKS5=bench/third_party/bin/socks5-override \
+     bench/client_matrix.py $B $SB bench/results/YYYY-MM-DD-client 3 all
 ```
 
 The TUN routes `198.18.0.0/15`; its own address is `172.19.0.1/30` because

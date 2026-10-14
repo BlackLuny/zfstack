@@ -438,6 +438,7 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
         concurrency: a.concurrency,
         connect_timeout: Duration::from_millis(a.connect_timeout_ms),
         client_cc: a.client_cc.clone(),
+        short_bytes: a.short_bytes,
     };
     let bridge_pt = side.bridge.as_ref().map(|(h, _)| h.as_pthread_t());
     let local = || json!({ "proc_cpu": util::process_cpu_now(), "procstat": util::proc_stat().v, "bridge_cpu": bridge_pt.and_then(util::pthread_cpu) });
@@ -449,7 +450,9 @@ pub fn run_client(a: &Args) -> io::Result<i32> {
             TestKind::Down => client::test_down(&o, &view, &mut mark),
             TestKind::Up => client::test_up(&o, &view, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &view, &mut mark),
+            TestKind::MixedBi => client::test_mixed_bi(&o, &view, &mut mark),
             TestKind::Connect => client::test_connect(&o, &view, &mut mark),
+            TestKind::Short => client::test_short(&o, &mut mark),
             TestKind::Idle => {
                 eprintln!("--test idle needs --client-proxy");
                 std::process::exit(2);
