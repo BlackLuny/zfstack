@@ -1,8 +1,8 @@
 //! Byte storage for connections.
 //!
 //! * [`TxBuf`]: unacknowledged + unsent bytes in 64 KiB blocks, with an optional
-//!   2 KiB first block for small writes. Any
-//!   stream offset maps to (block, position) in O(1), so segmentation and
+//!   2 KiB first block for small writes. A lone full block reuses its ACKed
+//!   prefix as a ring. Any stream offset maps to (block, position) in O(1), so segmentation and
 //!   re-segmentation after an MSS change never copy (§10.4). A segment spans at
 //!   most two blocks.
 //! * [`RxQueue`]: in-order bytes; production borrowed ingress is copied into
@@ -421,9 +421,26 @@ impl TxBuf {
         self.blocks.front().map_or(0, |b| b.len() + (self.blocks.len() - 1) * TX_BLOCK)
     }
 
-    /// At the one-block fairness floor, partial ACKs cannot admit a second
-    /// full block before the first backing is actually released.
+    fn is_ring(&self) -> bool {
+        self.blocks.len() == 1 && self.blocks[0].len() == TX_BLOCK
+    }
+
+    /// Growing a wrapped ring into the ordinary block deque must first put
+    /// its live bytes in order. Only this growth transition moves old bytes;
+    /// steady one-block writes and segmentation never compact or copy them.
+    fn unwrap_for_growth(&mut self) {
+        if self.is_ring() && self.head + self.len > TX_BLOCK {
+            debug_assert_eq!(self.blocks[0].init, TX_BLOCK);
+            self.blocks[0].data.rotate_left(self.head);
+            self.head = 0;
+        }
+    }
+
+    /// Space available without holding more than `limit` full-block backing.
     pub(crate) fn backing_space(&self, limit: usize) -> usize {
+        if self.is_ring() {
+            return TX_BLOCK - self.len;
+        }
         let allocated = self.allocated();
         let tail = allocated.saturating_sub(self.head + self.len);
         // A small first write must not turn a 64 KiB floor into a 2 KiB
@@ -437,6 +454,15 @@ impl TxBuf {
         if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
             return false;
         }
+        if self.is_ring() && src.len() <= TX_BLOCK - self.len {
+            let pos = (self.head + self.len) % TX_BLOCK;
+            let first = src.len().min(TX_BLOCK - pos);
+            self.blocks[0].write(pos, &src[..first]);
+            self.blocks[0].write(0, &src[first..]);
+            self.len += src.len();
+            return true;
+        }
+        self.unwrap_for_growth();
         let before = self.blocks.len();
         let Some(total) = self.head.checked_add(self.len).and_then(|n| n.checked_add(src.len())) else { return false };
         let first_size = self.blocks.front().map_or_else(|| if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK }, |b| b.len());
@@ -506,6 +532,19 @@ impl TxBuf {
         if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
             return Ok(None);
         }
+        if self.is_ring() && max <= TX_BLOCK - self.len {
+            let offered = max;
+            let pos = (self.head + self.len) % TX_BLOCK;
+            let first = offered.min(TX_BLOCK - pos);
+            let second = offered - first;
+            let end = if second == 0 { pos + first } else { TX_BLOCK };
+            let (prefix, tail) = self.blocks[0].spare_mut(0, end).split_at_mut(pos);
+            let n = fill([&mut tail[..first], &mut prefix[..second]])?;
+            assert!(n <= offered, "write_with filled more than offered");
+            self.len += n;
+            return Ok(Some(n));
+        }
+        self.unwrap_for_growth();
         let before = self.blocks.len();
         let end = self.head + self.len;
         let spare = self.allocated().saturating_sub(end);
@@ -577,6 +616,11 @@ impl TxBuf {
     /// Drop `n` bytes from the front (acknowledged).
     pub fn consume(&mut self, pool: &mut BlockPool, n: usize) {
         let n = n.min(self.len);
+        if self.is_ring() && n < self.len {
+            self.head = (self.head + n) % TX_BLOCK;
+            self.len -= n;
+            return;
+        }
         self.head += n;
         self.len -= n;
         while self.blocks.front().is_some_and(|b| self.head >= b.len()) {
@@ -658,6 +702,9 @@ impl TxBuf {
     // Only the first block may be small. Every following block can hold a
     // maximum-size TCP segment, preserving the two-slice output contract.
     fn position(&self, offset: usize) -> (usize, usize) {
+        if self.is_ring() {
+            return (0, offset % TX_BLOCK);
+        }
         let first = self.blocks.front().unwrap().len();
         if offset < first {
             (0, offset)
@@ -691,7 +738,8 @@ impl TxBuf {
             [a, &[]]
         } else {
             debug_assert!(len - first <= TX_BLOCK);
-            [a, self.blocks[bi + 1].bytes(0, len - first)]
+            let next = if self.is_ring() { 0 } else { bi + 1 };
+            [a, self.blocks[next].bytes(0, len - first)]
         }
     }
 }
@@ -1906,6 +1954,116 @@ mod tests {
     }
 
     #[test]
+    fn issue37_partial_ack_reuses_one_block_without_allocating() {
+        for in_place in [false, true] {
+            let global = crate::budget::GlobalBudget::new(1 << 20);
+            let mut budget = Budget::new(global.clone());
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            let data: Vec<u8> = (0..8 * TX_BLOCK).map(|n| (n % 251) as u8).collect();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[..TX_BLOCK]));
+            let physical = global.reserved();
+            let mut acked = 0;
+            let mut sent = TX_BLOCK;
+            // Uneven ACKs put both readv and retransmission slices across the
+            // wrap boundary. Every byte stays ordered, with one physical block.
+            while sent + 17003 <= data.len() {
+                tx.consume(&mut pool, 17003);
+                acked += 17003;
+                if in_place {
+                    let n = tx
+                        .write_with(&mut pool, &mut budget, PeerId(1), 17003, |[a, b]| {
+                            a.copy_from_slice(&data[sent..sent + a.len()]);
+                            b.copy_from_slice(&data[sent + a.len()..sent + a.len() + b.len()]);
+                            Ok::<_, ()>(a.len() + b.len())
+                        })
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(n, 17003);
+                } else {
+                    assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[sent..sent + 17003]));
+                }
+                sent += 17003;
+                assert_eq!(tx.slices(0, tx.len()).concat(), data[acked..sent]);
+                assert_eq!(tx.allocated(), TX_BLOCK);
+                assert_eq!(global.reserved(), physical, "partial ACK must not require a second allocation");
+            }
+            tx.release_all(&mut pool);
+            drop((tx, pool));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
+    fn issue37_wrapped_ring_errors_and_growth_preserve_bytes() {
+        for in_place in [false, true] {
+            let global = crate::budget::GlobalBudget::new(1 << 20);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(1 << 20, 1 << 20, 16);
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            let data: Vec<u8> = (0..4 * TX_BLOCK).map(|n| (n % 251) as u8).collect();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[..TX_BLOCK]));
+            tx.consume(&mut pool, 17003);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[TX_BLOCK..TX_BLOCK + 17003]));
+            tx.consume(&mut pool, 123);
+            let mut acked = 17003 + 123;
+            let mut sent = TX_BLOCK + 17003;
+            assert_eq!(
+                tx.write_with(&mut pool, &mut budget, PeerId(1), 123, |[a, b]| {
+                    a.fill(99);
+                    b.fill(99);
+                    Err::<usize, _>("read error")
+                }),
+                Err("read error")
+            );
+            assert_eq!(tx.slices(0, tx.len()).concat(), data[acked..sent]);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[sent..sent + 123]));
+            sent += 123;
+            let ceiling = global.high() - global.headroom(global.high(), crate::budget::Tier::Block);
+            let held = budget.try_allocate_kind(PeerId(1), ceiling - global.reserved(), crate::budget::AllocationKind::TxBlock).unwrap();
+            let before = global.reserved();
+            if in_place {
+                assert_eq!(tx.write_with(&mut pool, &mut budget, PeerId(1), TX_BLOCK, |_| -> Result<usize, ()> { panic!("no backing") }), Ok(None));
+            } else {
+                assert!(!tx.push(&mut pool, &mut budget, PeerId(1), &data[sent..sent + TX_BLOCK]));
+            }
+            assert_eq!(global.reserved(), before);
+            assert_eq!(tx.slices(0, tx.len()).concat(), data[acked..sent]);
+            drop(held);
+            // The failed growth normalized the ring. Wrap it again so the
+            // successful growth also exercises the circular-to-linear move.
+            tx.consume(&mut pool, 19);
+            acked += 19;
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[sent..sent + 19]));
+            sent += 19;
+            if in_place {
+                assert_eq!(
+                    tx.write_with(&mut pool, &mut budget, PeerId(1), TX_BLOCK, |[a, b]| {
+                        a.copy_from_slice(&data[sent..sent + a.len()]);
+                        b.copy_from_slice(&data[sent + a.len()..sent + a.len() + b.len()]);
+                        Ok::<_, ()>(a.len() + b.len())
+                    }),
+                    Ok(Some(TX_BLOCK))
+                );
+            } else {
+                assert!(tx.push(&mut pool, &mut budget, PeerId(1), &data[sent..sent + TX_BLOCK]));
+            }
+            sent += TX_BLOCK;
+            assert_eq!(tx.allocated(), 2 * TX_BLOCK);
+            for off in [0, 1, TX_BLOCK - 1, TX_BLOCK] {
+                let len = (tx.len() - off).min(TX_BLOCK);
+                assert_eq!(tx.slices(off, len).concat(), data[acked + off..acked + off + len]);
+            }
+            tx.consume(&mut pool, TX_BLOCK + 13);
+            assert_eq!(tx.slices(0, tx.len()).concat(), data[acked + TX_BLOCK + 13..sent]);
+            tx.release_all(&mut pool);
+            drop((tx, pool));
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[test]
     fn new_full_tx_block_returns_written_bytes_without_zero_fill() {
         let mut pool = BlockPool::new(0);
         let global = crate::budget::GlobalBudget::new(2 << 20);
@@ -2363,7 +2521,7 @@ mod rx_progress_tests {
     }
 
     #[test]
-    fn rx_progress_tx_floor_counts_backing_until_the_last_byte_is_acked() {
+    fn rx_progress_tx_floor_reuses_acked_prefix_without_extra_backing() {
         let global = GlobalBudget::new(1 << 20);
         let mut budget = Budget::new(global.clone());
         let mut pool = BlockPool::new(0);
@@ -2371,7 +2529,7 @@ mod rx_progress_tests {
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &vec![1; TX_BLOCK]));
         tx.consume(&mut pool, 1);
         assert_eq!(tx.len(), TX_BLOCK - 1);
-        assert_eq!(tx.backing_space(TX_BLOCK), 0, "a logical byte released by ACK is not a second physical block");
+        assert_eq!(tx.backing_space(TX_BLOCK), 1, "an ACKed byte can be reused in the same physical block");
         tx.consume(&mut pool, TX_BLOCK - 1);
         assert_eq!(tx.backing_space(TX_BLOCK), TX_BLOCK);
         assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[2; 32]));

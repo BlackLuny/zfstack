@@ -13,6 +13,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIG_SELF_DIR="${1:?usage: run-rig.sh /path/to/zfc-rig /path/to/worker /path/to/new-output}"
 WORKER_SOURCE="${2:?worker binary required}"
 OUT="${3:?fresh output directory required}"
+NETEM_LIMIT_PACKETS="${L2_NETEM_LIMIT_PACKETS:-100000}"
+NETEM_ENABLED="$(python3 "$HERE/netem.py" --check --delay-ms "${L2_UPLINK_DELAY_MS:-0}" --limit-packets "$NETEM_LIMIT_PACKETS")"
 [[ "$(id -u)" == 0 && "$(uname -s)" == Linux ]] || { echo 'Linux root required' >&2; exit 2; }
 [[ -x "$WORKER_SOURCE" && -x "$RIG_SELF_DIR/local/build/tools/fakectl" ]] || exit 2
 [[ ! -e "$OUT" ]] || { echo 'Output must be a fresh directory' >&2; exit 2; }
@@ -22,12 +24,31 @@ export RIG_SELF_DIR
 source "$RIG_SELF_DIR/lib/common.sh"; rig_load_env
 source "$RIG_SELF_DIR/lib/topo.sh"
 source "$RIG_SELF_DIR/lib/nftpath.sh"
-PIDS=(); WATCH_ACTIVE=0
+PIDS=(); WATCH_ACTIVE=0; QDISC_ACTIVE=0; QDISC_CAPTURED=0
+snapshot_qdiscs() {
+  local phase="$1" i
+  for i in "${!clients[@]}"; do
+    # Keep failures as evidence, too. The validator rejects missing/invalid
+    # JSON instead of silently treating an unavailable counter as zero.
+    ip netns exec "${clients[$i]}" tc -j -s qdisc show dev wg0 \
+      > "$OUT/qdisc-$phase-$i.json" 2> "$OUT/qdisc-$phase-$i.err" || true
+    ip netns exec "${clients[$i]}" tc -s qdisc show dev wg0 \
+      > "$OUT/qdisc-$phase-$i.txt" 2>&1 || true
+  done
+}
+summarize_qdiscs() {
+  python3 "$HERE/netem.py" "$OUT" --delay-ms "${L2_UPLINK_DELAY_MS:-0}" \
+    --limit-packets "$NETEM_LIMIT_PACKETS" > "$OUT/qdisc.json"
+}
 systemctl is-active --quiet zfc-rig-watch.service && WATCH_ACTIVE=1
 cleanup() {
   rc=$?
   trap - EXIT
   set +e
+  if (( QDISC_ACTIVE && ! QDISC_CAPTURED )); then
+    snapshot_qdiscs post
+    summarize_qdiscs
+  fi
   for pid in "${PIDS[@]}"; do kill -TERM "$pid" 2>/dev/null; done
   sleep 1
   for pid in "${PIDS[@]}"; do kill -KILL "$pid" 2>/dev/null; done
@@ -134,8 +155,8 @@ for i in 0 1 2 3; do
     peer "$(cat "$OUT/keys/server$port.pub")" endpoint "$TOPO_IP_WORKER:$((20001+port))" \
     allowed-ips "$TOPO_IP_TARGET/32" persistent-keepalive 5
   ip netns exec "$ns" ip link set wg0 mtu 1420 up
-  if [[ "${L2_UPLINK_DELAY_MS:-0}" != 0 ]]; then
-    ip netns exec "$ns" tc qdisc add dev wg0 root netem delay "${L2_UPLINK_DELAY_MS}ms"
+  if [[ "$NETEM_ENABLED" == 1 ]]; then
+    ip netns exec "$ns" tc qdisc add dev wg0 root netem limit "$NETEM_LIMIT_PACKETS" delay "${L2_UPLINK_DELAY_MS}ms"
   fi
   ip netns exec "$ns" ip route replace "$TOPO_IP_TARGET/32" dev wg0
   ip netns exec "$ns" ip route get "$TOPO_IP_TARGET" > "$OUT/route$i.txt"
@@ -148,6 +169,8 @@ if [[ "${L2_CAPTURE:-0}" == 1 ]]; then
 fi
 python3 -c 'import json,time; print(json.dumps({"monotonic":time.monotonic(),"realtime":time.time()}))' > "$OUT/clock.json"
 nftpath_snapshot "$TOPO_ID" "$OUT/path-pre.json"
+QDISC_ACTIVE=1
+snapshot_qdiscs pre
 load_script="$HERE/load.py"
 load_args=()
 if [[ "${L2_MODE:-load}" == idle ]]; then
@@ -161,11 +184,17 @@ python3 "$load_script" run "${load_args[@]}" --host "$TOPO_IP_TARGET" --clients 
   --baseline "${L2_BASELINE_SECS:-8}" --loaded "${L2_LOADED_SECS:-16}" --recovery "${L2_RECOVERY_SECS:-8}"
 load_rc=$?
 set -e
+snapshot_qdiscs post
+summarize_qdiscs
+QDISC_CAPTURED=1
 nftpath_snapshot "$TOPO_ID" "$OUT/path-post.json"
 python3 - "$OUT" "$load_rc" <<'PY'
 import json, pathlib, sys
 p=pathlib.Path(sys.argv[1]); pre=json.loads((p/'path-pre.json').read_text()); post=json.loads((p/'path-post.json').read_text())
 r=json.loads((p/'load/result.json').read_text()); errors=r['errors']
+qdisc=json.loads((p/'qdisc.json').read_text())
+errors.extend(f'test rig: {error}' for error in qdisc['errors'])
+r['qdisc']=qdisc
 if int(sys.argv[2]): errors.append('load generator failed')
 edges={}
 for dst,counters in post.items():
@@ -179,6 +208,8 @@ log=(p/'worker.log').read_text()
 if log.count('WG zfstack: tuning_fp=') < 2: errors.append('missing ZFStack startup evidence for both ports')
 r.update(ok=not errors,path_bytes=edges,topology={'wg_ports':2,'peers':4,'heavy_peer':0,'light_peers':[1,2,3]},memory_mb=int(__import__('os').environ.get('L2_MEMORY_MB','64')))
 (p/'result.json').write_text(json.dumps(r,indent=2)+'\n')
-print(json.dumps({'ok':r['ok'],'errors':errors,'heavy_mbps':r['heavy_mbps']}))
+print(json.dumps({'ok':r['ok'],'errors':errors,'heavy_mbps':r['heavy_mbps'],
+                  'qdisc_limit_packets':qdisc['limit_packets'],
+                  'qdisc_drops':{i:row.get('delta',{}).get('drops') for i,row in qdisc['clients'].items()}}))
 sys.exit(bool(errors))
 PY

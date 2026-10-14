@@ -857,10 +857,7 @@ impl Conn {
         let cap = self.sndbuf_limit(cfg).min(share);
         let logical = cap.saturating_sub(self.tx.len() as u64) as usize;
         if share == crate::budget::MIN_SEND_SHARE {
-            let backing = self.tx.backing_space(share as usize);
-            if backing < logical && !budget.can_pipeline_tx(self.peer) {
-                return backing;
-            }
+            return logical.min(self.tx.backing_space(share as usize));
         }
         logical
     }
@@ -3004,7 +3001,7 @@ mod rx_descriptor_tests {
     }
 
     #[test]
-    fn issue37_floor_uses_spare_memory_after_partial_ack() {
+    fn issue37_floor_reuses_backing_after_partial_ack() {
         exercise(8 << 20, |conn, ctx| {
             ctx.budget.set_limits(1 << 20, 1 << 20, 64);
             for _ in 0..16 {
@@ -3013,7 +3010,7 @@ mod rx_descriptor_tests {
             assert_eq!(ctx.budget.send_share(conn.peer), crate::budget::MIN_SEND_SHARE);
             assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![7; crate::buf::TX_BLOCK]));
             conn.tx.consume(ctx.pool, 32 << 10);
-            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "spare memory must allow refilling a partially ACKed block");
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "ACKed prefix must allow refilling without another block");
             conn.tx.consume(ctx.pool, conn.tx.len());
         });
     }
@@ -3047,7 +3044,14 @@ mod rx_descriptor_tests {
                 assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10);
                 let peer = if level == crate::budget::Level::Peer { conn.peer } else { PeerId(2) };
                 let held = ctx.budget.try_allocate(peer, limit * 3 / 4).unwrap();
-                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 0, "{level:?}");
+                assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "{level:?}");
+                conn.accepted = true;
+                conn.want_write = true;
+                conn.notify_writable(ctx.events, ctx.cfg, ctx.budget);
+                assert_eq!(ctx.events.pop_front(), Some(Event::Writable(conn.id)), "partial ACK must wake even under {level:?} pressure");
+                let used = ctx.budget.physical_used();
+                assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &vec![8; 32 << 10]));
+                assert_eq!(ctx.budget.physical_used(), used);
                 conn.tx.consume(ctx.pool, conn.tx.len());
                 assert!(conn.tx.push(ctx.pool, ctx.budget, conn.peer, &[7; 2048]));
                 assert_eq!(conn.send_space(ctx.cfg, ctx.budget), crate::buf::TX_BLOCK - 2048, "small prefix must not prevent one full block");
@@ -3059,7 +3063,7 @@ mod rx_descriptor_tests {
     }
 
     #[test]
-    fn issue37_floor_reclaims_idle_cache_before_parking() {
+    fn issue37_floor_reuses_backing_even_when_other_cache_is_full() {
         exercise(8 << 20, |conn, ctx| {
             ctx.budget.set_limits(1 << 20, 1 << 20, 64);
             for _ in 0..16 {
@@ -3073,10 +3077,10 @@ mod rx_descriptor_tests {
             other.consume(&mut cache, other.len());
             let global = ctx.budget.global().clone();
             let epoch = global.cache_reclaim_epoch();
-            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 0);
-            assert!(global.cache_reclaim_epoch() > epoch, "the share gate must request reclaim before blocking pool reuse");
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10);
+            assert_eq!(global.cache_reclaim_epoch(), epoch, "reuse must not churn unrelated cache");
             cache.reclaim();
-            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "cache release alone must restore send space");
+            assert_eq!(conn.send_space(ctx.cfg, ctx.budget), 32 << 10, "cache release must not affect reusable space");
             conn.tx.consume(ctx.pool, conn.tx.len());
         });
     }

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from compare import compare
+from test_netem import clean_report
 
 
 class CompareTests(unittest.TestCase):
@@ -26,6 +27,7 @@ class CompareTests(unittest.TestCase):
                               "worker": {"loaded": {"worker_cpu_sec": 10,
                                                     "sample_window_sec": 10,
                                                     "rss_peak_kib": 20 * 1024}}}
+                    result["qdisc"] = clean_report(result["uplink_delay_ms"])
                     raw = {"client-0.json": {"flows": [{"bytes": 1000, "errors": []}] * 16},
                            "worker.sha256": ("a" if source == "base" else "b") * 64 + " worker\n",
                            "light-capture.log": "0 packets dropped by kernel\n",
@@ -92,6 +94,23 @@ class CompareTests(unittest.TestCase):
         self.assertTrue(compare(self.root)["ok"], "no hidden default performance threshold")
         self.assertFalse(compare(self.root, throughput_drop=10)["ok"])
         self.assertFalse(compare(self.root, cpu_rise=20)["ok"], "unchanged CPU with less goodput costs more per GiB")
+
+    def test_qdisc_loss_in_either_arm_invalidates_comparison(self):
+        for source in ("base", "candidate"):
+            self.edit(f"delayed-{source}-a", "result.json",
+                      lambda r: r["qdisc"]["clients"]["0"]["after"].update(drops=570157))
+        report = compare(self.root)
+        self.assertFalse(report["ok"])
+        for source in ("base", "candidate"):
+            self.assertIn(f"delayed-{source}-a: invalid comparison evidence", str(report["errors"]))
+
+    def test_missing_delayed_evidence_and_mismatched_limits_are_rejected(self):
+        self.edit("delayed-base-a", "result.json", lambda r: r.pop("qdisc"))
+        self.edit("delayed-candidate-a", "result.json", lambda r: r.update(qdisc=clean_report(50, 1000)))
+        report = compare(self.root)
+        self.assertFalse(report["ok"])
+        self.assertIn("missing qdisc evidence", str(report["errors"]))
+        self.assertIn("workload dimensions", str(report["errors"]))
 
 
 if __name__ == "__main__":

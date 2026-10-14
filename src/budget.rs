@@ -1229,24 +1229,6 @@ impl Budget {
             && peer_fits
     }
 
-    /// At the minimum logical send share, allow a second backing only while
-    /// all levels can leave a quarter free after that allocation. The Bulk
-    /// check also preserves admission debt and progress reserves on small levels.
-    pub(crate) fn can_pipeline_tx(&self, peer: PeerId) -> bool {
-        let extra = crate::buf::TX_FIRST_WRITE_CHARGE;
-        let fits = |used: u64, limit: u64| used.saturating_add(extra) <= limit - limit / 4;
-        let allowed = fits(self.global.reserved(), self.global.high)
-            && fits(self.physical_used(), self.port_limit)
-            && fits(self.physical_peers.get(&peer).map_or(0, |p| p.used.load(Ordering::Relaxed)), self.peer_limit)
-            && self.can_allocate(peer, extra, AllocationKind::AdapterTx);
-        if !allowed {
-            // A share gate runs before BlockPool::get can reuse/reclaim cached
-            // blocks. Do not let idle cache keep a writer parked at this gate.
-            self.global.request_cache_reclaim();
-        }
-        allowed
-    }
-
     pub fn level(&self) -> Pressure {
         self.global.level()
     }

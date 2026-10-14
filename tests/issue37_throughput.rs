@@ -40,6 +40,9 @@ fn floor_pipelines(senders: u16, rate_bps: u64) {
         let mut sent = vec![0; senders as usize];
         let mut start_bytes = 0;
         let mut peak = 0;
+        let clients: Vec<_> = s.b.conns.keys().copied().collect();
+        let mut progress = vec![(0, 0); clients.len()];
+        let mut max_gap_ms = 0;
         // Register every real sender before allowing any to fill its share.
         // Otherwise the first application can occupy the whole empty port.
         for (i, &id) in ids.iter().enumerate() {
@@ -57,6 +60,16 @@ fn floor_pipelines(senders: u16, rate_bps: u64) {
             s.a.shard.check_invariants();
             s.b.shard.check_invariants();
             peak = peak.max(s.a.shard.budget().physical_used());
+            for (i, id) in clients.iter().enumerate() {
+                let received = s.b.conns[id].received;
+                if received != progress[i].0 {
+                    progress[i] = (received, ms);
+                } else if received > 0 {
+                    let gap = ms - progress[i].1;
+                    max_gap_ms = max_gap_ms.max(gap);
+                    assert!(gap < 1000, "flow {i} stalled at {received} bytes for {gap} ms");
+                }
+            }
             if ms == 1999 {
                 assert_eq!(s.a.shard.budget().send_share(PeerId(1)), zfstack::budget::MIN_SEND_SHARE);
                 start_bytes = s.b.conns.values().map(|c| c.received).sum::<u64>();
@@ -65,7 +78,7 @@ fn floor_pipelines(senders: u16, rate_bps: u64) {
         let bytes = s.b.conns.values().map(|c| c.received).sum::<u64>() - start_bytes;
         let window_ceiling = (u64::from(senders) * zfstack::budget::MIN_SEND_SHARE * 20).min(rate_bps / 8);
         eprintln!(
-            "issue37 RTT: write={write_size} bytes_per_sec={bytes} window_ceiling={window_ceiling} peak={peak}/{port} cached={} senders={}",
+            "issue37 RTT: write={write_size} bytes_per_sec={bytes} window_ceiling={window_ceiling} peak={peak}/{port} max_gap_ms={max_gap_ms} cached={} senders={}",
             s.a.shard.budget().global().cached_bytes(),
             s.a.shard.budget().senders()
         );
@@ -78,10 +91,10 @@ fn floor_pipelines(senders: u16, rate_bps: u64) {
         assert_eq!(global.reserved(), 0);
     }
     for (write_size, bytes, _) in rates {
-        // Fixed-seed regression bounds, with slack below the measured repaired
-        // goodput. The old block gate delivered 11.5 / 344.5 Mbit/s at 64 flows;
-        // logical window/RTT alone is not an achievable throughput guarantee.
-        let min_bps = if write_size == 1024 { 280_000_000 } else { 360_000_000 };
+        // The #39 pressure gate delivered 320 / 382 Mbit/s at 64 flows.
+        // Reusing the ACKed prefix delivers 639 Mbit/s without a second block.
+        // Keep slack, but reject a return to either pressure-gated result.
+        let min_bps = 560_000_000;
         let minimum = min_bps / 8 * u64::from(senders) / 64;
         assert!(bytes > minimum, "write={write_size}: {bytes} B/s, expected >{minimum} B/s");
     }
