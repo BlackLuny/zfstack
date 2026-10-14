@@ -308,7 +308,7 @@ impl Drop for Shared {
 }
 
 fn clear_tx_wait(sh: &Shared) {
-    if sh.driver_tx_wait.swap(TX_WAIT_NONE, Ordering::AcqRel) != TX_WAIT_NONE {
+    if sh.driver_tx_wait.load(Ordering::Relaxed) != TX_WAIT_NONE && sh.driver_tx_wait.swap(TX_WAIT_NONE, Ordering::AcqRel) != TX_WAIT_NONE {
         sh.memory.global().remove_waiter(sh.driver_waiter);
     }
 }
@@ -566,7 +566,7 @@ impl AsyncWrite for TcpStream {
             sh.memory.global().register_physical_waiter(sh.memory_waiter, observed, cx.waker(), &sh.memory, needed, AllocationKind::AdapterTx);
             return Poll::Pending;
         }
-        if sh.memory_waiting.swap(false, Ordering::AcqRel) {
+        if sh.memory_waiting.load(Ordering::Relaxed) && sh.memory_waiting.swap(false, Ordering::AcqRel) {
             sh.memory.global().remove_waiter(sh.memory_waiter);
         }
         q.write_parked = false;
@@ -1372,7 +1372,7 @@ where
                 let observed = sh.memory.global().release_epoch();
                 match q.rx.reserve_one(&sh.memory, AllocationKind::AdapterRx) {
                     Ok(()) => {
-                        if sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
+                        if sh.rx_index_waiting.load(Ordering::Relaxed) && sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
                             sh.memory.global().remove_waiter(sh.rx_index_waiter);
                         }
                     }
