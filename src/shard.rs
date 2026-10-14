@@ -375,6 +375,7 @@ pub struct Shard {
     /// a released slot from waking a replacement connection.
     share_blocked: HashSet<(u32, u32), Keys>,
     share_wait_epoch: Option<u64>,
+    share_seen_epoch: Option<u64>,
     /// Last cache reclaim request this shard has served.
     cache_reclaim_seen: u64,
     tx_cache_trim: Option<TxCacheTrimPolicy>,
@@ -434,6 +435,7 @@ impl Shard {
             budget_wait_epoch: None,
             share_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
             share_wait_epoch: None,
+            share_seen_epoch: None,
             cache_reclaim_seen,
             tx_cache_trim: None,
             tx_cache_idle: None,
@@ -491,6 +493,10 @@ impl Shard {
     pub fn budget(&self) -> &Budget {
         &self.budget
     }
+    #[cfg(test)]
+    pub(crate) fn budget_mut_for_test(&mut self) -> &mut Budget {
+        &mut self.budget
+    }
     /// Epoch to register with a caller's budget-release waker, if any core
     /// senders need an allocation or an application writer awaits more share.
     pub fn budget_wait_epoch(&self) -> Option<u64> {
@@ -498,6 +504,13 @@ impl Shard {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
+    }
+    /// Epoch for physical send-record allocations only. The Tokio driver runs
+    /// `Shard::run` after every local sender change, so it only needs the
+    /// cross-thread release waker when a connection is blocked on `SendRecord`.
+    #[cfg(feature = "tokio")]
+    pub(crate) fn record_wait_epoch(&self) -> Option<u64> {
+        self.budget_wait_epoch
     }
     pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
         self.budget.memory_handle(peer)
@@ -805,6 +818,7 @@ impl Shard {
         if slot.conn.as_ref().is_some_and(|c| c.share_write_blocked(&self.cfg, &self.budget)) {
             self.share_blocked.insert(key);
             self.share_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
+            self.share_seen_epoch.get_or_insert_with(|| self.budget.share_epoch());
         } else {
             if self.share_blocked.remove(&key) {
                 // A read/control operation can visit this connection after
@@ -816,13 +830,19 @@ impl Shard {
             }
             if self.share_blocked.is_empty() {
                 self.share_wait_epoch = None;
+                self.share_seen_epoch = None;
             }
         }
     }
 
     fn retry_share_writers(&mut self) {
-        let epoch = self.budget.global().release_epoch();
-        if self.share_wait_epoch.is_none_or(|seen| seen == epoch) {
+        if self.share_blocked.is_empty() {
+            self.share_wait_epoch = None;
+            self.share_seen_epoch = None;
+            return;
+        }
+        let share_epoch = self.budget.share_epoch();
+        if self.share_seen_epoch == Some(share_epoch) {
             return;
         }
         self.share_blocked.retain(|&(idx, gen)| {
@@ -834,7 +854,13 @@ impl Shard {
             conn.notify_writable(&mut self.events, &self.cfg, &self.budget);
             false
         });
-        self.share_wait_epoch = (!self.share_blocked.is_empty()).then_some(epoch);
+        if self.share_blocked.is_empty() {
+            self.share_wait_epoch = None;
+            self.share_seen_epoch = None;
+        } else {
+            self.share_wait_epoch = Some(self.budget.global().release_epoch());
+            self.share_seen_epoch = Some(share_epoch);
+        }
     }
 
     /// Reschedule timers / tx after any change to a connection; reap if done.
@@ -882,6 +908,7 @@ impl Shard {
         self.share_blocked.remove(&(idx, slot.gen));
         if self.share_blocked.is_empty() {
             self.share_wait_epoch = None;
+            self.share_seen_epoch = None;
         }
         self.budget_blocked.remove(&(idx, slot.gen));
         if self.budget_blocked.is_empty() {
@@ -961,6 +988,7 @@ impl Shard {
         self.share_blocked.remove(&(idx, slot.gen));
         if self.share_blocked.is_empty() {
             self.share_wait_epoch = None;
+            self.share_seen_epoch = None;
         }
         self.budget_blocked.remove(&(idx, slot.gen));
         if self.budget_blocked.is_empty() {
@@ -1834,6 +1862,7 @@ impl Shard {
         if !served_any && out.packets == 0 {
             self.stats.idle_rounds += 1;
         }
+        self.retry_share_writers();
         self.arm_tx_cache_maintenance(now);
         out
     }
@@ -2043,18 +2072,16 @@ impl Shard {
         max: usize,
         fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>,
     ) -> Result<WriteResult, E> {
-        self.with_conn(id, |c, ctx| c.write_with(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed))
+        self.write_with(id, max, fill)
     }
 
     fn write_inner(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
         self.with_conn(id, |c, ctx| c.write(src, ctx)).unwrap_or(WriteResult::Closed)
     }
 
-    /// The adapter owns a budget-release waiter for its pump. Do not also
-    /// register the core API's Writable waiter for the same pending write.
     #[cfg(feature = "tokio")]
     pub(crate) fn write_for_adapter(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
-        self.write_inner(id, src)
+        self.write(id, src)
     }
 
     #[cfg(feature = "tokio")]
@@ -2100,6 +2127,9 @@ impl Shard {
     #[cfg(feature = "tokio")]
     pub(crate) fn note_write_parked(&mut self, id: ConnId) {
         self.with_conn(id, |c, _| c.note_write_parked());
+        if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
+            self.sync_share_waiter(id.idx() as u32, true);
+        }
     }
 
     pub fn shutdown_write(&mut self, id: ConnId) {

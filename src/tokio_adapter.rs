@@ -319,6 +319,14 @@ fn clear_tx_wait(sh: &Shared) {
 /// protocol so an empty core buffer never waits for an ACK that cannot arrive.
 fn track_tx_wait(shard: &mut Shard, sh: &Shared, result: WriteResult, observed: u64, wanted: usize) {
     match result {
+        WriteResult::QuotaBlocked if shard.send_space(sh.id) == 0 => {
+            // The connection filled its own send share (`space == 0 &&
+            // send_share < sndbuf_limit`). `Shard` registered it in
+            // `share_blocked`, so own ACKs or `sender_del` share growth will
+            // emit `Event::Writable`; unrelated logical/physical releases
+            // cannot increase `send_space` and must not wake this stream.
+            clear_tx_wait(sh);
+        }
         WriteResult::QuotaBlocked => {
             let prev = sh.driver_tx_wait.swap(TX_WAIT_QUOTA, Ordering::AcqRel);
             if prev != TX_WAIT_NONE && prev != TX_WAIT_QUOTA {
@@ -1014,7 +1022,7 @@ where
                 // turn before the next capped round on current-thread runtimes.
                 tokio::task::yield_now().await;
             }
-            if let Some(epoch) = self.shard.budget_wait_epoch() {
+            if let Some(epoch) = self.shard.record_wait_epoch() {
                 self.budget_waiting = true;
                 self.shard.budget().global().register_waiter(self.budget_waiter, epoch, &self.budget_wake);
             } else if std::mem::replace(&mut self.budget_waiting, false) {
@@ -1939,14 +1947,191 @@ mod tests {
         track_tx_wait(&mut driver.shard, sh, WriteResult::QuotaBlocked, observed, 64);
         assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_QUOTA);
         assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
-        // A successful write clears the remaining waiter; subsequent successful
-        // writes or socket WouldBlock see TX_WAIT_NONE and skip global cleanup.
-        track_tx_wait(&mut driver.shard, sh, WriteResult::Written(64), observed, 64);
+        // QuotaBlocked with send_space == 0 (share-bound) must clear the
+        // broadcast waiter instead of keeping a stale entry in GlobalBudget.
+        let room = driver.shard.send_space(sh.id);
+        assert_eq!(driver.shard.write(sh.id, &vec![3u8; room]), WriteResult::Written(room));
+        assert_eq!(driver.shard.send_space(sh.id), 0);
+        let observed = global.release_epoch();
+        driver.ctl.dirty.lock().unwrap().clear();
+        global.register_waiter(sh.driver_waiter, observed, &sh.driver_wake);
+        sh.driver_tx_wait.store(TX_WAIT_QUOTA, Ordering::Release);
+        track_tx_wait(&mut driver.shard, sh, WriteResult::QuotaBlocked, observed, 64);
         assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
         let held = sh.memory.try_allocate(64).unwrap();
         drop(held);
-        assert!(!driver.ctl.dirty.lock().unwrap().contains(&sh.id), "stale waiter fired after cleanup");
+        assert!(!driver.ctl.dirty.lock().unwrap().contains(&sh.id), "stale waiter fired after share-bound transition");
         drop((stream, driver));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn share_bound_relay_ignores_unrelated_releases_and_recovers_on_ack_or_sender_exit() {
+        let mut cfg = StackConfig::default();
+        cfg.min_prefetch = 1 << 20;
+        cfg.prefetch_max = 1 << 20;
+        let mut sim = crate::sim::Sim::new(4101, cfg, StackConfig::default(), Default::default(), Default::default());
+        sim.a.shard.set_budget_limits(819_200, 819_200, 16);
+        sim.a.shard.reserve_stream_state(STREAM_STATE_BYTES);
+        sim.connect(43100, Default::default());
+        sim.connect(43101, Default::default());
+        sim.run_until(sim.now + std::time::Duration::from_millis(100));
+        let id = sim.a.accepted[0];
+        let sibling = sim.a.accepted[1];
+        let mut peer_side = sim.b;
+        let global = sim.a.shard.budget().global().clone();
+        let (_, cmd_rx) = mpsc::channel(1);
+        let (accept_tx, mut accept_rx) = mpsc::channel(2);
+        let ctl = Arc::new(Ctl { dirty: Mutex::new(HashSet::new()), pending: Mutex::new(PendingControl::default()), notify: Notify::new() });
+        let mut driver = Driver {
+            shard: sim.a.shard,
+            egress: (|_, _, _| SendResult::Accepted) as fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult,
+            input: None::<InputSource<(), NoInput>>,
+            cmd_rx,
+            accept_tx,
+            ctl: ctl.clone(),
+            stop: Arc::new(AtomicBool::new(false)),
+            budget_waiter: global.new_waiter_id(),
+            budget_waiting: false,
+            budget_wake: Waker::from(Arc::new(BudgetWake { ctl })),
+            streams: HashMap::new(),
+            orphans: BTreeSet::new(),
+            stream_cfg: StreamConfig::default(),
+            epoch: tokio::time::Instant::now() - std::time::Duration::from_nanos(sim.now.as_nanos()),
+            closes: CloseCounts::default(),
+            aborts: AbortCounts::default(),
+            relays: HashMap::new(),
+        };
+        driver.on_event(Event::Accepted(id));
+        driver.on_event(Event::Accepted(sibling));
+        let stream = accept_rx.try_recv().unwrap();
+        let sibling_stream = accept_rx.try_recv().unwrap();
+        // Activate both senders first so `id` fills the 2-sender share (192 KiB),
+        // which can then grow to the 1-sender share (320 KiB) when `sibling` exits.
+        assert_eq!(driver.shard.write(sibling, &[7u8; 16 << 10]), WriteResult::Written(16 << 10));
+        assert_eq!(driver.shard.write(id, &[5u8; 16 << 10]), WriteResult::Written(16 << 10));
+        let rest = driver.shard.send_space(id);
+        assert!(rest > 0);
+        assert_eq!(driver.shard.write(id, &vec![5u8; rest]), WriteResult::Written(rest));
+        let room = (16 << 10) + rest;
+        assert_eq!(driver.shard.send_space(id), 0);
+        while driver.shard.poll_event().is_some() {}
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (up, sock) = tokio::join!(tokio::net::TcpStream::connect(listener.local_addr().unwrap()), listener.accept());
+        let mut up = up.unwrap();
+        let (done, _) = oneshot::channel();
+        stream.sh.q.lock().unwrap().splice = Some(SpliceRequest { upstream: sock.unwrap().0, done });
+        assert!(driver.start_relay(id));
+        up.write_all(b"after own ack").await.unwrap();
+        driver.relays[&id].sock.readable().await.unwrap();
+        driver.ctl.dirty.lock().unwrap().clear();
+
+        // Pumping the share-exhausted relay records one share block and arms
+        // the shard-level share waiter without registering a global waiter.
+        driver.pump(id);
+        assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+        assert!(driver.shard.record_wait_epoch().is_none());
+        let blocked_before = driver.shard.budget().share_blocked();
+        assert_eq!(blocked_before, 1);
+
+        // 200 unrelated physical/logical budget releases must neither mark the
+        // stream dirty nor trigger redundant `share_blocked` retries.
+        let mut other_budget = crate::budget::Budget::new(global.clone());
+        other_budget.set_limits(819_200, 819_200, 4);
+        for _ in 0..200 {
+            let lease = stream.sh.memory.try_allocate(256).unwrap();
+            drop(lease);
+            assert!(other_budget.try_reserve(PeerId(99), 1024, false));
+            other_budget.release(PeerId(99), 1024);
+        }
+        let now = driver.now();
+        driver.shard.run(now, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Full);
+        assert!(driver.ctl.dirty.lock().unwrap().is_empty(), "unrelated releases woke a share-bound relay");
+        assert!(driver.shard.poll_event().is_none(), "unrelated releases emitted a false event");
+        assert_eq!(driver.shard.budget().share_blocked(), blocked_before);
+        assert_eq!(driver.shard.tx_queued(id), Some(room));
+
+        // Recovery path 1: own ACKs freeing >= write_low_watermark (16 KiB;
+        // two initial flights at 1448 B MSS) emit Event::Writable and wake the
+        // relay while `sibling` still holds its share.
+        driver.shard.egress_released(stream.meta.iface);
+        for rtt in 0..2 {
+            let now = driver.now() + std::time::Duration::from_millis(rtt * 100);
+            let mut to_peer = Vec::new();
+            driver.shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                if pkt.header.len() >= 24 {
+                    let dst_port = u16::from_be_bytes([pkt.header[22], pkt.header[23]]);
+                    if dst_port == 43100 {
+                        to_peer.push(Bytes::from(pkt.to_vec()));
+                    }
+                }
+                SendResult::Accepted
+            });
+            for pkt in to_peer {
+                peer_side.shard.ingress(now, peer_side.iface, stream.sh.peer, pkt);
+            }
+            let ack_at = now + std::time::Duration::from_millis(50);
+            let mut acks = Vec::new();
+            peer_side.shard.run(ack_at, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                acks.push(Bytes::from(pkt.to_vec()));
+                SendResult::Accepted
+            });
+            for ack in acks {
+                driver.shard.ingress(ack_at, stream.meta.iface, stream.sh.peer, ack);
+            }
+        }
+        driver.service();
+        assert_eq!(driver.relays[&id].stats.downloaded, b"after own ack".len() as u64);
+
+        // Fill `id`'s remaining 2-sender share again and queue more upstream bytes.
+        let rest = driver.shard.send_space(id);
+        assert!(rest > 0);
+        assert_eq!(driver.shard.write(id, &vec![5u8; rest]), WriteResult::Written(rest));
+        let queued_before_exit = driver.shard.tx_queued(id).unwrap();
+        assert_eq!(driver.shard.send_space(id), 0);
+        while driver.shard.poll_event().is_some() {}
+        up.write_all(b"after share recovery").await.unwrap();
+        driver.relays[&id].sock.readable().await.unwrap();
+        driver.ctl.dirty.lock().unwrap().clear();
+        driver.pump(id);
+        let blocked_second = driver.shard.budget().share_blocked();
+        assert_eq!(blocked_second, blocked_before + 1);
+
+        // Recovery path 2: when the sibling sender exits (`sender_del`), the
+        // shard's `share_epoch` advances and `service()` wakes the relay
+        // without needing an own ACK.
+        driver.shard.abort(sibling);
+        driver.service();
+        assert_eq!(driver.shard.tx_queued(id), Some(queued_before_exit + b"after share recovery".len()));
+        assert_eq!(driver.shard.budget().share_blocked(), blocked_second);
+
+        drop((stream, sibling_stream, driver, up));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn quota_bound_relay_with_send_space_wakes_on_logical_release() {
+        let (mut driver, stream, up, _peer) = parked_relay(&[]).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        // Exhaust the port's logical byte ceiling while leaving `send_space(id) > 0`,
+        // so `admit_write` passes the `send_space` check and fails at `try_reserve`.
+        assert!(driver.shard.budget_mut_for_test().try_reserve(sh.peer, 1 << 20, false));
+        assert!(driver.shard.send_space(sh.id) > 0);
+
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_QUOTA);
+
+        // Releasing the logical quota must wake `driver_waiter` and mark the stream dirty.
+        driver.shard.budget_mut_for_test().release(sh.peer, 1 << 20);
+        assert!(driver.ctl.dirty.lock().unwrap().remove(&sh.id), "logical quota waiter missed release");
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(b"socket tail".len()));
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+
+        drop((stream, driver, up));
         assert_eq!(global.reserved(), 0);
     }
 
