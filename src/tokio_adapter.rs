@@ -296,6 +296,21 @@ impl Drop for Shared {
     }
 }
 
+/// The release epoch must be captured BEFORE the write attempt. Allocation
+/// failure can itself request another owner's cache reclaim; that owner may
+/// release memory before we get here. Both queue pumps and readv use this
+/// protocol so an empty core buffer never waits for an ACK that cannot arrive.
+fn track_tx_wait(shard: &mut Shard, sh: &Shared, result: WriteResult, observed: u64, wanted: usize) {
+    match result {
+        WriteResult::QuotaBlocked => sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake),
+        WriteResult::MemoryBlocked => {
+            let charge = shard.write_allocation_charge(sh.id, wanted);
+            sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
+        }
+        _ => sh.memory.global().remove_waiter(sh.driver_waiter),
+    }
+}
+
 struct DriverWake {
     ctl: Arc<Ctl>,
     id: ConnId,
@@ -1351,35 +1366,17 @@ where
             while !q.tx.is_empty() {
                 let n = q.tx.front().len().min(64 * 1024);
                 let observed = sh.memory.global().release_epoch();
-                match self.shard.write_for_adapter(id, &q.tx.front()[..n]) {
+                let result = self.shard.write_for_adapter(id, &q.tx.front()[..n]);
+                track_tx_wait(&mut self.shard, &sh, result, observed, n);
+                match result {
                     WriteResult::Written(w) => {
-                        sh.memory.global().remove_waiter(sh.driver_waiter);
                         q.tx.consume(w);
                         if w < n {
                             break;
                         }
                     }
-                    WriteResult::WouldBlock => {
-                        sh.memory.global().remove_waiter(sh.driver_waiter);
-                        break;
-                    }
-                    WriteResult::QuotaBlocked => {
-                        sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake);
-                        break;
-                    }
-                    WriteResult::MemoryBlocked => {
-                        sh.memory.global().register_physical_waiter(
-                            sh.driver_waiter,
-                            observed,
-                            &sh.driver_wake,
-                            &sh.memory,
-                            self.shard.write_allocation_charge(id, n),
-                            AllocationKind::TxBlock,
-                        );
-                        break;
-                    }
+                    WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => break,
                     WriteResult::Closed => {
-                        sh.memory.global().remove_waiter(sh.driver_waiter);
                         q.error.get_or_insert(CloseReason::Aborted);
                         q.tx.clear();
                         break;
@@ -1558,19 +1555,29 @@ where
         let mut q = sh.q.lock().unwrap();
         while failure.is_none() && !q.tx.is_empty() {
             let n = q.tx.front().len().min(64 * 1024);
-            match self.shard.write_for_adapter(id, &q.tx.front()[..n]) {
+            let observed = sh.memory.global().release_epoch();
+            let result = self.shard.write_for_adapter(id, &q.tx.front()[..n]);
+            track_tx_wait(&mut self.shard, sh, result, observed, n);
+            match result {
                 WriteResult::Written(w) => q.tx.consume(w),
-                _ => break,
+                WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => break,
+                WriteResult::Closed => failure = Some(io::Error::new(io::ErrorKind::ConnectionReset, "core closed while draining splice backlog")),
             }
         }
+        self.shard.set_adapter_tx(id, q.tx.len() as u32);
         let backlog = !q.tx.is_empty();
         drop(q);
         while failure.is_none() && !backlog && !relay.sock_eof {
             let sock = &relay.sock;
+            let observed = sh.memory.global().release_epoch();
             let r = self.shard.write_with_for_adapter(id, RELAY_DOWN_READ, |[a, b]| {
                 let mut iov = [std::io::IoSliceMut::new(a), std::io::IoSliceMut::new(b)];
                 sock.try_read_vectored(&mut iov)
             });
+            match &r {
+                Ok(result) => track_tx_wait(&mut self.shard, sh, *result, observed, RELAY_DOWN_READ),
+                Err(_) => sh.memory.global().remove_waiter(sh.driver_waiter),
+            }
             match r {
                 Ok(WriteResult::Written(0)) => {
                     relay.sock_eof = true;
@@ -1579,17 +1586,7 @@ where
                 Ok(WriteResult::Written(n)) => relay.stats.downloaded += n as u64,
                 // The core emits Writable once space frees up.
                 Ok(WriteResult::WouldBlock) => break,
-                Ok(WriteResult::QuotaBlocked) => {
-                    let observed = sh.memory.global().release_epoch();
-                    sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake);
-                    break;
-                }
-                Ok(WriteResult::MemoryBlocked) => {
-                    let observed = sh.memory.global().release_epoch();
-                    let charge = self.shard.write_allocation_charge(id, RELAY_DOWN_READ);
-                    sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
-                    break;
-                }
+                Ok(WriteResult::QuotaBlocked) | Ok(WriteResult::MemoryBlocked) => break,
                 // Closed in order: nothing more can go to the peer; stop
                 // reading (unread upstream bytes reset it when we close).
                 Ok(WriteResult::Closed) => relay.sock_eof = true,
@@ -1744,6 +1741,133 @@ mod tests {
         fn wake_by_ref(self: &Arc<Self>) {
             self.0.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    type TestRelayDriver = Driver<fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult, (), NoInput>;
+
+    /// Use a real handshake and socket, but drive the owner synchronously so
+    /// the exact allocation/release ordering is reproducible without sleeps.
+    async fn parked_relay(prefix: &[u8]) -> (TestRelayDriver, TcpStream, tokio::net::TcpStream, crate::sim::Side) {
+        let mut sim = crate::sim::Sim::new(3740, StackConfig::default(), StackConfig::default(), Default::default(), Default::default());
+        sim.a.shard.set_budget_limits(1 << 20, 1 << 20, 16);
+        sim.a.shard.reserve_stream_state(STREAM_STATE_BYTES);
+        sim.connect(43000, Default::default());
+        sim.run_until(sim.now + std::time::Duration::from_millis(100));
+        let id = sim.a.accepted[0];
+        let global = sim.a.shard.budget().global().clone();
+        let (_, cmd_rx) = mpsc::channel(1);
+        let (accept_tx, mut accept_rx) = mpsc::channel(1);
+        let ctl = Arc::new(Ctl { dirty: Mutex::new(HashSet::new()), pending: Mutex::new(PendingControl::default()), notify: Notify::new() });
+        let mut driver = Driver {
+            shard: sim.a.shard,
+            egress: (|_, _, _| SendResult::Accepted) as fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult,
+            input: None::<InputSource<(), NoInput>>,
+            cmd_rx,
+            accept_tx,
+            ctl: ctl.clone(),
+            stop: Arc::new(AtomicBool::new(false)),
+            budget_waiter: global.new_waiter_id(),
+            budget_wake: Waker::from(Arc::new(BudgetWake { ctl })),
+            streams: HashMap::new(),
+            orphans: BTreeSet::new(),
+            stream_cfg: StreamConfig::default(),
+            epoch: tokio::time::Instant::now() - std::time::Duration::from_nanos(sim.now.as_nanos()),
+            closes: CloseCounts::default(),
+            aborts: AbortCounts::default(),
+            relays: HashMap::new(),
+        };
+        driver.on_event(Event::Accepted(id));
+        let mut stream = accept_rx.try_recv().unwrap();
+        stream.write_all(prefix).await.unwrap();
+        // The ordinary pump has published these bytes but has not yet been
+        // able to move them into core TX when the app requests splice.
+        driver.shard.set_adapter_tx(id, prefix.len() as u32);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (up, sock) = tokio::join!(tokio::net::TcpStream::connect(listener.local_addr().unwrap()), listener.accept());
+        let mut up = up.unwrap();
+        let (done, _) = oneshot::channel();
+        stream.sh.q.lock().unwrap().splice = Some(SpliceRequest { upstream: sock.unwrap().0, done });
+        assert!(driver.start_relay(id));
+        up.write_all(b"socket tail").await.unwrap();
+        driver.relays[&id].sock.readable().await.unwrap();
+        driver.ctl.dirty.lock().unwrap().clear();
+        assert_eq!(driver.shard.tx_queued(id), Some(0));
+        (driver, stream, up, sim.b)
+    }
+
+    struct ReleaseOnReclaim(Mutex<Option<MemoryLease>>);
+
+    impl Wake for ReleaseOnReclaim {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            let lease = self.0.lock().unwrap().take();
+            drop(lease);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue37_relay_does_not_miss_release_during_failed_allocation() {
+        let (mut driver, stream, up, _peer) = parked_relay(&[]).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        let mut cache = sh.memory.try_allocate_kind(65536, AllocationKind::TxBlock).unwrap();
+        assert!(cache.park_cached());
+        let ceiling = (1 << 20) - global.headroom(1 << 20, crate::budget::Tier::Block);
+        let held = sh.memory.try_allocate_kind(ceiling - driver.shard.budget().physical_used(), AllocationKind::TxBlock).unwrap();
+        // Model a different owner reclaiming memory while this failed
+        // allocator requests cache reclaim, before relay_pump can park.
+        let reclaim = Arc::new(ReleaseOnReclaim(Mutex::new(Some(held))));
+        let holder = global.new_waiter_id();
+        global.register_cache_holder(holder, &Waker::from(reclaim.clone()));
+        driver.pump(sh.id);
+        assert!(reclaim.0.lock().unwrap().is_none(), "the release must happen inside the failing attempt");
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert!(driver.shard.budget().can_allocate(sh.peer, crate::buf::TX_FIRST_WRITE_CHARGE, AllocationKind::TxBlock));
+        assert!(driver.ctl.dirty.lock().unwrap().remove(&sh.id), "relay missed the only memory release and has no ACK to wake it");
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(b"socket tail".len()));
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+        global.remove_cache_holder(holder);
+        drop((cache, stream, driver, up));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue37_splice_backlog_waits_for_memory_and_preserves_order() {
+        let prefix = b"queued prefix:";
+        let (mut driver, stream, up, mut peer) = parked_relay(prefix).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        let ceiling = (1 << 20) - global.headroom(1 << 20, crate::budget::Tier::Block);
+        let held = sh.memory.try_allocate_kind(ceiling - driver.shard.budget().physical_used(), AllocationKind::TxBlock).unwrap();
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert_eq!(sh.q.lock().unwrap().tx.len(), prefix.len());
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 1, "splice must park for its pre-existing adapter backlog");
+        drop(held);
+        assert!(driver.ctl.dirty.lock().unwrap().remove(&sh.id));
+        driver.pump(sh.id);
+        assert!(sh.q.lock().unwrap().tx.is_empty());
+        let mut bytes = Vec::new();
+        let now = driver.now();
+        driver.shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            bytes.extend_from_slice(pkt.payload[0]);
+            bytes.extend_from_slice(pkt.payload[1]);
+            peer.shard.ingress(now, peer.iface, sh.peer, Bytes::from(pkt.to_vec()));
+            SendResult::Accepted
+        });
+        assert_eq!(bytes, b"queued prefix:socket tail");
+        let ack_at = now + std::time::Duration::from_millis(50);
+        peer.shard.run(ack_at, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            driver.shard.ingress(ack_at, stream.meta.iface, sh.peer, Bytes::from(pkt.to_vec()));
+            SendResult::Accepted
+        });
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert_eq!(driver.shard.budget().senders(), 0, "drained splice backlog must stop counting as adapter TX");
+        drop((stream, driver, up));
+        assert_eq!(global.reserved(), 0);
     }
 
     #[tokio::test(flavor = "current_thread")]
