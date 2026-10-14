@@ -22,7 +22,7 @@ use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -283,16 +283,33 @@ struct Shared {
     memory_waiter: u64,
     driver_waiter: u64,
     rx_index_waiter: u64,
+    memory_waiting: AtomicBool,
+    driver_tx_wait: AtomicU8,
+    rx_index_waiting: AtomicBool,
     driver_wake: Waker,
 }
+
+const TX_WAIT_NONE: u8 = 0;
+const TX_WAIT_QUOTA: u8 = 1;
+const TX_WAIT_MEMORY: u8 = 2;
 
 const STREAM_STATE_BYTES: u64 = (std::mem::size_of::<Shared>() + std::mem::size_of::<TcpStream>() + 256) as u64;
 
 impl Drop for Shared {
     fn drop(&mut self) {
-        self.memory.global().remove_waiter(self.memory_waiter);
-        self.memory.global().remove_waiter(self.driver_waiter);
-        self.memory.global().remove_waiter(self.rx_index_waiter);
+        if self.memory_waiting.swap(false, Ordering::AcqRel) {
+            self.memory.global().remove_waiter(self.memory_waiter);
+        }
+        clear_tx_wait(self);
+        if self.rx_index_waiting.swap(false, Ordering::AcqRel) {
+            self.memory.global().remove_waiter(self.rx_index_waiter);
+        }
+    }
+}
+
+fn clear_tx_wait(sh: &Shared) {
+    if sh.driver_tx_wait.swap(TX_WAIT_NONE, Ordering::AcqRel) != TX_WAIT_NONE {
+        sh.memory.global().remove_waiter(sh.driver_waiter);
     }
 }
 
@@ -302,12 +319,22 @@ impl Drop for Shared {
 /// protocol so an empty core buffer never waits for an ACK that cannot arrive.
 fn track_tx_wait(shard: &mut Shard, sh: &Shared, result: WriteResult, observed: u64, wanted: usize) {
     match result {
-        WriteResult::QuotaBlocked => sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake),
+        WriteResult::QuotaBlocked => {
+            let prev = sh.driver_tx_wait.swap(TX_WAIT_QUOTA, Ordering::AcqRel);
+            if prev != TX_WAIT_NONE && prev != TX_WAIT_QUOTA {
+                sh.memory.global().remove_waiter(sh.driver_waiter);
+            }
+            sh.memory.global().register_waiter(sh.driver_waiter, observed, &sh.driver_wake);
+        }
         WriteResult::MemoryBlocked => {
+            let prev = sh.driver_tx_wait.swap(TX_WAIT_MEMORY, Ordering::AcqRel);
+            if prev != TX_WAIT_NONE && prev != TX_WAIT_MEMORY {
+                sh.memory.global().remove_waiter(sh.driver_waiter);
+            }
             let charge = shard.write_allocation_charge(sh.id, wanted);
             sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
         }
-        _ => sh.memory.global().remove_waiter(sh.driver_waiter),
+        _ => clear_tx_wait(sh),
     }
 }
 
@@ -527,10 +554,13 @@ impl AsyncWrite for TcpStream {
                 _ => src.len().min(64 * 1024).next_power_of_two().max(64) as u64 + 64,
             };
             let observed = failure.map_or_else(|| sh.memory.global().release_epoch(), |(_, observed)| observed);
+            sh.memory_waiting.store(true, Ordering::Release);
             sh.memory.global().register_physical_waiter(sh.memory_waiter, observed, cx.waker(), &sh.memory, needed, AllocationKind::AdapterTx);
             return Poll::Pending;
         }
-        sh.memory.global().remove_waiter(sh.memory_waiter);
+        if sh.memory_waiting.swap(false, Ordering::AcqRel) {
+            sh.memory.global().remove_waiter(sh.memory_waiter);
+        }
         q.write_parked = false;
         drop(q);
         if was_empty {
@@ -897,6 +927,7 @@ where
         ctl: ctl.clone(),
         stop: stop.clone(),
         budget_waiter,
+        budget_waiting: false,
         budget_wake,
         streams: HashMap::new(),
         orphans: BTreeSet::new(),
@@ -920,6 +951,7 @@ struct Driver<E: Egress, I, F> {
     ctl: Arc<Ctl>,
     stop: Arc<AtomicBool>,
     budget_waiter: u64,
+    budget_waiting: bool,
     budget_wake: Waker,
     streams: HashMap<ConnId, Arc<Shared>>,
     /// Dropped streams whose tx queue has not drained into the shard yet, by
@@ -983,8 +1015,9 @@ where
                 tokio::task::yield_now().await;
             }
             if let Some(epoch) = self.shard.budget_wait_epoch() {
+                self.budget_waiting = true;
                 self.shard.budget().global().register_waiter(self.budget_waiter, epoch, &self.budget_wake);
-            } else {
+            } else if std::mem::replace(&mut self.budget_waiting, false) {
                 self.shard.budget().global().remove_waiter(self.budget_waiter);
             }
             let orphan = self.orphans.first().map(|x| x.0);
@@ -1191,6 +1224,9 @@ where
                     memory_waiter,
                     driver_waiter,
                     rx_index_waiter,
+                    memory_waiting: AtomicBool::new(false),
+                    driver_tx_wait: AtomicU8::new(TX_WAIT_NONE),
+                    rx_index_waiting: AtomicBool::new(false),
                     driver_wake,
                 });
                 self.streams.insert(id, sh.clone());
@@ -1249,7 +1285,14 @@ where
 
     fn remove_stream(&mut self, id: ConnId) -> Option<Arc<Shared>> {
         let removed = self.streams.remove(&id);
-        if removed.is_some() {
+        if let Some(sh) = &removed {
+            if sh.memory_waiting.swap(false, Ordering::AcqRel) {
+                sh.memory.global().remove_waiter(sh.memory_waiter);
+            }
+            clear_tx_wait(sh);
+            if sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
+                sh.memory.global().remove_waiter(sh.rx_index_waiter);
+            }
             // The queue is gone; stop charging it to the core connection.
             self.shard.set_adapter_tx(id, 0);
         }
@@ -1320,8 +1363,13 @@ where
             while q.rx_len < cfg.rx_cap && !q.rx_eof && q.error.is_none() {
                 let observed = sh.memory.global().release_epoch();
                 match q.rx.reserve_one(&sh.memory, AllocationKind::AdapterRx) {
-                    Ok(()) => sh.memory.global().remove_waiter(sh.rx_index_waiter),
+                    Ok(()) => {
+                        if sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
+                            sh.memory.global().remove_waiter(sh.rx_index_waiter);
+                        }
+                    }
                     Err(QueueGrowError::Quota(bytes)) => {
+                        sh.rx_index_waiting.store(true, Ordering::Release);
                         sh.memory.global().register_physical_waiter(
                             sh.rx_index_waiter,
                             observed,
@@ -1384,7 +1432,7 @@ where
                 }
             }
             if q.tx.is_empty() {
-                sh.memory.global().remove_waiter(sh.driver_waiter);
+                clear_tx_wait(&sh);
             }
             // Publish the share-aware room: one accounting across the adapter
             // queue and the core send buffer (docs/design/0007 §2.1, §2.4).
@@ -1576,7 +1624,7 @@ where
             });
             match &r {
                 Ok(result) => track_tx_wait(&mut self.shard, sh, *result, observed, RELAY_DOWN_READ),
-                Err(_) => sh.memory.global().remove_waiter(sh.driver_waiter),
+                Err(_) => clear_tx_wait(sh),
             }
             match r {
                 Ok(WriteResult::Written(0)) => {
@@ -1643,7 +1691,9 @@ where
 
 impl<E: Egress, I, F> Drop for Driver<E, I, F> {
     fn drop(&mut self) {
-        self.shard.budget().global().remove_waiter(self.budget_waiter);
+        if std::mem::replace(&mut self.budget_waiting, false) {
+            self.shard.budget().global().remove_waiter(self.budget_waiter);
+        }
         self.shard.budget().global().remove_cache_holder(self.budget_waiter);
         for sh in self.streams.values() {
             let mut q = sh.q.lock().unwrap();
@@ -1767,6 +1817,7 @@ mod tests {
             ctl: ctl.clone(),
             stop: Arc::new(AtomicBool::new(false)),
             budget_waiter: global.new_waiter_id(),
+            budget_waiting: false,
             budget_wake: Waker::from(Arc::new(BudgetWake { ctl })),
             streams: HashMap::new(),
             orphans: BTreeSet::new(),
@@ -1867,6 +1918,35 @@ mod tests {
         assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
         assert_eq!(driver.shard.budget().senders(), 0, "drained splice backlog must stop counting as adapter TX");
         drop((stream, driver, up));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tx_wait_state_switches_without_stale_queue_entries_and_clears_on_success() {
+        let (mut driver, stream, _up, _peer) = parked_relay(b"prefix").await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        let observed = global.release_epoch();
+        // QuotaBlocked -> MemoryBlocked must clear the broadcast waiter before
+        // parking in the physical waiter queue.
+        track_tx_wait(&mut driver.shard, sh, WriteResult::QuotaBlocked, observed, 64);
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_QUOTA);
+        track_tx_wait(&mut driver.shard, sh, WriteResult::MemoryBlocked, observed, 64);
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_MEMORY);
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 1);
+        // MemoryBlocked -> QuotaBlocked must remove the physical waiter before
+        // parking in the broadcast waiter set.
+        track_tx_wait(&mut driver.shard, sh, WriteResult::QuotaBlocked, observed, 64);
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_QUOTA);
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+        // A successful write clears the remaining waiter; subsequent successful
+        // writes or socket WouldBlock see TX_WAIT_NONE and skip global cleanup.
+        track_tx_wait(&mut driver.shard, sh, WriteResult::Written(64), observed, 64);
+        assert_eq!(sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+        let held = sh.memory.try_allocate(64).unwrap();
+        drop(held);
+        assert!(!driver.ctl.dirty.lock().unwrap().contains(&sh.id), "stale waiter fired after cleanup");
+        drop((stream, driver));
         assert_eq!(global.reserved(), 0);
     }
 
