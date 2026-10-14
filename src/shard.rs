@@ -843,6 +843,11 @@ impl Shard {
         }
         let share_epoch = self.budget.share_epoch();
         if self.share_seen_epoch == Some(share_epoch) {
+            // Nothing that can grow a share changed, so skip the scan, but
+            // refresh the epoch `budget_wait_epoch` hands out: a stale one
+            // makes a bare-Shard driver's `register_waiter` wake immediately,
+            // every round, after any unrelated release.
+            self.share_wait_epoch = Some(self.budget.global().release_epoch());
             return;
         }
         self.share_blocked.retain(|&(idx, gen)| {
