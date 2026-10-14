@@ -1,8 +1,10 @@
 # Issue #37：复用 ACK 前缀，消除最低发送份额的压力阈值
 
+**实机结论已更正：** 本文引用的早期 256 流 +50 ms 吞吐/停顿数据受到 netem 队列丢包污染，不再用于产品回归归因。修正台架后的对照见[更正报告](2026-10-14-issue37-netem-correction.md)；下文的确定性模拟与环形缓冲测试不受影响。
+
 基于 #39 合入后的 `579b7c3`。本次是对用户提供的 rig 218 实测反馈的后续修复；本地没有该 rig、zfc 工作树或 `scratchpad/results/zfs-r2-579b7c3.tgz`，没有重跑或独立审计那份 WireGuard 测量。
 
-## 实机反馈及本次范围
+## 早期实机反馈（已更正）及当时范围
 
 用户转述的 Claude 报告使用 ref=`37c016d`、base=`939894a`、cand=`579b7c3`，每场景按 ref/base/cand/cand/base/ref 运行两次：
 
@@ -58,4 +60,4 @@ cargo clippy --workspace --all-targets --features zfstack/tokio
 
 生命周期和 trace 集成测试 3 项、zfharness 14 项、zfbench 默认 14 项及 all-features 18 项、Python L2 8 项及 pareto 29 项通过。无默认 feature 构建、zfbench release 构建、fmt 和 Clippy 通过；Clippy 保留仓库既有警告。
 
-合并与 zfc 锁版本更新前，仍需在 rig 218 用相同矩阵比较 `579b7c3` 与本次候选：逐流中途停顿、第二 peer 探测成功率/p99、goodput、CPU/GiB、物理峰值，以及 4 流和无额外延迟场景；补测 1 KiB 小写入。不要仅凭总吞吐关闭 #37。
+后续 rig 218 已比较 `579b7c3`、`ef92e54`、`c1323fa`：修正台架后两个候选在延迟场景均无 >3 s 超时，吞吐较 base 约增加 10%，见[更正报告](2026-10-14-issue37-netem-correction.md)。该实测仍不是 1 KiB 小写入验证，不应与本地小写入模拟混用。

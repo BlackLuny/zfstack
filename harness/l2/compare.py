@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import statistics
 
+from netem import evidence_errors as qdisc_evidence_errors
+
 
 def measure(path):
     result = json.loads((path / "result.json").read_text())
@@ -32,7 +34,8 @@ def measure(path):
                 errors.append(f"peer {peer} missing {phase} progress")
         if any(s["latency_ms"] >= 3000 for s in client["samples"]):
             errors.append(f"peer {peer} exceeded the original 3s deadline")
-    evidence_errors = []
+    qdisc = result.get("qdisc")
+    evidence_errors = qdisc_evidence_errors(qdisc, result["uplink_delay_ms"])
     for log in ("light-capture.log", "target-capture.log"):
         if "0 packets dropped by kernel" not in raw[log]:
             evidence_errors.append(f"{log}: capture loss or missing capture statistics")
@@ -44,7 +47,8 @@ def measure(path):
         "case": path.name, "ok": not errors, "errors": sorted(set(errors)),
         "evidence_errors": sorted(set(evidence_errors)),
         "dimensions": [result["memory_mb"], result["uplink_delay_ms"],
-                       result["phases_sec"], len(raw["client-0.json"]["flows"])],
+                       result["phases_sec"], len(raw["client-0.json"]["flows"]),
+                       qdisc.get("limit_packets") if result["uplink_delay_ms"] and isinstance(qdisc, dict) else None],
         "heavy_mbps": rate, "worker_cpu_cores": cores,
         "worker_cpu_sec_per_gib": cores * (8 * 1024 ** 3) / (rate * 1e6),
         "worker_peak_rss_mib": loaded["rss_peak_kib"] / 1024,
