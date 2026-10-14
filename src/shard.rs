@@ -2254,10 +2254,14 @@ mod share_waiter_observation {
         let sh = &mut sim.a.shard;
         let peak = sh.share_blocked.capacity();
         assert_eq!(sh.share_blocked.len(), COUNT);
-        for &id in &ids[1..] { sh.abort(id); }
+        for &id in &ids[1..] {
+            sh.abort(id);
+        }
         // abort queues a RST; the slot is reaped only after egress accepts it.
         for _ in 0..COUNT {
-            if sh.table.len() == 1 { break; }
+            if sh.table.len() == 1 {
+                break;
+            }
             sh.run(sim.now, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
         }
         assert_eq!(sh.table.len(), 1);

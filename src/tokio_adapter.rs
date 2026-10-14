@@ -2447,7 +2447,8 @@ mod tests {
                         }
                     }
                 }
-            }).await;
+            })
+            .await;
             app.abort();
             let _ = app.await;
             driver.shutdown_and_join().await.unwrap();
@@ -2461,7 +2462,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn ordinary_writer_with_empty_queue_recovers_on_ack_sender_exit_or_close() {
         #[derive(Clone, Copy, Debug)]
-        enum Recovery { Ack, SenderExit, Close }
+        enum Recovery {
+            Ack,
+            SenderExit,
+            Close,
+        }
         for recovery in [Recovery::Ack, Recovery::SenderExit, Recovery::Close] {
             let mut cfg = StackConfig::default();
             cfg.min_prefetch = 1 << 20;
@@ -2513,12 +2518,20 @@ mod tests {
                 shard: sim.a.shard,
                 egress: (|_, _, _| SendResult::Accepted) as fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult,
                 input: Some(InputSource { rx: exit_rx, handle: |shard: &mut Shard, _: crate::Instant, id: ConnId| shard.abort(id) }),
-                cmd_rx, accept_tx, ctl: ctl.clone(), stop: stop.clone(),
-                budget_waiter: global.new_waiter_id(), budget_waiting: false,
+                cmd_rx,
+                accept_tx,
+                ctl: ctl.clone(),
+                stop: stop.clone(),
+                budget_waiter: global.new_waiter_id(),
+                budget_waiting: false,
                 budget_wake: Waker::from(Arc::new(BudgetWake { ctl: ctl.clone() })),
-                streams: HashMap::new(), orphans: BTreeSet::new(), stream_cfg: StreamConfig::default(),
+                streams: HashMap::new(),
+                orphans: BTreeSet::new(),
+                stream_cfg: StreamConfig::default(),
                 epoch: tokio::time::Instant::now() - std::time::Duration::from_nanos(sim.now.as_nanos()),
-                closes: CloseCounts::default(), aborts: AbortCounts::default(), relays: HashMap::new(),
+                closes: CloseCounts::default(),
+                aborts: AbortCounts::default(),
+                relays: HashMap::new(),
             };
             driver.on_event(Event::Accepted(id));
             driver.on_event(Event::Accepted(sibling));
@@ -2531,14 +2544,18 @@ mod tests {
                 let result = stream.write_all(b"small request").await;
                 if matches!(recovery, Recovery::Close) {
                     assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
-                } else { result.unwrap(); }
+                } else {
+                    result.unwrap();
+                }
                 stream
             });
             tokio::time::timeout(std::time::Duration::from_millis(100), async {
                 while !shared.q.lock().unwrap().write_parked {
                     tokio::task::yield_now().await;
                 }
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
             assert!(shared.q.lock().unwrap().tx.is_empty());
             // Unrelated budget releases must not be needed to restore progress.
             for _ in 0..200 {
@@ -2566,7 +2583,10 @@ mod tests {
             // writer future can manufacture the wake being tested here.
             let result = tokio::time::timeout(std::time::Duration::from_millis(100), &mut writer).await;
             let completed = matches!(&result, Ok(Ok(_)));
-            if result.is_err() { writer.abort(); let _ = writer.await; }
+            if result.is_err() {
+                writer.abort();
+                let _ = writer.await;
+            }
             drop(result);
             task.shutdown_and_join().await.unwrap();
             drop((shared, sibling_stream, accept_rx, h, exit_tx, sim.b));
@@ -2582,7 +2602,9 @@ mod tests {
             let (tx, rx) = mpsc::unbounded_channel();
             let (_input_tx, input_rx) = mpsc::channel::<()>(1);
             let (h, mut acc, ids, task, memory) = spawn_with_source_factory(
-                StackConfig::default(), StreamConfig::default(), vec![IfaceConfig::default()],
+                StackConfig::default(),
+                StreamConfig::default(),
+                vec![IfaceConfig::default()],
                 move |shard| {
                     let memory = shard.memory_handle(PeerId(9));
                     let egress = move |_: IfaceId, _: PeerId, pkt: &OutPacket<'_>| {
@@ -2591,17 +2613,23 @@ mod tests {
                     };
                     (egress, memory)
                 },
-                global.clone(), ResourceLimits { port_bytes: 1 << 20, peer_bytes: 1 << 20, peer_max_connections: 16 },
-                input_rx, |_, _, ()| {},
+                global.clone(),
+                ResourceLimits { port_bytes: 1 << 20, peer_bytes: 1 << 20, peer_max_connections: 16 },
+                input_rx,
+                |_, _, ()| {},
             );
             let mut peer = TunPeer::new(1500, rx);
             peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
             let mut stream = tokio::time::timeout(std::time::Duration::from_secs(1), async {
                 loop {
                     peer.step(&h, ids[0]).await;
-                    if let Ok(stream) = acc.rx.try_recv() { break stream; }
+                    if let Ok(stream) = acc.rx.try_recv() {
+                        break stream;
+                    }
                 }
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
             let shared = stream.sh.clone();
             let mut cache = memory.try_allocate_kind(65536, AllocationKind::TxBlock).unwrap();
             assert!(cache.park_cached());
@@ -2610,21 +2638,30 @@ mod tests {
             let held = memory.try_allocate_kind(ceiling - used, AllocationKind::TxBlock).unwrap();
             let reclaim = Arc::new(ReleaseOnReclaim(Mutex::new(Some(held))));
             let holder = global.new_waiter_id();
-            if during_attempt { global.register_cache_holder(holder, &Waker::from(reclaim.clone())); }
+            if during_attempt {
+                global.register_cache_holder(holder, &Waker::from(reclaim.clone()));
+            }
             let mut writer = tokio::spawn(async move {
                 stream.write_all(&[7; 65536]).await.unwrap();
                 stream
             });
             if !during_attempt {
                 tokio::time::timeout(std::time::Duration::from_millis(100), async {
-                    while !shared.memory_waiting.load(Ordering::Acquire) { tokio::task::yield_now().await; }
-                }).await.unwrap();
+                    while !shared.memory_waiting.load(Ordering::Acquire) {
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
                 assert!(shared.q.lock().unwrap().tx.is_empty());
                 drop(reclaim.0.lock().unwrap().take());
             }
             let result = tokio::time::timeout(std::time::Duration::from_millis(100), &mut writer).await;
             let completed = matches!(&result, Ok(Ok(_)));
-            if result.is_err() { writer.abort(); let _ = writer.await; }
+            if result.is_err() {
+                writer.abort();
+                let _ = writer.await;
+            }
             drop(result);
             assert!(!shared.memory_waiting.load(Ordering::Acquire));
             assert!(reclaim.0.lock().unwrap().is_none(), "release must occur in the tested interval");
@@ -3844,7 +3881,12 @@ mod tests {
                 issue37_splice_delayed(conns).await;
                 let wall_ns = begin.elapsed().as_nanos();
                 let after = cpu_ticks();
-                eprintln!("issue43 cpu: repeat={repeat} conns={conns} bytes={} wall_ns={wall_ns} user_ticks={} sys_ticks={} hz={hz}", u64::from(conns) * (4 << 20), after.0 - before.0, after.1 - before.1);
+                eprintln!(
+                    "issue43 cpu: repeat={repeat} conns={conns} bytes={} wall_ns={wall_ns} user_ticks={} sys_ticks={} hz={hz}",
+                    u64::from(conns) * (4 << 20),
+                    after.0 - before.0,
+                    after.1 - before.1
+                );
             }
         }
     }
