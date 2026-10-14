@@ -38,6 +38,12 @@ def wait_until(deadline):
 
 
 async def serve(host, port):
+    class EchoDatagram(asyncio.DatagramProtocol):
+        def connection_made(self, transport):
+            self.transport = transport
+        def datagram_received(self, data, addr):
+            self.transport.sendto(data, addr)
+    udp, _ = await asyncio.get_running_loop().create_datagram_endpoint(EchoDatagram, local_addr=(host, port))
     events = open(os.environ["L2_SERVER_EVENTS"], "w") if os.environ.get("L2_SERVER_EVENTS") else None
     async def connection(reader, writer):
         try:
@@ -70,7 +76,10 @@ async def serve(host, port):
     server = await asyncio.start_server(connection, host, port)
     print("ready", flush=True)
     async with server:
-        await server.serve_forever()
+        try:
+            await server.serve_forever()
+        finally:
+            udp.close()
 
 
 def light(a):
@@ -169,7 +178,19 @@ def process_stats(pid):
                                   "cpu_sec": cpu(path / "stat")}
         except FileNotFoundError:
             pass
+    # The rig can also host remote-compile jobs. Keep their presence in the
+    # raw samples so a valid functional run cannot become false perf evidence.
+    compilers = []
+    for path in Path("/proc").glob("[0-9]*/comm"):
+        try:
+            name = path.read_text().strip()
+            if name in ("cargo", "rustc", "cc1", "cc1plus", "rust-lld", "ld.lld"):
+                compilers.append({"pid": int(path.parent.name), "name": name})
+        except (FileNotFoundError, ProcessLookupError):
+            pass
     return {"at": time.monotonic(), "cpu_sec": cpu(f"/proc/{pid}/stat"),
+            "compilers": compilers,
+            "host_cpu_pressure": Path("/proc/pressure/cpu").read_text().strip(),
             "rss_kib": int(status["VmRSS"].split()[0]),
             "peak_rss_kib": int(status["VmHWM"].split()[0]), "threads": threads}
 
@@ -185,11 +206,22 @@ def run(a):
     for i, ns in enumerate(a.clients):
         logfile = open(out / f"client-{i}.log", "w")
         logs.append(logfile)
-        command = ["ip", "netns", "exec", ns, sys.executable, __file__,
+        script = __file__
+        if i != 0 and (int(os.environ.get("L2_LIGHT_CONNS", "1")) > 1 or int(os.environ.get("L2_CHURN_REQUESTS", "0")) > 0):
+            script = str(Path(__file__).with_name("mixed_load.py"))
+        command = ["ip", "netns", "exec", ns, sys.executable, script,
                    "heavy" if i == 0 else "light", *common,
                    "--out", str(out / f"client-{i}.json")]
         command += ["--conns", str(a.conns)] if i == 0 else ["--flow", str(i)]
         children.append(subprocess.Popen(command, stdout=logfile, stderr=subprocess.STDOUT))
+    udp_enabled = os.environ.get("L2_UDP_PROBES", "0") == "1"
+    if udp_enabled:
+        for i, ns in enumerate(a.clients):
+            logfile = open(out / f"udp-{i}.log", "w")
+            logs.append(logfile)
+            command = ["ip", "netns", "exec", ns, sys.executable, str(Path(__file__).with_name("udp_probe.py")),
+                       *common, "--flow", str(i), "--out", str(out / f"udp-{i}.json")]
+            children.append(subprocess.Popen(command, stdout=logfile, stderr=subprocess.STDOUT))
     timeline = []
     try:
         while time.monotonic() < start + a.baseline + a.loaded + a.recovery:
@@ -218,6 +250,8 @@ def run(a):
                 errors.append(f"peer {i} had no {phase} samples")
         rows.append({"peer": i, "placement": "same-port" if i == 1 else "cross-port", "phases": phases})
     downloads = json.loads((out / "client-0.json").read_text())
+    udp = [json.loads((out / f"udp-{i}.json").read_text()) for i in range(len(a.clients))] if udp_enabled else []
+    errors.extend(error for row in udp for error in row["errors"])
     total = sum(row["bytes"] for row in downloads["flows"])
     errors.extend(error for row in downloads["flows"] for error in row["errors"])
     if not total:
@@ -236,6 +270,10 @@ def run(a):
               "phases_sec": {"baseline": a.baseline, "loaded": a.loaded, "recovery": a.recovery},
               "request_timeout_sec": a.request_timeout,
               "uplink_delay_ms": float(os.environ.get("L2_UPLINK_DELAY_MS", "0")),
+              "light_conns": int(os.environ.get("L2_LIGHT_CONNS", "1")),
+              "churn_requests": int(os.environ.get("L2_CHURN_REQUESTS", "0")),
+              "udp": [{k: row[k] for k in ("peer", "sent", "received", "bytes", "errors", "phases")} for row in udp],
+              "performance_contaminated": any(s["compilers"] for s in timeline),
               "heavy_bytes": total, "heavy_mbps": total * 8 / a.loaded / 1e6,
               "light_users": rows, "worker": resources,
               "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold."}

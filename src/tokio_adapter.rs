@@ -162,6 +162,10 @@ struct Queues {
     flush_waker: Option<Waker>,
     /// Writer parked below the low watermark.
     write_parked: bool,
+    /// Pending request's watermark before clamping to the current share.
+    write_need: usize,
+    /// Attainable capacity, independent of the currently free room.
+    send_limit: usize,
     /// Additional bytes this stream may buffer across the adapter queue and
     /// the core send buffer under its send share; published by the driver on
     /// each pump (docs/design/0007 §2.4). Writes consume it synchronously.
@@ -535,10 +539,12 @@ impl AsyncWrite for TcpStream {
         // The fixed queue bound and the connection's send share both cap how
         // much the app may buffer (docs/design/0007 §2.4).
         let free = sh.cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room);
-        let min_free = sh.cfg.tx_low_watermark.min(src.len().max(1));
+        let write_need = sh.cfg.tx_low_watermark.max(1).min(src.len());
+        let min_free = write_need.min(q.send_limit).max(1);
         if free < min_free {
             register_waker(&mut q.write_waker, cx.waker());
             q.write_parked = true;
+            q.write_need = write_need;
             // Republish the room promptly: the core buffer may have drained
             // since the last pump, and an empty queue gives no other wake
             // (docs/design/0007 §2.4).
@@ -557,6 +563,7 @@ impl AsyncWrite for TcpStream {
             }
             register_waker(&mut q.write_waker, cx.waker());
             q.write_parked = true;
+            q.write_need = write_need;
             let needed = match failure {
                 Some((QueueGrowError::Quota(bytes), _)) => bytes,
                 _ => src.len().min(64 * 1024).next_power_of_two().max(64) as u64 + 64,
@@ -1224,7 +1231,7 @@ where
                 let sh = Arc::new(Shared {
                     id,
                     peer: info.peer,
-                    q: Mutex::new(Queues { send_room, ..Queues::default() }),
+                    q: Mutex::new(Queues { send_room, send_limit: send_room, ..Queues::default() }),
                     ctl: self.ctl.clone(),
                     cfg: self.stream_cfg.clone(),
                     memory,
@@ -1447,8 +1454,10 @@ where
             self.shard.set_adapter_tx(id, q.tx.len() as u32);
             let share = self.shard.send_share(sh.peer);
             let core_tx = self.shard.tx_queued(id).unwrap_or(0) as u64;
+            q.send_limit = share.min(cfg.tx_cap as u64) as usize;
             q.send_room = share.saturating_sub(core_tx + q.tx.len() as u64).min(usize::MAX as u64) as usize;
-            let wakeable = q.write_parked && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= cfg.tx_low_watermark;
+            let min_free = q.write_need.min(q.send_limit).max(1);
+            let wakeable = q.write_parked && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= min_free;
             if wakeable {
                 q.write_parked = false;
                 wake_writer = q.write_waker.take();
@@ -2387,6 +2396,244 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tx_capacity_async_writer_resumes_below_low_watermark() {
         echo_roundtrip_with_tx_capacity(4097).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_writer_watermark_is_attainable_with_small_queue_or_share() {
+        for (tx_cap, watermark, core_watermark, limit) in [
+            (4096, 16 << 10, 16 << 10, 8 << 20),
+            (256 << 10, 128 << 10, 16 << 10, 256 << 10),
+            (256 << 10, 128 << 10, 128 << 10, 256 << 10),
+            (4096, 0, 1, 8 << 20),
+        ] {
+            let global = GlobalBudget::new(16 << 20);
+            let mut cfg = StackConfig::default();
+            cfg.write_low_watermark = core_watermark;
+            let mut shard = Shard::with_budget(cfg, global.clone());
+            shard.set_budget_limits(limit, limit, 16);
+            let (tx, rx) = mpsc::unbounded_channel();
+            let egress = move |_: IfaceId, _: PeerId, pkt: &OutPacket<'_>| {
+                tx.send(pkt.to_vec()).unwrap();
+                SendResult::Accepted
+            };
+            let stream_cfg = StreamConfig { tx_cap, tx_low_watermark: watermark, ..StreamConfig::default() };
+            let (h, mut acc, ids, join, stop) = spawn_inner(shard, stream_cfg, vec![IfaceConfig::default()], egress, None::<InputSource<(), NoInput>>);
+            let driver = DriverTask { stop, ctl: h.ctl.clone(), join: Some(join) };
+            let mut peer = TunPeer::new(1500, rx);
+            let id = peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            const TOTAL: usize = 512 << 10;
+            let app = tokio::spawn(async move {
+                let mut stream = acc.accept().await.unwrap();
+                let data: Vec<_> = (0..TOTAL).map(|i| pattern_byte(i as u64)).collect();
+                stream.write_all(&data).await.unwrap();
+                stream.shutdown().await.unwrap();
+            });
+            let mut received = 0;
+            let result = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                let mut buf = [0; 8192];
+                loop {
+                    peer.step(&h, ids[0]).await;
+                    loop {
+                        match peer.c.read(peer.now(), id, &mut buf) {
+                            ReadResult::Data(n) => {
+                                for (i, &b) in buf[..n].iter().enumerate() {
+                                    assert_eq!(b, pattern_byte((received + i) as u64));
+                                }
+                                received += n;
+                            }
+                            ReadResult::Eof => return,
+                            ReadResult::WouldBlock => break,
+                            other => panic!("unexpected read: {other:?}"),
+                        }
+                    }
+                }
+            }).await;
+            app.abort();
+            let _ = app.await;
+            driver.shutdown_and_join().await.unwrap();
+            drop((h, peer));
+            assert!(result.is_ok(), "writer stalled: cap={tx_cap} watermark={watermark} core={core_watermark} limit={limit} received={received}");
+            assert_eq!(received, TOTAL);
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_writer_with_empty_queue_recovers_on_ack_sender_exit_or_close() {
+        #[derive(Clone, Copy, Debug)]
+        enum Recovery { Ack, SenderExit, Close }
+        for recovery in [Recovery::Ack, Recovery::SenderExit, Recovery::Close] {
+            let mut cfg = StackConfig::default();
+            cfg.min_prefetch = 1 << 20;
+            cfg.prefetch_max = 1 << 20;
+            cfg.write_low_watermark = 4096;
+            let mut sim = crate::sim::Sim::new(43044, cfg, StackConfig::default(), Default::default(), Default::default());
+            sim.a.shard.set_budget_limits(819_200, 819_200, 16);
+            sim.a.shard.reserve_stream_state(STREAM_STATE_BYTES);
+            let client_id = sim.connect(43100, Default::default());
+            sim.connect(43101, Default::default());
+            sim.run_until(sim.now + std::time::Duration::from_millis(100));
+            let id = sim.a.accepted[0];
+            let sibling = sim.a.accepted[1];
+            assert_eq!(sim.a.shard.write(sibling, &[7; 16 << 10]), WriteResult::Written(16 << 10));
+            assert_eq!(sim.a.shard.write(id, &[5; 16 << 10]), WriteResult::Written(16 << 10));
+            let room = sim.a.shard.send_space(id);
+            assert_eq!(sim.a.shard.write(id, &vec![5; room]), WriteResult::Written(room));
+            // Sender activation can lower the share; fill the stable remainder.
+            let rest = sim.a.shard.send_space(id);
+            if rest > 0 {
+                assert_eq!(sim.a.shard.write(id, &vec![5; rest]), WriteResult::Written(rest));
+            }
+            assert_eq!(sim.a.shard.send_space(id), 0);
+            let mut packets = Vec::new();
+            sim.a.shard.run(sim.now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                if u16::from_be_bytes([pkt.header[22], pkt.header[23]]) == 43100 {
+                    packets.push(Bytes::from(pkt.to_vec()));
+                }
+                SendResult::Accepted
+            });
+            for packet in packets {
+                sim.b.shard.ingress(sim.now, sim.b.iface, PeerId(1), packet);
+            }
+            let mut acks = Vec::new();
+            sim.b.shard.run(sim.now + std::time::Duration::from_millis(50), &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                acks.push((PeerId(1), Bytes::from(pkt.to_vec())));
+                SendResult::Accepted
+            });
+            assert!(!acks.is_empty());
+            while sim.a.shard.poll_event().is_some() {}
+            let iface = sim.a.iface;
+            let global = sim.a.shard.budget().global().clone();
+            let (cmd_tx, cmd_rx) = mpsc::channel(4);
+            let (exit_tx, exit_rx) = mpsc::channel(1);
+            let (accept_tx, mut accept_rx) = mpsc::channel(2);
+            let ctl = Arc::new(Ctl { dirty: Mutex::new(HashSet::new()), pending: Mutex::new(PendingControl::default()), notify: Notify::new() });
+            let stop = Arc::new(AtomicBool::new(false));
+            let mut driver = Driver {
+                shard: sim.a.shard,
+                egress: (|_, _, _| SendResult::Accepted) as fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult,
+                input: Some(InputSource { rx: exit_rx, handle: |shard: &mut Shard, _: crate::Instant, id: ConnId| shard.abort(id) }),
+                cmd_rx, accept_tx, ctl: ctl.clone(), stop: stop.clone(),
+                budget_waiter: global.new_waiter_id(), budget_waiting: false,
+                budget_wake: Waker::from(Arc::new(BudgetWake { ctl: ctl.clone() })),
+                streams: HashMap::new(), orphans: BTreeSet::new(), stream_cfg: StreamConfig::default(),
+                epoch: tokio::time::Instant::now() - std::time::Duration::from_nanos(sim.now.as_nanos()),
+                closes: CloseCounts::default(), aborts: AbortCounts::default(), relays: HashMap::new(),
+            };
+            driver.on_event(Event::Accepted(id));
+            driver.on_event(Event::Accepted(sibling));
+            let mut stream = accept_rx.try_recv().unwrap();
+            let sibling_stream = accept_rx.try_recv().unwrap();
+            let shared = stream.sh.clone();
+            let h = StackHandle { tx: cmd_tx, ctl: ctl.clone() };
+            let task = DriverTask { stop, ctl, join: Some(tokio::spawn(driver.run())) };
+            let mut writer = tokio::spawn(async move {
+                let result = stream.write_all(b"small request").await;
+                if matches!(recovery, Recovery::Close) {
+                    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+                } else { result.unwrap(); }
+                stream
+            });
+            tokio::time::timeout(std::time::Duration::from_millis(100), async {
+                while !shared.q.lock().unwrap().write_parked {
+                    tokio::task::yield_now().await;
+                }
+            }).await.unwrap();
+            assert!(shared.q.lock().unwrap().tx.is_empty());
+            // Unrelated budget releases must not be needed to restore progress.
+            for _ in 0..200 {
+                drop(shared.memory.try_allocate(64).unwrap());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            assert!(!writer.is_finished());
+            assert_eq!(shared.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+            match recovery {
+                Recovery::SenderExit => exit_tx.send(sibling).await.unwrap(),
+                Recovery::Close => {
+                    // A local Shard::abort intentionally emits no Closed
+                    // event. Use the real peer's RST to close the app stream.
+                    sim.b.shard.abort(client_id);
+                    let mut resets = Vec::new();
+                    sim.b.shard.run(sim.now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                        resets.push((PeerId(1), Bytes::from(pkt.to_vec())));
+                        SendResult::Accepted
+                    });
+                    assert!(h.ingress(iface, resets).await);
+                }
+                Recovery::Ack => assert!(h.ingress(iface, acks).await),
+            }
+            // No snapshot command, manual pump, extra ACK, or polling of the
+            // writer future can manufacture the wake being tested here.
+            let result = tokio::time::timeout(std::time::Duration::from_millis(100), &mut writer).await;
+            let completed = matches!(&result, Ok(Ok(_)));
+            if result.is_err() { writer.abort(); let _ = writer.await; }
+            drop(result);
+            task.shutdown_and_join().await.unwrap();
+            drop((shared, sibling_stream, accept_rx, h, exit_tx, sim.b));
+            assert!(completed, "missed ordinary writer wake: {recovery:?}");
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ordinary_writer_recovers_from_the_only_memory_release() {
+        for during_attempt in [false, true] {
+            let global = GlobalBudget::new(16 << 20);
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (_input_tx, input_rx) = mpsc::channel::<()>(1);
+            let (h, mut acc, ids, task, memory) = spawn_with_source_factory(
+                StackConfig::default(), StreamConfig::default(), vec![IfaceConfig::default()],
+                move |shard| {
+                    let memory = shard.memory_handle(PeerId(9));
+                    let egress = move |_: IfaceId, _: PeerId, pkt: &OutPacket<'_>| {
+                        tx.send(pkt.to_vec()).unwrap();
+                        SendResult::Accepted
+                    };
+                    (egress, memory)
+                },
+                global.clone(), ResourceLimits { port_bytes: 1 << 20, peer_bytes: 1 << 20, peer_max_connections: 16 },
+                input_rx, |_, _, ()| {},
+            );
+            let mut peer = TunPeer::new(1500, rx);
+            peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+            let mut stream = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    peer.step(&h, ids[0]).await;
+                    if let Ok(stream) = acc.rx.try_recv() { break stream; }
+                }
+            }).await.unwrap();
+            let shared = stream.sh.clone();
+            let mut cache = memory.try_allocate_kind(65536, AllocationKind::TxBlock).unwrap();
+            assert!(cache.park_cached());
+            let ceiling = (1 << 20) - global.headroom(1 << 20, crate::budget::Tier::Block);
+            let used = h.snapshot().await.unwrap().port_physical_bytes;
+            let held = memory.try_allocate_kind(ceiling - used, AllocationKind::TxBlock).unwrap();
+            let reclaim = Arc::new(ReleaseOnReclaim(Mutex::new(Some(held))));
+            let holder = global.new_waiter_id();
+            if during_attempt { global.register_cache_holder(holder, &Waker::from(reclaim.clone())); }
+            let mut writer = tokio::spawn(async move {
+                stream.write_all(&[7; 65536]).await.unwrap();
+                stream
+            });
+            if !during_attempt {
+                tokio::time::timeout(std::time::Duration::from_millis(100), async {
+                    while !shared.memory_waiting.load(Ordering::Acquire) { tokio::task::yield_now().await; }
+                }).await.unwrap();
+                assert!(shared.q.lock().unwrap().tx.is_empty());
+                drop(reclaim.0.lock().unwrap().take());
+            }
+            let result = tokio::time::timeout(std::time::Duration::from_millis(100), &mut writer).await;
+            let completed = matches!(&result, Ok(Ok(_)));
+            if result.is_err() { writer.abort(); let _ = writer.await; }
+            drop(result);
+            assert!(!shared.memory_waiting.load(Ordering::Acquire));
+            assert!(reclaim.0.lock().unwrap().is_none(), "release must occur in the tested interval");
+            global.remove_cache_holder(holder);
+            task.shutdown_and_join().await.unwrap();
+            drop((shared, memory, cache, reclaim, h, acc, peer));
+            assert!(completed, "only memory release missed: during_attempt={during_attempt}");
+            assert_eq!(global.reserved(), 0);
+        }
     }
 
     async fn echo_roundtrip_with_tx_capacity(cap: u64) {
@@ -3576,6 +3823,30 @@ mod tests {
     #[ignore = "full 256-stream splice comparison; 64 streams run in CI"]
     async fn issue37_splice_256_streams_keep_progressing_with_delayed_acks() {
         issue37_splice_delayed(256).await;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "repeat CPU/byte evidence; run alone with --test-threads=1"]
+    async fn issue43_repeated_splice_cpu_evidence() {
+        fn cpu_ticks() -> (u64, u64) {
+            let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
+            let fields: Vec<_> = stat.rsplit_once(')').unwrap().1.split_whitespace().collect();
+            (fields[11].parse().unwrap(), fields[12].parse().unwrap())
+        }
+        let hz = std::process::Command::new("getconf").arg("CLK_TCK").output().unwrap();
+        assert!(hz.status.success());
+        let hz = std::str::from_utf8(&hz.stdout).unwrap().trim();
+        for repeat in 0..5 {
+            for conns in if repeat % 2 == 0 { [64, 256] } else { [256, 64] } {
+                let before = cpu_ticks();
+                let begin = std::time::Instant::now();
+                issue37_splice_delayed(conns).await;
+                let wall_ns = begin.elapsed().as_nanos();
+                let after = cpu_ticks();
+                eprintln!("issue43 cpu: repeat={repeat} conns={conns} bytes={} wall_ns={wall_ns} user_ticks={} sys_ticks={} hz={hz}", u64::from(conns) * (4 << 20), after.0 - before.0, after.1 - before.1);
+            }
+        }
     }
 
     async fn issue37_splice_delayed(conns: u16) {
