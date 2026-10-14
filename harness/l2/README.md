@@ -6,6 +6,10 @@
 
 默认阶段是 8 秒空载、16 秒加载、8 秒恢复。轻请求间隔 10 ms；输出每个请求的原始样本、每用户 P50/P95/P99/P99.9、重下载有效字节与 goodput、每 0.5 秒 worker CPU/RSS/线程 CPU、每 5 秒 ZFStack 预算与 adapter 诊断。P99 至少需要 100 个样本，P99.9 至少需要 1000 个。CPU 是整个 worker（含 WG、UDP、控制通道），不能解读为 core CPU。
 
+可选 `L2_LIGHT_CONNS=16 L2_CHURN_REQUESTS=4` 让每个轻 peer 同时维持 16 个请求线程，每完成 4 次请求重建连接。连接建立时间单独记录，所有请求序号在 peer 内唯一，响应逐字节校验。默认仍是一条持续连接。`L2_UDP_PROBES=1` 同时从四个 peer 各发 100 包/秒的 1032 字节 UDP echo，逐包核对内容、响应及 3 秒截止时间；这是混合负载正确性检查，不是 UDP 极限吞吐基准。
+
+资源采样同时记录宿主 CPU pressure 和编译进程。`performance_contaminated=true` 表示采样遇到 cargo/rustc/链接器等进程，此次运行即使功能 `ok=true` 也不能用于性能结论。调用方还应在开始前确认同机 remote-compile 作业已全部退出；采样无法保证捕获间隔内的短作业或识别所有外部负载。
+
 ## 运行
 
 需要预先安装的 Linux `zfc-rig`、root、`ip`、`tc`（支持 JSON 统计）、`wg`、`nft`、Python 3 和构建好的 worker。worker 须明确使用所测 ZFStack 源码；仅看系统已安装 worker 的版本不能证明这一点。记录 ZFC/private_tun/ZFStack SHA、源码修改和二进制 hash。临时编译只选 `-p zf-worker`；本次示例使用 `fast-release`（非发版性能口径）。

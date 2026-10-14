@@ -1041,6 +1041,12 @@ impl Shard {
         self.timers = IndexedHeap::default();
         self.pacing = IndexedHeap::default();
         self.tw_ready = VecDeque::new();
+        // A burst can leave thousands of buckets after all waiters exited.
+        // Reclaim only with the other completely idle containers; never
+        // reallocate a sparse set on the ACK/share-release path.
+        debug_assert!(self.share_blocked.is_empty() && self.budget_blocked.is_empty());
+        self.share_blocked.shrink_to_fit();
+        self.budget_blocked.shrink_to_fit();
         for iface in self.ifaces.iter_mut().flatten() {
             iface.drr = Drr::default();
             debug_assert_eq!(iface.tw_pending, 0);
@@ -2218,6 +2224,64 @@ impl Shard {
         }
         assert!(self.timers.len() <= self.slots.len());
         assert!(self.pacing.len() <= self.slots.len());
+    }
+}
+
+#[cfg(test)]
+mod share_waiter_observation {
+    use super::*;
+
+    #[test]
+    #[ignore = "capacity and scan-cost observation after a real connection burst"]
+    fn issue43_waiter_burst_then_one_long_connection() {
+        const COUNT: usize = 4096;
+        let cfg = StackConfig { accept_backlog: COUNT * 2, min_prefetch: 1 << 20, prefetch_max: 1 << 20, ..StackConfig::default() };
+        let link = crate::sim::LinkParams { rate_bps: 0, delay: Duration::ZERO, queue_bytes: 32 << 20, ..Default::default() };
+        let mut sim = crate::sim::Sim::new(43003, cfg, StackConfig::default(), link.clone(), link);
+        sim.check_invariants = false;
+        sim.a.shard.set_budget_limits(512 << 20, 192 << 10, 8);
+        for n in 0..COUNT {
+            sim.connect_as(PeerId(n as u64 + 1), 10_000 + n as u16, Default::default());
+        }
+        sim.run_until(sim.now + Duration::from_millis(100));
+        assert_eq!(sim.a.accepted.len(), COUNT);
+        let ids = sim.a.accepted.clone();
+        let data = vec![3; 64 << 10];
+        for &id in &ids {
+            assert_eq!(sim.a.shard.write(id, &data), WriteResult::Written(data.len()));
+            assert_eq!(sim.a.shard.write(id, &[3]), WriteResult::QuotaBlocked);
+        }
+        let sh = &mut sim.a.shard;
+        let peak = sh.share_blocked.capacity();
+        assert_eq!(sh.share_blocked.len(), COUNT);
+        for &id in &ids[1..] {
+            sh.abort(id);
+        }
+        // abort queues a RST; the slot is reaped only after egress accepts it.
+        for _ in 0..COUNT {
+            if sh.table.len() == 1 {
+                break;
+            }
+            sh.run(sim.now, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        }
+        assert_eq!(sh.table.len(), 1);
+        sh.retry_share_writers();
+        assert_eq!(sh.share_blocked.len(), 1);
+        let sparse = sh.share_blocked.capacity();
+        let start = std::time::Instant::now();
+        for _ in 0..10_000 {
+            sh.budget.sender_add(PeerId(u64::MAX));
+            sh.budget.sender_del(PeerId(u64::MAX));
+            sh.retry_share_writers();
+            std::hint::black_box(&sh.share_blocked);
+        }
+        let scan_ns = start.elapsed().as_nanos() / 10_000;
+        sh.abort(ids[0]);
+        sh.run(sim.now, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted);
+        assert!(sh.table.is_empty());
+        eprintln!("issue43 waiter capacity: burst={COUNT} peak={peak} sparse={sparse} idle={} sparse_scan_ns={scan_ns}", sh.share_blocked.capacity());
+        assert!(sh.share_blocked.is_empty());
+        assert_eq!(sh.share_blocked.capacity(), 0);
     }
 }
 
