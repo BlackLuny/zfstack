@@ -53,6 +53,9 @@ pub const RX_PROGRESS_DIVISOR: u64 = 8;
 /// counters on [`GlobalBudget`].
 #[derive(Debug, Default)]
 pub struct LevelUse {
+    // Immutable within a Budget: peer counters are never removed or replaced.
+    // Meaningful only for peer levels; port levels keep the default value.
+    peer_id: PeerId,
     used: AtomicU64,
     rx_progress: AtomicU64,
     /// TX blocks and send records: the leases an ACK releases (docs/design/0006 §3).
@@ -66,6 +69,10 @@ pub struct LevelUse {
 }
 
 impl LevelUse {
+    fn for_peer(peer_id: PeerId) -> Arc<Self> {
+        Arc::new(Self { peer_id, ..Self::default() })
+    }
+
     fn limit(&self, global: &GlobalBudget, limit: u64, tier: Tier) -> u64 {
         global.level_limit(limit, tier, self.drain.load(Ordering::Acquire), self.debt.load(Ordering::Acquire))
     }
@@ -1077,7 +1084,7 @@ impl Budget {
         // cloned `stats` and then dropped it on success. Reserve in place and
         // clone only the three counter owners the lease keeps. The retained
         // handle path (`MemoryHandle::try_allocate_level`) is unchanged.
-        let peer = self.physical_peers.entry(peer).or_default();
+        let peer = self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer));
         if let Some(level) = reserve_physical(&self.global, &self.physical_port, peer, self.port_limit, self.peer_limit, bytes, kind) {
             self.stats.note(kind, Some(level));
             self.global.request_cache_reclaim();
@@ -1090,6 +1097,7 @@ impl Budget {
             bytes,
             peer_limit: self.peer_limit,
             cached: false,
+            peer_parked: false,
             drain: kind.drains(),
         })
     }
@@ -1130,7 +1138,7 @@ impl Budget {
     }
 
     pub fn memory_handle(&mut self, peer: PeerId) -> MemoryHandle {
-        let counter = self.physical_peers.entry(peer).or_default().clone();
+        let counter = self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)).clone();
         MemoryHandle {
             global: Arc::clone(&self.global),
             port: Arc::clone(&self.physical_port),
@@ -1148,7 +1156,7 @@ impl Budget {
         MemoryScope {
             global: &self.global,
             port: &self.physical_port,
-            peer: self.physical_peers.entry(peer).or_default(),
+            peer: self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)),
             port_limit: self.port_limit,
             peer_limit: self.peer_limit,
             stats: &self.stats,
@@ -1192,7 +1200,7 @@ impl Budget {
         let owner = match level {
             Level::Global => None,
             Level::Port => Some(Arc::clone(&self.physical_port)),
-            Level::Peer => Some(self.physical_peers.entry(peer).or_default().clone()),
+            Level::Peer => Some(self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)).clone()),
         };
         let counter = owner.as_ref().map_or(&self.global.admit_debt, |l| &l.debt);
         let limit = match level {
@@ -1404,8 +1412,16 @@ impl PortMemoryHandle {
             self.global.request_cache_reclaim();
             return None;
         }
-        let mut lease =
-            MemoryLease { global: Arc::clone(&self.global), port: Arc::clone(&self.port), peer: None, bytes, peer_limit: 0, cached: false, drain: false };
+        let mut lease = MemoryLease {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.port),
+            peer: None,
+            bytes,
+            peer_limit: 0,
+            cached: false,
+            peer_parked: false,
+            drain: false,
+        };
         if !self.global.try_cache(bytes) {
             return None;
         }
@@ -1463,6 +1479,7 @@ impl MemoryHandle {
             bytes,
             peer_limit: self.peer_limit,
             cached: false,
+            peer_parked: false,
             drain: kind.drains(),
         })
     }
@@ -1528,6 +1545,7 @@ impl MemoryScope<'_> {
             bytes,
             peer_limit: self.peer_limit,
             cached: false,
+            peer_parked: false,
             drain: kind.drains(),
         })
     }
@@ -1556,6 +1574,9 @@ pub struct MemoryLease {
     bytes: u64,
     peer_limit: u64,
     cached: bool,
+    /// A cached payload remembers its counter without owning a peer share.
+    /// Index leases never park their peer charge.
+    peer_parked: bool,
     /// Counted in each level's `drain` (a TX block or send record in use).
     drain: bool,
 }
@@ -1583,25 +1604,25 @@ impl MemoryLease {
     }
 
     pub(crate) fn can_reuse_index(&self, budget: &Budget, peer: PeerId, empty: bool) -> bool {
-        self.belongs_to(budget)
-            && (empty || budget.physical_peers.get(&peer).is_some_and(|counter| self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))))
+        debug_assert!(!self.peer_parked);
+        self.belongs_to(budget) && (empty || self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer))
     }
 
     /// Prepare peer capacity before a new payload becomes drain. The old
     /// owner stays charged until commit; dropping the token rolls back only
     /// the new peer reservation, without reporting ACK-released bytes.
     pub(crate) fn prepare_index_peer(&self, budget: &mut Budget, peer: PeerId, empty: bool) -> Result<Option<IndexPeerReservation>, ()> {
-        debug_assert!(!self.drain && self.peer.is_some());
+        debug_assert!(!self.drain && !self.peer_parked && self.peer.is_some());
         if !self.belongs_to(budget) {
             return Err(());
         }
-        if budget.physical_peers.get(&peer).is_some_and(|counter| self.peer.as_ref().is_some_and(|old| Arc::ptr_eq(old, counter))) {
+        if self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer) {
             return Ok(None);
         }
         if !empty {
             return Err(());
         }
-        let counter = budget.physical_peers.entry(peer).or_default().clone();
+        let counter = budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)).clone();
         let reserved = {
             let _allocation = self.global.allocation_lock.lock().unwrap();
             reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes)
@@ -1624,7 +1645,7 @@ impl MemoryLease {
 
     /// Empty TX indexes remain peer-owned; only their reclaimability is cached.
     pub(crate) fn park_index(&mut self) -> bool {
-        debug_assert!(!self.drain && self.peer.is_some());
+        debug_assert!(!self.drain && !self.peer_parked && self.peer.is_some());
         if self.cached {
             return true;
         }
@@ -1637,7 +1658,7 @@ impl MemoryLease {
     }
 
     pub(crate) fn activate_index(&mut self) {
-        debug_assert!(!self.drain && self.peer.is_some());
+        debug_assert!(!self.drain && !self.peer_parked && self.peer.is_some());
         if std::mem::take(&mut self.cached) {
             self.global.release_cache(self.bytes);
         }
@@ -1645,6 +1666,7 @@ impl MemoryLease {
 
     /// Release preallocation slack only after checking the actual backing size.
     pub(crate) fn shrink_index_to(&mut self, bytes: u64) {
+        debug_assert!(!self.peer_parked);
         assert!(!self.drain && bytes <= self.bytes);
         let released = self.bytes - bytes;
         self.bytes = bytes;
@@ -1665,26 +1687,31 @@ impl MemoryLease {
     /// is released instead: a cached block would pin the share it waits for
     /// without a failure left to request its reclaim.
     pub fn park_cached(&mut self) -> bool {
+        debug_assert!(!self.peer_parked);
         // Owed admission state needs this room back too (docs/design/0006 §2).
         let owed = self.global.admit_debt.load(Ordering::Acquire) != 0 || self.port.debt.load(Ordering::Acquire) != 0;
         if owed || self.global.has_waiters() || !self.global.try_cache(self.bytes) {
             return false;
         }
         self.stop_draining();
-        if let Some(peer) = self.peer.take() {
+        if let Some(peer) = &self.peer {
             peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
             self.global.wake_waiters();
         }
+        self.peer_parked = true;
         self.cached = true;
         true
     }
 
+    /// Reacquire the peer share even when the cached counter still matches.
+    /// A refusal leaves the remembered counter uncharged and reusable.
     pub fn assign(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
-        debug_assert!(self.peer.is_none());
+        debug_assert!(self.peer_parked || self.peer.is_none());
         if !self.belongs_to(budget) {
             return false;
         }
-        let counter = budget.physical_peers.entry(peer).or_default().clone();
+        let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)) };
         if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
             budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
             self.global.request_cache_reclaim();
@@ -1694,7 +1721,10 @@ impl MemoryLease {
             drain.fetch_add(self.bytes, Ordering::AcqRel);
         }
         self.drain = true;
-        self.peer = Some(counter);
+        if !same_peer {
+            self.peer = Some(Arc::clone(counter));
+        }
+        self.peer_parked = false;
         if self.cached {
             self.cached = false;
             self.global.release_cache(self.bytes);
@@ -1722,8 +1752,10 @@ impl Drop for MemoryLease {
         if self.cached {
             self.global.release_cache(self.bytes);
         }
-        if let Some(peer) = self.peer.take() {
-            peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
+        if !self.peer_parked {
+            if let Some(peer) = &self.peer {
+                peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
+            }
         }
         self.port.used.fetch_sub(self.bytes, Ordering::AcqRel);
         self.global.release(self.bytes);
@@ -2186,6 +2218,54 @@ mod tests {
         for id in ids {
             global.remove_waiter(id);
         }
+    }
+
+    #[test]
+    fn remembered_cached_peer_rechecks_quota_and_releases_only_once() {
+        for peer in [PeerId(0), PeerId(u64::MAX)] {
+            let global = GlobalBudget::new(8192);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(8192, 1024, 2);
+            let memory = budget.memory_handle(peer);
+            let mut cached = memory.try_allocate_kind(512, AllocationKind::TxBlock).unwrap();
+            assert!(cached.park_cached());
+            assert_eq!(memory.peer_physical_used(), 0);
+            assert_eq!((global.reserved(), global.cached_bytes()), (512, 512));
+
+            let blocker = memory.try_allocate(1024).unwrap();
+            assert!(!cached.assign(&mut budget, peer), "remembering a counter must not bypass its current quota");
+            assert_eq!(memory.peer_physical_used(), 1024);
+            assert_eq!(global.cached_bytes(), 512);
+            let mut foreign = Budget::new(global.clone());
+            assert!(!cached.assign(&mut foreign, peer), "the same peer id on another port is a different owner");
+            drop(blocker);
+            assert!(cached.assign(&mut budget, peer));
+            assert_eq!(memory.peer_physical_used(), 512);
+            assert_eq!(global.cached_bytes(), 0);
+            assert!(cached.park_cached());
+            assert_eq!(memory.peer_physical_used(), 0);
+            drop(cached);
+            assert_eq!((memory.peer_physical_used(), budget.physical_used(), global.reserved(), global.cached_bytes()), (0, 0, 0, 0));
+            assert_eq!(memory.peer.drained.load(Ordering::Acquire), 1024);
+        }
+    }
+
+    #[test]
+    fn cached_peer_transfer_refusal_does_not_recharge_the_old_peer() {
+        let global = GlobalBudget::new(8192);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(8192, 1024, 2);
+        let old = budget.memory_handle(PeerId(0));
+        let next = budget.memory_handle(PeerId(u64::MAX));
+        let mut cached = old.try_allocate_kind(512, AllocationKind::TxBlock).unwrap();
+        assert!(cached.park_cached());
+        let blocker = next.try_allocate(1024).unwrap();
+        assert!(!cached.assign(&mut budget, PeerId(u64::MAX)));
+        assert_eq!((old.peer_physical_used(), next.peer_physical_used()), (0, 1024));
+        drop(cached);
+        assert_eq!((old.peer_physical_used(), next.peer_physical_used(), global.cached_bytes()), (0, 1024, 0));
+        drop(blocker);
+        assert_eq!(global.reserved(), 0);
     }
 
     #[test]

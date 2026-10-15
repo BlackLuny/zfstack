@@ -1671,6 +1671,42 @@ mod tests {
     }
 
     #[test]
+    fn tx_owner_checks_cover_zero_and_max_peer_across_budgets() {
+        for peer in [PeerId(0), PeerId(u64::MAX)] {
+            let global = crate::budget::GlobalBudget::new(8 << 20);
+            let other_global = crate::budget::GlobalBudget::new(8 << 20);
+            let mut budget = Budget::new(global.clone());
+            let mut foreign_port = Budget::new(global.clone());
+            let mut foreign_global = Budget::new(other_global.clone());
+            let mut pool = BlockPool::new(16);
+            let mut tx = TxBuf::default();
+            // Exercise both ways the peer counter can first be created.
+            if peer == PeerId(0) {
+                drop(budget.memory_handle(peer));
+            } else {
+                drop(budget.memory_scope(peer).try_allocate_level(1, crate::budget::AllocationKind::Other).unwrap());
+            }
+            assert!(tx.push(&mut pool, &mut budget, peer, &[7]));
+            for empty in [false, true] {
+                if empty {
+                    tx.consume(&mut pool, 1);
+                }
+                let before = global.reserved();
+                for foreign in [&mut foreign_port, &mut foreign_global] {
+                    assert!(!tx.push(&mut pool, foreign, peer, &[8]));
+                    assert_eq!(tx.write_with(&mut pool, foreign, peer, 1, |_| -> Result<usize, ()> { panic!("foreign owner reached fill") }), Ok(None));
+                }
+                assert_eq!(global.reserved(), before);
+                assert_eq!(other_global.reserved(), 0);
+            }
+            assert!(tx.push(&mut pool, &mut budget, peer, &[9]));
+            assert_eq!(tx.slices(0, 1)[0], &[9]);
+            drop((tx, pool));
+            assert_eq!((budget.physical_used(), global.reserved()), (0, 0));
+        }
+    }
+
+    #[test]
     fn retained_tx_index_keeps_peer_charge_and_rejects_foreign_port() {
         use crate::budget::AllocationKind;
         let global = crate::budget::GlobalBudget::new(8 << 20);
