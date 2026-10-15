@@ -87,6 +87,9 @@ def _supervise(argv, timeout, status_fd, output):
         if process is not None and process.poll() is not None:
             # poll reaps the primary child; remaining children are ours by
             # subreaper adoption even if they created a fresh session.
+            # Adopted descendants that already exited (e.g. git's detached
+            # auto-maintenance) are zombies, not live leaks: reap them first.
+            _linux_reap()
             leaked = bool(_linux_children())
         if process is not None and process.poll() is None:
             process.kill()

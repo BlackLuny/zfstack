@@ -309,6 +309,20 @@ class ProcessTests(unittest.TestCase):
             except ProcessLookupError:
                 pass
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper descendant ownership")
+    def test_exited_detached_descendant_is_not_a_leak(self):
+        # Mirrors git's detached auto-maintenance: the orphan finishes before
+        # the primary exits and is adopted only as a zombie.
+        source = ('import os,time\n'
+                  'if os.fork() == 0:\n'
+                  '    os.setsid()\n'
+                  '    if os.fork() == 0: os._exit(0)\n'
+                  '    os._exit(0)\n'
+                  'os.wait(); time.sleep(.3); print("done",flush=True)')
+        result = self.run_python(source)
+        self.assertEqual((result["status"], result["exit_code"], result["cleanup_status"]), ("completed", 0, "PASS"))
+        self.assertEqual(result["lifecycle_detail"], "")
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper isolation")
     def test_unrelated_child_is_never_reaped_or_killed(self):
         other = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(30)"])

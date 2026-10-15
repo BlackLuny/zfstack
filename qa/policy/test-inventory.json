@@ -5457,6 +5457,17 @@
     {
       "source": "qa/tests/test_identity_process.py",
       "class": "ProcessTests",
+      "name": "test_exited_detached_descendant_is_not_a_leak",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform.startswith('linux'), 'Linux subreaper descendant ownership')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
       "name": "test_linux_output_budget",
       "occurrence": 1,
       "async": false,
