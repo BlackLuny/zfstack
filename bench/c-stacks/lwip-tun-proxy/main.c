@@ -50,6 +50,8 @@
 #define FD_MAX 65536
 #define PENDING_CAP (256 * 1024)
 #define READ_CHUNK (256 * 1024)
+#define TUN_BATCH_PKTS 64
+#define TUN_BATCH_BYTES (512 * 1024)
 
 static int tun_fd = -1;
 static int epfd = -1;
@@ -65,6 +67,7 @@ static volatile sig_atomic_t stop_flag;
 struct conn {
     struct tcp_pcb *pcb;
     int fd;
+    uint32_t ep_events;
     uint8_t *to_fd;
     size_t to_fd_len;
     size_t to_fd_off;
@@ -73,6 +76,7 @@ struct conn {
     size_t to_pcb_off;
     int connecting;
     int pcb_fin;
+    int pcb_fin_sent;
     int fd_eof;
 };
 
@@ -170,24 +174,28 @@ tun_init(struct netif *netif)
     return ERR_OK;
 }
 
-static void
+static int
 tun_pump(void)
 {
     uint8_t buf[65535];
-    for (;;) {
+    int pkts = 0;
+    size_t bytes = 0;
+    while (pkts < TUN_BATCH_PKTS && bytes < TUN_BATCH_BYTES) {
         ssize_t n = read(tun_fd, buf, sizeof buf);
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return;
+                return 0;
             }
             if (errno == EINTR) {
                 continue;
             }
-            return;
+            return 0;
         }
         if (n == 0) {
-            return;
+            return 0;
         }
+        pkts++;
+        bytes += (size_t)n;
         struct pbuf *p = pbuf_alloc(PBUF_RAW, (u16_t)n, PBUF_RAM);
         if (!p) {
             continue;
@@ -197,16 +205,29 @@ tun_pump(void)
             pbuf_free(p);
         }
     }
+    return 1;
 }
 
 static void
-epoll_mod(struct conn *c)
+sync_epoll(struct conn *c)
 {
-    if (c->fd < 0) {
+    if (!c || c->fd < 0) {
         return;
     }
-    struct epoll_event ev = { .events = EPOLLIN | EPOLLOUT | EPOLLRDHUP, .data.fd = c->fd };
-    epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev);
+    uint32_t want = 0;
+    if (c->connecting || c->to_fd_off < c->to_fd_len) {
+        want |= EPOLLOUT;
+    }
+    if (!c->connecting && !c->fd_eof && c->to_pcb_off >= c->to_pcb_len) {
+        want |= EPOLLIN | EPOLLRDHUP;
+    }
+    if (want == c->ep_events) {
+        return;
+    }
+    struct epoll_event ev = { .events = want, .data.fd = c->fd };
+    if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == 0) {
+        c->ep_events = want;
+    }
 }
 
 static void
@@ -243,6 +264,12 @@ conn_free(struct conn *c, int abort_pcb)
 }
 
 static int
+conn_done(const struct conn *c)
+{
+    return c->pcb_fin && c->to_fd_off >= c->to_fd_len && c->fd_eof && c->to_pcb_off >= c->to_pcb_len && c->pcb_fin_sent;
+}
+
+static int
 queue_to_fd(struct conn *c, const uint8_t *data, size_t n)
 {
     if (n == 0) {
@@ -268,20 +295,25 @@ queue_to_fd(struct conn *c, const uint8_t *data, size_t n)
     return 0;
 }
 
-static void
+/* Returns 0 if `c` is still live, 1 if `c` was closed cleanly, -1 if aborted. */
+static int
 flush_to_fd(struct conn *c)
 {
     while (c->to_fd_off < c->to_fd_len && c->fd >= 0) {
         ssize_t w = write(c->fd, c->to_fd + c->to_fd_off, c->to_fd_len - c->to_fd_off);
         if (w < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                return;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                sync_epoll(c);
+                return 0;
+            }
+            if (errno == EINTR) {
+                continue;
             }
             conn_free(c, 1);
-            return;
+            return -1;
         }
         if (w == 0) {
-            return;
+            break;
         }
         c->to_fd_off += (size_t)w;
         if (c->pcb) {
@@ -293,133 +325,154 @@ flush_to_fd(struct conn *c)
         if (c->pcb_fin && c->fd >= 0) {
             shutdown(c->fd, SHUT_WR);
         }
+        if (conn_done(c)) {
+            conn_free(c, 0);
+            return 1;
+        }
     }
+    sync_epoll(c);
+    return 0;
 }
 
-static void
+static err_t
+write_to_pcb(struct tcp_pcb *pcb, const uint8_t *data, size_t len, size_t *written)
+{
+    *written = 0;
+    while (len > 0) {
+        u32_t space = tcp_sndbuf(pcb);
+        if (space == 0) {
+            return ERR_OK;
+        }
+        size_t chunk = len < (size_t)space ? len : (size_t)space;
+        if (chunk > (size_t)TCP_MSS) {
+            chunk = (size_t)TCP_MSS;
+        }
+        err_t e = tcp_write(pcb, data, (u16_t)chunk, TCP_WRITE_FLAG_COPY);
+        if (e == ERR_MEM) {
+            if (chunk > (size_t)pcb->mss && tcp_sndbuf(pcb) >= pcb->mss) {
+                e = tcp_write(pcb, data, pcb->mss, TCP_WRITE_FLAG_COPY);
+                if (e == ERR_OK) {
+                    data += pcb->mss;
+                    len -= pcb->mss;
+                    *written += pcb->mss;
+                    continue;
+                }
+            }
+            return ERR_OK;
+        }
+        if (e != ERR_OK) {
+            return e;
+        }
+        data += chunk;
+        len -= chunk;
+        *written += chunk;
+    }
+    return ERR_OK;
+}
+
+/* Returns 0 if `c` is still live, 1 if `c` was closed cleanly, -1 if aborted. */
+static int
 flush_to_pcb(struct conn *c)
 {
     if (!c->pcb || c->connecting) {
-        return;
+        return 0;
     }
-    while (c->to_pcb_off < c->to_pcb_len) {
-        u16_t space = tcp_sndbuf(c->pcb);
-        if (space == 0) {
-            return;
-        }
-        size_t left = c->to_pcb_len - c->to_pcb_off;
-        u16_t n = (left > space) ? space : (u16_t)left;
-        if (n > TCP_MSS) {
-            n = TCP_MSS;
-        }
-        err_t e = tcp_write(c->pcb, c->to_pcb + c->to_pcb_off, n, TCP_WRITE_FLAG_COPY);
-        if (e == ERR_MEM) {
-            return;
-        }
+    if (c->to_pcb_off < c->to_pcb_len) {
+        size_t w = 0;
+        err_t e = write_to_pcb(c->pcb, c->to_pcb + c->to_pcb_off, c->to_pcb_len - c->to_pcb_off, &w);
         if (e != ERR_OK) {
             conn_free(c, 1);
-            return;
+            return -1;
         }
-        c->to_pcb_off += n;
+        c->to_pcb_off += w;
+        if (w > 0) {
+            tcp_output(c->pcb);
+        }
     }
-    tcp_output(c->pcb);
     if (c->to_pcb_off >= c->to_pcb_len) {
         c->to_pcb_off = c->to_pcb_len = 0;
-        if (c->fd_eof) {
-            tcp_shutdown(c->pcb, 0, 1);
+        if (c->fd_eof && c->pcb && !c->pcb_fin_sent) {
+            if (c->pcb_fin && c->to_fd_off >= c->to_fd_len) {
+                conn_free(c, 0);
+                return 1;
+            }
+            if (tcp_shutdown(c->pcb, 0, 1) == ERR_OK) {
+                c->pcb_fin_sent = 1;
+                tcp_output(c->pcb);
+            }
+        }
+        if (conn_done(c)) {
+            conn_free(c, 0);
+            return 1;
         }
     }
+    sync_epoll(c);
+    return 0;
 }
 
-static void
+/* Returns 0 if `c` is still live, 1 if `c` was closed cleanly, -1 if aborted. */
+static int
 read_from_fd(struct conn *c)
 {
     uint8_t buf[READ_CHUNK];
     if (!c->pcb || c->connecting) {
-        return;
+        return 0;
     }
     if (c->to_pcb_len > c->to_pcb_off) {
-        flush_to_pcb(c);
-        return;
+        int rc = flush_to_pcb(c);
+        if (rc != 0 || c->to_pcb_len > c->to_pcb_off) {
+            return rc;
+        }
     }
-    for (;;) {
+    for (int iter = 0; iter < 2; iter++) {
+        if (c->fd_eof) {
+            sync_epoll(c);
+            return 0;
+        }
         ssize_t n = read(c->fd, buf, sizeof buf);
         if (n < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                return;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                sync_epoll(c);
+                return 0;
+            }
+            if (errno == EINTR) {
+                continue;
             }
             conn_free(c, 1);
-            return;
+            return -1;
         }
         if (n == 0) {
             c->fd_eof = 1;
-            if (c->pcb) {
-                tcp_shutdown(c->pcb, 0, 1);
-            }
-            return;
+            return flush_to_pcb(c);
         }
-        u16_t space = tcp_sndbuf(c->pcb);
         size_t take = (size_t)n;
-        if (space && take > space) {
-            if (!c->to_pcb) {
-                c->to_pcb = malloc(PENDING_CAP);
-                if (!c->to_pcb) {
-                    conn_free(c, 1);
-                    return;
-                }
-            }
-            size_t keep = take - space;
-            if (keep > PENDING_CAP) {
-                conn_free(c, 1);
-                return;
-            }
-            err_t e = tcp_write(c->pcb, buf, space, TCP_WRITE_FLAG_COPY);
-            if (e != ERR_OK) {
-                conn_free(c, 1);
-                return;
-            }
-            memcpy(c->to_pcb, buf + space, keep);
-            c->to_pcb_len = keep;
-            c->to_pcb_off = 0;
-            tcp_output(c->pcb);
-            return;
-        }
-        if (space == 0) {
-            if (!c->to_pcb) {
-                c->to_pcb = malloc(PENDING_CAP);
-                if (!c->to_pcb) {
-                    conn_free(c, 1);
-                    return;
-                }
-            }
-            if (take > PENDING_CAP) {
-                take = PENDING_CAP;
-            }
-            memcpy(c->to_pcb, buf, take);
-            c->to_pcb_len = take;
-            c->to_pcb_off = 0;
-            return;
-        }
-        err_t e = tcp_write(c->pcb, buf, (u16_t)take, TCP_WRITE_FLAG_COPY);
-        if (e == ERR_MEM) {
-            if (!c->to_pcb) {
-                c->to_pcb = malloc(PENDING_CAP);
-                if (!c->to_pcb) {
-                    conn_free(c, 1);
-                    return;
-                }
-            }
-            memcpy(c->to_pcb, buf, take);
-            c->to_pcb_len = take;
-            c->to_pcb_off = 0;
-            return;
-        }
+        size_t written = 0;
+        err_t e = write_to_pcb(c->pcb, buf, take, &written);
         if (e != ERR_OK) {
             conn_free(c, 1);
-            return;
+            return -1;
         }
-        tcp_output(c->pcb);
+        if (written > 0) {
+            tcp_output(c->pcb);
+        }
+        if (written < take) {
+            size_t keep = take - written;
+            if (!c->to_pcb) {
+                c->to_pcb = malloc(PENDING_CAP);
+                if (!c->to_pcb) {
+                    conn_free(c, 1);
+                    return -1;
+                }
+            }
+            memcpy(c->to_pcb, buf + written, keep);
+            c->to_pcb_len = keep;
+            c->to_pcb_off = 0;
+            sync_epoll(c);
+            return 0;
+        }
     }
+    sync_epoll(c);
+    return 0;
 }
 
 static err_t
@@ -438,18 +491,15 @@ on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
         if (c->to_fd_off >= c->to_fd_len && c->fd >= 0) {
             shutdown(c->fd, SHUT_WR);
         }
-        if (c->fd_eof) {
+        if (c->fd_eof && c->to_pcb_off >= c->to_pcb_len) {
             conn_free(c, 0);
+            return ERR_OK;
         }
+        sync_epoll(c);
         return ERR_OK;
     }
-    if (c->fd < 0 || c->connecting) {
-        if (queue_to_fd(c, p->payload, p->len) != 0) {
-            pbuf_free(p);
-            conn_free(c, 1);
-            return ERR_ABRT;
-        }
-        for (struct pbuf *q = p->next; q; q = q->next) {
+    if (c->fd < 0 || c->connecting || c->to_fd_off < c->to_fd_len) {
+        for (struct pbuf *q = p; q; q = q->next) {
             if (queue_to_fd(c, q->payload, q->len) != 0) {
                 pbuf_free(p);
                 conn_free(c, 1);
@@ -457,6 +507,7 @@ on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
             }
         }
         pbuf_free(p);
+        sync_epoll(c);
         return ERR_OK;
     }
     for (struct pbuf *q = p; q; q = q->next) {
@@ -465,15 +516,25 @@ on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
         while (left) {
             ssize_t w = write(c->fd, data, left);
             if (w < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     if (queue_to_fd(c, data, left) != 0) {
                         pbuf_free(p);
                         conn_free(c, 1);
                         return ERR_ABRT;
                     }
+                    for (struct pbuf *r = q->next; r; r = r->next) {
+                        if (queue_to_fd(c, r->payload, r->len) != 0) {
+                            pbuf_free(p);
+                            conn_free(c, 1);
+                            return ERR_ABRT;
+                        }
+                    }
                     pbuf_free(p);
-                    epoll_mod(c);
+                    sync_epoll(c);
                     return ERR_OK;
+                }
+                if (errno == EINTR) {
+                    continue;
                 }
                 pbuf_free(p);
                 conn_free(c, 1);
@@ -495,8 +556,13 @@ on_sent(void *arg, struct tcp_pcb *pcb, u16_t len)
     (void)pcb;
     (void)len;
     if (c) {
-        flush_to_pcb(c);
-        read_from_fd(c);
+        int rc = flush_to_pcb(c);
+        if (rc < 0) {
+            return ERR_ABRT;
+        }
+        if (rc == 0 && read_from_fd(c) < 0) {
+            return ERR_ABRT;
+        }
     }
     return ERR_OK;
 }
@@ -507,9 +573,19 @@ on_poll(void *arg, struct tcp_pcb *pcb)
     struct conn *c = arg;
     (void)pcb;
     if (c) {
-        flush_to_fd(c);
-        flush_to_pcb(c);
-        read_from_fd(c);
+        int rc = flush_to_fd(c);
+        if (rc < 0) {
+            return ERR_ABRT;
+        }
+        if (rc == 0) {
+            rc = flush_to_pcb(c);
+            if (rc < 0) {
+                return ERR_ABRT;
+            }
+        }
+        if (rc == 0 && read_from_fd(c) < 0) {
+            return ERR_ABRT;
+        }
     }
     return ERR_OK;
 }
@@ -540,6 +616,9 @@ on_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     }
     int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (fd < 0 || fd >= FD_MAX) {
+        if (fd >= 0) {
+            close(fd);
+        }
         free(c);
         tcp_abort(newpcb);
         return ERR_ABRT;
@@ -556,13 +635,14 @@ on_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     c->pcb = newpcb;
     c->fd = fd;
     c->connecting = (rc < 0);
+    c->ep_events = c->connecting ? EPOLLOUT : (EPOLLIN | EPOLLRDHUP);
     tcp_nagle_disable(newpcb);
     tcp_arg(newpcb, c);
     tcp_recv(newpcb, on_recv);
     tcp_sent(newpcb, on_sent);
     tcp_err(newpcb, on_err);
     tcp_poll(newpcb, on_poll, 1);
-    struct epoll_event ev = { .events = EPOLLIN | EPOLLOUT | EPOLLRDHUP, .data.fd = fd };
+    struct epoll_event ev = { .events = c->ep_events, .data.fd = fd };
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) != 0) {
         close(fd);
         c->fd = -1;
@@ -595,13 +675,18 @@ on_conn_event(struct conn *c, uint32_t events)
             return;
         }
         c->connecting = 0;
-        flush_to_fd(c);
+        if (flush_to_fd(c) != 0) {
+            return;
+        }
+    } else if (events & EPOLLOUT) {
+        if (flush_to_fd(c) != 0) {
+            return;
+        }
+        if (flush_to_pcb(c) != 0) {
+            return;
+        }
     }
-    if (events & EPOLLOUT) {
-        flush_to_fd(c);
-        flush_to_pcb(c);
-    }
-    if (events & (EPOLLIN | EPOLLRDHUP)) {
+    if (events & (EPOLLIN | EPOLLRDHUP | EPOLLHUP)) {
         read_from_fd(c);
     }
 }
@@ -723,7 +808,7 @@ main(int argc, char **argv)
     if (tcp_bind(pcb, IP_ADDR_ANY, listen_port) != ERR_OK) {
         die("tcp_bind %s:%u failed", listen_ip, listen_port);
     }
-    pcb = tcp_listen_with_backlog(pcb, 255);
+    pcb = tcp_listen(pcb);
     tcp_accept(pcb, on_accept);
 
     epfd = epoll_create1(EPOLL_CLOEXEC);
@@ -733,10 +818,13 @@ main(int argc, char **argv)
     fprintf(stderr, "lwip-tun-proxy: ready on %s mtu %d -> %s (lwIP STABLE-2_2_1)\n", tun_name, mtu, upstream);
 
     struct epoll_event events[128];
+    int tun_more = 0;
     while (!stop_flag) {
         u32_t sleeptime = sys_timeouts_sleeptime();
         int timeout = 10;
-        if (sleeptime != 0xffffffffu) {
+        if (tun_more) {
+            timeout = 0;
+        } else if (sleeptime != 0xffffffffu) {
             timeout = (int)sleeptime;
             if (timeout < 0) {
                 timeout = 0;
@@ -753,13 +841,18 @@ main(int argc, char **argv)
             }
             break;
         }
+        int saw_tun = 0;
         for (int i = 0; i < n; i++) {
             int fd = events[i].data.fd;
             if (fd == tun_fd) {
-                tun_pump();
+                saw_tun = 1;
+                tun_more = tun_pump();
             } else if (fd >= 0 && fd < FD_MAX) {
                 on_conn_event(by_fd[fd], events[i].events);
             }
+        }
+        if (!saw_tun && tun_more) {
+            tun_more = tun_pump();
         }
     }
     return 0;

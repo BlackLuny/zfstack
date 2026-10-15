@@ -518,6 +518,7 @@ pub fn test_connect(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcom
                     let r = (|| -> io::Result<f64> {
                         let mut s = TcpStream::connect_timeout(&server_addr(), to)?;
                         let tc = t.elapsed().as_secs_f64() * 1e3;
+                        s.set_nodelay(true)?;
                         s.set_read_timeout(Some(to))?;
                         s.set_write_timeout(Some(to))?;
                         s.write_all(&app::encode_header(app::CMD_CONNECT, 0))?;
@@ -603,9 +604,10 @@ pub fn test_short(o: &TestOpts, mark: Mark) -> TestOutcome {
                     let t = Instant::now();
                     let r = (|| -> io::Result<()> {
                         let mut s = TcpStream::connect_timeout(&server_addr(), to)?;
+                        s.set_nodelay(true)?;
                         s.set_read_timeout(Some(to))?;
                         s.set_write_timeout(Some(to))?;
-                        s.write_all(&app::encode_header(app::CMD_DOWN, 0))?;
+                        s.write_all(&app::encode_header(app::CMD_DOWN, want as u64))?;
                         let mut got = 0usize;
                         let mut pos = 0u64;
                         while got < want {

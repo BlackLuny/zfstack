@@ -37,8 +37,12 @@ set_nonblock(int fd)
     return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
 }
 
+#define RELAY_PENDING_MAX (256 * 1024)
+
 struct sess {
     int cfd, ufd;
+    uint32_t c_ev, u_ev;
+    int c_eof, u_eof;
     uint8_t in[512];
     size_t in_n;
     int stage; /* 0 greet, 1 req, 2 connecting, 3 relay */
@@ -63,6 +67,44 @@ sess_free(struct sess *s)
     free(s);
 }
 
+static void
+sync_sess_epoll(int ep, struct sess *s)
+{
+    if (s->stage < 3) {
+        return;
+    }
+    if (s->cfd >= 0) {
+        uint32_t want = 0;
+        if (!s->c_eof && s->c2u_n < RELAY_PENDING_MAX) {
+            want |= EPOLLIN | EPOLLRDHUP;
+        }
+        if (s->u2c_n > 0) {
+            want |= EPOLLOUT;
+        }
+        if (want != s->c_ev) {
+            struct epoll_event ev = { .events = want, .data.ptr = s };
+            if (epoll_ctl(ep, EPOLL_CTL_MOD, s->cfd, &ev) == 0) {
+                s->c_ev = want;
+            }
+        }
+    }
+    if (s->ufd >= 0) {
+        uint32_t want = 0;
+        if (!s->u_eof && s->u2c_n < RELAY_PENDING_MAX) {
+            want |= EPOLLIN | EPOLLRDHUP;
+        }
+        if (s->c2u_n > 0) {
+            want |= EPOLLOUT;
+        }
+        if (want != s->u_ev) {
+            struct epoll_event ev = { .events = want, .data.ptr = s };
+            if (epoll_ctl(ep, EPOLL_CTL_MOD, s->ufd, &ev) == 0) {
+                s->u_ev = want;
+            }
+        }
+    }
+}
+
 static ssize_t
 full_read_some(int fd, uint8_t *buf, size_t cap, size_t *n)
 {
@@ -79,7 +121,7 @@ ensure_buf(uint8_t **q, size_t *cap, size_t need)
     if (*cap >= need) {
         return 0;
     }
-    size_t ncap = need < 16384 ? 16384 : need;
+    size_t ncap = need < 65536 ? 65536 : need;
     uint8_t *n = realloc(*q, ncap);
     if (!n) {
         return -1;
@@ -90,47 +132,55 @@ ensure_buf(uint8_t **q, size_t *cap, size_t need)
 }
 
 static int
-relay_copy(int from, int to, uint8_t **q, size_t *qn, size_t *cap)
+relay_copy(int from, int to, uint8_t **q, size_t *qn, size_t *cap, int *eof)
 {
-    if (*qn) {
+    while (*qn) {
         ssize_t w = write(to, *q, *qn);
         if (w < 0) {
-            return (errno == EAGAIN || errno == EINTR) ? 0 : -1;
+            return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
+        }
+        if (w == 0) {
+            return 0;
         }
         memmove(*q, *q + w, *qn - (size_t)w);
         *qn -= (size_t)w;
-        if (*qn) {
-            return 0;
-        }
     }
-    uint8_t buf[16384];
-    ssize_t r = read(from, buf, sizeof buf);
-    if (r < 0) {
-        return (errno == EAGAIN || errno == EINTR) ? 0 : -1;
-    }
-    if (r == 0) {
+    if (*eof) {
         shutdown(to, SHUT_WR);
-        return 1;
+        return 0;
     }
-    ssize_t w = write(to, buf, (size_t)r);
-    if (w < 0) {
-        if (errno == EAGAIN || errno == EINTR) {
-            if (ensure_buf(q, cap, (size_t)r) != 0) {
-                return -1;
-            }
-            memcpy(*q, buf, (size_t)r);
-            *qn = (size_t)r;
+    uint8_t buf[65536];
+    for (int iter = 0; iter < 4; iter++) {
+        ssize_t r = read(from, buf, sizeof buf);
+        if (r < 0) {
+            return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
+        }
+        if (r == 0) {
+            *eof = 1;
+            shutdown(to, SHUT_WR);
             return 0;
         }
-        return -1;
-    }
-    if ((size_t)w < (size_t)r) {
-        size_t left = (size_t)r - (size_t)w;
-        if (ensure_buf(q, cap, left) != 0) {
+        ssize_t w = write(to, buf, (size_t)r);
+        if (w < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                if (ensure_buf(q, cap, (size_t)r) != 0) {
+                    return -1;
+                }
+                memcpy(*q, buf, (size_t)r);
+                *qn = (size_t)r;
+                return 0;
+            }
             return -1;
         }
-        memcpy(*q, buf + w, left);
-        *qn = left;
+        if ((size_t)w < (size_t)r) {
+            size_t left = (size_t)r - (size_t)w;
+            if (ensure_buf(q, cap, left) != 0) {
+                return -1;
+            }
+            memcpy(*q, buf + w, left);
+            *qn = left;
+            return 0;
+        }
     }
     return 0;
 }
@@ -239,7 +289,8 @@ main(int argc, char **argv)
                     struct sess *s = calloc(1, sizeof *s);
                     s->cfd = cfd;
                     s->ufd = -1;
-                    struct epoll_event cev = { .events = EPOLLIN, .data.ptr = s };
+                    s->c_ev = EPOLLIN;
+                    struct epoll_event cev = { .events = s->c_ev, .data.ptr = s };
                     epoll_ctl(ep, EPOLL_CTL_ADD, cfd, &cev);
                 }
                 continue;
@@ -260,14 +311,15 @@ main(int argc, char **argv)
             }
             if (s->stage == 0) {
                 ssize_t r = full_read_some(s->cfd, s->in, sizeof s->in, &s->in_n);
-                if (r == 0 || (r < 0 && errno != EAGAIN)) {
+                if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
                     epoll_ctl(ep, EPOLL_CTL_DEL, s->cfd, NULL);
                     DROP(s);
                     continue;
                 }
                 if (s->in_n >= 2 && s->in[0] == 5) {
                     uint8_t nmethods = s->in[1];
-                    if (s->in_n >= 2u + nmethods) {
+                    size_t greet_len = 2u + nmethods;
+                    if (s->in_n >= greet_len) {
                         uint8_t rep[2] = { 5, 0 };
                         if (write(s->cfd, rep, 2) != 2) {
                             epoll_ctl(ep, EPOLL_CTL_DEL, s->cfd, NULL);
@@ -275,13 +327,16 @@ main(int argc, char **argv)
                             continue;
                         }
                         s->stage = 1;
-                        s->in_n = 0;
+                        s->in_n -= greet_len;
+                        if (s->in_n > 0) {
+                            memmove(s->in, s->in + greet_len, s->in_n);
+                        }
                     }
                 }
             }
             if (s->stage == 1) {
                 ssize_t r = full_read_some(s->cfd, s->in, sizeof s->in, &s->in_n);
-                if (r == 0 || (r < 0 && errno != EAGAIN && s->in_n == 0)) {
+                if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK && s->in_n == 0)) {
                     epoll_ctl(ep, EPOLL_CTL_DEL, s->cfd, NULL);
                     DROP(s);
                     continue;
@@ -303,6 +358,17 @@ main(int argc, char **argv)
                     if (s->in_n < need) {
                         continue;
                     }
+                    size_t extra = s->in_n - need;
+                    if (extra > 0) {
+                        if (ensure_buf(&s->c2u, &s->c2u_cap, extra) != 0) {
+                            epoll_ctl(ep, EPOLL_CTL_DEL, s->cfd, NULL);
+                            DROP(s);
+                            continue;
+                        }
+                        memcpy(s->c2u, s->in + need, extra);
+                        s->c2u_n = extra;
+                    }
+                    s->in_n = 0;
                     int ufd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
                     setsockopt(ufd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
                     int rc = connect(ufd, (struct sockaddr *)&override_sa, sizeof override_sa);
@@ -314,7 +380,8 @@ main(int argc, char **argv)
                     }
                     s->ufd = ufd;
                     s->stage = 2;
-                    struct epoll_event uev = { .events = EPOLLOUT, .data.ptr = s };
+                    s->u_ev = EPOLLOUT;
+                    struct epoll_event uev = { .events = s->u_ev, .data.ptr = s };
                     epoll_ctl(ep, EPOLL_CTL_ADD, ufd, &uev);
                 }
             }
@@ -336,19 +403,19 @@ main(int argc, char **argv)
                     continue;
                 }
                 s->stage = 3;
-                struct epoll_event cev = { .events = EPOLLIN | EPOLLOUT | EPOLLRDHUP, .data.ptr = s };
-                epoll_ctl(ep, EPOLL_CTL_MOD, s->cfd, &cev);
-                epoll_ctl(ep, EPOLL_CTL_MOD, s->ufd, &cev);
+                sync_sess_epoll(ep, s);
             }
             if (s->stage == 3) {
-                int a = relay_copy(s->cfd, s->ufd, &s->c2u, &s->c2u_n, &s->c2u_cap);
-                int b = relay_copy(s->ufd, s->cfd, &s->u2c, &s->u2c_n, &s->u2c_cap);
-                if (a < 0 || b < 0 || (a > 0 && b > 0)) {
+                int a = relay_copy(s->cfd, s->ufd, &s->c2u, &s->c2u_n, &s->c2u_cap, &s->c_eof);
+                int b = relay_copy(s->ufd, s->cfd, &s->u2c, &s->u2c_n, &s->u2c_cap, &s->u_eof);
+                if (a < 0 || b < 0 || (s->c_eof && s->u_eof && s->c2u_n == 0 && s->u2c_n == 0)) {
                     epoll_ctl(ep, EPOLL_CTL_DEL, s->cfd, NULL);
                     if (s->ufd >= 0) {
                         epoll_ctl(ep, EPOLL_CTL_DEL, s->ufd, NULL);
                     }
                     DROP(s);
+                } else {
+                    sync_sess_epoll(ep, s);
                 }
             }
         }

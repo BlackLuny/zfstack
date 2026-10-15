@@ -168,10 +168,11 @@ for name, _ in cells:
     elif t == "idle":
         row["rss_per_conn"] = med([d["results"].get("rss_bytes_per_conn") for d in ds])
         row["established"] = med([d["results"].get("established") for d in ds])
-        row["rss_kb_after"] = p("rss_kb_end") or med([d["results"].get("rss_kb_after") for d in ds])
+        row["rss_kb_after"] = med([d["results"].get("rss_kb_after") for d in ds]) or p("rss_kb_end")
+        held_kb = row["rss_kb_after"] or 0
         print(
             f"{name:48s} rss/conn {f(row['rss_per_conn'],0)} B  idle { (p('rss_kb_idle') or 0)/1024:5.1f} MB  "
-            f"held {(p('rss_kb_end') or 0)/1024:5.1f} MB  est {f(row['established'],0)}  ok {ok}/{n}"
+            f"held {held_kb/1024:5.1f} MB  est {f(row['established'],0)}  ok {ok}/{n}"
         )
     elif t in ("mixed", "mixed-bi"):
         rl = lambda k: med([d["results"].get("rr_loaded", {}).get(k) for d in ds])
