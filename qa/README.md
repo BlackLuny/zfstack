@@ -49,8 +49,11 @@ python3.12 -m qa audit-coverage
 或 `validated: true` 就获得资格。安全性断言不允许豁免。`known-failures.json` 默认没有有效豁免。
 
 `QA-coverage` 将 Rust 手写测试入口、Python 测试方法及相关条件/跳过属性与受审查的
-`policy/test-inventory.json` 比对。删除、改名、增加测试或改动运行条件需要显式更新清单并审查；
-`python -m qa.coverage --output /tmp/test-inventory-candidate.json` 只生成待审查版本，audit 不自动接受漂移。
+`policy/test-inventory.json` 比对。纯新增测试自动接受：受审查条目必须逐字保留，新增条目以 `additions`
+列入覆盖证据，由可信 reporter 复核；新增 `#[ignore]`/跳过的测试仍需登记。文件只能新增 `cfg(test)` 或其新增测试自带的
+cfg。删除、改名、改动既有测试的属性/跳过条件，或新增可能隐藏测试的 cfg，仍需显式更新清单并审查；
+`python -m qa.coverage --output /tmp/test-inventory-candidate.json` 只生成待审查版本，audit 不自动接受这类漂移。
+合入此类清单变更后，维护者将 `QA_TRUSTED_REF` 更新为新的 main 提交：`gh variable set QA_TRUSTED_REF --body "$(git rev-parse origin/main)"`。
 清单是源码范围检查，不能替代实际执行；Rust 宏生成的测试仍由运行记录验证。
 `QA-features` 同时检查无默认 feature 的核心依赖图及启用 Tokio 的生产依赖图，确保 dev-only `test-util` 不泄漏。
 

@@ -212,10 +212,97 @@ def _audit_record(inventory, registry):
                        "rust_configuration_files": len(inventory["rust_configuration"])}}
 
 
+TEST_KINDS = ("rust_tests", "python_tests")
+# cfg(test) can only enable code under test, so it never hides an existing test.
+SAFE_ADDED_CFG = "cfg ( test )"
+
+
+def _entry_key(entry):
+    return json.dumps(entry, sort_keys=True)
+
+
+def _added_cfg_allowance(added_rust_tests):
+    allowance = {}
+    for entry in added_rust_tests:
+        allowance.setdefault(entry["source"], Counter()).update(a for a in entry["attributes"] if a.split()[0] in ("cfg", "cfg_attr"))
+    return allowance
+
+
+def _check_added_cfg(source, attributes, allowance):
+    unexplained = Counter(attributes) - allowance.get(source, Counter())
+    return all(attribute == SAFE_ADDED_CFG for attribute in unexplained.elements())
+
+
+def inventory_additions(inventory, expected):
+    """Pure additions to the reviewed inventory, or None if anything else drifted.
+
+    Every reviewed test entry must survive byte-for-byte, so removal, rename,
+    a new #[ignore]/skip, or changed attributes on an existing test is drift.
+    A file may only gain cfg(test) or the cfg attributes of its own added tests.
+    """
+    if any(inventory.get(key) != expected.get(key) for key in ("schema_version", "scope")):
+        return None
+    additions = {}
+    for kind in TEST_KINDS:
+        extra = Counter(map(_entry_key, inventory[kind]))
+        extra.subtract(Counter(map(_entry_key, expected.get(kind, []))))
+        if any(count < 0 for count in extra.values()):
+            return None
+        added = []
+        for entry in inventory[kind]:
+            if extra[_entry_key(entry)] > 0:
+                extra[_entry_key(entry)] -= 1
+                added.append(entry)
+        if added:
+            additions[kind] = added
+    allowance = _added_cfg_allowance(additions.get("rust_tests", []))
+    trusted = {entry["source"]: Counter(entry["attributes"]) for entry in expected.get("rust_configuration", [])}
+    current = {entry["source"]: Counter(entry["attributes"]) for entry in inventory["rust_configuration"]}
+    added_cfg = []
+    for source in sorted(trusted.keys() | current.keys()):
+        old, new = trusted.get(source, Counter()), current.get(source, Counter())
+        if old - new:
+            return None
+        attributes = sorted((new - old).elements())
+        if attributes:
+            if not _check_added_cfg(source, attributes, allowance):
+                return None
+            added_cfg.append({"source": source, "attributes": attributes})
+    if added_cfg:
+        additions["rust_configuration"] = added_cfg
+    return additions
+
+
+def _verify_additions(additions, inventory):
+    if not isinstance(additions, dict) or not additions or not set(additions) <= set(TEST_KINDS) | {"rust_configuration"}:
+        raise EvidenceError("coverage additions are malformed")
+    for kind, entries in additions.items():
+        if not isinstance(entries, list) or not entries or not all(isinstance(entry, dict) for entry in entries):
+            raise EvidenceError("coverage additions are malformed")
+    for kind in TEST_KINDS:
+        reviewed = {_entry_key(entry) for entry in inventory.get(kind, [])}
+        for entry in additions.get(kind, []):
+            if _entry_key(entry) in reviewed or not isinstance(entry.get("source"), str) or not isinstance(entry.get("name"), str):
+                raise EvidenceError("coverage additions are not new tests")
+            if kind == "rust_tests" and entry.get("ignored") is not False:
+                raise EvidenceError("added ignored tests require reviewed registration")
+    allowance = _added_cfg_allowance(additions.get("rust_tests", []))
+    for entry in additions.get("rust_configuration", []):
+        attributes = entry.get("attributes")
+        if (not isinstance(entry.get("source"), str) or not isinstance(attributes, list) or not attributes
+                or not all(isinstance(attribute, str) for attribute in attributes)
+                or not _check_added_cfg(entry["source"], attributes, allowance)):
+            raise EvidenceError("coverage additions include unreviewed configuration")
+
+
 def verify_audit(value, policy_dir):
     """Reporter proof must bind the reviewed inventory, not just say coverage ok."""
     policy_dir = Path(policy_dir)
-    expected = _audit_record(read_json(policy_dir / "test-inventory.json"), read_json(policy_dir / "ignored.json")["tests"])
+    inventory = read_json(policy_dir / "test-inventory.json")
+    expected = _audit_record(inventory, read_json(policy_dir / "ignored.json")["tests"])
+    if isinstance(value, dict) and "additions" in value:
+        _verify_additions(value["additions"], inventory)
+        expected = {**expected, "additions": value["additions"]}
     if (not isinstance(value, dict) or value.get("ok") is not True or type(value.get("registered")) is not int
             or not isinstance(value.get("counts"), dict) or any(type(v) is not int for v in value["counts"].values())
             or value != expected):
@@ -227,9 +314,12 @@ def audit(root, policy_dir=None):
     root, policy_dir = Path(root), Path(policy_dir or Path(root) / "qa/policy")
     inventory = test_inventory(root)
     expected_inventory = read_json(policy_dir / "test-inventory.json")
+    additions = {}
     if inventory != expected_inventory:
-        changed = [kind for kind in ("rust_tests", "rust_configuration", "python_tests") if inventory[kind] != expected_inventory.get(kind)]
-        raise EvidenceError("test inventory drift requires explicit policy review: " + ", ".join(changed or ["schema/scope"]))
+        additions = inventory_additions(inventory, expected_inventory)
+        if additions is None:
+            changed = [kind for kind in ("rust_tests", "rust_configuration", "python_tests") if inventory[kind] != expected_inventory.get(kind)]
+            raise EvidenceError("test inventory drift requires explicit policy review: " + ", ".join(changed or ["schema/scope"]))
     found = sorted((entry["name"], entry["source"]) for entry in inventory["rust_tests"] if entry["ignored"])
     registry = read_json(policy_dir / "ignored.json")["tests"]
     expected = sorted((entry["name"].split("::")[-1], entry["source"]) for entry in registry)
@@ -240,7 +330,9 @@ def audit(root, policy_dir=None):
             raise EvidenceError("unknown ignored category")
         if not entry["schedule"] or not entry["reason"]:
             raise EvidenceError("ignored test needs an explicit schedule and reason")
-    return _audit_record(inventory, registry)
+    # Bound to the reviewed inventory; pure additions are listed for the reporter to re-check.
+    record = _audit_record(expected_inventory, registry)
+    return {**record, "additions": additions} if additions else record
 
 
 def main():
