@@ -1163,6 +1163,15 @@ impl Budget {
         }
     }
 
+    pub(crate) fn port_memory_handle(&self) -> PortMemoryHandle {
+        PortMemoryHandle {
+            global: Arc::clone(&self.global),
+            port: Arc::clone(&self.physical_port),
+            port_limit: self.port_limit,
+            stats: Arc::clone(&self.stats),
+        }
+    }
+
     pub fn physical_used(&self) -> u64 {
         self.physical_port.used.load(Ordering::Relaxed)
     }
@@ -1497,41 +1506,6 @@ pub(crate) struct MemoryScope<'a> {
 }
 
 impl MemoryScope<'_> {
-    pub(crate) fn matches_port(&self, memory: &PortMemoryHandle) -> bool {
-        Arc::ptr_eq(self.global, &memory.global) && Arc::ptr_eq(self.port, &memory.port)
-    }
-
-    pub(crate) fn port_memory_handle(&self) -> PortMemoryHandle {
-        PortMemoryHandle { global: Arc::clone(self.global), port: Arc::clone(self.port), port_limit: self.port_limit, stats: Arc::clone(self.stats) }
-    }
-
-    /// Reuse an already resolved owner, but reacquire its current peer share.
-    #[inline]
-    pub(crate) fn assign_cached(&self, lease: &mut MemoryLease) -> bool {
-        debug_assert!(lease.peer_parked || lease.peer.is_none());
-        if !Arc::ptr_eq(self.global, &lease.global) || !Arc::ptr_eq(self.port, &lease.port) {
-            return false;
-        }
-        if !reserve_amount(&self.peer.used, self.peer.limit(self.global, lease.peer_limit, Tier::Block), lease.bytes) {
-            self.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
-            self.global.request_cache_reclaim();
-            return false;
-        }
-        for drain in [&self.global.drain, &self.port.drain, &self.peer.drain] {
-            drain.fetch_add(lease.bytes, Ordering::AcqRel);
-        }
-        lease.drain = true;
-        if lease.peer.as_ref().is_none_or(|owner| !Arc::ptr_eq(owner, self.peer)) {
-            lease.peer = Some(Arc::clone(self.peer));
-        }
-        lease.peer_parked = false;
-        if lease.cached {
-            lease.cached = false;
-            self.global.release_cache(lease.bytes);
-        }
-        true
-    }
-
     /// Reserve an optional credit without letting idle connections consume the
     /// entire level. Counter reservations roll back on either cap or physical
     /// failure; only actual state failure may reject admission.
@@ -1766,6 +1740,37 @@ impl MemoryLease {
         }
         self.drain = true;
         self.peer_limit = budget.peer_limit;
+        if !same_peer {
+            self.peer = Some(Arc::clone(counter));
+        }
+        self.peer_parked = false;
+        if self.cached {
+            self.cached = false;
+            self.global.release_cache(self.bytes);
+        }
+        true
+    }
+
+    /// Borrow an owner already resolved by the TX index. Same-peer hits keep
+    /// their existing counter; only a migration consults the prepared token.
+    #[inline]
+    pub(crate) fn assign_for_index(&mut self, budget: &Budget, peer: PeerId, index: &MemoryLease, assignment: Option<&IndexPeerReservation>) -> bool {
+        debug_assert!(self.peer_parked || self.peer.is_none());
+        if !self.belongs_to(budget) {
+            return false;
+        }
+        let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        let counter = if same_peer { self.peer.as_ref().unwrap() } else { assignment.map_or(index.peer.as_ref().unwrap(), |next| next.peer.as_ref().unwrap()) };
+        debug_assert!(index.belongs_to(budget) && counter.peer_id == peer);
+        if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
+            budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+            self.global.request_cache_reclaim();
+            return false;
+        }
+        for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
+            drain.fetch_add(self.bytes, Ordering::AcqRel);
+        }
+        self.drain = true;
         if !same_peer {
             self.peer = Some(Arc::clone(counter));
         }
@@ -2273,17 +2278,18 @@ mod tests {
             let mut budget = Budget::new(global.clone());
             budget.set_limits(8192, 1024, 2);
             let memory = budget.memory_handle(peer);
+            let index = memory.try_allocate_kind(0, AllocationKind::TxIndex).unwrap();
             let mut lease = memory.try_allocate_kind(512, AllocationKind::TxBlock).unwrap();
             assert!(lease.park_cached());
             let blocker = memory.try_allocate(1024).unwrap();
-            assert!(!budget.memory_scope(peer).assign_cached(&mut lease));
+            assert!(!lease.assign_for_index(&budget, peer, &index, None));
             assert_eq!((memory.peer_physical_used(), global.cached_bytes()), (1024, 512));
             for foreign_global in [global.clone(), GlobalBudget::new(8192)] {
-                let mut foreign = Budget::new(foreign_global);
-                assert!(!foreign.memory_scope(peer).assign_cached(&mut lease));
+                let foreign = Budget::new(foreign_global);
+                assert!(!lease.assign_for_index(&foreign, peer, &index, None));
             }
             drop(blocker);
-            assert!(budget.memory_scope(peer).assign_cached(&mut lease));
+            assert!(lease.assign_for_index(&budget, peer, &index, None));
             assert_eq!((memory.peer_physical_used(), global.cached_bytes()), (512, 0));
             assert!(lease.park_cached());
             assert_eq!(memory.peer_physical_used(), 0);

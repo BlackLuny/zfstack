@@ -9,7 +9,7 @@
 //!   charged compact chunks so packet-pool owners return immediately (§5).
 //! * [`OooQueue`]: out-of-order ranges, allocated only when reordering happens (§6.1).
 
-use crate::budget::{Budget, MemoryLease, MemoryScope, PortMemoryHandle};
+use crate::budget::{Budget, IndexPeerReservation, MemoryLease, PortMemoryHandle};
 use crate::PeerId;
 use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
@@ -221,26 +221,40 @@ impl BlockPool {
         if self.memory.as_ref().is_some_and(|memory| !memory.matches(budget)) {
             return None;
         }
-        self.get_scoped(&budget.memory_scope(peer), size)
-    }
-
-    #[inline]
-    fn get_scoped(&mut self, scope: &MemoryScope<'_>, size: usize) -> Option<Block> {
-        if self.memory.as_ref().is_some_and(|memory| !scope.matches_port(memory)) {
-            return None;
-        }
         if self.memory.is_none() {
-            self.memory = Some(scope.port_memory_handle());
+            self.memory = Some(budget.port_memory_handle());
         }
         let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
         let block = if let Some(mut block) = free.pop() {
-            if !scope.assign_cached(&mut block.lease) {
+            if !block.lease.assign(budget, peer) {
                 free.push(block);
                 return None;
             }
             block
         } else {
-            let lease = scope.try_allocate_level(size as u64, crate::budget::AllocationKind::TxBlock).ok()?;
+            let lease = budget.try_allocate_kind(peer, size as u64, crate::budget::AllocationKind::TxBlock)?;
+            Block::new(size, lease)
+        };
+        self.note_activity(size == SMALL_TX_BLOCK);
+        Some(block)
+    }
+    #[inline]
+    fn get_for_index(&mut self, budget: &Budget, peer: PeerId, size: usize, index: &MemoryLease, assignment: Option<&IndexPeerReservation>) -> Option<Block> {
+        if self.memory.as_ref().is_some_and(|memory| !memory.matches(budget)) {
+            return None;
+        }
+        if self.memory.is_none() {
+            self.memory = Some(budget.port_memory_handle());
+        }
+        let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
+        let block = if let Some(mut block) = free.pop() {
+            if !block.lease.assign_for_index(budget, peer, index, assignment) {
+                free.push(block);
+                return None;
+            }
+            block
+        } else {
+            let lease = index.allocation_scope(budget, assignment).try_allocate_level(size as u64, crate::budget::AllocationKind::TxBlock).ok()?;
             Block::new(size, lease)
         };
         self.note_activity(size == SMALL_TX_BLOCK);
@@ -488,8 +502,7 @@ impl TxBuf {
             let block = if index.is_some() {
                 pool.get(budget, peer, size)
             } else {
-                let scope = self.index_lease.as_ref().unwrap().allocation_scope(budget, assignment.as_ref());
-                pool.get_scoped(&scope, size)
+                pool.get_for_index(budget, peer, size, self.index_lease.as_ref().unwrap(), assignment.as_ref())
             };
             let Some(block) = block else {
                 if let Some(index) = &mut index {
@@ -577,8 +590,7 @@ impl TxBuf {
                 let block = if index.is_some() {
                     pool.get(budget, peer, size)?
                 } else {
-                    let scope = self.index_lease.as_ref().unwrap().allocation_scope(budget, assignment.as_ref());
-                    pool.get_scoped(&scope, size)?
+                    pool.get_for_index(budget, peer, size, self.index_lease.as_ref().unwrap(), assignment.as_ref())?
                 };
                 if let Some(assignment) = assignment {
                     self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
