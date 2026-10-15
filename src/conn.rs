@@ -3033,7 +3033,7 @@ mod rx_descriptor_tests {
     }
 
     #[test]
-    fn issue37_floor_reuses_backing_after_partial_ack() {
+    fn issue37_floor_reuses_backing_after_partial_ack_renamed() {
         exercise(8 << 20, |conn, ctx| {
             ctx.budget.set_limits(1 << 20, 1 << 20, 64);
             for _ in 0..16 {
