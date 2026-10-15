@@ -1903,9 +1903,10 @@ impl MemoryLease {
             return false;
         }
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        let peer_limit = budget.peer_limit;
         let reserved = {
             let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peer(peer) };
-            if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
+            if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
                 budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
                 self.global.request_cache_reclaim();
                 return false;
@@ -1917,6 +1918,7 @@ impl MemoryLease {
         };
         debug_assert!(reserved);
         self.drain = true;
+        self.peer_limit = peer_limit;
         if !same_peer {
             let new_peer = budget.take_peer_arc(peer);
             if let Some(old) = self.peer.replace(new_peer) {
@@ -1936,11 +1938,12 @@ impl MemoryLease {
         debug_assert!(self.peer_parked || self.peer.is_none());
         debug_assert!(!index.drain && !index.peer_parked && index.peer.is_some());
         debug_assert!(self.belongs_to(budget) && index.belongs_to(budget));
+        let peer_limit = budget.peer_limit;
         let index_same_peer = index.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         let block_same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         if index_same_peer && block_same_peer {
             let counter = self.peer.as_ref().unwrap();
-            if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
+            if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
                 budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
                 self.global.request_cache_reclaim();
                 return false;
@@ -1949,6 +1952,7 @@ impl MemoryLease {
                 drain.fetch_add(self.bytes, Ordering::AcqRel);
             }
             self.drain = true;
+            self.peer_limit = peer_limit;
             self.peer_parked = false;
             let released_cache = if self.cached {
                 self.cached = false;
@@ -1966,7 +1970,6 @@ impl MemoryLease {
             }
             return true;
         }
-        let peer_limit = budget.peer_limit;
         let idx = (peer.0 as usize) & (PEER_CACHE_SLOTS - 1);
         if budget.peer_cache[idx].counter.as_ref().is_none_or(|c| c.peer_id != peer) {
             let _ = budget.physical_peer(peer);
@@ -2001,6 +2004,7 @@ impl MemoryLease {
             drain.fetch_add(self.bytes, Ordering::AcqRel);
         }
         self.drain = true;
+        self.peer_limit = peer_limit;
         if !block_same_peer {
             let slot = &mut budget.peer_cache[idx];
             let new_peer = slot.spares[0].take().or_else(|| slot.spares[1].take()).unwrap_or_else(|| Arc::clone(slot.counter.as_ref().unwrap()));

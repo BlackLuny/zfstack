@@ -76,19 +76,48 @@ class CoverageInventoryTests(unittest.TestCase):
     def test_additions_cannot_hide_gate_or_ignore_reviewed_tests(self):
         original = self.rust.read_text()
         for changed in (original + '\n#[test] #[ignore] fn added_ignored() {}',
+                        original + '\n#[test] #[cfg_attr(not(miri), ignore)] fn added_cfg_ignored() {}',
+                        original + '\n#[test] #[cfg_attr(target_os="linux", ignore = "slow")] fn added_cfg_ignored() {}',
                         '#![cfg(feature="never")]\n' + original + '\n#[test] fn added() {}',
                         original + '\n#[cfg(target_os="linux")] mod gated { #[test] fn added() {} }'):
             self.rust.write_text(changed)
             with self.subTest(changed=changed), self.assertRaisesRegex(EvidenceError, "drift"):
                 audit(self.root, self.policy)
 
+    def test_added_python_skips_or_conditional_definitions_require_review(self):
+        for source in ('import unittest\nclass T(unittest.TestCase):\n    @unittest.skip("x")\n    def test_new(self): pass\n',
+                       'import unittest, sys\nclass T(unittest.TestCase):\n    @unittest.skipIf(sys.platform == "win32", "x")\n    def test_new(self): pass\n',
+                       'import unittest\n@unittest.skipUnless(False, "x")\nclass T(unittest.TestCase):\n    def test_new(self): pass\n',
+                       'import unittest\nclass T(unittest.TestCase):\n    @unittest.expectedFailure\n    def test_new(self): pass\n',
+                       'import pytest\n@pytest.mark.skipif(True, reason="x")\ndef test_new(): pass\n',
+                       'import pytest\n@pytest.mark.xfail\ndef test_new(): pass\n',
+                       'import sys\nif sys.platform == "linux":\n    def test_new(): pass\n',
+                       'try:\n    import missing\n    def test_new(): pass\nexcept ImportError:\n    pass\n'):
+            path = self.root / "test_added.py"
+            path.write_text(source)
+            with self.subTest(source=source), self.assertRaisesRegex(EvidenceError, "inventory drift"):
+                audit(self.root, self.policy)
+        path.write_text('import unittest\nfrom unittest import mock\nclass T(unittest.TestCase):\n'
+                        '    @mock.patch("os.skip_marker")\n    def test_new(self, patched): pass\n')
+        result = audit(self.root, self.policy)
+        self.assertEqual([entry["name"] for entry in result["additions"]["python_tests"]], ["test_new"])
+        self.assertEqual(verify_audit(result, self.policy), result)
+
     def test_reporter_rejects_forged_additions(self):
         self.rust.write_text(self.rust.read_text() + '\n#[test] fn added() {}')
+        (self.root / "test_added.py").write_text("def test_new(): pass\n")
         result = audit(self.root, self.policy)
         reviewed = read_json(self.policy / "test-inventory.json")["rust_tests"][0]
         added = result["additions"]["rust_tests"][0]
+        python = result["additions"]["python_tests"][0]
         for additions in ({}, [], {"rust_tests": []}, {"unknown": [added]}, {"rust_tests": [reviewed]},
                           {"rust_tests": [{**added, "ignored": True}]},
+                          {"rust_tests": [{**added, "attributes": ["test", "ignore"]}]},
+                          {"rust_tests": [{**added, "attributes": ["test", "cfg_attr ( not ( miri ) , ignore )"]}]},
+                          {"rust_tests": [{key: value for key, value in added.items() if key != "attributes"}]},
+                          {"python_tests": [{**python, "decorators": ["unittest.skip('x')"]}]},
+                          {"python_tests": [{**python, "guards": ["if False"]}]},
+                          {"python_tests": [{key: value for key, value in python.items() if key != "decorators"}]},
                           {"rust_tests": [added], "rust_configuration": [{"source": "src/adapter.rs", "attributes": ['cfg ( feature = "never" )']}]}):
             with self.subTest(additions=additions), self.assertRaises(EvidenceError):
                 verify_audit({**result, "additions": additions}, self.policy)
