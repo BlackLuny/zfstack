@@ -471,7 +471,9 @@ async fn issue48_wait_for_socket_wake(driver: &TestRelayDriver, id: ConnId) {
             }
             tokio::task::yield_now().await;
         }
-    }).await.expect("socket readiness did not wake the parked relay");
+    })
+    .await
+    .expect("socket readiness did not wake the parked relay");
 }
 
 #[tokio::test(flavor = "current_thread")]

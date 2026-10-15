@@ -2137,7 +2137,6 @@ impl Shard {
     }
 
     /// Check write closure without reserving budget or preparing TX backing.
-    #[cfg(feature = "tokio")]
     pub(crate) fn accepts_writes_for_adapter(&self, id: ConnId) -> bool {
         self.slots.get(id.idx()).filter(|s| s.gen == id.gen()).and_then(|s| s.conn.as_ref()).is_some_and(|c| c.accepts_writes())
     }
