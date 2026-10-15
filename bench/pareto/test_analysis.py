@@ -57,6 +57,30 @@ class ConsumptionTests(unittest.TestCase):
         self.assertIsNone(snapshot["ratio_of_medians_change_pct"])
         self.assertIn("not an allocator/RSS peak", " ".join(summary["warnings"]))
 
+    def test_verification_methods_must_match_within_a_pair(self):
+        for baseline_method, expected_exit in [(None, 2), ("outlined_verify_v1", 2), ("outlined_cacheline_verify_v1", 2), ("outlined_page_verify_v1", 2), ("byte_compare_sum_v1", 2), ("portable_full_scan_v1", 0)]:
+            with self.subTest(baseline_method=baseline_method), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                cases = root / "cases.json"
+                cases.write_text(json.dumps([{"name": "tx", "args": ["tx-alloc", "--iterations", "1", "--payload", "1"]}]))
+                records = []
+                for position, variant in enumerate(["baseline", "candidate"]):
+                    m = measurement(2)
+                    method = baseline_method if variant == "baseline" else "portable_full_scan_v1"
+                    if method is not None:
+                        m["verification_method"] = method
+                    records.append({"case": "tx", "variant": variant, "pair": 0, "exit_code": 0,
+                                    "binary_sha256": "a" * 64, "position": position, "measurements": [m]})
+                data = root / "runs.jsonl"
+                data.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+                argv = ["analyze.py", str(data), "--cases", str(cases), "--expected-pairs", "1", "--bootstrap", "0"]
+                with patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(analyze.main(), expected_exit)
+                result = json.loads((root / "summary.json").read_text())
+                self.assertEqual(result["validation"]["ok"], expected_exit == 0)
+                if expected_exit:
+                    self.assertIn("verification_method", json.dumps(result["validation"]["excluded_pairs"]))
+
     def test_non_tx_legacy_peak_is_preserved(self):
         result = accepted(1, "baseline", "rx")
         self.assertEqual(result["metrics"]["sampled_peak_reserved_bytes"], 65)

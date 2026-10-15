@@ -11,7 +11,7 @@
 | [cases.json](cases.json) | 本轮完整用例配置；预算与 RX 微基准、heap、上下行、双向、多 peer、短流等 |
 | [analyze.py](analyze.py) | 只读取原始证据，校验成对记录并生成统计，不启动基准 |
 
-三个脚本/配置文件是原实验文件的原样副本。`analyze.py` 保留了原文件名 `pareto_cases.json` 的 fallback，因此以下命令始终显式传 `--cases`，不依赖该 fallback。
+脚本保留原实验的文件组织，分析器另有 TX 账本与校验方法检查。`analyze.py` 保留原文件名 `pareto_cases.json` 的 fallback；以下命令始终显式传 `--cases`。
 
 ## 测量范围
 
@@ -20,6 +20,14 @@
 `pump-*` 在一台真实机器上运行两份 `Shard`，生成并解析原始 IP/TCP 包，逐字节比较应用接收数据，并检查正常关闭和资源释放。合成时钟只驱动 TCP 的协议时间、pacing 与定时器；速率分母使用机器实际 wall time 或 `CLOCK_PROCESS_CPUTIME_ID`。整个 probe 包含两个端点、包 materialization、应用遍历、握手和数据校验的 CPU 成本。
 
 这组结果是固定工作量的 CPU 与包处理能力证据。它没有真实 socket、TUN、WireGuard 加解密、NIC 或网络传输，不能用作这些路径的实际网络吞吐，也不能把两个端点合计成本解释成单端栈成本。`--owned-server` 选择普通 owned ingress；它仍共用受管复制路径，不是 `PacketBuf` 的 leased 接收测试。
+
+## TX 校验函数与测量版本
+
+当前 probe 输出 `verification_method=portable_full_scan_v1`。用 XOR/OR reduction 扫描全部字节做精确比较，随后累加实际数据 checksum，两者均在 work timer 内。没有抽样或把校验移出计时。校验函数不内联；Linux x86_64 用独立页对齐的 ELF section 固定页内布局，避免周边 TX 代码改动移动校验热循环。TX 额外记录 source 和 warmup payload 地址对 64 的余数，帮助识别数据对齐对校验/复制成本的影响；不输出地址。
+
+分析器拒绝一对 baseline/candidate 使用不同 verification_method 的记录；两侧必须使用同一份 probe 构建。计时包括校验器，发现 CPU 差值后应通过分段计时或采样区分 push/consume、比较和 checksum 的成本，再决定生产代码改动。旧记录及不同诊断方法分别统计，不合并绝对耗时。
+
+`tx-alloc` 使用 cache0；`tx-alloc-pooled` 使用 cache32、同一 peer；`tx-alloc-migrate` 使用 cache32，在同一个空 TxBuf 上交替 peer1/2。三者都报告 warmup 和 drop 前的实际 retained 账本，未采样的 TX 峰值继续为 null。可分别用 `--payload 64`、`--payload 65536` 检查小包和大块；跨 peer 负载是迁移压力场景。
 
 ## 1. 固定源码并创建两个隔离 worktree
 
