@@ -151,7 +151,7 @@ reader 原有完全空闲路径仍负责归还 EAGAIN spare 并执行显式 trim
 
 台架：单机 4 vCPU VM（Linux 6.18），客户端、服务端、代理同机；每格 3 次交替运行取中位数，每次 10 s（丢弃前 3 s），所有字节逐一校验，0 失败。原始 JSON 与汇总：`bench/results/2026-10-06-client/`，复现脚本 `bench/client_matrix.py`。sing-box 为 1.15.0-alpha.10（`with_gvisor`），各栈用其默认设置。
 
-2026-10-14 在另一台 4 vCPU 主机（Linux 6.12.94+）上对 **sing-box 1.15.0-alpha.12**（官方 linux-amd64，已去掉 `with_gvisor`）以及两个 C 实现（lwIP 2.2.1 TUN proxy、hev-socks5-tunnel）重跑了同一拓扑，并补了多流、混合双向、短连接和空闲连接。绝对值与本节不可比。报告：[`bench/results/2026-10-14-client-latest/REPORT.md`](../../bench/results/2026-10-14-client-latest/REPORT.md)。
+2026-10-15 在另一台 4 vCPU 主机（Linux 6.12.94+）上对 **sing-box 1.15.0-alpha.12**（官方 linux-amd64，已去掉 `with_gvisor`）以及两个 C 实现（lwIP 2.2.1 TUN proxy、hev-socks5-tunnel）重跑了同一拓扑。台架含 `CMD_SHORT` 与 C 代理 epoll/流控修复；10-14 那轮的短连接和 lwIP 混合数字不可用。绝对值与本节不可比。报告：[`bench/results/2026-10-15-client-latest/REPORT.md`](../../bench/results/2026-10-15-client-latest/REPORT.md)。
 
 zfstack 配置（§5 推荐接法）：`StackConfig::client()` + `splice` + vnet 头校验和卸载 + 驱动独立 current-thread runtime；`zfstack-mt` 为驱动与应用共用 4 worker runtime。「代理 CPU」按代理进程计；「整机」为全机 CPU（含客户端、服务端、内核）。注意 sing-box 是完整产品进程（Go runtime + 全部协议），**空闲常驻 37 MB 不可直接比**，峰值减空闲的增量与每连接内存更可比（zfstack 空闲 5.3 MB）。
 

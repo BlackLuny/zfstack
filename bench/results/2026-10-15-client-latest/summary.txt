@@ -1,0 +1,62 @@
+# medians  reps=3  elapsed=1820s  groups=['all']
+zfstack --test down                               28.22 Gbps  0.310 s/GB  hwm   8.2 MB  ok 3/3
+singbox-go --test down                            20.23 Gbps  0.397 s/GB  hwm  63.8 MB  ok 3/3
+singbox-system --test down                        22.64 Gbps  0.525 s/GB  hwm  54.3 MB  ok 3/3
+lwip --test down                                  11.27 Gbps  0.708 s/GB  hwm   2.9 MB  ok 3/3
+hev --test down                                   23.91 Gbps  0.649 s/GB  hwm   4.1 MB  ok 3/3
+zfstack --test up                                 28.80 Gbps  0.431 s/GB  hwm  11.1 MB  ok 3/3
+singbox-go --test up                              21.18 Gbps  0.379 s/GB  hwm  60.6 MB  ok 3/3
+singbox-system --test up                          19.23 Gbps  0.402 s/GB  hwm  54.3 MB  ok 3/3
+lwip --test up                                     6.54 Gbps  1.222 s/GB  hwm   2.1 MB  ok 3/3
+hev --test up                                     20.60 Gbps  0.664 s/GB  hwm   4.0 MB  ok 3/3
+zfstack --test down --flows 8                     21.97 Gbps  0.411 s/GB  hwm  26.5 MB  ok 3/3
+singbox-go --test down --flows 8                  20.38 Gbps  0.393 s/GB  hwm  89.9 MB  ok 3/3
+lwip --test down --flows 8                        10.77 Gbps  0.743 s/GB  hwm   7.1 MB  ok 3/3
+hev --test down --flows 8                         20.65 Gbps  0.762 s/GB  hwm   5.9 MB  ok 3/3
+zfstack --test up --flows 8                       23.95 Gbps  0.476 s/GB  hwm  28.3 MB  ok 3/3
+singbox-go --test up --flows 8                    20.58 Gbps  0.391 s/GB  hwm  72.7 MB  ok 3/3
+lwip --test up --flows 8                           7.64 Gbps  1.046 s/GB  hwm   2.1 MB  ok 3/3
+hev --test up --flows 8                           19.84 Gbps  0.624 s/GB  hwm   5.9 MB  ok 3/3
+zfstack down32                                    23.80 Gbps  0.377 s/GB  hwm  69.9 MB  ok 3/3
+singbox-go down32                                 17.39 Gbps  0.461 s/GB  hwm 154.9 MB  ok 3/3
+lwip down32                                        6.62 Gbps  1.208 s/GB  hwm  20.4 MB  ok 3/3
+hev down32                                        20.81 Gbps  0.692 s/GB  hwm  12.2 MB  ok 3/3
+zfstack-tso 1500 --test down                      26.58 Gbps  0.346 s/GB  hwm   8.2 MB  ok 3/3
+zfstack-plain 1500 --test down                     3.82 Gbps  2.389 s/GB  hwm   8.6 MB  ok 3/3
+singbox-go 1500 --test down                       18.01 Gbps  0.458 s/GB  hwm  67.0 MB  ok 3/3
+lwip 1500 --test down                              3.16 Gbps  2.533 s/GB  hwm   2.7 MB  ok 3/3
+hev 1500 --test down                              26.48 Gbps  0.542 s/GB  hwm   4.1 MB  ok 3/3
+zfstack-tso 1500 --test up                        25.13 Gbps  0.470 s/GB  hwm  11.9 MB  ok 3/3
+zfstack-plain 1500 --test up                       6.12 Gbps  2.254 s/GB  hwm   8.6 MB  ok 3/3
+singbox-go 1500 --test up                         23.26 Gbps  0.346 s/GB  hwm  60.3 MB  ok 3/3
+lwip 1500 --test up                                1.95 Gbps  4.092 s/GB  hwm   2.1 MB  ok 3/3
+hev 1500 --test up                                21.20 Gbps  0.589 s/GB  hwm   4.2 MB  ok 3/3
+zfstack mixed                                    bulk  28.25 Gbps  RR p50 1.015 p99 2.205 ms  hwm   8.3 MB  ok 3/3
+zfstack mixed8                                   bulk  24.82 Gbps  RR p50 1.436 p99 3.532 ms  hwm  26.1 MB  ok 3/3
+zfstack mixed-bi                                 bulk  34.63 Gbps  RR p50 5.858 p99 12.596 ms  hwm  13.7 MB  ok 3/3
+singbox-go mixed                                 bulk  20.63 Gbps  RR p50 1.276 p99 1.944 ms  hwm  64.6 MB  ok 3/3
+singbox-go mixed8                                bulk  18.30 Gbps  RR p50 9.577 p99 12.438 ms  hwm  90.0 MB  ok 3/3
+singbox-go mixed-bi                              bulk  24.84 Gbps  RR p50 2.285 p99 3.343 ms  hwm  70.8 MB  ok 3/3
+lwip mixed                                       bulk  11.60 Gbps  RR p50 0.676 p99 1.394 ms  hwm   2.8 MB  ok 3/3
+lwip mixed8                                      bulk  10.53 Gbps  RR p50 2.099 p99 2.969 ms  hwm   7.1 MB  ok 3/3
+lwip mixed-bi                                    bulk   9.00 Gbps  RR p50 0.812 p99 1.427 ms  hwm   2.9 MB  ok 3/3
+hev mixed                                        bulk  19.75 Gbps  RR p50 0.452 p99 0.730 ms  hwm   4.1 MB  ok 3/3
+hev mixed8                                       bulk  22.26 Gbps  RR p50 3.182 p99 3.954 ms  hwm   6.0 MB  ok 3/3
+hev mixed-bi                                     bulk  22.92 Gbps  RR p50 0.679 p99 1.612 ms  hwm   4.5 MB  ok 3/3
+zfstack connect                                  cps 9875  p50 5.29 p99 25.63 ms  hwm   8.1 MB  ok 3/3
+singbox-go connect                               cps 9605  p50 5.66 p99 27.60 ms  hwm  88.0 MB  ok 3/3
+singbox-system connect                           cps 8160  p50 6.11 p99 49.52 ms  hwm  63.3 MB  ok 3/3
+lwip connect                                     cps 310  p50 4.69 p99 22.78 ms  hwm   3.2 MB  ok 3/3
+hev connect                                      cps 308  p50 204.44 p99 212.62 ms  hwm   5.4 MB  ok 3/3
+zfstack idle                                     rss/conn 4891 B  held  24.3 MB  est 4000  ok 3/3
+singbox-go idle                                  rss/conn 9439 B  held  90.3 MB  est 4000  ok 3/3
+lwip idle                                        rss/conn 391 B  held   3.6 MB  est 4000  ok 3/3
+hev idle                                         rss/conn 9602 B  held  40.5 MB  est 4000  ok 3/3
+zfstack short                                    cps 7556  3.96 Gbps  p50 7.08 p99 28.55 ms  ok 3/3
+singbox-go short                                 cps 6607  3.46 Gbps  p50 7.85 p99 39.18 ms  ok 3/3
+lwip short                                       cps 6097  3.20 Gbps  p50 9.69 p99 39.21 ms  ok 3/3
+hev short                                        cps 303  0.16 Gbps  p50 207.38 p99 214.83 ms  ok 3/3
+zfstack w1 --test down                            28.31 Gbps  0.311 s/GB  hwm   8.1 MB  ok 3/3
+singbox-go w1 --test down                         19.39 Gbps  0.413 s/GB  hwm  62.9 MB  ok 3/3
+zfstack w1 --test up                              29.98 Gbps  0.417 s/GB  hwm  11.1 MB  ok 3/3
+singbox-go w1 --test up                           24.78 Gbps  0.338 s/GB  hwm  59.7 MB  ok 3/3

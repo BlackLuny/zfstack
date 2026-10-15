@@ -1,5 +1,7 @@
 # 客户端 TUN 协议栈对比（2026-10-14）
 
+> **已作废。** 随后的台架修复（`CMD_SHORT`、lwIP epoll/PCB、socks5-override 流控）证明本目录的短连接、lwIP 混合 RR、lwIP MTU 1500 下行不可信。有效结果见 [`../2026-10-15-client-latest/REPORT.md`](../2026-10-15-client-latest/REPORT.md)。
+
 zfstack client profile 对 **sing-box 1.15.0-alpha.12**（当前官方 linux-amd64 最新预发布）以及两个 **C 语言**同类实现：vanilla **lwIP 2.2.1** TUN 代理、生产级 **hev-socks5-tunnel**。同一拓扑测延迟、吞吐、内存、CPU、1/8/32 流、混合负载、建连、空闲连接和短连接。
 
 原始 JSON：本目录。复现：`bench/client_matrix.py`。设计背景：[`docs/design/0008-client-profile.md`](../../../docs/design/0008-client-profile.md)。图表：[Client TUN stack comparison](https://cursor.com/canvas/store-4a976e9d-7179-4187-abb1-b32f2681fdd4/dcb0e0b7-3cb8-484b-a4e3-597c41a6813a)。

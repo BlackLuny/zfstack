@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-15",
+  "zfstack_commit": "df432fd",
+  "sing-box": "1.15.0-alpha.12",
+  "sing-box_revision": "25b0d5ea3e466d246c708ac0f20d0448110e566c",
+  "sing-box_tags": "official linux-amd64 (no with_gvisor)",
+  "lwip": "STABLE-2_2_1_RELEASE 77dcd25a72509eb83f72b033d219b1d40cd8eb95",
+  "hev-socks5-tunnel": "50d7b41a4f53e72b5f53a5a262ff5e90f1b53cd3",
+  "kernel": "6.12.94+",
+  "nproc": 4,
+  "supersedes": "bench/results/2026-10-14-client-latest",
+  "notes": "Re-run after C-proxy epoll/flow-control fixes, dedicated CMD_SHORT, and lwIP PCB teardown. Client TUN path. zfstack uses StackConfig::client + splice + vnet-hdr + driver thread. sing-box go is the 1.15 default stack. lwip is a C TUN proxy using upstream lwIP. hev is hev-socks5-tunnel plus a local SOCKS5 override (extra userspace hop)."
+}
