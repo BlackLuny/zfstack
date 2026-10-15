@@ -215,10 +215,29 @@ def _audit_record(inventory, registry):
 TEST_KINDS = ("rust_tests", "python_tests")
 # cfg(test) can only enable code under test, so it never hides an existing test.
 SAFE_ADDED_CFG = "cfg ( test )"
+PYTHON_SKIP_DECORATOR = re.compile(r"skip\w*|expectedFailure|xfail", re.IGNORECASE)
 
 
 def _entry_key(entry):
     return json.dumps(entry, sort_keys=True)
+
+
+def _skips_execution(kind, entry):
+    """Whether an added test may not run as written; such tests need reviewed registration.
+
+    Malformed fields fail closed. Rust tests count `ignore`, also via cfg_attr;
+    Python tests count skip/xfail decorators (including the class's) and any
+    conditional definition.
+    """
+    if kind == "rust_tests":
+        attributes = entry.get("attributes")
+        if entry.get("ignored") is not False or not isinstance(attributes, list) or not all(isinstance(a, str) and a for a in attributes):
+            return True
+        return any(a.split()[0] == "ignore" or (a.split()[0] == "cfg_attr" and "ignore" in a.split()) for a in attributes)
+    decorators, guards = entry.get("decorators"), entry.get("guards")
+    if not isinstance(decorators, list) or not isinstance(guards, list) or not all(isinstance(d, str) for d in decorators):
+        return True
+    return bool(guards) or any(PYTHON_SKIP_DECORATOR.fullmatch(d.split("(")[0].rsplit(".", 1)[-1].strip()) for d in decorators)
 
 
 def _added_cfg_allowance(added_rust_tests):
@@ -238,6 +257,7 @@ def inventory_additions(inventory, expected):
 
     Every reviewed test entry must survive byte-for-byte, so removal, rename,
     a new #[ignore]/skip, or changed attributes on an existing test is drift.
+    An added test that is ignored or skipped (see `_skips_execution`) is drift too.
     A file may only gain cfg(test) or the cfg attributes of its own added tests.
     """
     if any(inventory.get(key) != expected.get(key) for key in ("schema_version", "scope")):
@@ -253,6 +273,8 @@ def inventory_additions(inventory, expected):
             if extra[_entry_key(entry)] > 0:
                 extra[_entry_key(entry)] -= 1
                 added.append(entry)
+        if any(_skips_execution(kind, entry) for entry in added):
+            return None
         if added:
             additions[kind] = added
     allowance = _added_cfg_allowance(additions.get("rust_tests", []))
@@ -284,7 +306,7 @@ def _verify_additions(additions, inventory):
         for entry in additions.get(kind, []):
             if _entry_key(entry) in reviewed or not isinstance(entry.get("source"), str) or not isinstance(entry.get("name"), str):
                 raise EvidenceError("coverage additions are not new tests")
-            if kind == "rust_tests" and entry.get("ignored") is not False:
+            if _skips_execution(kind, entry):
                 raise EvidenceError("added ignored tests require reviewed registration")
     allowance = _added_cfg_allowance(additions.get("rust_tests", []))
     for entry in additions.get("rust_configuration", []):

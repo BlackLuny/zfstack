@@ -1712,7 +1712,7 @@ impl MemoryLease {
         }
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)) };
-        if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
+        if !reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes) {
             budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
             self.global.request_cache_reclaim();
             return false;
@@ -1721,6 +1721,7 @@ impl MemoryLease {
             drain.fetch_add(self.bytes, Ordering::AcqRel);
         }
         self.drain = true;
+        self.peer_limit = budget.peer_limit;
         if !same_peer {
             self.peer = Some(Arc::clone(counter));
         }

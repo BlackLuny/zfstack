@@ -50,7 +50,8 @@ python3.12 -m qa audit-coverage
 
 `QA-coverage` 将 Rust 手写测试入口、Python 测试方法及相关条件/跳过属性与受审查的
 `policy/test-inventory.json` 比对。纯新增测试自动接受：受审查条目必须逐字保留，新增条目以 `additions`
-列入覆盖证据，由可信 reporter 复核；新增 `#[ignore]`/跳过的测试仍需登记。文件只能新增 `cfg(test)` 或其新增测试自带的
+列入覆盖证据，由可信 reporter 复核；新增 `#[ignore]`（含 `cfg_attr(..., ignore)`）、带 Python
+skip/skipIf/skipUnless/xfail/expectedFailure 装饰器（含所在类的装饰器）或在 `if`/`try` 下条件定义的测试仍需登记。文件只能新增 `cfg(test)` 或其新增测试自带的
 cfg。删除、改名、改动既有测试的属性/跳过条件，或新增可能隐藏测试的 cfg，仍需显式更新清单并审查；
 `python -m qa.coverage --output /tmp/test-inventory-candidate.json` 只生成待审查版本，audit 不自动接受这类漂移。
 合入此类清单变更后，维护者将 `QA_TRUSTED_REF` 更新为新的 main 提交：`gh variable set QA_TRUSTED_REF --body "$(git rev-parse origin/main)"`。
