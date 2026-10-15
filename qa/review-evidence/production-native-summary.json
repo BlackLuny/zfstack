@@ -1,0 +1,164 @@
+{
+  "artifact_identity_limit": "Actual invocation supplement provides remote observed executable SHA256 values and matching log startup lines. Executable bytes are not in this small export, so this review independently verifies the retained claims and log bindings, not local rehashes of those remote executables.",
+  "clippy": {
+    "argv": [
+      "cargo",
+      "+1.94.1",
+      "clippy",
+      "--locked",
+      "--workspace",
+      "--all-targets",
+      "--all-features"
+    ],
+    "sha256": "a6085a4206693063b889b5a761e43c79c4330e41b3c7cdf70108f3511ed3564e",
+    "size_bytes": 33105,
+    "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/clippy-workspace.log",
+    "status": "PASS",
+    "warning_header_count": 57,
+    "warning_policy": "Warnings retained; no -D warnings was supplied."
+  },
+  "commands": {
+    "test-pacing-nocapture": {
+      "argv": [
+        "cargo",
+        "+1.94.1",
+        "test",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--all-features",
+        "--lib",
+        "pacing_",
+        "--",
+        "--nocapture"
+      ],
+      "failed": 0,
+      "ignored": 0,
+      "ignored_test_lines": [],
+      "passed": 14,
+      "sha256": "31026f4a92a622f07384734cc75f32904972cf1ac04d3851f0148fc84fd90fa9",
+      "size_bytes": 3714,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/test-pacing-nocapture.log",
+      "test_result_lines": 1
+    },
+    "test-sim-nocapture": {
+      "argv": [
+        "cargo",
+        "+1.94.1",
+        "test",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--all-features",
+        "--lib",
+        "sim::tests::",
+        "--",
+        "--nocapture"
+      ],
+      "failed": 0,
+      "ignored": 3,
+      "ignored_test_lines": [
+        "test sim::tests::bbr_probe_steady_state ... ignored",
+        "test sim::tests::bbr_trace ... ignored",
+        "test sim::tests::soak_paused_reader_lossy_multiflow ... ignored"
+      ],
+      "passed": 49,
+      "sha256": "780e331388c158b1b61099beb9fc70225b6410ec40d04d7c26e4c19460bf83f2",
+      "size_bytes": 8850,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/test-sim-nocapture.log",
+      "test_result_lines": 1
+    },
+    "test-workspace": {
+      "argv": [
+        "cargo",
+        "+1.94.1",
+        "test",
+        "--locked",
+        "--release",
+        "--workspace",
+        "--all-features",
+        "--message-format=json-render-diagnostics"
+      ],
+      "failed": 0,
+      "ignored": 7,
+      "ignored_test_lines": [
+        "test shard::share_waiter_observation::issue43_waiter_burst_then_one_long_connection ... ignored, capacity and scan-cost observation after a real connection burst",
+        "test sim::tests::bbr_probe_steady_state ... ignored",
+        "test sim::tests::bbr_trace ... ignored",
+        "test sim::tests::soak_paused_reader_lossy_multiflow ... ignored",
+        "test tokio_adapter::tests::issue37_splice_256_streams_keep_progressing_with_delayed_acks ... ignored, full 256-stream splice comparison; 64 streams run in CI",
+        "test tokio_adapter::tests::issue43_repeated_splice_cpu_evidence ... ignored, repeat CPU/byte evidence; run alone with --test-threads=1",
+        "test issue37_full_256_streams_at_50ms_rtt ... ignored, full 256-stream throughput comparison; the scaled regression runs in CI"
+      ],
+      "passed": 300,
+      "sha256": "6c4429671947d81a179f4ed2571ca50ce3577b1d7034e039cd8d83816de4b66e",
+      "size_bytes": 141268,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/test-workspace.log",
+      "test_result_lines": 9
+    }
+  },
+  "counting_rule": "300 workspace passed is the full-suite total. The 49 sim and 14 pacing counts are separate targeted reruns with overlap, not 63 additional distinct workspace tests. Seven original ignored tests remain ignored.",
+  "host": "x86_64-unknown-linux-gnu",
+  "independent_checks": {
+    "actual_test_startup_lines_matched_to_logs": 9,
+    "all_commands_completed_zero_and_cleanup_pass": 8,
+    "lease_release_pass": true,
+    "postflight_empty": true,
+    "sealed_export_files_sha256_size_verified": 18,
+    "source_unchanged_and_clean": true,
+    "supplement_files_sha256_size_verified": 2
+  },
+  "lock_scope": "Retained ignored Cargo.lock, --locked used; hash is part of this execution identity.",
+  "lock_sha256": "f16d0a552ae1785ce8ea646ebb66d52ac2155336e732b38c0760f606f147046d",
+  "process_runner_source_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+  "scope": "Independent Linux Rust workspace validation of the two-commit production branch, not a reattribution of historical 8bf QA qualification.",
+  "source_identity": {
+    "dirty": false,
+    "patch_hash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+    "sha": "868ce01c4801f9dc2ef582affcc454be270632f8",
+    "source_hash": "f82cd1c241477414ae24030ba8877d590833f2648780c44ad6c5727911e81273",
+    "tree": "d2943329b5d8209b3303de7a1c510649aca9da0b"
+  },
+  "source_sha": "868ce01c4801f9dc2ef582affcc454be270632f8",
+  "sources": {
+    "auxiliary_monitor_error": {
+      "sha256": "d9f97fbf5278ca46e3e385037fbf5211030fe67f87802086675acdcbe94167b8",
+      "size_bytes": 321,
+      "source_path": "validation-20261015/pacing-split-linux/prod868-readonly-monitor-syntax-error.log"
+    },
+    "invocations": {
+      "sha256": "e4c36bb60ec58c8bc8aa5f49dbd1dc4d158654a6eeb4e2072569cbc2860409d0",
+      "size_bytes": 4676,
+      "source_path": "validation-20261015/pacing-split-linux/actual-test-invocations.json"
+    },
+    "postflight": {
+      "sha256": "9c7a3951763a2bb75c0327cc5af07364633fe456c40be5d787f92a59ee71d121",
+      "size_bytes": 547,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/postflight.json"
+    },
+    "sealed_export_index": {
+      "sha256": "22c23cc2a5dfcf06b9ab951145dcd477c6fbe3010416ada09837bb4c6d55d525",
+      "size_bytes": 3077,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/index.json"
+    },
+    "summary": {
+      "sha256": "a1359715b0cc18d957876832e6eed72f77f32f85445c09a54737411f8cfa11ba",
+      "size_bytes": 3604,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/summary.json"
+    },
+    "supplement_index": {
+      "sha256": "a9760c8a15ce753fb2a3d669e41931fcdfcd6121a943a0f6de785202bebf8ca0",
+      "size_bytes": 481,
+      "source_path": "validation-20261015/pacing-split-linux/supplement-index.json"
+    },
+    "validation": {
+      "sha256": "8fbbc5d2d50ba9687533e998f57ff668081113581dc0929dbb243a8dc4aa8263",
+      "size_bytes": 15939,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/workspace-validation.json"
+    }
+  },
+  "target": "x86_64-unknown-linux-gnu",
+  "toolchain": "1.94.1"
+}

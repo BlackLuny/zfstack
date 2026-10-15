@@ -1,0 +1,103 @@
+{
+  "full_original_log_pointers": {
+    "debt-after.log": {
+      "failed": 0,
+      "passed": 14,
+      "sha256": "66eda0094bcb4886a5057574952882ab73371cd4d48903f3b918178154e2da4a",
+      "size_bytes": 4131,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-after.log",
+      "status": "ok"
+    },
+    "debt-bbr-brutal.log": {
+      "failed": 0,
+      "passed": 1,
+      "sha256": "e166111d26d2288349d8554915ed711d292953d7ac59d017dac2fa7d36fafbed",
+      "size_bytes": 2093,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-existing-bbr_and_brutal_complete.log",
+      "status": "ok"
+    },
+    "debt-before.log": {
+      "failed": 1,
+      "passed": 1,
+      "sha256": "45f999a12e5b0354884de9ba3412b426df73a9a7add7c992f4377e4e4bb09ae2",
+      "size_bytes": 4898,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-before.log",
+      "status": "FAILED"
+    },
+    "debt-fairness.log": {
+      "failed": 0,
+      "passed": 1,
+      "sha256": "0f6eadcc371dfb03d1684b9e443c7a8321cd318bf0082432dcebe1f2d2d8b9a9",
+      "size_bytes": 2158,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-existing-per_peer_fairness.log",
+      "status": "ok"
+    },
+    "debt-small-cubic.log": {
+      "failed": 0,
+      "passed": 1,
+      "sha256": "1965d1eb40ac9469f8240050f17fb0985935fa522d43e44a77671f789641c596",
+      "size_bytes": 2099,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-existing-small_cwnd_cubic_is_not_paced.log",
+      "status": "ok"
+    },
+    "wake-after.log": {
+      "failed": 0,
+      "passed": 6,
+      "sha256": "cdb2ddd99869d1aff25ef7e53bbc2bf599ef43241c75562c546eefeefe226e2c",
+      "size_bytes": 2844,
+      "source_path": "validation-20261015/pacing-wake-development/03-after-fix.log",
+      "status": "ok"
+    },
+    "wake-before.log": {
+      "failed": 5,
+      "passed": 1,
+      "sha256": "836efed0f39e46a1f38afc641d2d514a3474092b7581cc7d6589ee59bc32495c",
+      "size_bytes": 6404,
+      "source_path": "validation-20261015/pacing-wake-development/02-final-tests-before-fix.log",
+      "status": "FAILED"
+    }
+  },
+  "rate_debt": {
+    "after_fix_commit": "0cb4c400769762eb5c56941ff051704bcdb5b30f",
+    "all_final_protection_checks": {
+      "composition": "14 pacing_ tests, including 2 natural recovery tests, plus 3 separate existing simulation checks",
+      "failed": 0,
+      "passed": 17
+    },
+    "before_production_sha": "ddeed62ae34d7f5af3d4ccce6a61ad4b8c7eb11b",
+    "before_source_definition": "First wake fix is already present in ddeed62; identical natural BBR regressions appended. This is not the 7b38911 baseline.",
+    "metadata": {
+      "sha256": "34b87886c0088dcc8e30133c6f55690d57b2bccc485a38c60a3ebcde9bec6d9f",
+      "size_bytes": 3143,
+      "source_path": "validation-20261015/pacing-rate-debt-development/permanent-metadata.json"
+    },
+    "natural_after": {
+      "failed": 0,
+      "passed": 2
+    },
+    "natural_before": {
+      "failed": 1,
+      "passed": 1
+    }
+  },
+  "scope": "Historical deterministic production before/after regressions; not new native execution or CPU certification.",
+  "wake": {
+    "after": {
+      "failed": 0,
+      "passed": 6
+    },
+    "after_fix_commit": "6f7421307380caa02ca27b590510e80cd9040426",
+    "before": {
+      "failed": 5,
+      "passed": 1
+    },
+    "before_production_sha": "7b3891149c249842a8563af650f8169b1acbfa1a",
+    "before_source_definition": "Unchanged 7b38911 production plus the final identical pacing_wake_tests module.",
+    "bulk_protection": "The unchanged continuous bulk test passed before and after; new boundary tests include inflight/adapter occupancy and full, unclipped quantum.",
+    "metadata": {
+      "sha256": "2df08f6b26c2e4f77805be0952e21635744ec156897b3cdb4240c47787266479",
+      "size_bytes": 340,
+      "source_path": "validation-20261015/pacing-wake-development/02-final-tests-before-fix.meta.json"
+    }
+  }
+}

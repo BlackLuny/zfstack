@@ -1,0 +1,4146 @@
+{
+  "scope": "Independent original final8bf and exactly two unchanged formal repeats. No third run in exported operator script/lifecycle/result directories; not a claim about unobserved host history.",
+  "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+  "worker_sha256": "36977c8ee4a02595af6ef0cb463654069a22e4e6c6d6d169b9722d0678ca37c1",
+  "worker_manifest_sha256": "b57e8ca55b97e4ff061529d2bfef06e2b0cf45f48941ca49de61fe26cf9e84de",
+  "source_root": "/tmp/zfstack-qa-linux-preflight/8bf5bb8-queue-two-local/8bf5bb8-queue-two",
+  "index_sha256": "c1aebb65487b7bd98c716c774ee105f7ddcc12991808c6fb65b6064a8b8d5361",
+  "verified_index_files": 112,
+  "original_payload_summary_sha256": "6a6cf415f0534aa02ac484d356720c96fb1166d7d9b3550a8c0d5e850c6dce13",
+  "case_equals_original_frozen_case": true,
+  "frozen_case": {
+    "case_id": "C16-l2-queue-control",
+    "case_instance_id": "5d5d428d0f44c2b8d70fad085a012295e43d235b155093c13d6d9f2f08cb03ab",
+    "case_version": 1,
+    "config": {
+      "application_port": 19001,
+      "boundary_tolerance_ns": 5000000,
+      "capture": false,
+      "churn_requests": 0,
+      "direction": "heavy-download/light-echo",
+      "heavy_conns": 4,
+      "light_conns": 1,
+      "light_mode": "closed-loop",
+      "max_generator_lag_sec": 0.02,
+      "memory_mb": 64,
+      "mode": "load",
+      "mtu": 1420,
+      "netem_limit_packets": 100000,
+      "phases_sec": {
+        "baseline": 8,
+        "loaded": 16,
+        "recovery": 8
+      },
+      "profile": "fast-release",
+      "queue_control": {
+        "delay_ms": 500.0,
+        "interface": "eth0",
+        "kind": "netem-delay",
+        "limit_packets": 100000,
+        "node": "worker",
+        "phase": "loaded"
+      },
+      "request_bytes": 256,
+      "request_rate_hz": 100.0,
+      "request_timeout_sec": 3.0,
+      "runtime": "tokio-multi-thread",
+      "schema_version": 1,
+      "topology": {
+        "heavy_peer": 0,
+        "light_peers": [
+          1,
+          2,
+          3
+        ],
+        "peers": 4,
+        "wg_ports": 2
+      },
+      "udp_enabled": true,
+      "udp_payload_bytes": 1032,
+      "udp_rate_hz": 100.0,
+      "uplink_delay_ms": 0.0
+    },
+    "features": [
+      "jemalloc",
+      "mmsg"
+    ],
+    "integration_build": {
+      "features": [
+        "jemalloc",
+        "mmsg"
+      ],
+      "profile": "fast-release",
+      "toolchain": "1.98.1"
+    },
+    "layer": "L2",
+    "performance": {
+      "metrics": [],
+      "mode": "not_applicable"
+    },
+    "platform": "linux-x86_64",
+    "profile": "fast-release",
+    "requiredness": "REQUIRED",
+    "runner": "l2-queue-control",
+    "service_contract": {
+      "deadline_ms": 250.0,
+      "max_deadline_miss_rate": 0.0,
+      "max_latency_ms": 250.0,
+      "min_samples_per_peer_phase": 3,
+      "peer_ids": [
+        "client-1",
+        "client-2",
+        "client-3"
+      ],
+      "phases": [
+        "loaded"
+      ],
+      "schema_version": 1
+    },
+    "timeout_seconds": 900,
+    "toolchain": "1.98.1"
+  },
+  "definitions": {
+    "planned": "number of emitted scheduled sample records in each recorded phase; TCP closed-loop schedules the next request after its predecessor, not a fixed 3200-request open-loop obligation",
+    "service": "completed ended_at minus started_at; also separately report terminal elapsed values for noncompleted outcomes",
+    "arrival": "completed ended_at minus scheduled_at",
+    "over_threshold": "strictly greater than250ms; no percentile or SLO threshold changed",
+    "errors": "phase errors count status failed; original per-peer errors[] retained separately because errors may not identify a phase",
+    "phase": "existing raw sample phase label, unchanged"
+  },
+  "runs": [
+    {
+      "attempt": "original",
+      "formal_functional": "NOT_RUN",
+      "formal_validity": {
+        "functional": "UNKNOWN",
+        "performance": "UNKNOWN",
+        "reasons": [
+          "queue negative-control precondition/evidence incomplete",
+          "queue control did not prove a drained queue before removal",
+          "service.client-1.loaded.latency: 17 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-1.loaded.deadline: observed misses/population 17/18; maximum proportion 0.0",
+          "service.client-2.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-2.loaded.deadline: observed misses/population 16/24; maximum proportion 0.0",
+          "service.client-3.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-3.loaded.deadline: observed misses/population 16/30; maximum proportion 0.0",
+          "queue control did not prove a drained queue before removal",
+          "queue control lacks the actual loaded phase interval"
+        ]
+      },
+      "arms": {
+        "baseline": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3199,
+              "started": 3199,
+              "completed": 3199,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7740485966205597
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.899371087551117
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1599,
+                "started": 1599,
+                "completed": 1599,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1599
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 22.487379610538483
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 22.62033149600029
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.4303942918777466
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.4862438440322876
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3199,
+              "started": 3199,
+              "completed": 3199,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7211755514144897
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.786736935377121
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1599,
+                "started": 1599,
+                "completed": 1599,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1599
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 18.417008221149445
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 18.642958253622055
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.8322674334049225
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.901468425989151
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3199,
+              "started": 3199,
+              "completed": 3199,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.277543932199478
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.3839866518974304
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1599,
+                "started": 1599,
+                "completed": 1599,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1599
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 18.431425094604492
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1599,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 18.558360636234283
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.3925378918647766
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.4507902562618256
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.686253309249878
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.193041801452637
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 32.679930329322815
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 33.19662809371948
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.4749992191791534
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.283821374177933
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.961399525403976
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.509628146886826
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 30.32892942428589
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 31.707733869552612
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.5575740039348602
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.296029150485992
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.4318136274814606
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.0986517667770386
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 21.902412176132202
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 22.74322509765625
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.2676048576831818
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.6832988262176514
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.418442189693451
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.453569978475571
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 27.483820915222168
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 29.447797685861588
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.735354006290436
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.1445100903511047
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3
+          }
+        ],
+        "fault": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1600,
+              "started": 1600,
+              "completed": 1600,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.4300478398799896
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.526063472032547
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 18,
+                "started": 18,
+                "completed": 18,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 18
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 18,
+                  "completed_over_250ms": 17,
+                  "max_completed_ms": 1002.825703471899
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 18,
+                  "completed_over_250ms": 17,
+                  "max_completed_ms": 1002.9131844639778
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 782,
+                "started": 782,
+                "completed": 782,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 782
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 782,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.0792335271835327
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 782,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.3210644721984863
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1624,
+              "started": 1624,
+              "completed": 1624,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.438373863697052
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.496279776096344
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 24,
+                "started": 24,
+                "completed": 24,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 24
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 24,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1001.637801527977
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 24,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1001.7240382730961
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.848263829946518
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.95359268784523
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1630,
+              "started": 1630,
+              "completed": 1630,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.6664510369300842
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7988888323307037
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 30,
+                "started": 30,
+                "completed": 30,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 30
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 30,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1001.4253854751587
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 30,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1001.4960095286369
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.754845052957535
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.888087511062622
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.050372004508972
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.42982092499733
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1007.0324614644051
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1008.8002383708954
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.734538495540619
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.456693470478058
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.051966428756714
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.427775740623474
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1006.928812712431
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1008.857075124979
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.6629214882850647
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.594739526510239
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 1.830723136663437
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.045007586479187
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1004.0026195347309
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1006.0105510056019
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.850901663303375
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.9662386775016785
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.041110932826996
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.0890554189682007
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1009.1565810143948
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1561,
+                  "max_completed_ms": 1011.1810937523842
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.872694611549377
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.0689859092235565
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3
+          }
+        ]
+      },
+      "result_sha256": "2f4673fda85eb6a99b62aa48ab4017192654c95a541236485320027e6369ca80",
+      "injector_recomputed_errors": [
+        "queue control did not prove a drained queue before removal"
+      ],
+      "link_recomputed_errors": [],
+      "queue_last_snapshots": [
+        {
+          "phase": "draining",
+          "since_tc_ms": 646.39779,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 562475574 bytes 437297 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 46322b 2p requeues 0\n"
+        },
+        {
+          "phase": "cleanup",
+          "since_tc_ms": 656.620124,
+          "backlog": 90496,
+          "qlen": 2,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 564333114 bytes 438633 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 45248b 1p requeues 0\n"
+        },
+        {
+          "phase": "restored",
+          "since_tc_ms": 668.803346,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc noqueue 0: root refcnt 2 \n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        }
+      ],
+      "recovery_margin_ms": 73.393691
+    },
+    {
+      "attempt": 1,
+      "formal_functional": "NOT_RUN",
+      "formal_validity": {
+        "functional": "UNKNOWN",
+        "performance": "UNKNOWN",
+        "reasons": [
+          "queue negative-control precondition/evidence incomplete",
+          "queue control did not prove a drained queue before removal",
+          "service.client-1.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-1.loaded.deadline: observed misses/population 16/18; maximum proportion 0.0",
+          "service.client-2.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-2.loaded.deadline: observed misses/population 16/32; maximum proportion 0.0",
+          "service.client-3.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-3.loaded.deadline: observed misses/population 16/32; maximum proportion 0.0",
+          "queue control did not prove a drained queue before removal",
+          "queue control lacks the actual loaded phase interval"
+        ]
+      },
+      "arms": {
+        "baseline": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.679266035556793
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.772953361272812
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 11.266492307186127
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.77265527844429
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 10.319329798221588
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 10.381583124399185
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/client-1.json",
+            "source_sha256": "8bae82667514efd5513b879b711c8237ff42e0709b15f07f9da44b0e7e2d8d2e"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.645242244005203
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.806394577026367
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.097529411315918
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.31485167145729
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.2730773091316223
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.349125385284424
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/client-2.json",
+            "source_sha256": "7d5449e8336c5d7cb587707d5c22d44f8328dc4ae1be1ddcf2c33032f4fb1224"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.9314570128917694
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.079000860452652
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.060064166784286
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.134126663208008
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.9973872005939484
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.043290227651596
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/client-3.json",
+            "source_sha256": "774c4b26e71ec2a4b87b455900d551fd750fd9b8558aec56f5a83368ab1a4bc2"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.175416082143784
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.72059741616249
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.7338719964027405
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.865591138601303
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.5099034905433655
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.9615932404994965
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/udp-0.json",
+            "source_sha256": "9edff0562687041db7d44e4057a21df0cad5752f1e66d704eee37f20681b0afd"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.2281333804130554
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7585960924625397
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.132896274328232
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.570304960012436
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.546396434307098
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.909495055675507
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/udp-1.json",
+            "source_sha256": "bdfe66be30814118470c46a76adcf77388c2cbd9fea71c4c1f89d70aace560e2"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.16508212685585
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.75765660405159
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 12.021318078041077
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.853907585144043
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.528399556875229
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.035860627889633
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/udp-2.json",
+            "source_sha256": "d8297b63fbbc70ff913d8ab514146a9acfc598db5908abd620401da7683f8107"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.2968538105487823
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.0909664928913116
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 12.347709387540817
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 14.031223952770233
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.6642903685569763
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.731416702270508
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/baseline/load/udp-3.json",
+            "source_sha256": "1f92c8eddcd5e5d5b34a3f44cbd0831225b97f8d234d963d8e1b444af110ca34"
+          }
+        ],
+        "fault": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1611,
+              "started": 1611,
+              "completed": 1611,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.133388727903366
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.271246820688248
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 18,
+                "started": 18,
+                "completed": 18,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 18
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 18,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1002.0578503608704
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 18,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1002.1448731422424
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 793,
+                "started": 793,
+                "completed": 793,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 793
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 793,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 16.427896916866302
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 793,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 20.30724659562111
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/client-1.json",
+            "source_sha256": "62b6d799a8ec2cdc2d57a0e80cdec0a720a427db7ad8498212fe34000b2f9bb4"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1631,
+              "started": 1631,
+              "completed": 1631,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.513945758342743
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.579499691724777
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 32,
+                "started": 32,
+                "completed": 32,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 32
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 32,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1002.7474015951157
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 32,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1002.8249882161617
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 799,
+                "started": 799,
+                "completed": 799,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 799
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 799,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.936808556318283
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 799,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.03841957449913
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/client-2.json",
+            "source_sha256": "92c1bf2af4caaa8eb8eb7bfa5fcd69b554e2875fc483a6dd02ef429e28b1e328"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1632,
+              "started": 1632,
+              "completed": 1632,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 11.179529130458832
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 11.283393949270248
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 32,
+                "started": 32,
+                "completed": 32,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 32
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 32,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1089.0238396823406
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 32,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1089.0990681946278
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.941381186246872
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.0581168830394745
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/client-3.json",
+            "source_sha256": "d99b857a304eaf8e70e534cef42df152577af98bd3419d144e999add6ad9e64a"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.8077756762504578
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.404047667980194
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1010.7212923467159
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1010.8057335019112
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.9408132433891296
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.025630980730057
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/udp-0.json",
+            "source_sha256": "2dbfd7f5602a76a02c88f727f06a4c9b94a1a88e7a793a9e2ad3ebecb3a341c4"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.458677351474762
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.354963570833206
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1009.4865001738071
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1010.9859704971313
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.187565296888351
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.034862250089645
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/udp-1.json",
+            "source_sha256": "e24764a97afcdf61df95fec3d3378046c27837a60ba5f394503462206aa974b2"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.347592920064926
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.378317415714264
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1009.7914785146713
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1011.1293345689774
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.863176167011261
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.8755685091018677
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/udp-2.json",
+            "source_sha256": "91dd0df67840afe5d2257ee9549c5a2ee460f46f651410683e4cb4202bbb90d9"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.523056447505951
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 11.148087680339813
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1010.8030177652836
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1562,
+                  "max_completed_ms": 1011.1077763140202
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 1.672312617301941
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.142155706882477
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-1/fault/load/udp-3.json",
+            "source_sha256": "eec905834da4e896aca8b5f8ba6e7a4feed68859d0adae6d0dd473cead3cbe4d"
+          }
+        ]
+      },
+      "result_sha256": "7f92a652724c245e4bceb2da3f096e3e062a3a220f4d4a6a96bb9b4d99dfeba3",
+      "formal_gate": "BLOCKED",
+      "injector_recomputed_errors": [
+        "queue control did not prove a drained queue before removal"
+      ],
+      "link_recomputed_errors": [],
+      "queue_last_snapshots": [
+        {
+          "phase": "draining",
+          "since_tc_ms": 645.797557,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 561926884 bytes 437660 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        },
+        {
+          "phase": "cleanup",
+          "since_tc_ms": 653.720734,
+          "backlog": 45248,
+          "qlen": 1,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 562895516 bytes 438406 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 135876b 5p requeues 0\n"
+        },
+        {
+          "phase": "restored",
+          "since_tc_ms": 666.541295,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc noqueue 0: root refcnt 2 \n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        }
+      ],
+      "recovery_margin_ms": 76.49291
+    },
+    {
+      "attempt": 2,
+      "formal_functional": "NOT_RUN",
+      "formal_validity": {
+        "functional": "UNKNOWN",
+        "performance": "UNKNOWN",
+        "reasons": [
+          "queue negative-control precondition/evidence incomplete",
+          "queue control was not restored before the recovery phase",
+          "service.client-1.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-1.loaded.deadline: observed misses/population 16/21; maximum proportion 0.0",
+          "service.client-2.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-2.loaded.deadline: observed misses/population 16/21; maximum proportion 0.0",
+          "service.client-3.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-3.loaded.deadline: observed misses/population 16/21; maximum proportion 0.0",
+          "queue control lacks the actual loaded phase interval",
+          "queue control was not restored before the recovery phase"
+        ]
+      },
+      "arms": {
+        "baseline": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7911476790905
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.901405096054077
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 14.635864645242691
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 14.740657061338425
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.018355160951614
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.094909876585007
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/client-1.json",
+            "source_sha256": "44aa606b7cf8603f4f734014b3b2ca2430531deede0d8486ce4e0a6808d21ac9"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.731066524982452
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.805475473403931
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 10.03594696521759
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 10.121040046215057
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.7357881665229797
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.8231313228607178
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/client-2.json",
+            "source_sha256": "d86255f3db1a4361a910b74d3dcaf4b57d96b45b0d7aa2b32b9f0daaeb8fb4b8"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.3036599159240723
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.3764558136463165
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.669672042131424
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.794163793325424
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7613565325737
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.9037632048130035
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/client-3.json",
+            "source_sha256": "0fba1dddfab85fe506814c5d2fcc191c4e625a1837a7205388633674b482354b"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.6408938467502594
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.83563169836998
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 14.204651117324829
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 15.883076936006546
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.692461997270584
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.022925049066544
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/udp-0.json",
+            "source_sha256": "3b9e25a33c7b0a9c99c163812581f2e996f3c7130d2c4111a86a80d47847f416"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 1.765083521604538
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.3460892736911774
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 15.145029872655869
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 16.472280025482178
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.949449121952057
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.064223617315292
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/udp-1.json",
+            "source_sha256": "30d1dcf0123cc6aacd4d88963bd8e7e3acc4413f4704f19f8595079a942322eb"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.180999308824539
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 4.829365760087967
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.845737040042877
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 9.815946221351624
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.134139209985733
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.588425487279892
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/udp-2.json",
+            "source_sha256": "206b67d94e294aa26b541d67c6e087db145b91b32c0f132f39b0b3f1a0c3bfb4"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.7197524905204773
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 3.4513920545578003
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.217241615056992
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 8.994203060865402
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 0.8291788399219513
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.569131553173065
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/baseline/load/udp-3.json",
+            "source_sha256": "2037ff06cbb8936b4a9efc633fed8a5954230af23d7ef0ffb7f367c79e00ed67"
+          }
+        ],
+        "fault": [
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1618,
+              "started": 1618,
+              "completed": 1618,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.505934685468674
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.603541016578674
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 21,
+                "started": 21,
+                "completed": 21,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 21
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1005.5655837059021
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1006.5197423100471
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 797,
+                "started": 797,
+                "completed": 797,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 797
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.503890484571457
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 13.586007058620453
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/client-1.json",
+            "source_sha256": "6608a8c9f64e120f8166e684480edc2fca5252317400784072a49913f3339675"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1618,
+              "started": 1618,
+              "completed": 1618,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.817590445280075
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.915036588907242
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 21,
+                "started": 21,
+                "completed": 21,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 21
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1005.5855326354504
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1005.7062618434429
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 797,
+                "started": 797,
+                "completed": 797,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 797
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 22.436723113059998
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 22.537987679243088
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/client-2.json",
+            "source_sha256": "1b2bf8dc73274fca0bc4ffd1d500abc3b15a081b0ca4ef626225cfe572af4c2f"
+          },
+          {
+            "arrival_mode": "closed-loop",
+            "raw_counters": {
+              "scheduled": 1618,
+              "started": 1618,
+              "completed": 1618,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.58571720123291
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 6.661355495452881
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "loaded": {
+                "planned": 21,
+                "started": 21,
+                "completed": 21,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 21
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1005.4076388478279
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 21,
+                  "completed_over_250ms": 16,
+                  "max_completed_ms": 1005.4929852485657
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              },
+              "recovery": {
+                "planned": 797,
+                "started": 797,
+                "completed": 797,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 797
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.771249860525131
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 797,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.883042097091675
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null
+              }
+            },
+            "protocol": "tcp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/client-3.json",
+            "source_sha256": "8efcabc34d3bab23ffd6d6a181fe324bc9d74c17ccd894a4b499594bf348860c"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.295132726430893
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 2.9153339564800262
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1016.32309705019
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1017.5877586007118
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 33.40261057019234
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 33.57265144586563
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 0,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/udp-0.json",
+            "source_sha256": "2eb8b913ec5137f110ae197296f1a11cfe8bdc20723da69489165d22c4ec6e4a"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.8057233691215515
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.613562047481537
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1015.4400877654552
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1017.2911547124386
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 33.37818384170532
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 33.56308862566948
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 1,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/udp-1.json",
+            "source_sha256": "84def0d283c874cc65dbd0c194c70823f6b2981eb82df58a8b088413bdb0ee2f"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 5.7166628539562225
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.562585175037384
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1015.94702526927
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1017.4051038920879
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 31.588882207870483
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 32.31802582740784
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 2,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/udp-2.json",
+            "source_sha256": "40f63d9206cd8beb870b451cde5876a5a2b1ec16df36758e02200be307e193ec"
+          },
+          {
+            "arrival_mode": "open-loop",
+            "raw_counters": {
+              "scheduled": 3200,
+              "started": 3200,
+              "completed": 3200,
+              "timed_out": 0,
+              "failed": 0,
+              "unfinished": 0,
+              "missed": 0
+            },
+            "raw_errors": [],
+            "phases": {
+              "baseline": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.080100476741791
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 7.753908634185791
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              },
+              "loaded": {
+                "planned": 1600,
+                "started": 1600,
+                "completed": 1600,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 1600
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1016.2486396729946
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 1600,
+                  "completed_over_250ms": 1563,
+                  "max_completed_ms": 1017.611887305975
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 1600
+              },
+              "recovery": {
+                "planned": 800,
+                "started": 800,
+                "completed": 800,
+                "timeouts": 0,
+                "errors": 0,
+                "missed": 0,
+                "unfinished": 0,
+                "all_status_counts": {
+                  "completed": 800
+                },
+                "service_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 31.615253537893295
+                },
+                "arrival_delay": {
+                  "completed_samples_with_timestamps": 800,
+                  "completed_over_250ms": 0,
+                  "max_completed_ms": 32.158318907022476
+                },
+                "noncompleted_terminal_elapsed_over_250ms": 0,
+                "max_noncompleted_terminal_elapsed_ms": null,
+                "fixed_udp_offered_slots": 800
+              }
+            },
+            "protocol": "udp",
+            "peer": 3,
+            "source_path": "validation-20261015/8bf5bb8-queue-two/supplement/repeat-2/fault/load/udp-3.json",
+            "source_sha256": "4843ba78cdd265e22f89f88542bc693ea6cecc5c6f17371fd2237aab7e69efff"
+          }
+        ]
+      },
+      "result_sha256": "25933165bb35ac862251aa1aedde7c8299309bc4f278b1da7987e6973b3ae6bf",
+      "formal_gate": "BLOCKED",
+      "injector_recomputed_errors": [
+        "queue control was not restored before the recovery phase"
+      ],
+      "link_recomputed_errors": [],
+      "queue_last_snapshots": [
+        {
+          "phase": "draining",
+          "since_tc_ms": 787.786131,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 601256038 bytes 464391 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        },
+        {
+          "phase": "cleanup",
+          "since_tc_ms": 790.849878,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc netem 44: root refcnt 2 limit 100000 rate 2Gbit\n Sent 601256038 bytes 464391 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        },
+        {
+          "phase": "restored",
+          "since_tc_ms": 795.529272,
+          "backlog": 0,
+          "qlen": 0,
+          "text": "qdisc noqueue 0: root refcnt 2 \n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n"
+        }
+      ],
+      "recovery_margin_ms": -52.09727
+    }
+  ],
+  "payload_summary_exactly_matches_independent_recomputation": true
+}

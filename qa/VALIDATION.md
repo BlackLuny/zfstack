@@ -3,9 +3,15 @@
 日期：2026-10-15。方案来源：`zfstack-ci-qa-design-implementation-v1.md`。
 本记录区分仓库实现、实际执行证据和正式发布资格。默认性能策略保持 shadow，未伪造产品 SLO 或节点校准。
 
+## 收尾分支与评审入口
+
+生产分支 `codex/pacing-fixes` 从 `df432fd` 开始，仅有 `src/conn.rs`、`src/shard.rs` 两处修复及确定性回归；QA 分支 `codex/qa-framework` 基于该分支，初始 QA 提交 `609c72a` 的完整 tree 与原文档提交 `5daed24` 相同。原 `codex/qa-system` 保留，不重写旧执行身份。新 PR 描述仅保存在本机，没有 push、创建远程 PR 或修改仓库设置。
+
+关键报告、原始文件哈希索引与复验摘要已整理为 [review-evidence](review-evidence/README.md)，维护者任务见 [手工清单](MAINTAINER-CHECKLIST.md)。QueueControl 为 **known-BLOCKED**，后续 [原子恢复 issue 草稿](issues/queue-control-atomic-restoration.md) 仅描述方案和验收要求，不实现或豁免。
+
 ## 生产影响
 
-- 工作位于独立 `codex/qa-system` 分支；原工作目录和用户已有实验文件保留。
+- 原实现保存在 `codex/qa-system`；收尾拆为 `codex/pacing-fixes` 与其上的 `codex/qa-framework`。原工作目录和用户已有实验文件保留。
 - `src/budget.rs` 与 `src/tokio_adapter.rs` 仅在现有 `cfg(test)` 中引入测试子模块。后续 QueueControl 诊断定位了独立的生产 pacing 唤醒问题，`src/shard.rs` 增加有限小突发的及时唤醒选择；持续积压保留整量子批处理。后续恢复阶段证据还要求 `src/conn.rs` 记录原计价速率，并按速率变化守恒剩余正字节债务、重新调度旧定时器。发送资格、速率、信用、拥塞窗口、RTO、预算、socket、同步和默认参数均未放宽。
 - Tokio `test-util` 只加入 dev-dependencies。核心与启用 Tokio 的 normal 依赖图均检查通过。
 - 根 `Cargo.lock` 与原工作目录已有锁文件逐字节一致，SHA-256 为 `f16d0a552ae1785ce8ea646ebb66d52ac2155336e732b38c0760f606f147046d`。新增独立模型/fuzz 锁文件，不加入生产依赖图。
@@ -28,6 +34,27 @@
 
 截至本轮 pacing 与启动修复，清单冻结了 342 个手写 Rust 入口、327 个 Python 入口及 33 个含 Rust 条件属性的文件；没有删减既有入口或改变其 skip/cfg 属性。
 清单检查不能证明宏展开或运行时实际执行；执行记录仍单独验证。7 个 ignored 测试均已登记用途与执行安排。
+
+## 独立生产分支的收尾验证
+
+`codex/pacing-fixes` 的两个提交为 `ecd91aa29c29c671290fe8468bbcddbbdd19c08b` 和 `868ce01c4801f9dc2ef582affcc454be270632f8`；生产候选只改 `src/conn.rs`、`src/shard.rs`。两文件与 `8bf5bb8` 对应生产文件逐字节相同，QA 分支不会重复引入生产修复。此前小突发开发回归的 before 为 `7b38911`（相关生产 preimage 与 `df432fd` 相同），债务回归 before 为已经包含第一处修复的 `ddeed62`，不是两个都在未修复基线运行。关键原始日志纳入受版本控制的摘要材料。
+
+独立生产分支固定 Rust 1.94.1，使用与原工作目录一致但不提交的 Cargo.lock（`f16d0a552ae1785ce8ea646ebb66d52ac2155336e732b38c0760f606f147046d`），不包含 QA 的 dev-dependency/配置改动：
+
+| 检查 | 实际结果 |
+| --- | --- |
+| `cargo +1.94.1 fmt --all -- --check` | PASS |
+| Linux clippy，workspace / all-targets / all-features / locked | PASS，遵循原 CI 不加 `-D warnings`；51 个诊断 warning 头及 6 条 Cargo 汇总原样保留，未新增 allow 或隐藏输出 |
+| Linux release workspace / all-features 全量测试 | 300 passed、0 failed、7 个原有 ignored；各 target、集成及 doc test 结果完整保留 |
+| Linux 定向既有 `sim::tests::` | 49 passed、3 个原有 ignored，nocapture 日志保留 |
+| Linux 定向 `pacing_` | 14 passed、0 ignored，nocapture 日志保留 |
+| macOS no-default 核心 | 222 passed、4 个原有 ignored，另 1 个集成测试通过 |
+| macOS 定向既有 sim | 49 passed、3 个原有 ignored |
+| macOS 完整 workspace clippy/tests | 原 bench 的 Linux 专用 libc API 导致 23 个编译错误，退出 101；失败保留，不修改无关源码来适配。完整 workspace 在 Linux 独立通过 |
+
+Linux 使用独立 target 实际编译 `868ce01`，保存 10 个 compiler executable 哈希、实际 Cargo 启动行、源码/tree/锁文件身份、依赖图及命令记录，没有用 `8bf5bb8` 测试二进制替代。8 条实际命令全部 exit 0、cleanup PASS，公共 Lease 释放，验证前后源码 clean。最终任务进程/宿主注册命名空间/Lease 均为空，可用空间 4132818944 字节（约 3.85 GiB），原生产业务与宿主网络未操作。
+
+QA 收尾仅增加文档、评审摘要和 `exemption: false` 的 known-BLOCKED 信息；`exemptions` 仍为空，cases/阈值/门禁执行代码未改。针对此信息变更执行的 contract/coverage/relay_queue 共 70 项通过，日志明确属于 `609c72a` 上的工作区元数据/文档状态，不将它追认为新 QA 提交的全量发布资格。
 
 ## 已执行的检查
 
@@ -144,6 +171,22 @@ Queue 基线三路 TCP 各完成 3199 次，四路 UDP 各完成 3200 次。故�
 
 本轮不再靠重跑、改变速率、暂停/减少负载、延长 guard 或放宽合同换取通过。完成该台架仍需独立实现并验证持续存在的 FIFO 注入器，在同一路径原子切换为透明转发、整个测量结束后才拆除，或者具备等价原子切换能力；需要保持原负载和窗口，并新增完整交付、恢复边界、队列所有权与清理的证据。没有在共享生产宿主加载内核模块或修改网络栈来绕过此限制。最终只读能力核查显示 `nfnetlink_queue` 与 `xt_NFQUEUE` 均为可加载模块而非内建，目前未加载，且未发现 libnetfilter_queue 库或头文件；NFQUEUE 方案需要另行具备这些能力的隔离环境与新实现，不能直接宣称当前节点已具备。生产 pacing 修复与已通过的 Direct/Relay 可独立审查，Queue 资格缺口继续阻断发布。
 
+## 收尾追加：固定 8bf5bb8 的两次业务超时复验
+
+按明确的收尾要求，在同一节点对同一 `8bf5bb8` worker（SHA-256 `36977c8ee4a02595af6ef0cb463654069a22e4e6c6d6d169b9722d0678ca37c1`）又执行恰好两次原正式 QueueControl。没有第三次择优重试，没有改变 500 ms 注入、2 Gbit/s 收尾、8/16/8 秒窗口、250 ms guard、3 秒请求 deadline、250 ms 合同或业务负载。每次仍有独立 baseline/fault 双臂、原始结果与公共 Lease。
+
+所有 baseline/fault TCP/UDP 的实际 scheduled 请求均完成；各阶段 timeout/failed/missed/unfinished 均为零，原始 errors 数组为空。所有 baseline 臂及 fault recovery 阶段均无完成请求超过 250 ms。以下故障期超限完整保留，不能把“无 3 秒超时”写成“无 250 ms 超限”或台架资格通过：
+
+| 运行 | TCP 全程完成（peer 1/2/3） | loaded TCP 超 250 ms / loaded 总数 | loaded UDP 超 250 ms（四 peer 各自 / 1600） | loaded TCP 最大到达延迟 | 台架 / 聚合 |
+| --- | --- | --- | --- | --- | --- |
+| 首轮正式复验 | 1600 / 1624 / 1630 | 17/18、16/24、16/30 | 1561 / 1561 / 1561 / 1561 | 约 1.003 s（最大请求耗时同约 1.003 s） | NOT_RUN / BLOCKED |
+| 追加第 1 次 | 1611 / 1631 / 1632 | 16/18、16/32、16/32 | 1562 / 1562 / 1562 / 1562 | 1089.099 ms | NOT_RUN / BLOCKED |
+| 追加第 2 次 | 1618 / 1618 / 1618 | 16/21、16/21、16/21 | 1563 / 1563 / 1563 / 1563 | 1006.520 ms | NOT_RUN / BLOCKED |
+
+两次追加的 UDP 各 peer 全程均 3200/3200；恢复各 800 次。TCP 是原来的 closed-loop，planned 指真实 scheduled records，不能套用 open-loop 的固定 3200 次要求。两次 fault recovery 的 TCP 最大到达延迟分别 20.307/22.538 ms，UDP 分别 6.035/33.573 ms。完整逐 peer、逐 phase 的 service（started→ended）与 arrival（scheduled→ended）统计单独保存，不混用。
+
+追加第 1 次 cleanup 仍有 45248 B 积压，未证明删除前排空；恢复距边界尚有 76.492910 ms。追加第 2 次 cleanup 读数为零，但恢复晚于固定 recovery 边界 52.097270 ms，故仍未合格。两次均保持 NOT_RUN/UNKNOWN，独立聚合 BLOCKED，资源清理及租约释放 PASS；不扩大 guard 接纳第二次迟到。112 项追加导出文件的大小/哈希已核验，原首轮及之前失败均未覆盖。完整原始文件在归档 `qa/results/validation-20261015/8bf5bb8-queue-two/`，评审用摘要见 [受版本控制的证据](review-evidence/README.md)。三轮无超时是新增观察证据，不是对所有负载永不超时的保证。
+
 ## 性能与发布资格的限制
 
 真实 A/A experiment hash 为 `43fab4881c29993120e2612e9d88ccf3206c994c0f2df8c5b9239e20f22f7b8a`，A/B 二进制均为 `c07844345f0783f22b72c62807970049360f4e9d9efe5f26258986d8160480cb`。
@@ -160,6 +203,22 @@ Queue 基线三路 TCP 各完成 3199 次，四路 UDP 各完成 3200 次。故�
 共享节点上的 `ae17834` 跨仓构建前两次分别在 worker、forwarder 阶段被 3 GiB 磁盘守卫取消，第三次完成构建；所有失败尝试、构建进度、子树清理与租约释放证据均保留，未覆盖成重试结果。只对本任务已完整备份且验证哈希的缓存/归档副本进行空间回收；没有调低保护阈值或更换冻结 profile。
 
 private_tun 实际路径、服务合同负对照和 #43 UDP 的结果须按对应原始案卷判断。测试侧 500 ms 队列注入的 250 ms 检测阈值是负对照设置，不是产品承诺，也不等于 #44 历史根因复现。生产 pacing 修复依据实际回包时间线及修复前失败的确定性回归，未放宽检测阈值。
+
+## 受版本控制的摘要与完整归档
+
+[评审入口](review-evidence/README.md) 共 30 个文件、**3,976,223 字节**（小于 5,000,000 字节），包含 [portable 报告](review-evidence/portable-report.md)、[safety 报告](review-evidence/safety-report.md)、[Queue 独立审查](review-evidence/queue-independent-review.md)、[三轮请求复算](review-evidence/queue-repetitions.md)、[生产回归](review-evidence/production-regressions.md)、[独立生产验证](review-evidence/production-native-summary.md) 和 [完整文件索引](review-evidence/artifact-index.json)。这些文件随 QA PR 提交，评审者无需访问 ignored 的 `qa/results` 即可阅读关键结果和失败边界。
+
+完整证据目录 `qa/results` 已冻结并打包，包含全部已有构建缓存和重复保留副本：**12,381 个文件、2,509,219,016 logical bytes**。这是真实完整范围，不按此前名义约 2.2 GB 推算，也不声称覆盖机器上所有 `/tmp` 文件。完整索引 SHA-256 为 `3d6fb38d7be4df890d23986e3d6bbbe3d33c19dc733896084eba9e3e88609bc5`。
+
+- 本机归档：`/Users/lulin/zfstack-qa-evidence-20261015/qa-results-20261015.tar.zst`（即 `~/zfstack-qa-evidence-20261015/qa-results-20261015.tar.zst`）。
+- 压缩大小：626,522,907 字节。
+- SHA-256：`f5c392ef4339a4f616909b8a8b3d64141610675268865917abd809d9017784ee`。
+- [逐成员核验](review-evidence/archive-verification.json)：PASS；所有路径、大小与内容 SHA-256 符合索引，包括 1,524 个 tar 硬链接解析后的目标内容；无缺失或额外文件，zstd 完整解压校验退出 0。未解包覆盖任何原始证据。
+- 首次归档校验脚本不支持标准 tar 硬链接而失败；原失败 JSON 与脚本保留在归档旁，路径/哈希见核验记录。补齐硬链接校验后验证的是同一个未改写归档，并非删除失败样本或改写索引。
+
+下文的历史 `qa/results/...` 引用均对应归档内相同 member 路径；索引中的相对 path 需加 `qa/results/`。旧的子集索引也原样保留。完整包目前只在本机，没有上传或生成远程下载链接；维护者持久存储事项列在手工清单中。
+
+两份本地 PR 描述分别为 `/Users/lulin/zfstack-qa-evidence-20261015/pr-descriptions/pacing-fixes.md` 和 `/Users/lulin/zfstack-qa-evidence-20261015/pr-descriptions/qa-framework.md`。
 
 ## 本地证据入口
 
@@ -181,6 +240,6 @@ private_tun 实际路径、服务合同负对照和 #43 UDP 的结果须按对�
 - `qa/results/validation-20261015/linux-ae17834-diagnosis/ae-diagnostic-report.md`：请求/队列时间线与采样缺口；独立 supplement 保留原始数值及来源身份。
 - `qa/results/15f993f-real-worker-closure.json`：该提交校验器对四组独立侧录的离线复算与 20 个负例；不追认新 L2 运行。
 - `qa/results/validation-20261015/linux-15f993f-python/summary.json`：此前 `15f993f` 的 Linux 70/70 与 11/11 原生工具检查。
-- `qa/results/validation-20261015/artifact-index.json`：5577 个文件、1281317892 字节的哈希/大小索引，SHA-256 `7142f08dac031a6fc8796c33d5762a25ecb2a8e834c33ecd523a2ef17235338d`。此前 920 项逐字节保持，原索引及核验记录保存在 `index-history/`；混合源码身份与失败记录不构成统一发布资格。
+- `qa/results/validation-20261015/artifact-index.json`：收尾追加前封存的 5577 个文件、1281317892 字节范围索引，SHA-256 `7142f08dac031a6fc8796c33d5762a25ecb2a8e834c33ecd523a2ef17235338d`。此前 920 项逐字节保持，原索引及核验记录保存在 `index-history/`；混合源码身份与失败记录不构成统一发布资格。
 
 上述大型原始证据保留在本地 ignored 输出目录，未混入源码提交。操作入口见 [QA README](README.md)、[性能运行说明](PERFORMANCE.md) 和 [发布准入说明](RELEASE.md)。

@@ -1,0 +1,131 @@
+{
+  "meaning": "Production split consists of ecd91aa then 868ce01. QA609c72a is stacked on 868ce01 and has exactly the same tree as pre-stack QA5daed24. Tree equality is verified Git metadata, not execution evidence. The full portable/safety/native QA run remains attributed to 8bf5bb8 only.",
+  "source_identities": {
+    "original_qa_validation": {
+      "commit": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "parents": [
+        "b2e1fff65aabf4f7325a9c8563462ea1fb66f966"
+      ],
+      "tree": "fc9f48fde822c22796e17dd59e17ee1b23c7f976"
+    },
+    "production_first": {
+      "commit": "ecd91aa29c29c671290fe8468bbcddbbdd19c08b",
+      "parents": [
+        "df432fdc3739c66e923e316e5f0bf5021b2bb5ce"
+      ],
+      "tree": "6fe8433776d1108455a40c7812863e634edf940c"
+    },
+    "production_second": {
+      "commit": "868ce01c4801f9dc2ef582affcc454be270632f8",
+      "parents": [
+        "ecd91aa29c29c671290fe8468bbcddbbdd19c08b"
+      ],
+      "tree": "d2943329b5d8209b3303de7a1c510649aca9da0b"
+    },
+    "qa_before_stacking": {
+      "commit": "5daed2440f97da0fc1d301cc33a95aaadbb8efc1",
+      "parents": [
+        "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72"
+      ],
+      "tree": "3702eaf843363e118f36d5016ca210fdc7313a84"
+    },
+    "qa_stacked": {
+      "commit": "609c72aea890ca64e7795448d0b98d1a82ffed94",
+      "parents": [
+        "868ce01c4801f9dc2ef582affcc454be270632f8"
+      ],
+      "tree": "3702eaf843363e118f36d5016ca210fdc7313a84"
+    }
+  },
+  "validation_sources": {
+    "production_linux": {
+      "sha256": "8fbbc5d2d50ba9687533e998f57ff668081113581dc0929dbb243a8dc4aa8263",
+      "size_bytes": 15939,
+      "source_path": "validation-20261015/pacing-split-linux/prod868ce01-workspace/validation/workspace-validation.json",
+      "summary": "production-native-summary.json"
+    },
+    "production_macos": {
+      "data": [
+        {
+          "argv": [
+            "cargo",
+            "+1.94.1",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--locked"
+          ],
+          "duration_sec": 23.242610216140747,
+          "exit_code": 101,
+          "source_sha": "868ce01c4801f9dc2ef582affcc454be270632f8"
+        },
+        {
+          "argv": [
+            "cargo",
+            "+1.94.1",
+            "test",
+            "--workspace",
+            "--all-features",
+            "--locked"
+          ],
+          "duration_sec": 20.760920763015747,
+          "exit_code": 101,
+          "source_sha": "868ce01c4801f9dc2ef582affcc454be270632f8"
+        },
+        {
+          "argv": [
+            "cargo",
+            "+1.94.1",
+            "test",
+            "-p",
+            "zfstack",
+            "--no-default-features",
+            "--locked"
+          ],
+          "duration_sec": 32.17714285850525,
+          "exit_code": 0,
+          "source_sha": "868ce01c4801f9dc2ef582affcc454be270632f8"
+        },
+        {
+          "argv": [
+            "cargo",
+            "+1.94.1",
+            "test",
+            "-p",
+            "zfstack",
+            "--all-features",
+            "--locked",
+            "sim::tests::",
+            "--",
+            "--test-threads=1"
+          ],
+          "duration_sec": 77.08847308158875,
+          "exit_code": 0,
+          "source_sha": "868ce01c4801f9dc2ef582affcc454be270632f8"
+        }
+      ],
+      "sha256": "a925207caa821ee6b0c3348c10ecfaf5d233139217a6f6537bd18676ee17d7eb",
+      "size_bytes": 1149,
+      "source_path": "validation-20261015/pacing-split-macos/checks-summary.json"
+    },
+    "qa_metadata_checks": {
+      "data": {
+        "argv": [
+          "/tmp/zfstack-qa-venv/bin/python",
+          "-m",
+          "unittest",
+          "qa.tests.test_contracts",
+          "qa.tests.test_coverage",
+          "qa.tests.test_relay_queue"
+        ],
+        "duration_sec": 3.14263916015625,
+        "exit_code": 0,
+        "scope": "informational known-BLOCKED metadata with no exemptions; working doc/metadata changes above 609c72a; not release qualification"
+      },
+      "sha256": "dfeb2235bbc19c4377a92f35929fe4630df60220eae2a9cbfec6be980f6d7ee6",
+      "size_bytes": 373,
+      "source_path": "validation-20261015/qa-split-metadata-checks/metadata-gates.json"
+    }
+  }
+}

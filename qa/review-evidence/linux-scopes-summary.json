@@ -1,0 +1,154 @@
+{
+  "cases": [
+    {
+      "case_id": "C16-l2",
+      "functional": "PASS",
+      "performance": "INCONCLUSIVE",
+      "sha256": "88587556f5dba6122944087b1b20a76ea51970eacc2010cf46ae7c2051f2b309",
+      "size_bytes": 12608,
+      "source_path": "validation-20261015/8bf5bb8-linux-l2/direct/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "INVALID",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "C16-l2-relay",
+      "functional": "PASS",
+      "performance": "INCONCLUSIVE",
+      "sha256": "06039c8c51b8239cf80c73638c23ab2d4d40443b2013655a7b79e512799b4cdc",
+      "size_bytes": 13712,
+      "source_path": "validation-20261015/8bf5bb8-linux-l2/relay/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "INVALID",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "C16-l2-queue-control",
+      "functional": "NOT_RUN",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "2f4673fda85eb6a99b62aa48ab4017192654c95a541236485320027e6369ca80",
+      "size_bytes": 135556,
+      "source_path": "validation-20261015/8bf5bb8-linux-l2/queue-control/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "UNKNOWN",
+        "performance": "UNKNOWN",
+        "reasons": [
+          "queue negative-control precondition/evidence incomplete",
+          "queue control did not prove a drained queue before removal",
+          "service.client-1.loaded.latency: 17 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-1.loaded.deadline: observed misses/population 17/18; maximum proportion 0.0",
+          "service.client-2.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-2.loaded.deadline: observed misses/population 16/24; maximum proportion 0.0",
+          "service.client-3.loaded.latency: 16 observed completed requests exceed 250.0 ms; censored requests have no imputed latency",
+          "service.client-3.loaded.deadline: observed misses/population 16/30; maximum proportion 0.0",
+          "queue control did not prove a drained queue before removal",
+          "queue control lacks the actual loaded phase interval"
+        ]
+      }
+    },
+    {
+      "case_id": "C11-l1",
+      "case_instance_id": "1c3a8bb41ade017a565e6fe7ba74fae63dde61d3cbae16900b838d933bd47c0b",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "370693fa7541be2848fc324c72d334e3b78f90842d65985d872de3ae26e8a54b",
+      "size_bytes": 11515,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/C11-l1/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "QA-coverage",
+      "case_instance_id": "4fc0216e54fca98bedb5f4b102311ae4f6e62b82ba73bd455279c246c4ac87be",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "94310eb407497567dd56e505b66463fb75eed565a8414816877a2d84c86eeae8",
+      "size_bytes": 1485,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/QA-coverage/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "QA-features",
+      "case_instance_id": "a6adeeba93ab6bd0e452f21461fe09e39ba8890d3dceda034e893d53bd8fab5c",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "46896fec1a892b855c871e966df97ccf9a62664024949e3216949b7910c943ae",
+      "size_bytes": 1862,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/QA-features/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "QA-l2-tools",
+      "case_instance_id": "c58322f6c3b53cf4ca15ba4751ef8cd66e57d627adbf0096814d2825b3d58c51",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "54e1a6dad62c8456bbd7b9627674430cceccee80a544f934e5be61d6d928aa50",
+      "size_bytes": 1613,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/QA-l2-tools/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "QA-perf-tools",
+      "case_instance_id": "01c3e2c741361747b65ae149f1d395b043de32e8e892b98c47160a1b9bef1f4e",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "a4583d0fa0e94e860b575a7946d193a82a7a3b4ccdfc19ee9e9c7a0340d79c8c",
+      "size_bytes": 1615,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/QA-perf-tools/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    },
+    {
+      "case_id": "QA-tools",
+      "case_instance_id": "408af4f5cd6957901aee871af598d4622f79aa47510e7e6463183304c83843b2",
+      "execution": "completed",
+      "functional": "PASS",
+      "performance": "NOT_APPLICABLE",
+      "sha256": "b646ca55462e3bd6d3a7e3c73392ef25449259b575722a6cde4cec26694da994",
+      "size_bytes": 1611,
+      "source_path": "validation-20261015/8bf5bb8-linux-native/cases/QA-tools/result.json",
+      "tested_sha": "8bf5bb86106e5a4f1665f3c1b9c4570d2c80bf72",
+      "validity": {
+        "functional": "VALID",
+        "performance": "UNKNOWN",
+        "reasons": []
+      }
+    }
+  ],
+  "scope": "Selected completed native cases only. The full nightly gate remains BLOCKED when unexecuted required instances are included. No physical performance certification."
+}

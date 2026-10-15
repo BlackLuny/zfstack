@@ -1,0 +1,104 @@
+   Compiling zfstack v0.0.1 (/Users/lulin/.codex/worktrees/qa-pacing-wake/zfstack)
+warning: unused doc comment
+    --> src/tokio_adapter.rs:3698:9
+     |
+3698 | /         /// Sample index at which each connection was opened (the late
+3699 | |         /// connection's earlier samples are placeholders, not stalls).
+     | |_______________________________________________________________________^
+3700 |           let mut conn_since: Vec<usize> = vec![0; total as usize];
+     |           --------------------------------------------------------- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:746:12
+    |
+455 | impl Conn {
+    | --------- methods in this implementation
+...
+746 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+750 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+754 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+758 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+767 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: `zfstack` (lib test) generated 4 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.77s
+     Running unittests src/lib.rs (target/debug/deps/zfstack-0c2aa208b0ca08e5)
+
+running 6 tests
+
+thread 'shard::pacing_wake_tests::small_reply_wakes_at_eligibility_without_a_control_packet' (120232931) panicked at src/shard.rs:3703:13:
+assertion `left == right` failed: small reply at 505 B/s must not wait for a full quantum
+  left: Some(Instant(6537821782))
+ right: Some(Instant(1120000000))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'shard::pacing_wake_tests::small_burst_boundary_counts_adapter_bytes' (120232927) panicked at src/shard.rs:3832:13:
+assertion `left == right` failed
+  left: Some(Instant(6537821782))
+ right: Some(Instant(1120000000))
+
+thread 'shard::pacing_wake_tests::small_burst_boundary_counts_inflight_bytes_and_uses_full_quantum' (120232928) panicked at src/shard.rs:3812:13:
+assertion `left == right` failed
+  left: Some(Instant(6537821782))
+ right: Some(Instant(1120000000))
+test shard::pacing_wake_tests::small_burst_boundary_counts_inflight_bytes_and_uses_full_quantum ... FAILED
+test shard::pacing_wake_tests::small_burst_boundary_counts_adapter_bytes ... FAILED
+test shard::pacing_wake_tests::small_reply_wakes_at_eligibility_without_a_control_packet ... FAILED
+
+thread 'shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_505_bytes_per_second' (120232929) panicked at src/shard.rs:3733:13:
+assertion `left == right` failed: reply 5, rate 505, elapsed 3s, EDT Instant(9026712870), ConnInfo { state: Established, iface: IfaceId(0), peer: PeerId(1), local: 10.0.0.1:80, remote: 10.0.0.2:44005, srtt: 69.375ms, rttvar: 135.5ms, min_rtt: 2ms, rto: 611.375ms, cwnd: 5472, ssthresh: 0, pipe: 0, pacing_rate: Some(505), mss: 1368, snd_wnd: 65536, rcv_wnd: 65536, rcv_target: 65536, tx_queued: 256, tx_unsent: 256, rx_queued: 0, ooo_bytes: 0, sacked: 0, lost: 0, retrans_out: 0, in_recovery: false, want_write: false, delivered: 1280, cc: "brutal", cc_debug: "", stats: ConnStats { segs_out: 14, segs_in: 14, bytes_sent: 1280, bytes_retrans: 2048, bytes_received: 0, rto_count: 5, tlp_count: 4, fast_recoveries: 0, spurious_rtos: 4, dsacks: 8, ooo_segs: 0, dropped_no_mem: 0, rx_progress_packets: 0, paws_drops: 0, challenge_acks: 0, oow_acks_limited: 0, zero_window_probes: 0, small_segs: 5, rack_scanned: 0, limited_rwnd_ns: 0, limited_cwnd_ns: 0, limited_pacing_ns: 0, limited_egress_ns: 0 } }
+  left: 1280
+ right: 1536
+
+thread 'shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_632_bytes_per_second' (120232930) panicked at src/shard.rs:3733:13:
+assertion `left == right` failed: reply 5, rate 632, elapsed 3s, EDT Instant(7920784808), ConnInfo { state: Established, iface: IfaceId(0), peer: PeerId(1), local: 10.0.0.1:80, remote: 10.0.0.2:44005, srtt: 2ms, rttvar: 1ms, min_rtt: 2ms, rto: 200ms, cwnd: 5472, ssthresh: 0, pipe: 0, pacing_rate: Some(632), mss: 1368, snd_wnd: 65536, rcv_wnd: 65536, rcv_target: 65536, tx_queued: 256, tx_unsent: 256, rx_queued: 0, ooo_bytes: 0, sacked: 0, lost: 0, retrans_out: 0, in_recovery: false, want_write: false, delivered: 1280, cc: "brutal", cc_debug: "", stats: ConnStats { segs_out: 15, segs_in: 15, bytes_sent: 1280, bytes_retrans: 2304, bytes_received: 0, rto_count: 5, tlp_count: 5, fast_recoveries: 0, spurious_rtos: 4, dsacks: 9, ooo_segs: 0, dropped_no_mem: 0, rx_progress_packets: 0, paws_drops: 0, challenge_acks: 0, oow_acks_limited: 0, zero_window_probes: 0, small_segs: 5, rack_scanned: 0, limited_rwnd_ns: 0, limited_cwnd_ns: 0, limited_pacing_ns: 0, limited_egress_ns: 0 } }
+  left: 1280
+ right: 1536
+test shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_632_bytes_per_second ... FAILED
+test shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_505_bytes_per_second ... FAILED
+test shard::pacing_wake_tests::continuous_backlog_keeps_full_quantum_wake_and_batch ... ok
+
+failures:
+
+failures:
+    shard::pacing_wake_tests::small_burst_boundary_counts_adapter_bytes
+    shard::pacing_wake_tests::small_burst_boundary_counts_inflight_bytes_and_uses_full_quantum
+    shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_505_bytes_per_second
+    shard::pacing_wake_tests::small_replies_with_retransmission_debt_at_632_bytes_per_second
+    shard::pacing_wake_tests::small_reply_wakes_at_eligibility_without_a_control_packet
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 267 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--lib`

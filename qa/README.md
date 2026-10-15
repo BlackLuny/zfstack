@@ -114,6 +114,8 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 保留转发器构建身份、真实业务端口路径计数及旁路检查。健康探测使用不同端口，不能充当业务路径证据。
 两条路径的执行证据不能互相替代，缺失二进制或路径证据会明确阻断。
 
+**当前状态：known-BLOCKED（台架 `tc` 删除非原子竞态）**。该标注不是豁免，不跳过 required case 或改变阈值；真实 NOT_RUN/BLOCKED 继续保留。后续方案单列为 [issue 草稿](issues/queue-control-atomic-restoration.md)，本 PR 不实现。维护者启用事项见 [手工清单](MAINTAINER-CHECKLIST.md)。
+
 `C16-l2-queue-control` 在同一租约内依次运行干净基线和测试侧的 500 ms 深出口队列注入。
 它要求基线服务合同通过、注入期间载荷仍正确但延迟合同失败、队列确实积压且没有丢包，并在 recovery 前恢复。
 250 ms 是该负对照的固定检测阈值，不是产品 SLO，也不表示复现了 #44 的具体实现缺陷。
