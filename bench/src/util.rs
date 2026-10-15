@@ -150,6 +150,33 @@ pub fn set_tcp_cc(fd: std::os::fd::RawFd, name: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Raise `RLIMIT_NOFILE` so idle/connect tests can hold thousands of sockets.
+/// Root (or `CAP_SYS_RESOURCE`) can raise the hard limit; otherwise we clamp
+/// to the current hard ceiling. Best-effort: failures leave the process as-is.
+pub fn raise_nofile(want: u64) {
+    unsafe {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) != 0 {
+            return;
+        }
+        let want = want as libc::rlim_t;
+        if lim.rlim_cur >= want {
+            return;
+        }
+        let mut next = lim;
+        next.rlim_cur = want;
+        if next.rlim_max != libc::RLIM_INFINITY && next.rlim_max < want {
+            next.rlim_max = want;
+        }
+        if libc::setrlimit(libc::RLIMIT_NOFILE, &next) != 0 {
+            // Unprivileged: cannot raise hard. Use whatever hard we already have.
+            next.rlim_max = lim.rlim_max;
+            next.rlim_cur = if lim.rlim_max == libc::RLIM_INFINITY { want } else { want.min(lim.rlim_max) };
+            let _ = libc::setrlimit(libc::RLIMIT_NOFILE, &next);
+        }
+    }
+}
+
 /// Commit of the zfstack tree this binary was built from: `git rev-parse`, or
 /// the `.zfstack_commit` file that `wan_ab.sh` writes next to an rsynced tree
 /// without `.git` (or without git installed).

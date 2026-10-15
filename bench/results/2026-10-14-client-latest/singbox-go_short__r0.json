@@ -1,0 +1,78 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": false,
+    "flows": 1,
+    "legacy": false,
+    "proxy": "singbox-go",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 10,
+    "short_bytes": 65536,
+    "splice": false,
+    "test": "short",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": false,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 1.010374406,
+    "system_busy_sec_per_GB": 10.986328125,
+    "system_window": {
+      "busy_sec": 1.44,
+      "idle_sec": 0.35,
+      "irq_sec": 0.0,
+      "softirq_sec": 0.13,
+      "steal_sec": 0.0,
+      "system_sec": 0.97,
+      "user_sec": 0.34
+    },
+    "window_effective_bytes": 131072000,
+    "window_wall_sec": 0.452547717
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "c2ae504"
+  },
+  "errors": [],
+  "label": "",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": 3.2806396484375004,
+    "cpu_util": 0.9501760451926001,
+    "cpu_window_sec": 0.43000000000000005,
+    "hwm_kb": 83404,
+    "pid": 33889,
+    "pids": [
+      33889
+    ],
+    "rss_kb_end": 83404,
+    "rss_kb_idle": 55588
+  },
+  "results": {
+    "attempted": 2000,
+    "concurrency": 64,
+    "conn_per_sec": 4419.653517682562,
+    "elapsed_sec": 0.452524161,
+    "failures": {},
+    "goodput_mbps_window": 2317.1713034787554,
+    "latency_total": {
+      "max_ms": 111.006783,
+      "mean_ms": 14.189158493999987,
+      "min_ms": 2.481431,
+      "n": 2000,
+      "p50_ms": 12.629324,
+      "p90_ms": 19.988907,
+      "p999_ms": 110.981966,
+      "p99_ms": 35.249422
+    },
+    "short_bytes": 65536,
+    "success": 2000,
+    "test": "short"
+  },
+  "tool": "zfbench"
+}

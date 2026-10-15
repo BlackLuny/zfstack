@@ -1,0 +1,68 @@
+#ifndef LWIP_HDR_LWIPOPTS_H
+#define LWIP_HDR_LWIPOPTS_H
+
+#define NO_SYS 1
+#define LWIP_TIMERS 1
+#define SYS_LIGHTWEIGHT_PROT 0
+#define LWIP_CALLBACK_API 1
+
+#define LWIP_IPV4 1
+#define LWIP_IPV6 0
+#define LWIP_UDP 0
+#define LWIP_TCP 1
+#define LWIP_ICMP 0
+#define LWIP_RAW 0
+#define LWIP_DHCP 0
+#define LWIP_AUTOIP 0
+#define LWIP_ACD 0
+#define LWIP_IGMP 0
+#define LWIP_DNS 0
+#define LWIP_SOCKET 0
+#define LWIP_NETCONN 0
+#define LWIP_ALTCP 0
+#define LWIP_STATS 0
+#define LWIP_SNMP 0
+#define LWIP_ARP 0
+#define LWIP_ETHERNET 0
+#define LWIP_HAVE_LOOPIF 0
+#define LWIP_NETIF_LOOPBACK 0
+#define IP_FORWARD 0
+#define IP_REASSEMBLY 1
+#define IP_FRAG 1
+
+#define MEM_LIBC_MALLOC 1
+#define MEMP_MEM_MALLOC 1
+#define MEM_ALIGNMENT 8
+#define MEM_SIZE (32 * 1024 * 1024)
+
+#define MEMP_NUM_TCP_PCB 8192
+#define MEMP_NUM_TCP_PCB_LISTEN 8
+#define MEMP_NUM_TCP_SEG 16384
+#define MEMP_NUM_REASSDATA 64
+#define PBUF_POOL_SIZE 0
+
+#define TCP_MSS 8191
+#define LWIP_WND_SCALE 1
+#define TCP_RCV_SCALE 3
+#define TCP_WND (16 * TCP_MSS)
+#define TCP_SND_BUF (32 * TCP_MSS)
+#define TCP_SNDLOWAT (2 * TCP_MSS + 1)
+#define TCP_SND_QUEUELEN 2048
+#define TCP_OVERSIZE TCP_MSS
+#define LWIP_TCP_TIMESTAMPS 1
+#define LWIP_TCP_SACK_OUT 1
+#define TCP_QUEUE_OOSEQ 1
+#define TCP_LISTEN_BACKLOG 0
+#define TCP_DEFAULT_LISTEN_BACKLOG 255
+#define LWIP_TCP_MAXRTX 12
+#define LWIP_TCP_SYNMAXRTX 6
+
+#define CHECKSUM_GEN_IP 1
+#define CHECKSUM_GEN_TCP 1
+#define CHECKSUM_CHECK_IP 0
+#define CHECKSUM_CHECK_TCP 0
+
+#define LWIP_NETIF_HOSTNAME 0
+#define LWIP_COMPAT_MUTEX 0
+
+#endif

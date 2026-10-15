@@ -48,9 +48,13 @@ pub enum TestKind {
     Down,
     Up,
     Mixed,
+    /// Client mode: saturating download + upload + an RR flow (mixed load types).
+    MixedBi,
     Connect,
     /// Client mode only: hold `--conns` idle connections, report proxy memory.
     Idle,
+    /// Client mode: `--conns` short downloads of `--short-bytes` at `--concurrency`.
+    Short,
     /// Kernel TCP clients, one TUN, many logical ports. zfstack only; no WireGuard.
     Isolate,
 }
@@ -204,6 +208,18 @@ pub struct Args {
     /// sing-box binary.
     #[arg(long)]
     singbox: Option<String>,
+    /// lwIP TUN proxy binary (`bench/c-stacks/lwip-tun-proxy`).
+    #[arg(long)]
+    lwip: Option<String>,
+    /// hev-socks5-tunnel binary (C tun2socks).
+    #[arg(long)]
+    hev: Option<String>,
+    /// SOCKS5 override helper used with hev-socks5-tunnel.
+    #[arg(long)]
+    socks5_override: Option<String>,
+    /// `--test short`: payload bytes read per connection.
+    #[arg(long, default_value_t = 65536)]
+    short_bytes: usize,
     /// Proxy runtime worker threads (zfstack tokio workers / sing-box GOMAXPROCS); 0 = default.
     #[arg(long, default_value_t = 0)]
     proxy_workers: usize,
@@ -361,8 +377,10 @@ pub fn test_name(t: TestKind) -> &'static str {
         TestKind::Down => "down",
         TestKind::Up => "up",
         TestKind::Mixed => "mixed",
+        TestKind::MixedBi => "mixed-bi",
         TestKind::Connect => "connect",
         TestKind::Idle => "idle",
+        TestKind::Short => "short",
         TestKind::Isolate => "isolate",
     }
 }
@@ -372,6 +390,7 @@ pub fn sysctl(name: &str) -> String {
 }
 
 fn main() {
+    util::raise_nofile(262144);
     let a = Args::parse();
     if a.cleanup {
         tun::cleanup();
@@ -417,7 +436,7 @@ fn main() {
             }
         }
     }
-    if a.warmup >= a.secs && matches!(a.test, TestKind::Down | TestKind::Up | TestKind::Mixed | TestKind::Isolate) {
+    if a.warmup >= a.secs && matches!(a.test, TestKind::Down | TestKind::Up | TestKind::Mixed | TestKind::MixedBi | TestKind::Isolate) {
         eprintln!("--warmup must be < --secs");
         std::process::exit(2);
     }
@@ -558,6 +577,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         concurrency: a.concurrency,
         connect_timeout: Duration::from_millis(a.connect_timeout_ms),
         client_cc: a.client_cc.clone(),
+        short_bytes: a.short_bytes,
     };
     let t_test = Instant::now();
     let outcome = {
@@ -566,7 +586,9 @@ fn run(a: &Args) -> std::io::Result<i32> {
             TestKind::Down => client::test_down(&o, &counters, &mut mark),
             TestKind::Up => client::test_up(&o, &counters, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
+            TestKind::MixedBi => client::test_mixed_bi(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
+            TestKind::Short => client::test_short(&o, &mut mark),
             TestKind::Isolate => isolate::test_isolate(&o, iso.as_ref().expect("isolate"), &mut mark),
             TestKind::Idle => {
                 eprintln!("--test idle needs --client-proxy");

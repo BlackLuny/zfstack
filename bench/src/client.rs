@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::app::{self, ServerCounters};
 use crate::{tun, util};
 
+#[derive(Clone)]
 pub struct TestOpts {
     pub secs: u64,
     pub warmup: u64,
@@ -24,6 +25,8 @@ pub struct TestOpts {
     pub connect_timeout: Duration,
     /// TCP_CONGESTION for client sockets (None = system default).
     pub client_cc: Option<String>,
+    /// `--test short`: bytes to read per connection.
+    pub short_bytes: usize,
 }
 
 pub struct TestOutcome {
@@ -201,42 +204,53 @@ fn rr_once(s: &mut TcpStream, msg: &[u8], rbuf: &mut [u8]) -> io::Result<f64> {
 /// Extra task run alongside bulk flows from t0; returns (results, errors).
 type SideTask = Box<dyn FnOnce(Instant, Arc<AtomicBool>) -> (serde_json::Value, Vec<String>) + Send>;
 
-/// Run N bulk flows (down or up) with per-second sampling. `side` runs in its
-/// own thread from t0 (used by `mixed`) and returns extra results.
-fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mark: Mark, side: Option<SideTask>) -> TestOutcome {
+/// Run `down_n` downloads and `up_n` uploads with per-second sampling. `side`
+/// runs in its own thread from t0 (used by mixed) and returns extra results.
+fn run_bulk(o: &TestOpts, down_n: usize, up_n: usize, counters: &dyn ServerView, mark: Mark, side: Option<SideTask>) -> TestOutcome {
     let stop = Arc::new(AtomicBool::new(false));
     let mut errors = Vec::new();
-    // Connect all flows first.
+    let flows = down_n + up_n;
     let mut streams = Vec::new();
-    for i in 0..flows {
+    for i in 0..down_n {
         let r = connect(o, Duration::from_secs(5)).and_then(|mut s| {
-            let h = app::encode_header(if up { app::CMD_UP } else { app::CMD_DOWN }, if up { i as u64 } else { 0 });
-            s.write_all(&h)?;
+            s.write_all(&app::encode_header(app::CMD_DOWN, 0))?;
             Ok(s)
         });
         match r {
-            Ok(s) => streams.push(s),
-            Err(e) => errors.push(format!("flow {i}: connect failed: {e}")),
+            Ok(s) => streams.push((false, s)),
+            Err(e) => errors.push(format!("down {i}: connect failed: {e}")),
+        }
+    }
+    for i in 0..up_n {
+        let r = connect(o, Duration::from_secs(5)).and_then(|mut s| {
+            s.write_all(&app::encode_header(app::CMD_UP, i as u64))?;
+            Ok(s)
+        });
+        match r {
+            Ok(s) => streams.push((true, s)),
+            Err(e) => errors.push(format!("up {i}: connect failed: {e}")),
         }
     }
     if streams.len() != flows {
         return TestOutcome { results: json!({ "error": "connect failed" }), errors, window_bytes: 0, window_secs: 0.0 };
     }
-    // Receiver-side per-flow byte counters.
     let recv_ctrs: Vec<Arc<AtomicU64>> = (0..flows).map(|_| Arc::new(AtomicU64::new(0))).collect();
-    let base_up: Vec<u64> = if up { counters.up_flow_bytes(flows) } else { vec![0; flows] };
-    // One sample of every flow's receiver-side byte count (one control round
-    // trip in WG mode).
+    let base_up: Vec<u64> = if up_n > 0 { counters.up_flow_bytes(up_n) } else { Vec::new() };
     let read_all = || -> Vec<u64> {
-        if up {
-            counters.up_flow_bytes(flows).iter().zip(&base_up).map(|(v, b)| v.saturating_sub(*b)).collect()
-        } else {
-            recv_ctrs.iter().map(|c| c.load(Relaxed)).collect()
+        let mut v = Vec::with_capacity(flows);
+        for i in 0..down_n {
+            v.push(recv_ctrs[i].load(Relaxed));
         }
+        if up_n > 0 {
+            for (got, base) in counters.up_flow_bytes(up_n).iter().zip(&base_up) {
+                v.push(got.saturating_sub(*base));
+            }
+        }
+        v
     };
     let t0 = Instant::now();
     let mut handles = Vec::new();
-    for (i, s) in streams.into_iter().enumerate() {
+    for (i, (up, s)) in streams.into_iter().enumerate() {
         let st = stop.clone();
         let c = recv_ctrs[i].clone();
         handles.push(std::thread::spawn(move || if up { up_flow(s, c, st) } else { down_flow(s, c, st) }));
@@ -290,7 +304,9 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
         }));
     }
     let mut results = json!({
-        "direction": if up { "up" } else { "down" },
+        "direction": if down_n > 0 && up_n > 0 { "both" } else if up_n > 0 { "up" } else { "down" },
+        "down_flows": down_n,
+        "up_flows": up_n,
         "flows": flows,
         "goodput_mbps_mean": util::mean(&post),
         "goodput_mbps_window": window_bytes as f64 * 8.0 / 1e6 / window_secs,
@@ -306,11 +322,11 @@ fn run_bulk(o: &TestOpts, up: bool, flows: usize, counters: &dyn ServerView, mar
 }
 
 pub fn test_down(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
-    run_bulk(o, false, o.flows, c, mark, None)
+    run_bulk(o, o.flows, 0, c, mark, None)
 }
 
 pub fn test_up(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
-    run_bulk(o, true, o.flows, c, mark, None)
+    run_bulk(o, 0, o.flows, c, mark, None)
 }
 
 /// E8: one saturating download + an RR connection (1 KiB every 100 ms).
@@ -381,7 +397,7 @@ pub fn test_mixed(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
             errs,
         )
     });
-    let mut out = run_bulk(o, false, 1, c, mark, Some(side));
+    let mut out = run_bulk(o, o.flows.max(1), 0, c, mark, Some(side));
     let idle_sum = util::lat_summary(&idle);
     if let Some(side) = out.results.get("side").cloned() {
         let d = |k: &str| -> Option<f64> { Some(side["rr_loaded"][k].as_f64()? - idle_sum[k].as_f64()?) };
@@ -393,6 +409,90 @@ pub fn test_mixed(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
         out.results.as_object_mut().unwrap().remove("side");
     }
     out.results["test"] = json!("mixed");
+    out.errors.splice(0..0, errors);
+    out
+}
+
+/// Saturating download + upload together with an RR flow.
+pub fn test_mixed_bi(o: &TestOpts, c: &dyn ServerView, mark: Mark) -> TestOutcome {
+    let mut errors = Vec::new();
+    let msg: Vec<u8> = app::pattern_at(7, o.rr_size.min(app::PAT_CHUNK)).to_vec();
+    let mut rr = match connect(o, Duration::from_secs(5)).and_then(|mut s| {
+        s.write_all(&app::encode_header(app::CMD_ECHO, msg.len() as u64))?;
+        s.set_read_timeout(Some(Duration::from_secs(10)))?;
+        Ok(s)
+    }) {
+        Ok(s) => s,
+        Err(e) => {
+            errors.push(format!("rr connect: {e}"));
+            return TestOutcome { results: json!({"error": "rr connect failed"}), errors, window_bytes: 0, window_secs: 0.0 };
+        }
+    };
+    let interval = Duration::from_millis(o.rr_interval_ms);
+    let mut rbuf = vec![0u8; msg.len()];
+    let mut idle = Vec::new();
+    let n_idle = (o.idle_rr_secs * 1000 / o.rr_interval_ms.max(1)).max(1);
+    let t_idle = Instant::now();
+    for k in 0..n_idle {
+        sleep_until(t_idle + interval * k as u32);
+        match rr_once(&mut rr, &msg, &mut rbuf) {
+            Ok(ms) => idle.push(ms),
+            Err(e) => {
+                errors.push(format!("rr idle: {e}"));
+                break;
+            }
+        }
+    }
+    let warmup = o.warmup;
+    let secs = o.secs;
+    let side = Box::new(move |t0: Instant, stop: Arc<AtomicBool>| {
+        let mut errs = Vec::new();
+        let mut loaded = Vec::new();
+        let mut all = Vec::new();
+        let mut rbuf = vec![0u8; msg.len()];
+        let mut next = t0;
+        let end = t0 + Duration::from_secs(secs);
+        while !stop.load(Relaxed) {
+            sleep_until(next);
+            if Instant::now() >= end {
+                break;
+            }
+            let at = Instant::now().duration_since(t0).as_secs_f64();
+            match rr_once(&mut rr, &msg, &mut rbuf) {
+                Ok(ms) => {
+                    all.push((at, ms));
+                    if at >= warmup as f64 {
+                        loaded.push(ms);
+                    }
+                }
+                Err(e) => {
+                    errs.push(format!("rr loaded: {e}"));
+                    break;
+                }
+            }
+            next = (next + interval).max(Instant::now());
+        }
+        (
+            json!({
+                "rr_loaded": util::lat_summary(&loaded),
+                "rr_loaded_series": all.iter().map(|(t, ms)| json!([t, ms])).collect::<Vec<_>>(),
+            }),
+            errs,
+        )
+    });
+    let n = o.flows.max(1);
+    let mut out = run_bulk(o, n, n, c, mark, Some(side));
+    let idle_sum = util::lat_summary(&idle);
+    if let Some(side) = out.results.get("side").cloned() {
+        let d = |k: &str| -> Option<f64> { Some(side["rr_loaded"][k].as_f64()? - idle_sum[k].as_f64()?) };
+        out.results["rr_idle"] = idle_sum.clone();
+        out.results["rr_loaded"] = side["rr_loaded"].clone();
+        out.results["rr_delta_p50_ms"] = json!(d("p50_ms"));
+        out.results["rr_delta_p99_ms"] = json!(d("p99_ms"));
+        out.results["rr_loaded_series"] = side["rr_loaded_series"].clone();
+        out.results.as_object_mut().unwrap().remove("side");
+    }
+    out.results["test"] = json!("mixed-bi");
     out.errors.splice(0..0, errors);
     out
 }
@@ -418,6 +518,7 @@ pub fn test_connect(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcom
                     let r = (|| -> io::Result<f64> {
                         let mut s = TcpStream::connect_timeout(&server_addr(), to)?;
                         let tc = t.elapsed().as_secs_f64() * 1e3;
+                        s.set_nodelay(true)?;
                         s.set_read_timeout(Some(to))?;
                         s.set_write_timeout(Some(to))?;
                         s.write_all(&app::encode_header(app::CMD_CONNECT, 0))?;
@@ -479,6 +580,93 @@ pub fn test_connect(o: &TestOpts, _c: &dyn ServerView, mark: Mark) -> TestOutcom
         // Failures are a measured outcome here, not a harness correctness error.
         errors: Vec::new(),
         window_bytes: 0,
+        window_secs: elapsed,
+    }
+}
+
+/// Many short downloads: connect, read `short_bytes`, close.
+pub fn test_short(o: &TestOpts, mark: Mark) -> TestOutcome {
+    let next = Arc::new(AtomicUsize::new(0));
+    let lat = Arc::new(Mutex::new(Vec::<f64>::with_capacity(o.conns)));
+    let fails = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+    let bytes_ok = Arc::new(AtomicU64::new(0));
+    let k = o.conns;
+    let want = o.short_bytes.max(1);
+    let to = o.connect_timeout;
+    mark("window_start");
+    let t0 = Instant::now();
+    let hs: Vec<_> = (0..o.concurrency.min(k))
+        .map(|_| {
+            let (next, lat, fails, bytes_ok) = (next.clone(), lat.clone(), fails.clone(), bytes_ok.clone());
+            std::thread::spawn(move || {
+                let mut buf = vec![0u8; 64 * 1024];
+                while next.fetch_add(1, Relaxed) < k {
+                    let t = Instant::now();
+                    let r = (|| -> io::Result<()> {
+                        let mut s = TcpStream::connect_timeout(&server_addr(), to)?;
+                        s.set_nodelay(true)?;
+                        s.set_read_timeout(Some(to))?;
+                        s.set_write_timeout(Some(to))?;
+                        s.write_all(&app::encode_header(app::CMD_SHORT, want as u64))?;
+                        let mut got = 0usize;
+                        let mut pos = 0u64;
+                        while got < want {
+                            let nread = buf.len().min(want - got);
+                            let n = s.read(&mut buf[..nread])?;
+                            if n == 0 {
+                                return Err(io::Error::other("short download EOF"));
+                            }
+                            if !app::verify_pattern(pos, &buf[..n]) {
+                                return Err(io::Error::other("short download pattern"));
+                            }
+                            pos += n as u64;
+                            got += n;
+                        }
+                        let _ = s.shutdown(Shutdown::Both);
+                        Ok(())
+                    })();
+                    match r {
+                        Ok(()) => {
+                            lat.lock().unwrap().push(t.elapsed().as_secs_f64() * 1e3);
+                            bytes_ok.fetch_add(want as u64, Relaxed);
+                        }
+                        Err(e) => {
+                            let kind = match e.kind() {
+                                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timeout",
+                                io::ErrorKind::ConnectionRefused => "refused",
+                                io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted | io::ErrorKind::BrokenPipe => "reset",
+                                _ => "other",
+                            };
+                            *fails.lock().unwrap().entry(kind.into()).or_default() += 1;
+                        }
+                    }
+                }
+            })
+        })
+        .collect();
+    for h in hs {
+        h.join().unwrap();
+    }
+    let elapsed = t0.elapsed().as_secs_f64();
+    mark("window_end");
+    let lat = lat.lock().unwrap().clone();
+    let ok = lat.len();
+    let window_bytes = bytes_ok.load(Relaxed);
+    TestOutcome {
+        results: json!({
+            "test": "short",
+            "attempted": k,
+            "concurrency": o.concurrency,
+            "short_bytes": want,
+            "success": ok,
+            "failures": fails.lock().unwrap().clone(),
+            "elapsed_sec": elapsed,
+            "conn_per_sec": ok as f64 / elapsed.max(1e-9),
+            "goodput_mbps_window": window_bytes as f64 * 8.0 / 1e6 / elapsed.max(1e-9),
+            "latency_total": util::lat_summary(&lat),
+        }),
+        errors: Vec::new(),
+        window_bytes,
         window_secs: elapsed,
     }
 }

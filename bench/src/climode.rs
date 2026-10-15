@@ -4,11 +4,11 @@
 //! kernel TCP client ──▶ 198.18.0.2:5201 ──TUN zfcT──▶ proxy process ──▶ 127.0.0.1:5201 kernel server
 //! ```
 //!
-//! The proxy is a separate process (zfstack `--tun-proxy`, or sing-box with a
-//! TUN inbound and a direct outbound overriding the destination), so its CPU
-//! time and memory are measured the same way for every implementation:
-//! utime+stime and VmRSS/VmHWM from /proc/<pid>. `direct` skips the proxy and
-//! connects to the server over loopback (kernel-only reference).
+//! The proxy is a separate process (zfstack `--tun-proxy`, sing-box, the C
+//! lwIP TUN proxy, or hev-socks5-tunnel), so its CPU time and memory are
+//! measured the same way for every implementation: utime+stime and
+//! VmRSS/VmHWM from /proc/<pid>. `direct` skips the proxy and connects to
+//! the server over loopback (kernel-only reference).
 
 use std::io;
 use std::net::SocketAddr;
@@ -36,6 +36,10 @@ pub enum ProxyKind {
     SingboxGo,
     SingboxGvisor,
     SingboxSystem,
+    /// Official lwIP 2.2.1 C TUN proxy (`bench/c-stacks/lwip-tun-proxy`).
+    Lwip,
+    /// hev-socks5-tunnel (C tun2socks + lwIP) with a local SOCKS5 override.
+    Hev,
 }
 
 pub fn proxy_name(k: ProxyKind) -> &'static str {
@@ -46,6 +50,8 @@ pub fn proxy_name(k: ProxyKind) -> &'static str {
         ProxyKind::SingboxGo => "singbox-go",
         ProxyKind::SingboxGvisor => "singbox-gvisor",
         ProxyKind::SingboxSystem => "singbox-system",
+        ProxyKind::Lwip => "lwip",
+        ProxyKind::Hev => "hev",
     }
 }
 
@@ -105,11 +111,16 @@ fn singbox_config(stack: &str, mtu: u16) -> String {
     .to_string()
 }
 
-fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
+fn bin_flag(flag: &Option<String>, default: &str) -> String {
+    flag.clone().unwrap_or_else(|| default.into())
+}
+
+fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Vec<Child>> {
     tun::sh_quiet(&format!("ip link del {PROXY_TUN}"));
     let mtu = a.tun_mtu;
-    let child = match kind {
-        ProxyKind::Direct => return Ok(None),
+    let mut children = Vec::new();
+    match kind {
+        ProxyKind::Direct => return Ok(children),
         ProxyKind::Zfstack | ProxyKind::ZfstackClient => {
             let mut c = Command::new(std::env::current_exe()?);
             c.args(["--tun-proxy", "--tun-mtu", &mtu.to_string(), "--proxy-upstream", UPSTREAM]);
@@ -132,7 +143,7 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
             if a.legacy {
                 c.arg("--legacy");
             }
-            c.stdin(Stdio::null()).spawn()?
+            children.push(c.stdin(Stdio::null()).spawn()?);
         }
         ProxyKind::SingboxGo | ProxyKind::SingboxGvisor | ProxyKind::SingboxSystem => {
             let stack = match kind {
@@ -142,20 +153,59 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
             };
             let path = std::env::temp_dir().join(format!("zfbench-singbox-{}.json", std::process::id()));
             std::fs::write(&path, singbox_config(stack, mtu))?;
-            let bin = a.singbox.clone().unwrap_or_else(|| "sing-box".into());
+            let bin = bin_flag(&a.singbox, "sing-box");
             let mut c = Command::new(bin);
             c.arg("run").arg("-c").arg(&path).stdin(Stdio::null());
             if a.proxy_workers > 0 {
                 c.env("GOMAXPROCS", a.proxy_workers.to_string());
             }
-            c.spawn()?
+            children.push(c.spawn()?);
         }
-    };
-    // Wait for the device, then for the proxy to accept a connection.
+        ProxyKind::Lwip => {
+            let bin = bin_flag(&a.lwip, "lwip-tun-proxy");
+            let mut c = Command::new(bin);
+            c.args([
+                "--tun",
+                PROXY_TUN,
+                "--addr",
+                PROXY_TUN_ADDR,
+                "--listen",
+                "198.18.0.2",
+                "--port",
+                "5201",
+                "--upstream",
+                UPSTREAM,
+                "--mtu",
+                &mtu.to_string(),
+            ]);
+            children.push(c.stdin(Stdio::null()).spawn()?);
+        }
+        ProxyKind::Hev => {
+            let socks = bin_flag(&a.socks5_override, "socks5-override");
+            let hev = bin_flag(&a.hev, "hev-socks5-tunnel");
+            let socks_listen = "127.0.0.1:18721";
+            let mut s5 = Command::new(socks);
+            s5.args(["--listen", socks_listen, "--override", UPSTREAM]);
+            children.push(s5.stdin(Stdio::null()).spawn()?);
+            std::thread::sleep(Duration::from_millis(150));
+            let yaml = format!(
+                "tunnel:\n  name: {PROXY_TUN}\n  mtu: {mtu}\n  ipv4: 172.19.0.1\n  icmp: off\n  offload:\n    tso: true\n    jumbo: true\nsocks5:\n  port: 18721\n  address: 127.0.0.1\n  udp: udp\nmisc:\n  log-level: error\n  tcp-buffer-size: 262144\n  limit-nofile: 262144\n"
+            );
+            let path = std::env::temp_dir().join(format!("zfbench-hev-{}.yml", std::process::id()));
+            std::fs::write(&path, yaml)?;
+            let mut c = Command::new(hev);
+            c.arg(path).stdin(Stdio::null());
+            children.push(c.spawn()?);
+        }
+    }
     let t = Instant::now();
     let target: SocketAddr = TARGET.parse().unwrap();
     loop {
         if t.elapsed() > Duration::from_secs(15) {
+            for mut c in children {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
             return Err(io::Error::other("proxy did not come up"));
         }
         let up = std::fs::read_to_string(format!("/sys/class/net/{PROXY_TUN}/operstate")).is_ok();
@@ -167,30 +217,52 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    Ok(Some(child))
+    Ok(children)
 }
 
-fn stop_proxy(child: Option<Child>) {
-    if let Some(mut c) = child {
+fn stop_proxy(mut children: Vec<Child>) {
+    for c in &children {
         unsafe { libc::kill(c.id() as i32, libc::SIGTERM) };
-        let t = Instant::now();
-        while t.elapsed() < Duration::from_secs(3) {
-            if let Ok(Some(_)) = c.try_wait() {
-                break;
+    }
+    let t = Instant::now();
+    while t.elapsed() < Duration::from_secs(3) {
+        let mut alive = false;
+        for c in &mut children {
+            if c.try_wait().ok().flatten().is_none() {
+                alive = true;
             }
-            std::thread::sleep(Duration::from_millis(20));
         }
+        if !alive {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    for mut c in children {
         let _ = c.kill();
         let _ = c.wait();
     }
     tun::sh_quiet(&format!("ip link del {PROXY_TUN}"));
 }
 
+fn sample_pids(pids: &[u32]) -> Option<ProcSample> {
+    if pids.is_empty() {
+        return None;
+    }
+    let mut s = ProcSample::default();
+    for pid in pids {
+        let p = proc_sample(*pid);
+        s.cpu_sec += p.cpu_sec;
+        s.rss_kb += p.rss_kb;
+        s.hwm_kb += p.hwm_kb;
+    }
+    Some(s)
+}
+
 /// Hold `n` idle connections open (header not sent: the server waits) and
 /// report the proxy's memory per connection.
-fn test_idle(n: usize, pid: Option<u32>, mark: &mut dyn FnMut(&'static str)) -> client::TestOutcome {
+fn test_idle(n: usize, pids: &[u32], mark: &mut dyn FnMut(&'static str)) -> client::TestOutcome {
     let target = client::server_addr();
-    let before = pid.map(proc_sample);
+    let before = sample_pids(pids);
     mark("window_start");
     let mut conns = Vec::with_capacity(n);
     let mut errors = Vec::new();
@@ -204,19 +276,24 @@ fn test_idle(n: usize, pid: Option<u32>, mark: &mut dyn FnMut(&'static str)) -> 
             }
         }
     }
+    let established = conns.len();
+    if established < n && errors.is_empty() {
+        errors.push(format!("idle established {established}/{n}"));
+    }
     let connect_secs = t0.elapsed().as_secs_f64();
     // Let the proxy finish dialing upstream and settle.
     std::thread::sleep(Duration::from_secs(2));
-    let after = pid.map(proc_sample);
+    let after = sample_pids(pids);
     mark("window_end");
     drop(conns);
     let per_conn = match (before, after) {
-        (Some(b), Some(a)) if n > 0 => Some((a.rss_kb as f64 - b.rss_kb as f64) * 1024.0 / n as f64),
+        (Some(b), Some(a)) if established > 0 => Some((a.rss_kb as f64 - b.rss_kb as f64) * 1024.0 / established as f64),
         _ => None,
     };
     client::TestOutcome {
         results: json!({
             "conns": n,
+            "established": established,
             "connect_secs": connect_secs,
             "rss_kb_before": before.map(|s| s.rss_kb),
             "rss_kb_after": after.map(|s| s.rss_kb),
@@ -233,12 +310,12 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
     let stop_srv = Arc::new(AtomicBool::new(false));
     let ks = kernel_server::start_at(counters.clone(), stop_srv.clone(), a.kernel_cc.clone(), None, UPSTREAM.parse().unwrap())?;
     client::set_server_addr(if kind == ProxyKind::Direct { UPSTREAM.parse().unwrap() } else { TARGET.parse().unwrap() });
-    let child = spawn_proxy(a, kind)?;
-    let pid = child.as_ref().map(|c| c.id());
+    let mut children = spawn_proxy(a, kind)?;
+    let pids: Vec<u32> = children.iter().map(|c| c.id()).collect();
     std::thread::sleep(Duration::from_millis(300));
-    let base = pid.map(proc_sample);
+    let base = sample_pids(&pids);
 
-    let snap = || Snap { t: Instant::now(), proxy: pid.map(proc_sample), sys: util::proc_stat(), harness_cpu: util::process_cpu_now() };
+    let snap = || Snap { t: Instant::now(), proxy: sample_pids(&pids), sys: util::proc_stat(), harness_cpu: util::process_cpu_now() };
     let mut marks: Vec<(&'static str, Snap)> = Vec::new();
     let o = client::TestOpts {
         secs: a.secs,
@@ -251,6 +328,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
         concurrency: a.concurrency,
         connect_timeout: Duration::from_millis(a.connect_timeout_ms),
         client_cc: a.client_cc.clone(),
+        short_bytes: a.short_bytes,
     };
     let s_begin = snap();
     let outcome = {
@@ -259,8 +337,10 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             TestKind::Down => client::test_down(&o, &counters, &mut mark),
             TestKind::Up => client::test_up(&o, &counters, &mut mark),
             TestKind::Mixed => client::test_mixed(&o, &counters, &mut mark),
+            TestKind::MixedBi => client::test_mixed_bi(&o, &counters, &mut mark),
             TestKind::Connect => client::test_connect(&o, &counters, &mut mark),
-            TestKind::Idle => test_idle(a.conns, pid, &mut mark),
+            TestKind::Short => client::test_short(&o, &mut mark),
+            TestKind::Idle => test_idle(a.conns, &pids, &mut mark),
             TestKind::Isolate => {
                 eprintln!("--test isolate uses the emulator path, not --client-proxy");
                 std::process::exit(2);
@@ -269,10 +349,9 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
     };
     std::thread::sleep(Duration::from_millis(300));
     let s_end = snap();
-    let end_sample = pid.map(proc_sample);
-    let mut child = child;
-    let child_exit = child.as_mut().and_then(|c| c.try_wait().ok().flatten()).map(|st| st.to_string());
-    stop_proxy(child);
+    let end_sample = sample_pids(&pids);
+    let child_exit = children.iter_mut().find_map(|c| c.try_wait().ok().flatten()).map(|st| st.to_string());
+    stop_proxy(children);
     stop_srv.store(true, Relaxed);
     let t = Instant::now();
     while ks.active.load(Relaxed) > 0 && t.elapsed() < Duration::from_secs(3) {
@@ -294,7 +373,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
     let sys = util::proc_stat_delta_json(&w0.sys, &w1.sys);
     let sys_busy = sys["busy_sec"].as_f64();
     let mut errors = outcome.errors.clone();
-    if matches!(a.test, TestKind::Down | TestKind::Up) && outcome.window_bytes == 0 {
+    if matches!(a.test, TestKind::Down | TestKind::Up | TestKind::MixedBi | TestKind::Short) && outcome.window_bytes == 0 {
         errors.push("no data moved in the measurement window".into());
     }
     if let Some(c) = &child_exit {
@@ -324,6 +403,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             "tso": a.tso,
             "driver_thread": a.driver_thread,
             "legacy": a.legacy,
+            "short_bytes": a.short_bytes,
         },
         "env": {
             "kernel": tun::sh_output("uname -r").trim(),
@@ -334,7 +414,8 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
         "errors": errors,
         "results": outcome.results,
         "proxy": {
-            "pid": pid,
+            "pid": pids.first(),
+            "pids": pids,
             "rss_kb_idle": base.map(|s| s.rss_kb),
             "rss_kb_end": end_sample.map(|s| s.rss_kb),
             "hwm_kb": end_sample.map(|s| s.hwm_kb),

@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-14",
+  "zfstack_commit": "c2ae504",
+  "sing-box": "1.15.0-alpha.12",
+  "sing-box_revision": "25b0d5ea3e466d246c708ac0f20d0448110e566c",
+  "sing-box_tags": "official linux-amd64 (no with_gvisor)",
+  "lwip": "STABLE-2_2_1_RELEASE 77dcd25a72509eb83f72b033d219b1d40cd8eb95",
+  "hev-socks5-tunnel": "50d7b41a4f53e72b5f53a5a262ff5e90f1b53cd3",
+  "kernel": "6.12.94+",
+  "nproc": 4,
+  "notes": "Client TUN path. zfstack uses StackConfig::client + splice + vnet-hdr + driver thread. sing-box go is the 1.15 default stack; official linux-amd64 tags no longer ship with_gvisor. lwip is a C TUN proxy using upstream lwIP 2.2.1 (NO_SYS=1, TCP_MSS 8191). hev is hev-socks5-tunnel plus a local SOCKS5 override (extra userspace hop — connect/short p50 ~204 ms is handshake, not stack RTT). Idle 4000-conn cells were re-run after zfbench raised RLIMIT_NOFILE to 262144; the first pass hit EMFILE at ~510 connections under the sudo default of 1024."
+}
