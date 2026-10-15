@@ -31,7 +31,7 @@ VARIANTS = ("baseline", "candidate")
 WORKLOAD_FIELDS = (
     "case", "iterations", "flows", "peers", "payload_bytes", "server_ingress",
     "pacing", "timing_scope", "cpu_clock", "real_network_io",
-    "virtual_clock_used_for_rate",
+    "virtual_clock_used_for_rate", "verification_method",
 )
 EXACT_FIELDS = (
     "operations", "effective_bytes", "allocation_requested_bytes",
@@ -214,7 +214,7 @@ def validate_row(row, number, expected_hashes, expected_case):
         "peak_rss_bytes": m.get("process_lifetime_peak_rss_bytes"),
         # Legacy TX rows used payload + 64, not an observed peak. Never compare
         # that estimate to the v2 warmup ledger snapshot or to a sampled peak.
-        "sampled_peak_reserved_bytes": None if m.get("case") == "tx-alloc" else m.get("sampled_peak_reserved_bytes"),
+        "sampled_peak_reserved_bytes": None if m.get("case") in ("tx-alloc", "tx-alloc-pooled", "tx-alloc-migrate") else m.get("sampled_peak_reserved_bytes"),
         "warmup_reserved_bytes": m.get("warmup_reserved_bytes"),
         "retained_reserved_bytes_before_drop": m.get("retained_reserved_bytes_before_drop"),
         "throttled_usec": env["throttled_usec"],
@@ -270,7 +270,7 @@ def case_summary(name, pairs, bootstrap, seed):
         rng = random.Random(case_seed)
         draws = [[rng.randrange(len(pairs)) for _ in pairs] for _ in range(bootstrap)]
     warnings = []
-    if example["case"] == "tx-alloc":
+    if example["case"] in ("tx-alloc", "tx-alloc-pooled", "tx-alloc-migrate"):
         warnings.append("TX work-loop charged peak is unavailable. Legacy payload+64 estimates are omitted; v2 warmup_reserved_bytes is a ledger snapshot after warmup push, excluding transient reservations, not an allocator/RSS peak.")
     if protocol_mismatches:
         warnings.append("Protocol work counters differ within pairs; CPU differences may include a changed workload. Do not attribute them solely to implementation speed.")

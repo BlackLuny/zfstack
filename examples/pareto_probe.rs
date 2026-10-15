@@ -54,7 +54,7 @@ impl Args {
     fn parse() -> ProbeResult<Self> {
         let mut argv = std::env::args().skip(1);
         let case = argv.next().ok_or_else(|| {
-            "expected case: budget, budget-handle, rx, rx-chunk, rx-tail, tx-alloc, heap-equal, heap-mixed, heap-changing, heap-pop, pump-down, pump-up, pump-bidi".to_string()
+            "expected case: budget, budget-handle, rx, rx-chunk, rx-tail, tx-alloc, tx-alloc-pooled, tx-alloc-migrate, heap-equal, heap-mixed, heap-changing, heap-pop, pump-down, pump-up, pump-bidi".to_string()
         })?;
         let is_pump = case.starts_with("pump-");
         let is_heap = case.starts_with("heap-");
@@ -187,6 +187,8 @@ struct ResultRow {
     sampled_peak_reserved_bytes: u64,
     warmup_reserved_bytes: Option<u64>,
     retained_reserved_bytes_before_drop: u64,
+    tx_source_alignment_mod64: Option<usize>,
+    tx_payload_alignment_mod64: Option<usize>,
     final_reserved_bytes: u64,
     peak_packet_queue_bytes: u64,
     wire_packets: u64,
@@ -230,8 +232,22 @@ fn pattern_sum(n: u64) -> u64 {
     (n / 251).wrapping_mul(31_375).wrapping_add(rem * rem.saturating_sub(1) / 2)
 }
 
+// Keep both the call boundary and (on the measured ELF target) the code
+// page alignment independent of the surrounding LTO dispatch. Outlining alone
+// leaves instruction-fetch and branch locations dependent on unrelated code.
+// The empty assembler fragment only raises this section's alignment; it adds
+// no instructions and changes no validation work.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+core::arch::global_asm!(".pushsection .text.zfstack_pareto_verify,\"ax\",@progbits", ".balign 4096", ".popsection");
+
+#[cfg_attr(all(target_os = "linux", target_arch = "x86_64"), link_section = ".text.zfstack_pareto_verify")]
+#[inline(never)]
 fn verify(data: &[u8], expected: &[u8], checksum: &mut u64) -> ProbeResult<()> {
-    if data != expected {
+    // Scan every byte with the same portable reduction on both sides. Avoid
+    // libc's ISA-dispatched bcmp: its AVX2 loop can dominate this TX probe and
+    // change cost with producer/layout state even when push/consume are flat.
+    let equal = data.len() == expected.len() && data.iter().zip(expected).fold(0u8, |diff, (&a, &b)| diff | (a ^ b)) == 0;
+    if !equal {
         let at = data.iter().zip(expected).position(|(a, b)| a != b).unwrap_or(data.len().min(expected.len()));
         return Err(format!("byte mismatch at chunk offset {at}, got {} bytes, expected {}", data.len(), expected.len()));
     }
@@ -366,8 +382,8 @@ fn rx_probe(a: &Args) -> ProbeResult<ResultRow> {
 fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
     let global = GlobalBudget::new(1 << 30);
     let mut budget = Budget::new(global.clone());
-    // No idle payload cache: each iteration allocates fresh payload blocks.
-    let mut pool = BlockPool::new(0);
+    // Zero cache is the historical allocation probe; pooled/migrate retain 32 blocks.
+    let mut pool = BlockPool::new(if a.case == "tx-alloc" { 0 } else { 32 });
     let mut tx = TxBuf::default();
     let src = pattern(a.payload);
     if !tx.push(&mut pool, &mut budget, PeerId(1), &src) {
@@ -377,6 +393,8 @@ fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
     // backing. Sampling here leaves the measured allocation loop unchanged.
     let warmup_reserved_bytes = global.reserved();
     let [s0, s1] = tx.slices(0, src.len());
+    let tx_source_alignment_mod64 = Some(src.as_ptr() as usize % 64);
+    let tx_payload_alignment_mod64 = Some(s0.as_ptr() as usize % 64);
     let mut warmup_sum = 0u64;
     verify(s0, &src[..s0.len()], &mut warmup_sum)?;
     if !s1.is_empty() {
@@ -385,8 +403,9 @@ fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
     tx.consume(&mut pool, src.len());
     let mut checksum = 0u64;
     let timer = Timer::start();
-    for _ in 0..a.iterations {
-        if !black_box(&mut tx).push(black_box(&mut pool), black_box(&mut budget), PeerId(1), black_box(&src)) {
+    for iteration in 0..a.iterations {
+        let peer = if a.case == "tx-alloc-migrate" { PeerId(1 + (iteration % 2)) } else { PeerId(1) };
+        if !black_box(&mut tx).push(black_box(&mut pool), black_box(&mut budget), peer, black_box(&src)) {
             return Err("TX allocation failed during measured work".into());
         }
         let [s0, s1] = tx.slices(0, src.len());
@@ -397,6 +416,7 @@ fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
         tx.consume(&mut pool, src.len());
     }
     let (work_wall_ns, work_cpu_ns) = timer.stop();
+    let retained_reserved_bytes_before_drop = global.reserved();
     drop(tx);
     drop(pool);
     if budget.physical_used() != 0 || global.reserved() != 0 {
@@ -411,6 +431,9 @@ fn tx_alloc_probe(a: &Args) -> ProbeResult<ResultRow> {
         work_wall_ns,
         work_cpu_ns,
         warmup_reserved_bytes: Some(warmup_reserved_bytes),
+        retained_reserved_bytes_before_drop,
+        tx_source_alignment_mod64,
+        tx_payload_alignment_mod64,
         final_reserved_bytes: global.reserved(),
         ..Default::default()
     })
@@ -806,7 +829,7 @@ fn run() -> ProbeResult<()> {
     let result = match args.case.as_str() {
         "budget" | "budget-handle" => budget_probe(&args)?,
         "rx" | "rx-chunk" | "rx-tail" => rx_probe(&args)?,
-        "tx-alloc" => tx_alloc_probe(&args)?,
+        "tx-alloc" | "tx-alloc-pooled" | "tx-alloc-migrate" => tx_alloc_probe(&args)?,
         "heap-equal" | "heap-mixed" | "heap-changing" | "heap-pop" => heap_probe(&args)?,
         "pump-down" | "pump-up" | "pump-bidi" => {
             #[cfg(feature = "test-peer")]
@@ -839,11 +862,12 @@ fn run() -> ProbeResult<()> {
     let fields = vec![
         ("tool", quote("zfstack-pareto-probe")),
         ("schema_version", "2".into()),
+        ("verification_method", quote("portable_full_scan_v1")),
         ("ok", "true".into()),
         ("case", quote(&args.case)),
         ("iterations", args.iterations.to_string()),
         ("flows", args.flows.to_string()),
-        ("peers", args.peers.to_string()),
+        ("peers", if args.case == "tx-alloc-migrate" { "2".into() } else { args.peers.to_string() }),
         ("payload_bytes", args.payload.to_string()),
         ("server_ingress", if is_pump { quote(if args.borrowed_server { "borrowed_verify" } else { "owned_verify" }) } else { "null".into() }),
         ("pacing", if is_pump { args.pacing.to_string() } else { "null".into() }),
@@ -874,14 +898,16 @@ fn run() -> ProbeResult<()> {
         ("wire_bytes", result.wire_bytes.to_string()),
         ("driver_rounds_including_cleanup", result.driver_rounds.to_string()),
         ("connections_checked", result.connections_checked.to_string()),
-        ("sampled_peak_reserved_bytes", if args.case == "tx-alloc" { "null".into() } else { result.sampled_peak_reserved_bytes.to_string() }),
-        ("peak_reserved_is_sampled_lower_bound", if args.case == "tx-alloc" { "null".into() } else { "true".into() }),
+        ("sampled_peak_reserved_bytes", if args.case.starts_with("tx-alloc") { "null".into() } else { result.sampled_peak_reserved_bytes.to_string() }),
+        ("peak_reserved_is_sampled_lower_bound", if args.case.starts_with("tx-alloc") { "null".into() } else { "true".into() }),
         ("warmup_reserved_bytes", result.warmup_reserved_bytes.map_or_else(|| "null".into(), |n| n.to_string())),
         (
             "warmup_reserved_scope",
-            if args.case == "tx-alloc" { quote("ledger_after_warmup_push_before_consume_excludes_transient_reservations") } else { "null".into() },
+            if args.case.starts_with("tx-alloc") { quote("ledger_after_warmup_push_before_consume_excludes_transient_reservations") } else { "null".into() },
         ),
         ("retained_reserved_bytes_before_drop", result.retained_reserved_bytes_before_drop.to_string()),
+        ("tx_source_alignment_mod64", result.tx_source_alignment_mod64.map_or_else(|| "null".into(), |n| n.to_string())),
+        ("tx_payload_alignment_mod64", result.tx_payload_alignment_mod64.map_or_else(|| "null".into(), |n| n.to_string())),
         ("final_reserved_bytes", result.final_reserved_bytes.to_string()),
         ("all_budget_leases_released", "true".into()),
         ("directional_packet_queue_peak_sum_bytes", result.peak_packet_queue_bytes.to_string()),
@@ -911,6 +937,32 @@ mod tests {
     use zfstack::buf::TX_BLOCK;
 
     #[test]
+    fn verifier_checks_lengths_and_each_byte_even_when_sums_match() {
+        for len in (0..=129).chain([255, 256, 257, 2048, 65535, 65536, 65537]) {
+            let expected = pattern(len);
+            let mut sum = 7u64;
+            verify(&expected, &expected, &mut sum).unwrap();
+            assert_eq!(sum, 7 + pattern_sum(len as u64));
+            for at in [0, len / 2, len.saturating_sub(1)] {
+                if len > 0 {
+                    let mut wrong = expected.clone();
+                    wrong[at] ^= 1;
+                    let mut sum = 7;
+                    assert!(verify(&wrong, &expected, &mut sum).is_err());
+                    assert_eq!(sum, 7, "failed comparison must not publish a digest");
+                }
+            }
+            if len > 1 {
+                let mut wrong = expected.clone();
+                wrong.swap(0, 1);
+                assert!(verify(&wrong, &expected, &mut 0).is_err(), "equal sums do not imply equal bytes");
+                assert!(verify(&expected[..len - 1], &expected, &mut 0).is_err());
+                assert!(verify(&expected, &expected[..len - 1], &mut 0).is_err());
+            }
+        }
+    }
+
+    #[test]
     fn tx_alloc_reports_observed_warmup_ledger_across_payload_classes() {
         for payload in [1, 2048, 2049, TX_BLOCK, TX_BLOCK + 1] {
             let global = GlobalBudget::new(1 << 30);
@@ -925,14 +977,16 @@ mod tests {
             drop(pool);
             assert_eq!(global.reserved(), 0);
 
-            let args = Args { case: "tx-alloc".into(), iterations: 1, flows: 1, peers: 1, payload, borrowed_server: true, pacing: true };
-            let row = tx_alloc_probe(&args).expect("one-iteration functional probe");
-            assert_eq!(row.warmup_reserved_bytes, Some(observed), "payload={payload}");
-            assert_eq!(row.sampled_peak_reserved_bytes, 0, "work peak was not sampled");
-            assert_eq!(row.operations, 1);
-            assert_eq!(row.effective_bytes, payload as u64);
-            assert_eq!(row.checksum, row.expected_checksum);
-            assert_eq!(row.final_reserved_bytes, 0);
+            for case in ["tx-alloc", "tx-alloc-pooled", "tx-alloc-migrate"] {
+                let args = Args { case: case.into(), iterations: 4, flows: 1, peers: 1, payload, borrowed_server: true, pacing: true };
+                let row = tx_alloc_probe(&args).expect("four-iteration functional probe including peer migration");
+                assert_eq!(row.warmup_reserved_bytes, Some(observed), "payload={payload}, case={case}");
+                assert_eq!(row.sampled_peak_reserved_bytes, 0, "work peak was not sampled");
+                assert_eq!(row.operations, 4);
+                assert_eq!(row.effective_bytes, 4 * payload as u64);
+                assert_eq!(row.checksum, row.expected_checksum);
+                assert_eq!(row.final_reserved_bytes, 0);
+            }
         }
     }
 }
