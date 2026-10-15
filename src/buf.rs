@@ -1741,6 +1741,56 @@ mod tests {
     }
 
     #[test]
+    fn tx_cached_payload_uses_current_peer_limit_after_reconfiguration() {
+        for cache in [0, 32] {
+            for write_with in [false, true] {
+                for target in [PeerId(0), PeerId(u64::MAX)] {
+                    let global = crate::budget::GlobalBudget::new(8192);
+                    let mut budget = Budget::new(global.clone());
+                    budget.set_limits(8192, 4096, 8);
+                    let old = budget.memory_handle(PeerId(0));
+                    let next = budget.memory_handle(PeerId(u64::MAX));
+                    let mut pool = BlockPool::new(cache);
+                    let mut tx = TxBuf::default();
+                    assert!(tx.push(&mut pool, &mut budget, PeerId(0), &[7; 64]));
+                    tx.consume(&mut pool, 64);
+                    let backing = tx.descriptor_bytes();
+                    let reserved = global.reserved();
+                    // The backing was admitted at 4 KiB. A retained lease must
+                    // not keep granting that obsolete allowance after a change.
+                    budget.peer_limit = 1024;
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, target, 64, |_| -> Result<usize, ()> { panic!("fill after current peer quota refusal") }),
+                            Ok(None)
+                        );
+                    } else {
+                        assert!(!tx.push(&mut pool, &mut budget, target, &[9; 64]));
+                    }
+                    assert!(tx.is_empty());
+                    assert_eq!((global.reserved(), old.peer_physical_used(), next.peer_physical_used()), (reserved, backing, 0));
+                    assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(0), false));
+                    budget.peer_limit = 4096;
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, target, 64, |[a, _]| -> Result<usize, ()> {
+                                a[..64].fill(9);
+                                Ok(64)
+                            }),
+                            Ok(Some(64))
+                        );
+                    } else {
+                        assert!(tx.push(&mut pool, &mut budget, target, &[9; 64]));
+                    }
+                    assert_eq!(tx.slices(0, 64)[0], &[9; 64]);
+                    drop((tx, pool));
+                    assert_eq!((global.reserved(), global.cached_bytes(), old.peer_physical_used(), next.peer_physical_used()), (0, 0, 0, 0));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn tx_resolved_payload_owner_rolls_back_migration_at_each_budget_level() {
         use crate::budget::{AllocationKind, Level, Tier};
         const LIMIT: u64 = 512 << 10;

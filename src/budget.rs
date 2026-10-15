@@ -1730,24 +1730,11 @@ impl MemoryLease {
         }
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)) };
-        if !reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes) {
-            budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
-            self.global.request_cache_reclaim();
+        if !self.reserve_cached_peer(counter, budget.peer_limit, &budget.stats) {
             return false;
         }
-        for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
-            drain.fetch_add(self.bytes, Ordering::AcqRel);
-        }
-        self.drain = true;
-        self.peer_limit = budget.peer_limit;
-        if !same_peer {
-            self.peer = Some(Arc::clone(counter));
-        }
-        self.peer_parked = false;
-        if self.cached {
-            self.cached = false;
-            self.global.release_cache(self.bytes);
-        }
+        let next = if same_peer { None } else { Some(Arc::clone(counter)) };
+        self.finish_cached_assignment(next, budget.peer_limit);
         true
     }
 
@@ -1762,24 +1749,42 @@ impl MemoryLease {
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         let counter = if same_peer { self.peer.as_ref().unwrap() } else { assignment.map_or(index.peer.as_ref().unwrap(), |next| next.peer.as_ref().unwrap()) };
         debug_assert!(index.belongs_to(budget) && counter.peer_id == peer);
-        if !reserve_amount(&counter.used, counter.limit(&self.global, self.peer_limit, Tier::Block), self.bytes) {
-            budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+        if !self.reserve_cached_peer(counter, budget.peer_limit, &budget.stats) {
+            return false;
+        }
+        let next = if same_peer { None } else { Some(Arc::clone(counter)) };
+        self.finish_cached_assignment(next, budget.peer_limit);
+        true
+    }
+
+    // Both public assignment and the TX-index shortcut use the live budget
+    // limit. Keep quota, drain and cache transitions shared so the shortcut
+    // cannot retain an obsolete allowance when a peer limit changes (#67).
+    #[inline(always)]
+    fn reserve_cached_peer(&self, counter: &LevelUse, peer_limit: u64, stats: &Arc<PortStats>) -> bool {
+        if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
+            stats.note(AllocationKind::TxBlock, Some(Level::Peer));
             self.global.request_cache_reclaim();
             return false;
         }
         for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
             drain.fetch_add(self.bytes, Ordering::AcqRel);
         }
+        true
+    }
+
+    #[inline(always)]
+    fn finish_cached_assignment(&mut self, next: Option<Arc<LevelUse>>, peer_limit: u64) {
         self.drain = true;
-        if !same_peer {
-            self.peer = Some(Arc::clone(counter));
+        self.peer_limit = peer_limit;
+        if let Some(counter) = next {
+            self.peer = Some(counter);
         }
         self.peer_parked = false;
         if self.cached {
             self.cached = false;
             self.global.release_cache(self.bytes);
         }
-        true
     }
 }
 
