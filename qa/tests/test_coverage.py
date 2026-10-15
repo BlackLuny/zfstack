@@ -49,13 +49,49 @@ class CoverageInventoryTests(unittest.TestCase):
                 audit(self.root, self.policy)
         self.assertEqual(read_json(self.policy / "test-inventory.json")["rust_tests"][1]["name"], "release_wakes_writer")
 
-    def test_new_ignore_runtime_capability_or_new_test_requires_policy_review(self):
+    def test_new_ignore_or_runtime_capability_on_existing_test_requires_policy_review(self):
         original = self.rust.read_text()
-        for changed in (original.replace("#[test]", "#[test] #[ignore]"), original + "\n#[test] fn added() {}",
-                        original.replace('worker_threads=2', 'worker_threads=4'), original.replace("#[test]", '#[cfg(target_os="linux")] #[test]')):
+        for changed in (original.replace("#[test]", "#[test] #[ignore]"),
+                        original.replace('worker_threads=2', 'worker_threads=4'), original.replace("#[test]", '#[cfg(target_os="linux")] #[test]'),
+                        original.replace("release_wakes_writer", "renamed") + "\n#[test] fn added() {}"):
             self.rust.write_text(changed)
             with self.subTest(changed=changed), self.assertRaisesRegex(EvidenceError, "inventory drift"):
                 audit(self.root, self.policy)
+
+    def test_pure_additions_pass_bound_to_reviewed_inventory(self):
+        reviewed = audit(self.root, self.policy)
+        python = self.root / "test_added.py"
+        python.write_text("def test_new(): pass\n")
+        self.rust.write_text(self.rust.read_text() + '\n#[test] fn added() {}\n#[cfg(target_os="linux")] #[test] fn added_linux() {}'
+                             '\n#[cfg(test)] mod more { #[test] fn nested() {} }')
+        result = audit(self.root, self.policy)
+        self.assertEqual({key: value for key, value in result.items() if key != "additions"}, reviewed)
+        self.assertEqual([entry["name"] for entry in result["additions"]["rust_tests"]], ["added", "added_linux", "nested"])
+        self.assertEqual([entry["name"] for entry in result["additions"]["python_tests"]], ["test_new"])
+        self.assertEqual(result["additions"]["rust_configuration"],
+                         [{"source": "src/adapter.rs", "attributes": ["cfg ( target_os = \"linux\" )", "cfg ( test )"]}])
+        self.assertEqual(verify_audit(result, self.policy), result)
+        self.assertEqual(read_json(self.policy / "test-inventory.json")["rust_tests"][1]["name"], "release_wakes_writer")
+
+    def test_additions_cannot_hide_gate_or_ignore_reviewed_tests(self):
+        original = self.rust.read_text()
+        for changed in (original + '\n#[test] #[ignore] fn added_ignored() {}',
+                        '#![cfg(feature="never")]\n' + original + '\n#[test] fn added() {}',
+                        original + '\n#[cfg(target_os="linux")] mod gated { #[test] fn added() {} }'):
+            self.rust.write_text(changed)
+            with self.subTest(changed=changed), self.assertRaisesRegex(EvidenceError, "drift"):
+                audit(self.root, self.policy)
+
+    def test_reporter_rejects_forged_additions(self):
+        self.rust.write_text(self.rust.read_text() + '\n#[test] fn added() {}')
+        result = audit(self.root, self.policy)
+        reviewed = read_json(self.policy / "test-inventory.json")["rust_tests"][0]
+        added = result["additions"]["rust_tests"][0]
+        for additions in ({}, [], {"rust_tests": []}, {"unknown": [added]}, {"rust_tests": [reviewed]},
+                          {"rust_tests": [{**added, "ignored": True}]},
+                          {"rust_tests": [added], "rust_configuration": [{"source": "src/adapter.rs", "attributes": ['cfg ( feature = "never" )']}]}):
+            with self.subTest(additions=additions), self.assertRaises(EvidenceError):
+                verify_audit({**result, "additions": additions}, self.policy)
 
     def test_comments_strings_and_nested_block_comments_never_create_tests(self):
         text = r'''
@@ -118,8 +154,7 @@ class AdapterTests(unittest.TestCase):
         entries = test_inventory(self.root)["python_tests"]
         self.assertEqual([(row["class"], row["name"]) for row in entries], [("AdapterTests", "test_async"), ("AdapterTests", "test_release")])
         self.assertTrue(all(row["decorators"] for row in entries))
-        for changed in (original.replace("test_release", "test_renamed"), original.replace("CAPABILITY", "False"),
-                        original + "\ndef test_new(): pass\n"):
+        for changed in (original.replace("test_release", "test_renamed"), original.replace("CAPABILITY", "False")):
             path.write_text(changed)
             with self.subTest(changed=changed), self.assertRaisesRegex(EvidenceError, "inventory drift"):
                 audit(self.root, self.policy)
