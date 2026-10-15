@@ -3396,3 +3396,9 @@ mod rx_descriptor_tests {
         });
     }
 }
+
+#[cfg(test)]
+mod gate_probe_added {
+    #[test]
+    fn gate_probe_added_test() {}
+}
