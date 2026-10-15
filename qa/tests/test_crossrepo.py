@@ -221,7 +221,9 @@ elif args[0] == 'build':
         compiler = self.root / "losing-compiler"
         compiler.write_text(f"#!{sys.executable}\nimport json,os,time\nfrom pathlib import Path\n"
                            f"Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
-                           f"p=Path({str(lease_path)!r}); value=json.loads(p.read_text()); value['generation']='replacement'; p.write_text(json.dumps(value))\n"
+                           # Replace atomically: the lease watcher must observe the new owner, never a torn write.
+                           f"p=Path({str(lease_path)!r}); value=json.loads(p.read_text()); value['generation']='replacement'\n"
+                           f"t=p.with_name(p.name+'.tmp'); t.write_text(json.dumps(value)); os.replace(t,p)\n"
                            f"time.sleep(20)\nPath({str(marker)!r}).write_text('must not finish')\n")
         compiler.chmod(0o755)
         start = time.monotonic()
