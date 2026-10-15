@@ -2,7 +2,7 @@
 
 实验从 2026-10-15 开始，使用第二台 `root@38.207.178.131:22100`，隔离目录 `/root/zf65-20261015`。原工作目录中的其他实验未修改。机器为4 vCPU 的 x86_64 VM，暴露 i7-1265U 型号，Ubuntu kernel 5.4.0-216-generic；未暴露 cpufreq governor。本轮构建 shell 没有 RUSTFLAGS/target 覆盖，检查的全局与实验根 Cargo config 均不存在。环境原始记录见证据包。
 
-跟踪 [#65](https://github.com/BlackLuny/zfstack/issues/65)，承接 [#56](https://github.com/BlackLuny/zfstack/pull/56)。本轮候选的两个64B CPU目标与正确性检查通过，但上下行长窗口 CPU/GB 区间仍跨过 +2% 保护界，完整性能资格为 **INCONCLUSIVE**，不应标记 #65 已完成验收或作为可直接合并的候选。
+跟踪 [#65](https://github.com/BlackLuny/zfstack/issues/65)，承接 [#56](https://github.com/BlackLuny/zfstack/pull/56)。本轮候选的两个64B CPU目标与正确性检查通过，后续固定64对长窗口已解决下行保护项，但上行 CPU/GB 区间仍跨过 +2% 保护界，完整性能资格为 **INCONCLUSIVE**，不应标记 #65 已完成验收或作为可直接合并的候选。
 
 完整 [证据索引](../../bench/results/2026-10-15-issue65-tx/README.md)、[逐项判定](../../bench/results/2026-10-15-issue65-tx/qualification.json) 与源码/二进制清单随附；原始样本及未通过项全部保留。
 
@@ -147,4 +147,28 @@ CPU/GB 使用栈线程在同一窗口的 CPU / 有效业务字节，并非整个
 
 所有原始计时工作结束后逐文件核对 F56/M/R/T/U/U2/V/V2 与其冻结 Git 源码，并重新校验28份完成的 micro meta及三份网络 meta中记录的二进制 SHA；全部匹配。U/U2、V/V2 的实际性能输入分别完全相同。宿主 `zfbA` 与 `zfbns` 均不存在，私有测试域已经退出；未更改宿主服务或默认 Rust 工具链。
 
-性能输入源码、原始记录、派生脚本和完整测试记录分别随 inputs/raw/QA 归档，SHA256SUMS 校验可交付文件。统计可从干净 Git 导出在新目录重放，方法与边界见证据索引。本轮建议保留生产候选与收益证据，**暂不合并、不关闭 #65**；下一步应先以同二进制网络 A/A 校准无限速8流的 CPU/GB 重复性，再在足够精度的同机放置/负载下复核 T/U，避免继续将微基准通过等同于网络非劣。
+性能输入源码、原始记录、派生脚本和完整测试记录分别随 inputs/raw/QA 归档，SHA256SUMS 校验可交付文件。统计可从干净 Git 导出在新目录重放，方法与边界见证据索引。初轮据此保留候选，建议先做同二进制网络 A/A 和更高精度的固定对照。下面记录该补测；当前仍应**暂不合并、不关闭 #65**，不能将微基准通过等同于网络非劣。
+
+
+## 2026-10-16 固定补测与 PR 状态
+
+生产源码仍为 U `2694c14`，T/U 二进制 SHA 在所有计时结束后再次与原清单匹配，没有重新编译或改动校验器。固定计划先保存 runner SHA、样本数与界限，再执行测量；所有新原始数据在 [bulk-final-evidence.tar.gz](../../bench/results/2026-10-15-issue65-tx/bulk-final-evidence.tar.gz)，统计及取消记录在 [bulk-final-summary.json](../../bench/results/2026-10-15-issue65-tx/bulk-final-summary.json)。
+
+先试验按角色放置线程（stack=CPU0、link-down=CPU1、link-up=CPU2、其余=CPU3），保持原协议，以同一个 T 二进制做每方向12对 A/A。线程放置审计和应用校验通过，但 CPU/GB 配对区间下行为 -0.53% [-7.90, +10.17]，上行为 -5.46% [-14.21, +20.05]，未通过预登记的 A/A 精度门槛。此方法未采用；其 T/U 只记录了2次不计入统计的 warmup 运行，随后因校准失败取消，不计算性能结论。只终止实验私有 PID namespace，未改宿主服务。
+
+随后回到原 CPU0–3 放置，不使用线程 pinner：固定每方向12对、secs30/warmup5 的同二进制 A/A，再固定每方向64对 T/U；与原24对长窗口保持相同协议，仅增大样本数。两组完整运行，未查看中途性能统计或在通过时提前停止。A/A 不校正 T/U 比值，各历史窗口独立保留，不拼接样本。
+
+同二进制 A/A 的 CPU/GB：下行 +2.05% [-1.31, +4.67]，上行 -0.37% [-7.18, +9.88]，显示这台 VM 下仍有较大重复性波动。一次资源检查未见明显内存、换页或 I/O 压力，但尚未确定波动根因，不能据此把候选区间越界全归因于调度。
+
+| 最终64对 / 25秒稳态窗口 | T 中位数 | U 中位数 | U/T 配对变化 [95% CI] | 判定 |
+|---|---:|---:|---:|---|
+| down8 goodput Mbps | 4406.937 | 4410.772 | +0.25% [-1.42, +1.66] | PASS（-5%） |
+| down8 CPU s/GB | 1.327 | 1.332 | -0.06% [-1.54, +0.95] | PASS（+2%） |
+| up8 goodput Mbps | 6431.483 | 6345.747 | -1.95% [-3.16, +0.47] | PASS（-5%） |
+| up8 CPU s/GB | 1.137 | 1.157 | +0.97% [-1.60, +4.86] | INCONCLUSIVE（+2%） |
+
+下行 CPU/GB 的原12对和24对不确定项由最终64对确认解决；上行三个窗口的 CPU/GB 仍保留为未解决。142项保护/收益检查中，最终 `unresolved` 为上行同一指标的3个窗口，完整性能资格仍为 **INCONCLUSIVE**。本轮不再追加样本到通过为止，也不将同窗口栈 CPU 时间（上行 +0.10% [-0.59, +0.72]）替换成 CPU/GB 保护项。
+
+最终64对共260次运行（含4次排除 warmup），全部应用/模式校验通过，实际 TUN/qdisc/softnet drop 为0。U 的网络对照累计850次运行（含18次排除 warmup）；另有两组同二进制 A/A 共104次诊断运行，与候选对照分别统计。正式连接成功数仍为1632000。结束后确认宿主测试 TUN/netns 不存在，黄金二进制未改变。
+
+[PR #71](https://github.com/BlackLuny/zfstack/pull/71) 已建立为草稿，关联 #65。首轮 [GitHub CI](https://github.com/BlackLuny/zfstack/actions/runs/38795852415) 六个任务全部成功，`qa/gate` 为21/21必需实例 PASS（head `179c343`，实际 tested merge `9a66a94635fd606f6d9f9ca16eeb847ebd1accf3`）。补测证据提交后的最终 CI 状态以 PR checks 为准。CI 通过不代表尚未满足的网络性能保护项通过，当前不转为可合并候选。

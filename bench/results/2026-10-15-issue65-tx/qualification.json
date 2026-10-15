@@ -1519,6 +1519,50 @@
         3.129989069811079
       ],
       "status": "INCONCLUSIVE"
+    },
+    {
+      "name": "network-unrestricted-tu/down8/cpu.cpu_sec_per_effective_GB",
+      "kind": "network_cpu_guard",
+      "limit_pct": 2,
+      "median_pct": -0.05777517963957424,
+      "ci95_pct": [
+        -1.5355100085810536,
+        0.94720681696987
+      ],
+      "status": "PASS"
+    },
+    {
+      "name": "network-unrestricted-tu/down8/results.goodput_mbps_window",
+      "kind": "throughput_guard",
+      "limit_pct": -5,
+      "median_pct": 0.25467435066027777,
+      "ci95_pct": [
+        -1.4249538918189586,
+        1.6585573972263346
+      ],
+      "status": "PASS"
+    },
+    {
+      "name": "network-unrestricted-tu/up8/cpu.cpu_sec_per_effective_GB",
+      "kind": "network_cpu_guard",
+      "limit_pct": 2,
+      "median_pct": 0.9693364655244285,
+      "ci95_pct": [
+        -1.5971708500779114,
+        4.855536110513148
+      ],
+      "status": "INCONCLUSIVE"
+    },
+    {
+      "name": "network-unrestricted-tu/up8/results.goodput_mbps_window",
+      "kind": "throughput_guard",
+      "limit_pct": -5,
+      "median_pct": -1.9498478556075949,
+      "ci95_pct": [
+        -3.1561575105406026,
+        0.4677594501924065
+      ],
+      "status": "PASS"
     }
   ],
   "non_passing": [
@@ -1664,6 +1708,17 @@
         3.129989069811079
       ],
       "status": "INCONCLUSIVE"
+    },
+    {
+      "name": "network-unrestricted-tu/up8/cpu.cpu_sec_per_effective_GB",
+      "kind": "network_cpu_guard",
+      "limit_pct": 2,
+      "median_pct": 0.9693364655244285,
+      "ci95_pct": [
+        -1.5971708500779114,
+        4.855536110513148
+      ],
+      "status": "INCONCLUSIVE"
     }
   ],
   "primary_runs_including_warmup": 3744,
@@ -1739,20 +1794,37 @@
         "network-bulk-confirmation/up8/results.goodput_mbps_window"
       ],
       "reason": "Fixed 24-pair longer steady-state cohort (25-second window); original 12 pairs retained separately, without pooling."
+    },
+    {
+      "original_check": "down8/cpu.cpu_sec_per_effective_GB",
+      "supplement_checks": [
+        "network-unrestricted-tu/down8/cpu.cpu_sec_per_effective_GB"
+      ],
+      "reason": "Fixed final 64-pair confirmation of the original CPU0-3, unlimited 8-flow protocol with 25-second steady-state windows. All prior samples retained separately; no pooling or A/A correction."
+    },
+    {
+      "original_check": "network-bulk-confirmation/down8/cpu.cpu_sec_per_effective_GB",
+      "supplement_checks": [
+        "network-unrestricted-tu/down8/cpu.cpu_sec_per_effective_GB"
+      ],
+      "reason": "Fixed final 64-pair confirmation of the original CPU0-3, unlimited 8-flow protocol with 25-second steady-state windows. All prior samples retained separately; no pooling or A/A correction."
+    },
+    {
+      "original_check": "down8/results.goodput_mbps_window",
+      "supplement_checks": [
+        "network-unrestricted-tu/down8/results.goodput_mbps_window"
+      ],
+      "reason": "Fixed final 64-pair confirmation of the original CPU0-3, unlimited 8-flow protocol with 25-second steady-state windows. All prior samples retained separately; no pooling or A/A correction."
+    },
+    {
+      "original_check": "up8/results.goodput_mbps_window",
+      "supplement_checks": [
+        "network-unrestricted-tu/up8/results.goodput_mbps_window"
+      ],
+      "reason": "Fixed final 64-pair confirmation of the original CPU0-3, unlimited 8-flow protocol with 25-second steady-state windows. All prior samples retained separately; no pooling or A/A correction."
     }
   ],
   "unresolved": [
-    {
-      "name": "down8/cpu.cpu_sec_per_effective_GB",
-      "kind": "network_cpu_guard",
-      "limit_pct": 2,
-      "median_pct": 2.8656068533090107,
-      "ci95_pct": [
-        0.8510492199115482,
-        8.002678431967302
-      ],
-      "status": "INCONCLUSIVE"
-    },
     {
       "name": "up8/cpu.cpu_sec_per_effective_GB",
       "kind": "network_cpu_guard",
@@ -1765,17 +1837,6 @@
       "status": "INCONCLUSIVE"
     },
     {
-      "name": "network-bulk-confirmation/down8/cpu.cpu_sec_per_effective_GB",
-      "kind": "network_cpu_guard",
-      "limit_pct": 2,
-      "median_pct": -0.15574557316824222,
-      "ci95_pct": [
-        -2.473901883599372,
-        2.604629302335182
-      ],
-      "status": "INCONCLUSIVE"
-    },
-    {
       "name": "network-bulk-confirmation/up8/cpu.cpu_sec_per_effective_GB",
       "kind": "network_cpu_guard",
       "limit_pct": 2,
@@ -1783,6 +1844,17 @@
       "ci95_pct": [
         -2.868998796374056,
         3.129989069811079
+      ],
+      "status": "INCONCLUSIVE"
+    },
+    {
+      "name": "network-unrestricted-tu/up8/cpu.cpu_sec_per_effective_GB",
+      "kind": "network_cpu_guard",
+      "limit_pct": 2,
+      "median_pct": 0.9693364655244285,
+      "ci95_pct": [
+        -1.5971708500779114,
+        4.855536110513148
       ],
       "status": "INCONCLUSIVE"
     }

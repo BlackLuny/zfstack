@@ -70,8 +70,17 @@ if (r/'network-bulk-confirmation-summary.json').exists():
    original=case+'/'+field
    if checks[-1]['status']=='PASS' and any(c['name']==original and c['status']=='INCONCLUSIVE' for c in checks):
     resolutions.append({'original_check':original,'supplement_checks':[name],'reason':'Fixed 24-pair longer steady-state cohort (25-second window); original 12 pairs retained separately, without pooling.'})
+if (r/'bulk-final-summary.json').exists():
+ confirmation=json.loads((r/'bulk-final-summary.json').read_text())
+ checks.extend(confirmation['checks'])
+ for final in confirmation['checks']:
+  if final['status']!='PASS':continue
+  original=final['name'].removeprefix('network-unrestricted-tu/')
+  for name in [original,'network-bulk-confirmation/'+original]:
+   if any(c['name']==name and c['status']=='INCONCLUSIVE' for c in checks):
+    resolutions.append({'original_check':name,'supplement_checks':[final['name']],'reason':'Fixed final 64-pair confirmation of the original CPU0-3, unlimited 8-flow protocol with 25-second steady-state windows. All prior samples retained separately; no pooling or A/A correction.'})
 qualified={'source_sha'   :'2694c1406b7ebb5d1eef381a0c1a69e27f1ea743','baseline_sha':'88a2e3f7a2e86fb6948223054a377e8a7f831af1','checks':checks,'non_passing':[v for v in checks if v['status']!='PASS'],'primary_runs_including_warmup':sum(s[f'current-quota-{a}-window{w}']['runs'] for a in ['push','write'] for w in [1,2]),'primary_measured_runs':3456,'supplement_runs_including_warmup':sum(s[t]['runs'] for t in supplement_tags+pump_tags if t in s),'supplement_measured_runs':288 if all(t in s for t in supplement_tags+pump_tags) else None,'aa_max_abs_median_pct':max(abs(x['aa_median_pct']) for x in table),'network_included':(r/'network-summary.json').exists(),'resolutions':resolutions,'unresolved':[v for v in checks if v['status']!='PASS' and v['name'] not in {x['original_check'] for x in resolutions}]}
-qualified['all_network_cohorts_included']=all((r/f).exists() for f in ['network-summary.json','network-connect-confirmation-summary.json','network-bulk-confirmation-summary.json'])
+qualified['all_network_cohorts_included']=all((r/f).exists() for f in ['network-summary.json','network-connect-confirmation-summary.json','network-bulk-confirmation-summary.json','bulk-final-summary.json'])
 qualified['performance_verdict']='PASS' if qualified['all_network_cohorts_included'] and not qualified['unresolved'] else 'REGRESSION' if any(x['status']=='REGRESSION' for x in qualified['unresolved']) else 'INCONCLUSIVE'
 (r/'qualification.json').write_text(json.dumps(qualified,indent=2)+'\n')
 print('Checks:',len(checks),'non-passing:',len(qualified['non_passing']))

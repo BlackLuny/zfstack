@@ -96,6 +96,15 @@ bash isolate-linux.sh bash -c 'mount -t sysfs sysfs /sys; exec python3 /absolute
 
 ## 本轮结论
 
-`qualification.json` 的 performance_verdict 为 INCONCLUSIVE。CPU矩阵、F56保护、mixed、连接确认和长窗口吞吐已满足各自界限，但上下行 CPU/GB 的两个窗口均未充分排除 +2%。源代码候选 U 尚不满足 #65 全项验收，不建议直接合并。未采用的 V/V2 另见 raw 包中的 lazy-index-*-pilot 数据、lazy-index-summary.json、lazy-index-selection-plan.json 与 lazy-index-decision.json；复制严格分析脚本到新副本，可用两个 lazy-index pilot 标签重算，不能覆盖唯一原始目录。
+`qualification.json` 的 performance_verdict 为 INCONCLUSIVE。CPU矩阵、F56保护、mixed、连接确认和长窗口吞吐已满足各自界限；2026-10-16 的固定64对补测还解决了下行 CPU/GB，但上行 CPU/GB 仍未充分排除 +2%。源代码候选 U 尚不满足 #65 全项验收，不建议直接合并。未采用的 V/V2 另见 raw 包中的 lazy-index-*-pilot 数据、lazy-index-summary.json、lazy-index-selection-plan.json 与 lazy-index-decision.json；复制严格分析脚本到新副本，可用两个 lazy-index pilot 标签重算，不能覆盖唯一原始目录。
 
 allocator 插桩的 realloc 按一次 alloc 和一次 free 请求计数；本轮 TX 热循环的必需 Box 请求数、冷/缓存循环的 free=0 等计数一致，未观察到额外 realloc 请求。统计是 Rust allocator API 请求，不是底层 allocator 内部事件或 RSS。
+
+
+## 最终 bulk 补测
+
+`bulk-final-evidence.tar.gz` 仅包含新阶段27个原始文件，解包后的 `remote/` 与旧 raw 包的文件不重名。保留失败的按角色放置 A/A、因该精度门槛失败取消的 T/U warmup 前缀、回到原 CPU0–3 的12对同二进制 A/A 和64对 T/U、预登记计划、runner SHA 及结束后的身份/环境核对。没有把取消前缀计算为候选分数。
+
+`bulk_confirmation_analyze.py` 检查原协议、完整样本、二进制身份、线程放置审计和已取消前缀状态，调用相同 bootstrap 分析，再输出 `bulk-final-summary.json`。`replay_stats.py` 已包含两个 raw 包的安全解包、全部新旧统计和逐字节核对；也可在合并的 `remote/` 副本中执行 `python3 bulk_confirmation_analyze.py`，再执行 `python3 qualify.py`。A/A 不用于修正比值，旧12/24对与新64对不合并。
+
+最终下行 CPU/GB -0.06% [-1.54, +0.95]，上下行吞吐分别 +0.25% [-1.42, +1.66] / -1.95% [-3.16, +0.47]，均通过；上行 CPU/GB +0.97% [-1.60, +4.86] 仍为 INCONCLUSIVE。`qualification.json` 保留历史 `non_passing`、明确的 `resolutions` 和上行三个窗口的 `unresolved`，不将 CI 全绿替代性能验收。
