@@ -20,15 +20,6 @@
   "rust_tests": [
     {
       "source": "bench/src/app.rs",
-      "name": "bounded_and_unbounded_download_flow",
-      "occurrence": 1,
-      "attributes": [
-        "test"
-      ],
-      "ignored": false
-    },
-    {
-      "source": "bench/src/app.rs",
       "name": "echo_flow",
       "occurrence": 1,
       "attributes": [
@@ -193,6 +184,15 @@
     {
       "source": "examples/pareto_probe.rs",
       "name": "tx_alloc_reports_observed_warmup_ledger_across_payload_classes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "examples/pareto_probe.rs",
+      "name": "verifier_checks_lengths_and_each_byte_even_when_sums_match",
       "occurrence": 1,
       "attributes": [
         "test"
@@ -562,6 +562,15 @@
     },
     {
       "source": "src/budget.rs",
+      "name": "cached_peer_transfer_refusal_does_not_recharge_the_old_peer",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
       "name": "cached_tx_block_wakes_one_peer_even_when_global_and_port_are_full",
       "occurrence": 1,
       "attributes": [
@@ -734,6 +743,15 @@
     {
       "source": "src/budget.rs",
       "name": "release_between_failed_reservation_and_waiter_registration_wakes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "remembered_cached_peer_rechecks_quota_and_releases_only_once",
       "occurrence": 1,
       "attributes": [
         "test"
@@ -1292,6 +1310,15 @@
     {
       "source": "src/buf.rs",
       "name": "tx_descriptor_capacity_ledger_lifecycle",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_owner_checks_cover_zero_and_max_peer_across_budgets",
       "occurrence": 1,
       "attributes": [
         "test"
@@ -3175,6 +3202,8 @@
         "cfg ( target_os = \"macos\" )",
         "cfg ( not ( any ( target_os = \"linux\" , target_os = \"macos\" ) ) )",
         "cfg ( feature = \"test-peer\" )",
+        "cfg ( all ( target_os = \"linux\" , target_arch = \"x86_64\" ) )",
+        "cfg_attr ( all ( target_os = \"linux\" , target_arch = \"x86_64\" ) , link_section = \".text.zfstack_pareto_verify\" )",
         "cfg ( feature = \"test-peer\" )",
         "cfg ( feature = \"test-peer\" )",
         "cfg ( not ( feature = \"test-peer\" ) )",
@@ -3422,6 +3451,15 @@
       "source": "bench/pareto/test_analysis.py",
       "class": "ConsumptionTests",
       "name": "test_runner_and_analyzer_accept_v1_v2_without_executing_binaries",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_analysis.py",
+      "class": "ConsumptionTests",
+      "name": "test_verification_methods_must_match_within_a_pair",
       "occurrence": 1,
       "async": false,
       "decorators": [],
