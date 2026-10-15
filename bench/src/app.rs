@@ -3,6 +3,7 @@
 //!
 //! Request header = 16 bytes: `b'Z'`, cmd u8, 6 zero bytes, u64 LE param.
 //! - `D` download: server streams the pattern until the peer closes/resets.
+//! - `S` short download: server streams `param` bytes of the pattern, then closes.
 //! - `U` upload: server reads/verifies until EOF, replies u64 LE byte count, closes.
 //!   (param = client flow index, used only for per-flow accounting.)
 //! - `E` echo: server echoes everything back (param = message size, informative).
@@ -16,6 +17,7 @@ use std::sync::{Arc, LazyLock};
 
 pub const HDR_LEN: usize = 16;
 pub const CMD_DOWN: u8 = b'D';
+pub const CMD_SHORT: u8 = b'S';
 pub const CMD_UP: u8 = b'U';
 pub const CMD_ECHO: u8 = b'E';
 pub const CMD_CONNECT: u8 = b'C';
@@ -182,7 +184,8 @@ impl AppConn {
                             St::Done(CloseAction::Abort)
                         } else {
                             match buf[1] {
-                                CMD_DOWN => St::Down { pos: 0, limit: if param == 0 { u64::MAX } else { param } },
+                                CMD_DOWN => St::Down { pos: 0, limit: u64::MAX },
+                                CMD_SHORT => St::Down { pos: 0, limit: param },
                                 CMD_UP => St::Up { pos: 0, flow: (param as usize).min(MAX_FLOWS - 1), reply: None },
                                 CMD_ECHO => St::Echo { buf: VecDeque::new(), eof: false },
                                 CMD_CONNECT => St::Connect,
@@ -346,7 +349,7 @@ mod tests {
     fn bounded_and_unbounded_download_flow() {
         let c = ServerCounters::new();
         let mut a = AppConn::new(c.clone());
-        a.on_recv(&encode_header(CMD_DOWN, 100));
+        a.on_recv(&encode_header(CMD_SHORT, 100));
         assert!(a.wants_send());
         assert_eq!(a.close_action(), CloseAction::None);
         let mut out = vec![0u8; 64];
@@ -361,7 +364,7 @@ mod tests {
         assert_eq!(c.tx_bytes.load(Relaxed), 100);
 
         let mut u = AppConn::new(c);
-        u.on_recv(&encode_header(CMD_DOWN, 0));
+        u.on_recv(&encode_header(CMD_DOWN, 7));
         assert!(u.wants_send());
         assert_eq!(u.produce(&mut out), 64);
         assert!(u.wants_send());

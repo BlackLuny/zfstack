@@ -607,7 +607,7 @@ pub fn test_short(o: &TestOpts, mark: Mark) -> TestOutcome {
                         s.set_nodelay(true)?;
                         s.set_read_timeout(Some(to))?;
                         s.set_write_timeout(Some(to))?;
-                        s.write_all(&app::encode_header(app::CMD_DOWN, want as u64))?;
+                        s.write_all(&app::encode_header(app::CMD_SHORT, want as u64))?;
                         let mut got = 0usize;
                         let mut pos = 0u64;
                         while got < want {

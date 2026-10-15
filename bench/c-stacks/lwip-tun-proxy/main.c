@@ -231,6 +231,36 @@ sync_epoll(struct conn *c)
 }
 
 static void
+detach_pcb(struct conn *c, int abort_pcb)
+{
+    if (!c || !c->pcb) {
+        return;
+    }
+    struct tcp_pcb *p = c->pcb;
+    c->pcb = NULL;
+    tcp_arg(p, NULL);
+    tcp_recv(p, NULL);
+    tcp_sent(p, NULL);
+    tcp_err(p, NULL);
+    tcp_poll(p, NULL, 0);
+    if (abort_pcb) {
+        tcp_abort(p);
+    } else if (tcp_close(p) != ERR_OK) {
+        tcp_abort(p);
+    }
+}
+
+static void
+pcb_recved(struct tcp_pcb *pcb, size_t n)
+{
+    while (pcb && n > 0) {
+        u16_t step = n > 0xffffu ? 0xffffu : (u16_t)n;
+        tcp_recved(pcb, step);
+        n -= step;
+    }
+}
+
+static void
 conn_free(struct conn *c, int abort_pcb)
 {
     if (!c) {
@@ -244,20 +274,7 @@ conn_free(struct conn *c, int abort_pcb)
         close(c->fd);
         c->fd = -1;
     }
-    if (c->pcb) {
-        tcp_arg(c->pcb, NULL);
-        tcp_recv(c->pcb, NULL);
-        tcp_sent(c->pcb, NULL);
-        tcp_err(c->pcb, NULL);
-        tcp_poll(c->pcb, NULL, 0);
-        struct tcp_pcb *p = c->pcb;
-        c->pcb = NULL;
-        if (abort_pcb) {
-            tcp_abort(p);
-        } else if (tcp_close(p) != ERR_OK) {
-            tcp_abort(p);
-        }
-    }
+    detach_pcb(c, abort_pcb);
     free(c->to_fd);
     free(c->to_pcb);
     free(c);
@@ -266,7 +283,7 @@ conn_free(struct conn *c, int abort_pcb)
 static int
 conn_done(const struct conn *c)
 {
-    return c->pcb_fin && c->to_fd_off >= c->to_fd_len && c->fd_eof && c->to_pcb_off >= c->to_pcb_len && c->pcb_fin_sent;
+    return c->pcb_fin && c->to_fd_off >= c->to_fd_len && c->fd_eof && c->to_pcb_off >= c->to_pcb_len && (c->pcb_fin_sent || !c->pcb);
 }
 
 static int
@@ -316,9 +333,7 @@ flush_to_fd(struct conn *c)
             break;
         }
         c->to_fd_off += (size_t)w;
-        if (c->pcb) {
-            tcp_recved(c->pcb, (u16_t)w);
-        }
+        pcb_recved(c->pcb, (size_t)w);
     }
     if (c->to_fd_off >= c->to_fd_len) {
         c->to_fd_off = c->to_fd_len = 0;
@@ -491,7 +506,10 @@ on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
         if (c->to_fd_off >= c->to_fd_len && c->fd >= 0) {
             shutdown(c->fd, SHUT_WR);
         }
-        if (c->fd_eof && c->to_pcb_off >= c->to_pcb_len) {
+        if (c->pcb_fin_sent) {
+            detach_pcb(c, 0);
+        }
+        if (c->fd_eof && c->to_pcb_off >= c->to_pcb_len && c->to_fd_off >= c->to_fd_len) {
             conn_free(c, 0);
             return ERR_OK;
         }
@@ -540,7 +558,7 @@ on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
                 conn_free(c, 1);
                 return ERR_ABRT;
             }
-            tcp_recved(pcb, (u16_t)w);
+            pcb_recved(pcb, (size_t)w);
             data += w;
             left -= (size_t)w;
         }
@@ -846,12 +864,11 @@ main(int argc, char **argv)
             int fd = events[i].data.fd;
             if (fd == tun_fd) {
                 saw_tun = 1;
-                tun_more = tun_pump();
             } else if (fd >= 0 && fd < FD_MAX) {
                 on_conn_event(by_fd[fd], events[i].events);
             }
         }
-        if (!saw_tun && tun_more) {
+        if (saw_tun || tun_more) {
             tun_more = tun_pump();
         }
     }
