@@ -1632,7 +1632,32 @@ where
         self.shard.set_adapter_tx(id, q.tx.len() as u32);
         let backlog = !q.tx.is_empty();
         drop(q);
-        while failure.is_none() && !backlog && !relay.sock_eof {
+        // Core events (for example ACKs) can wake a relay whose upstream
+        // has no data. Register socket readiness before reserving budget or
+        // preparing TX backing. Check once per pump, not once per readv in
+        // the continuously ready bulk path; a stale Ready still falls back
+        // to the existing WouldBlock / poll_read_ready loop below.
+        let socket_read_ready = if failure.is_none() && !backlog && !relay.sock_eof {
+            match relay.sock.poll_read_ready(&mut cx) {
+                Poll::Pending => {
+                    clear_tx_wait(sh);
+                    // Closure must not depend on a silent upstream producing
+                    // another readiness event. Keep draining the upload tail.
+                    if !self.shard.accepts_writes_for_adapter(id) {
+                        relay.sock_eof = true;
+                    }
+                    false
+                }
+                Poll::Ready(Err(e)) => {
+                    failure = Some(e);
+                    false
+                }
+                Poll::Ready(Ok(())) => true,
+            }
+        } else {
+            false
+        };
+        while socket_read_ready && failure.is_none() && !relay.sock_eof {
             let sock = &relay.sock;
             let observed = sh.memory.global().release_epoch();
             let r = self.shard.write_with_for_adapter(id, RELAY_DOWN_READ, |[a, b]| {
