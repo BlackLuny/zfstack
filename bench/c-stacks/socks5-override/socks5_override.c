@@ -37,8 +37,6 @@ set_nonblock(int fd)
     return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
 }
 
-#define RELAY_PENDING_MAX (256 * 1024)
-
 struct sess {
     int cfd, ufd;
     uint32_t c_ev, u_ev;
@@ -75,7 +73,7 @@ sync_sess_epoll(int ep, struct sess *s)
     }
     if (s->cfd >= 0) {
         uint32_t want = 0;
-        if (!s->c_eof && s->c2u_n < RELAY_PENDING_MAX) {
+        if (!s->c_eof && s->c2u_n == 0) {
             want |= EPOLLIN | EPOLLRDHUP;
         }
         if (s->u2c_n > 0) {
@@ -90,7 +88,7 @@ sync_sess_epoll(int ep, struct sess *s)
     }
     if (s->ufd >= 0) {
         uint32_t want = 0;
-        if (!s->u_eof && s->u2c_n < RELAY_PENDING_MAX) {
+        if (!s->u_eof && s->u2c_n == 0) {
             want |= EPOLLIN | EPOLLRDHUP;
         }
         if (s->c2u_n > 0) {
@@ -380,6 +378,9 @@ main(int argc, char **argv)
                     }
                     s->ufd = ufd;
                     s->stage = 2;
+                    s->c_ev = 0;
+                    struct epoll_event cev = { .events = 0, .data.ptr = s };
+                    epoll_ctl(ep, EPOLL_CTL_MOD, s->cfd, &cev);
                     s->u_ev = EPOLLOUT;
                     struct epoll_event uev = { .events = s->u_ev, .data.ptr = s };
                     epoll_ctl(ep, EPOLL_CTL_ADD, ufd, &uev);
