@@ -309,6 +309,24 @@ class ProcessTests(unittest.TestCase):
             except ProcessLookupError:
                 pass
 
+    def test_portable_process_group_leftover_records_failure_reason(self):
+        if os.name == "nt":
+            self.skipTest("POSIX process-group fallback")
+        from qa.process import _portable_run
+        source = ('import subprocess,sys; p=subprocess.Popen([sys.executable,"-c","import time;time.sleep(30)"],'
+                  'stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);'
+                  'print(p.pid,flush=True)')
+        result = _portable_run([sys.executable, "-c", source], self.root, self.output, 3, os.environ.copy(), None)
+        pid = int(self.output.read_text())
+        try:
+            self.assertEqual((result["status"], result["exit_code"]), ("failed", 0))
+            self.assertIn("detached/background descendants detected", result["lifecycle_detail"])
+        finally:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper descendant ownership")
     def test_exited_detached_descendant_is_not_a_leak(self):
         # Mirrors git's detached auto-maintenance: the orphan finishes before

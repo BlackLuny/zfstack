@@ -368,7 +368,9 @@ def _portable_run(argv, root, output, timeout, env, lease):
                 process.wait(timeout=5)
             if job:
                 if job.active():
-                    status = "failed" if status == "completed" else status
+                    if status == "completed":
+                        status = "failed"
+                        detail = "; ".join(filter(None, (detail, "detached/background descendants detected")))
                     job.terminate()
                     deadline = time.monotonic() + 5
                     while job.active() and time.monotonic() < deadline:
@@ -384,6 +386,7 @@ def _portable_run(argv, root, output, timeout, env, lease):
                     os.killpg(process.pid, signal.SIGKILL)
                     if status == "completed":
                         status = "failed"
+                        detail = "; ".join(filter(None, (detail, "detached/background descendants detected")))
             if status == "completed" and (process.returncode != 0 or not _budget(output)):
                 status = "failed"
             detail = detail or _budget_error(output)
