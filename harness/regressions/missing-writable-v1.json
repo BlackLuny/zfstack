@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scenario": "quota",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 8000,
+  "events": [],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-negative-control",
+  "suppress_writable": 0,
+  "description": "Drop the first post-block Writable for server flow 0. EventOnly must fail liveness.flow_complete with empty tx queue; eager can recover by polling."
+}

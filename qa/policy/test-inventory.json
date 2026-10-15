@@ -1,0 +1,6389 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "rust": "Handwritten #[test], #[tokio::test], #[test_case] functions in repository .rs sources.",
+    "rust_configuration": "All cfg/cfg_attr attribute text, including module/file capability gates; no cfg evaluation.",
+    "python": "Module/class test* functions in repository test_*.py sources, including decorators.",
+    "excluded_directories": [
+      ".git",
+      ".qa-venv",
+      ".venv",
+      "__pycache__",
+      "node_modules",
+      "results",
+      "target",
+      "venv"
+    ],
+    "source_selection": "Git root: cached and nonignored untracked sources; nonrepository fixture: directory walk.",
+    "limitations": "Source inventory only: no Rust macro expansion/cfg resolution, generated tests, runtime discovery or execution claim."
+  },
+  "rust_tests": [
+    {
+      "source": "bench/src/app.rs",
+      "name": "bounded_and_unbounded_download_flow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/app.rs",
+      "name": "echo_flow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/app.rs",
+      "name": "pattern_roundtrip",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/app.rs",
+      "name": "upload_flow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/isolate.rs",
+      "name": "classify_isolate_addresses",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/isolate.rs",
+      "name": "classify_packet_matches_header",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "cfg ( feature = \"zfstack\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/isolate.rs",
+      "name": "cross_iface_lights_leave_port_zero",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/isolate.rs",
+      "name": "measurement_window_does_not_depend_on_light_users",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "absent_values_preserve_default_and_explicit_values_are_exact",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "cold_tick_returns_spare_and_reclaims_late_returns",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "diagnostic_peers_are_distinct_and_unknown_sources_are_not_admitted",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "experimental_settings_require_explicit_values",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "idle_deadline_resets_on_activity_and_remains_due_while_cold",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "invalid_values_are_rejected_before_any_tun_operation",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "maintenance_runs_during_traffic_and_does_not_keep_reader_alive",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "malformed_or_partial_tx_settings_are_rejected_without_device_access",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "name": "tx_settings_are_explicit_and_sampler_can_observe_disabled_policy",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/wg.rs",
+      "name": "b64_roundtrip",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "bench/src/wg.rs",
+      "name": "peers_handshake_and_carry_data",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "examples/pareto_probe.rs",
+      "name": "tx_alloc_reports_observed_warmup_ledger_across_payload_classes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "fuzz/src/lib.rs",
+      "name": "bounded_input_smoke_all_oracles",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "fuzz/src/lib.rs",
+      "name": "checked_in_seed_corpus",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "bounded_seed_and_execution_gap_schedule_scan",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "double_release_and_unestablished_actions_fail_preconditions",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "event_reducer_preserves_the_missing_notification_failure",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "parser_fails_closed_on_unknowns_deadlines_and_duplicate_ids",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "permanent_corpus_replays_with_failure_preconditions",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "request_response_waits_for_scripted_application_arrivals",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "scripted_iface_generation_pause_and_abort_have_real_lifecycle_evidence",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/event.rs",
+      "name": "unapplied_faults_cannot_pass_as_recovery_cases",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/oracle.rs",
+      "name": "empty_matrix_is_not_pass",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "capacity_burst_one_zero_reburst_both_drivers",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "cross_shard_duplicate_peer_ids_stay_apart",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "event_only_full_matrix_and_trace_replay",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "idle_after_transfer_does_not_grow_reserved",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "noisy_same_iface_lights_complete",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "opt_in_trim_preserves_pressure_isolation_and_progress",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "port_density_128_and_per_port_shards",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "quota_requires_observed_pressure_and_then_completes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "same_shard_duplicate_peer_still_isolates_bytes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "server_profile_is_not_the_client_tun_profile",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "sink_full_iface_rejects_a_fault_that_blocks_every_iface",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "sink_full_releases_and_completes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "sixteen_ports_on_one_shard",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "stress_scenarios_complete",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "suppress_sole_writable_stalls_event_only_while_eager_recovers",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "tuple_isolation_replays_and_does_not_merge",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "name": "zero_window_neighbor_still_finishes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/schedule.rs",
+      "name": "bounded_tail_retains_full_trace_identity",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/schedule.rs",
+      "name": "readiness_merges_interest_but_never_slot_generations",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/world.rs",
+      "name": "c04_global_physical_refusal_then_event_only_recovery",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/world.rs",
+      "name": "c04_peer_physical_refusal_then_event_only_recovery",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/world.rs",
+      "name": "c04_port_physical_refusal_then_event_only_recovery",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/world.rs",
+      "name": "salted_patterns_distinguish_large_flow_ids_and_absolute_offsets",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "qa-models/src/lib.rs",
+      "name": "negative_control_check_then_publish_loses_release",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "should_panic ( expected = \"lost unique release\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "qa-models/src/lib.rs",
+      "name": "publish_then_check_preserves_only_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "admission_debt_holds_back_tx_blocks_and_bulk_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "admission_debt_is_capped_and_its_repayment_wakes_waiters",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "admission_debt_never_holds_back_a_level_without_tx_blocks_or_records",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "an_uncommitted_hierarchical_reservation_cannot_reject_another_allocator",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "cached_tx_block_wakes_one_peer_even_when_global_and_port_are_full",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "canceled_logical_reservation_does_not_wake_physical_waiters",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "connection_reservations_are_shared_and_released",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "freed_block_is_released_instead_of_cached_while_allocators_wait",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "issue37_credit_caps_roll_back_at_every_level_and_return_on_drop",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "issue37_credit_global_cap_is_shared_across_concurrent_shards",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "logical_reservation_rejects_counter_overflow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "memory_controller_paths_respect_mount_root_and_namespace",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "memory_handle_reports_peer_ownership_not_port_cache",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "nested_cgroup_uses_smallest_parent_or_child_limit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_leases_enforce_each_share_and_release_on_last_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_release_wakes_only_waiters_that_fit_global_share",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_release_wakes_only_waiters_that_fit_peer_share",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_release_wakes_only_waiters_that_fit_port_share",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_waiter_burst_releases_empty_queue_capacity",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_waiter_fit_respects_its_tier",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "physical_waiter_registration_after_release_does_not_miss_it",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "pressure_thresholds_do_not_wrap_for_large_explicit_budget",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "progress_tiers_keep_headroom_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "release_between_failed_reservation_and_waiter_registration_wakes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "reused_waiter_id_tracks_the_latest_peer",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "rx_progress_small_shares_keep_drain_headroom_when_admission_burst_is_clamped",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "scoped_admission_leases_outlive_budget_and_release_independently",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "send_share_splits_whole_blocks_and_reserves_the_next_sender",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "small_levels_run_without_progress_reserves",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "temporary_and_retained_handles_preserve_quota_rollback_and_release_wakes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "temporary_reply_lease_release_does_not_retry_while_global_still_full",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "temporary_reply_lease_release_does_not_retry_while_port_still_full",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "time_wait_capacity_supports_two_thousand_per_second_for_a_minute",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget.rs",
+      "name": "waiter_counters_track_parked_entries_for_lock_free_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget/tests/qa.rs",
+      "name": "a1_shared_global_four_threads_reserve_rollback_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget/tests/qa.rs",
+      "name": "a1_shared_global_two_threads_reserve_rollback_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/budget/tests/qa.rs",
+      "name": "c13_waiter_burst_one_zero_burst_ledger_and_capacity",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "activity_sampling_is_opt_in_and_only_tracks_success",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "block_views_stop_at_initialized_prefix",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "borrowed_ingress_chunks_outlive_source_and_only_stores_ooo_gaps",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "cache_switches_size_classes_without_growing_its_slot_limit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "descriptor_only_trim_preserves_checked_out_payload_and_wakes_waiter",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "empty_tx_index_peer_transfer_refusal_keeps_original_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "empty_tx_index_reclaim_is_not_ack_releasable_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "first_tx_write_fits_progress_headroom_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "hundred_idle_ports_do_not_pin_a_block_each",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "idle_block_cache_is_shared_across_shards",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "issue37_partial_ack_reuses_one_block_without_allocating",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "issue37_wrapped_ring_errors_and_growth_preserve_bytes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "large_flow_indexes_release_high_water_after_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "new_full_tx_block_returns_written_bytes_without_zero_fill",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "ooo_duplicate_does_not_allocate_and_owner_moves_to_rx",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "ooo_merge_and_sack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "payload_refusal_after_descriptor_preparation_keeps_old_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "pool_descriptor_budget_failure_drops_incoming_at_global_and_port",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "pool_descriptor_failure_drops_incoming_block_and_keeps_old_cache",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "pool_trim_keeps_recent_tail_and_charges_retained_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "retained_index_peer_debt_does_not_reject_its_own_staged_payload",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "retained_rx_descriptor_capacity_remains_funded_after_partial_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "retained_tx_index_keeps_peer_charge_and_rejects_foreign_port",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_chunk_lease_follows_partial_adapter_read",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_admission_respects_each_debt_without_claiming_tx_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_allocator_failure_preserves_payload_tail_and_capacity",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_drain_preserves_ooo_promises_and_max_packet_headroom",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_growth_rolls_back_at_global_port_and_peer_limits",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_legacy_mutation_is_rejected_before_removing_ooo_data",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_multi_gap_ooo_admission_counts_each_owner_and_partial_overlap",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_ooo_admission_is_transactional_and_duplicates_allocate_nothing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_ooo_payload_failure_rolls_back_prepared_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_descriptor_ooo_transfer_and_overlap_need_no_space_after_admission",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_progress_descriptor_failure_rolls_back_payload_credit_and_order",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_progress_exported_slice_pins_credit_after_close_until_last_owner_drop",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_progress_jumbo_credit_is_bounded_and_ooo_cannot_spend_it",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_progress_survives_bulk_exhaustion_at_every_level_and_reuses_credit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_progress_tx_floor_reuses_acked_prefix_without_extra_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_queue_copies_small_segments_in_order",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_second_staged_chunk_quota_failure_rolls_back_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "rx_staged_chunks_preserve_tail_order_and_exported_owner_charge",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "small_cached_block_moves_between_peers_and_waiter_fits_its_actual_size",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "small_first_block_crosses_into_full_blocks_and_survives_partial_ack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "small_tx_growth_failure_preserves_data_and_wait_size",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_block_capacity_stays_charged_in_pool_and_changes_peer",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_block_quota_failure_does_not_append_partial_data",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_descriptor_allocator_and_capacity_failure_preserve_old_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_descriptor_budget_boundary_rolls_back_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_descriptor_capacity_ledger_lifecycle",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_ring",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_write_waiter_matches_precharge_at_initial_and_growth_boundaries",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "tx_write_with_fills_in_place_and_keeps_layout",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "unused_prefix_tracking_survives_partial_trim_and_class_eviction",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/buf.rs",
+      "name": "write_with_never_offers_uninitialized_bytes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/cc/bbr.rs",
+      "name": "startup_exits_on_plateau_and_paces_near_bw",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/cc/cubic.rs",
+      "name": "slow_start_then_reduce_then_regrow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "issue37_floor_does_not_pin_small_writes_to_two_kib",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "issue37_floor_keeps_one_full_backing_under_pressure_at_every_level",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "issue37_floor_reuses_backing_after_partial_ack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "issue37_floor_reuses_backing_even_when_other_cache_is_full",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "rx_descriptor_failed_in_order_admission_keeps_receive_edge_and_logical_credit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "rx_descriptor_failed_ooo_admission_publishes_no_sack_or_credit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "rx_descriptor_gap_fill_at_full_quota_handles_overlap_and_fin",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "rx_descriptor_reset_and_cancel_release_both_queues_but_keep_exported_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "rx_progress_counts_adapter_unread_and_never_admits_out_of_order",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "tx_capacity_default_preserves_legacy_limits_and_watermark",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "tx_capacity_does_not_bypass_share_or_physical_admission",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "tx_capacity_partial_writes_and_writable_after_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "tx_capacity_write_with_short_fill_error_and_abort_release_credit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/conn.rs",
+      "name": "tx_capacity_zero_disables_writes_without_spurious_wakeup",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/heap.rs",
+      "name": "equal_deadlines_preserve_order_and_still_allow_key_changes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/heap.rs",
+      "name": "ordered_pop_and_update",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/heap.rs",
+      "name": "pop_due_removes_root_without_up_and_keeps_heap_order",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/offload.rs",
+      "name": "roundtrip_and_partial_header",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "buffers_stay_charged_while_cached_and_release_beyond_the_cap",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "clones_and_late_slices_survive_trim",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "concurrent_trim_get_drop_and_bytes_validation",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "empty_retained_vec_and_live_owner_are_distinct",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "explicit_tail_trim_does_not_age_new_returns_or_disable_tracking",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "free_only_trim_and_empty_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "full_reuse_above_floor_does_not_churn_and_late_returns_age",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "idle_trim_wakes_outside_mutex_across_retirement_batches",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "lease_wakeup_is_outside_pool_lock",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "low_rate_reclaims_history_but_preserves_hot_tail_and_budget",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/pktpool.rs",
+      "name": "zero_window_observes_between_ticks_and_target_is_a_floor",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "name": "large_flight_releases_record_backing_after_ack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "name": "record_growth_charges_and_releases_physical_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "name": "sack_cuts_tso_records_only_on_their_segment_grid",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "name": "sack_lost_retrans_ack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "name": "small_flight_keeps_record_backing_for_reuse",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/seq.rs",
+      "name": "wrap",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "accepted_retransmission_retains_full_wire_charge",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "admission_debt_follows_the_level_that_refused_the_retransmit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "admission_debt_is_lifted_when_the_level_stops_releasing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "admission_debt_outlasts_backed_off_retransmits",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "bbr_recovers_after_delayed_requests_and_replies",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "bbr_recovers_after_spaced_requests_and_delayed_replies",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "block_reuse_resets_cold_clock_without_postponing_warm_decay",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "cached_payload_peer_refusal_reclaims_same_peer_idle_tx_indexes",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "connection_limit_is_shared_across_shards_and_released_on_iface_removal",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "continuous_backlog_keeps_full_quantum_wake_and_batch",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "debt_none_transition_past_credit_and_saturation_are_explicit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "debt_rate_changes_conserve_remaining_bytes_and_round_up",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "descriptor_only_idle_trim_leaves_active_tx_intact",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "disabling_trim_cancels_deadline_without_releasing_cache",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "full_time_wait_table_rejects_new_tuple_until_expiry",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "hundred_twenty_thousand_time_wait_slots_remain_charged_after_expiry",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "idle_high_water_reclaims_slots_without_reusing_old_connection_ids",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "idle_tx_cache_is_reclaimed_when_it_blocks_another_allocation",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "invalid_policy_does_not_enable_tracking_or_deadline",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "issue37_optional_credit_never_refuses_admission_or_adds_debt",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "issue43_waiter_burst_then_one_long_connection",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "ignore = \"capacity and scan-cost observation after a real connection burst\""
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "lost_segment_inside_a_tso_super_segment_is_recovered_by_sack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "low_rate_large_block_reuse_releases_only_unused_history",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "metadata_only_pool_reclaim_reports_bytes_and_wakes_waiter",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "peer_pressure_reclaims_descriptor_only_cache_without_busy_wake",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "pooled_ingress_keeps_large_payloads_without_copy_and_returns_every_buffer",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "pressure_reclaim_ignores_cooldown_and_does_not_become_idle_trim",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "rate_change_repositions_armed_heap_without_control_work",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "reclaim_epoch_releases_idle_connection_tx_index",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "refused_syn_leaves_an_admission_debt_until_admitted",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "rfc6191_reuse_requires_timestamp_or_fin_sequence_progress",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_burst_boundary_counts_adapter_bytes",
+      "occurrence": 1,
+      "attributes": [
+        "cfg ( feature = \"tokio\" )",
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_burst_boundary_counts_inflight_bytes_and_uses_full_quantum",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_replies_with_retransmission_debt_at_505_bytes_per_second",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_replies_with_retransmission_debt_at_632_bytes_per_second",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_reply_wakes_at_eligibility_without_a_control_packet",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "small_traffic_does_not_keep_historical_large_blocks",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "stateless_burst_releases_high_water_backing_after_drain",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "stateless_replies_obey_budget_and_release_on_send_or_iface_removal",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "sustained_use_preserves_cache_above_warm_target",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "time_wait_reuse_keeps_old_state_when_active_admission_fails",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "tombstone_slot_reservation_covers_fixed_containers",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "trim_is_disabled_by_default_then_complete_idle_releases_pool",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "tuple_table_shrinks_while_one_time_wait_remains",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/shard.rs",
+      "name": "unchanged_rate_does_not_repeatedly_requeue_paced_flow",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "adapter_transfer_does_not_consume_tcp_receive_credit",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bbr_and_brutal_complete",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bbr_probe_steady_state",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "ignore"
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bbr_random_loss_keeps_rate",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bbr_shallow_queue_long_rtt",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bbr_trace",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "ignore"
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "bidirectional",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "blocked_send_record_does_not_survive_iface_removal",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "borrowed_server_ingress_survives_packet_recycling_and_reordering",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "clean_download",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "close_with_unread_data_sends_rst",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "desynced_ends_do_not_ack_storm",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "deterministic_replay",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "download_with_burst_loss_reorder_dup",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "download_with_random_loss",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "egress_full_does_not_count_as_sent",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "execution_gap_pacing_keeps_rate",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "forged_ack_desync_is_reset_quickly",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "forged_timestamp_desync_is_reset_quickly",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "full_send_records_retransmit_in_place_when_growth_is_impossible",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "fuzz_mutated_and_random_packets",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "fuzz_replays_identically",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "fuzz_without_rst",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "issue37_idle_connections_leave_room_for_another_peer",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "keepalive_probe_is_answered_with_open_window",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "lost_lone_segment_is_probed_before_rto",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "lost_window_update_is_recovered_by_persist",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "many_connections_and_full_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "mtu_decrease_resegments",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "per_peer_fairness",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "reordered_and_duplicated_acks_are_not_desync",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "rx_descriptor_quota_drop_recovers_on_wire_retransmission",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "rx_progress_small_requests_cross_a_saturated_port_without_wire_retransmission",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "same_seed_replays_identical_packets",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "send_record_quota_retries_after_physical_memory_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "send_share_growth_emits_writable_without_own_ack",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "send_share_port_pressure_must_not_stop_a_reading_receiver",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "shallow_queue_long_rtt",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "small_cwnd_cubic_is_not_paced",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "soak_paused_reader_lossy_multiflow",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "ignore"
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "stale_share_wait_epoch_does_not_self_wake_after_unrelated_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "syn_cookies",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "synack_timeouts_release_half_open_slots",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "time_wait_compacts_and_preserves_expiry",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "tx_capacity_abort_with_outstanding_data_sends_reset_and_releases",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "tx_capacity_eight_flows_survive_loss_reorder_fin_and_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "tx_capacity_zero_still_receives_data_and_exchanges_fin",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "unread_data_survives_orderly_close",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "unseeded_shards_keep_random_isn",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "upload",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "zero_window_and_persist",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/sim/tests.rs",
+      "name": "zero_window_data_probe_is_answered",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "adapter_queues_do_not_starve_core_tx_blocks",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "charged_egress_makes_progress_when_port_share_is_full",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "driver_panic_is_observable_and_join_is_idempotent",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "dropped_stream_facing_zero_window_is_aborted",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "echo_roundtrip_through_async_handles",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "established_connection_is_not_reset_when_stream_state_is_short",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "forced_refusal_debt_does_not_stop_established_streams",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "healthy_stream_keeps_its_share_next_to_a_stopped_peer_mate",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "idle_tx_cache_does_not_block_the_next_stream_on_the_same_port",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "issue37_relay_does_not_miss_release_during_failed_allocation",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "issue37_splice_256_streams_keep_progressing_with_delayed_acks",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )",
+        "ignore = \"full 256-stream splice comparison; 64 streams run in CI\""
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "issue37_splice_backlog_waits_for_memory_and_preserves_order",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "issue37_splice_streams_keep_progressing_with_delayed_acks",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "issue43_repeated_splice_cpu_evidence",
+      "occurrence": 1,
+      "attributes": [
+        "cfg ( target_os = \"linux\" )",
+        "tokio : : test ( flavor = \"current_thread\" )",
+        "ignore = \"repeat CPU/byte evidence; run alone with --test-threads=1\""
+      ],
+      "ignored": true
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "late_stream_gets_a_share_while_stopped_readers_hold_theirs",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "mixed_load_above_admission_line_keeps_streams_progressing",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "new_connection_is_admitted_while_senders_keep_refilling_tx_blocks",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "ordinary_stream_progresses_while_a_relay_is_active",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "ordinary_writer_recovers_from_the_only_memory_release",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "ordinary_writer_watermark_is_attainable_with_small_queue_or_share",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "ordinary_writer_with_empty_queue_recovers_on_ack_sender_exit_or_close",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "pending_polls_keep_the_latest_task_waker",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "ports_sharing_a_small_global_budget_all_make_progress",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "queue_descriptor_growth_keeps_bytes_and_releases_backing",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "quota_bound_relay_with_send_space_wakes_on_logical_release",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "saturate_release_and_single_stream_rounds_recover_on_the_same_port",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "send_record_budget_release_notifies_driver",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "share_bound_relay_ignores_unrelated_releases_and_recovers_on_ack_or_sender_exit",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "short_connection_index_releases_sparse_capacity",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "small_peer_shares_each_make_progress",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "small_writes_stop_before_unfunded_tx_descriptor_growth",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "source_batch_preserves_order_and_closed_source_keeps_driver_alive",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "splice_delivers_upload_tail_after_the_connection_closes",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "splice_relays_both_directions_and_half_closes",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "splice_upstream_fin_first_then_peer_fin",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "splice_upstream_reset_resets_the_peer",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "stopped_readers_do_not_starve_healthy_streams",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "tx_cache_complete_idle_is_reclaimed_by_real_driver_deadline",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "tx_capacity_async_writer_resumes_below_low_watermark",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "tx_capacity_splice_roundtrips_and_half_closes",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "tx_queue_capacity_and_waiter_release",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "name": "tx_wait_state_switches_without_stale_queue_entries_and_clears_on_success",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a0_driver_deadline_reclaims_idle_cache_on_virtual_time_only",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" , start_paused = true )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a0_memory_waiter_migration_and_cancel_remove_old_notification",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" , start_paused = true )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a0_negative_control_dropped_wake_cannot_pass_by_rescue_poll",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" , start_paused = true )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a0_only_release_before_and_after_registration",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" , start_paused = true )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a1_loopback_current_thread_shutdown_and_last_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a1_loopback_four_workers_shutdown_and_last_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a1_loopback_two_workers_shutdown_and_last_owner",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a1_pending_read_write_cancel_four_workers",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "name": "a1_pending_read_write_cancel_two_workers",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/wire.rs",
+      "name": "odd_slices_checksum",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/wire.rs",
+      "name": "partial_checksum_completes_like_a_device",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/wire.rs",
+      "name": "v4_roundtrip",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/wire.rs",
+      "name": "v6_roundtrip",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "src/wire.rs",
+      "name": "vectorized_sum_matches_reference",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "tests/issue37_throughput.rs",
+      "name": "issue37_floor_pipelines_at_50ms_rtt",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "tests/issue37_throughput.rs",
+      "name": "issue37_full_256_streams_at_50ms_rtt",
+      "occurrence": 1,
+      "attributes": [
+        "test",
+        "ignore = \"full 256-stream throughput comparison; the scaled regression runs in CI\""
+      ],
+      "ignored": true
+    },
+    {
+      "source": "tests/rx_capacity_lifecycle.rs",
+      "name": "rx_descriptor_bulk_admission_retries_only_after_each_level_debt_is_released",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "tests/rx_capacity_lifecycle.rs",
+      "name": "rx_descriptor_cancel_after_observed_zero_window_releases_budget",
+      "occurrence": 1,
+      "attributes": [
+        "tokio : : test ( flavor = \"current_thread\" )"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "tests/tx_default_trace.rs",
+      "name": "default_profiles_wire_trace",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    }
+  ],
+  "rust_configuration": [
+    {
+      "source": "bench/src/adapters/mod.rs",
+      "attributes": [
+        "cfg ( feature = \"zfstack\" )"
+      ]
+    },
+    {
+      "source": "bench/src/app.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "bench/src/isolate.rs",
+      "attributes": [
+        "cfg ( feature = \"zfstack\" )",
+        "cfg ( test )",
+        "cfg ( feature = \"zfstack\" )"
+      ]
+    },
+    {
+      "source": "bench/src/main.rs",
+      "attributes": [
+        "cfg ( feature = \"zfstack\" )",
+        "cfg ( not ( feature = \"zfstack\" ) )"
+      ]
+    },
+    {
+      "source": "bench/src/tunproxy.rs",
+      "attributes": [
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( not ( feature = \"packet-pool-idle-trim\" ) )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( not ( feature = \"packet-pool-idle-trim\" ) )",
+        "cfg ( feature = \"packet-pool-idle-trim\" )",
+        "cfg ( not ( feature = \"packet-pool-idle-trim\" ) )",
+        "cfg ( test )",
+        "cfg ( all ( test , feature = \"packet-pool-idle-trim\" ) )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "bench/src/wg.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "examples/pareto_probe.rs",
+      "attributes": [
+        "cfg ( any ( target_os = \"linux\" , target_os = \"macos\" ) )",
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( target_os = \"macos\" )",
+        "cfg ( not ( any ( target_os = \"linux\" , target_os = \"macos\" ) ) )",
+        "cfg ( feature = \"test-peer\" )",
+        "cfg ( feature = \"test-peer\" )",
+        "cfg ( feature = \"test-peer\" )",
+        "cfg ( not ( feature = \"test-peer\" ) )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "fuzz/src/lib.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "harness/src/event.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "harness/src/oracle.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "harness/src/scenario.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "harness/src/schedule.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "harness/src/world.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "qa-models/src/lib.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/budget.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/buf.rs",
+      "attributes": [
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( not ( test ) )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( any ( test , feature = \"tokio\" ) )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/cc/bbr.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/cc/cubic.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/conn.rs",
+      "attributes": [
+        "cfg ( test )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( any ( test , feature = \"test-peer\" ) )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/heap.rs",
+      "attributes": [
+        "cfg ( test )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/lib.rs",
+      "attributes": [
+        "cfg ( any ( test , feature = \"test-peer\" ) )",
+        "cfg ( feature = \"tokio\" )"
+      ]
+    },
+    {
+      "source": "src/offload.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/pktpool.rs",
+      "attributes": [
+        "cfg ( test )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/scoreboard.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/seq.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/shard.rs",
+      "attributes": [
+        "cfg ( any ( test , feature = \"test-peer\" ) )",
+        "cfg ( test )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( test )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( test )",
+        "cfg ( any ( test , feature = \"test-peer\" ) )",
+        "cfg ( any ( test , feature = \"test-peer\" ) )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( feature = \"tokio\" )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/sim.rs",
+      "attributes": [
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "src/tokio_adapter.rs",
+      "attributes": [
+        "cfg ( test )",
+        "cfg ( test )",
+        "cfg ( target_os = \"linux\" )"
+      ]
+    },
+    {
+      "source": "src/tokio_adapter/tests/qa.rs",
+      "attributes": [
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( not ( target_os = \"linux\" ) )",
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( not ( target_os = \"linux\" ) )",
+        "cfg ( target_os = \"linux\" )"
+      ]
+    },
+    {
+      "source": "src/wire.rs",
+      "attributes": [
+        "cfg ( all ( target_arch = \"x86_64\" , not ( target_feature = \"avx2\" ) ) )",
+        "cfg ( all ( target_arch = \"x86_64\" , not ( target_feature = \"avx2\" ) ) )",
+        "cfg ( test )"
+      ]
+    },
+    {
+      "source": "tests/issue37_throughput.rs",
+      "attributes": [
+        "cfg ( feature = \"test-peer\" )"
+      ]
+    },
+    {
+      "source": "tests/rx_capacity_lifecycle.rs",
+      "attributes": [
+        "cfg ( all ( feature = \"tokio\" , feature = \"test-peer\" ) )"
+      ]
+    },
+    {
+      "source": "tests/tx_default_trace.rs",
+      "attributes": [
+        "cfg ( feature = \"test-peer\" )"
+      ]
+    }
+  ],
+  "python_tests": [
+    {
+      "source": "bench/pareto/test_analysis.py",
+      "class": "ConsumptionTests",
+      "name": "test_invalid_warmup_metric_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_analysis.py",
+      "class": "ConsumptionTests",
+      "name": "test_legacy_and_v2_tx_metrics_do_not_mix_estimate_and_snapshot",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_analysis.py",
+      "class": "ConsumptionTests",
+      "name": "test_non_tx_legacy_peak_is_preserved",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_analysis.py",
+      "class": "ConsumptionTests",
+      "name": "test_runner_and_analyzer_accept_v1_v2_without_executing_binaries",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_environment.py",
+      "class": "EnvironmentEvidence",
+      "name": "test_compile_and_changed_affinity_remain_invalid",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_environment.py",
+      "class": "EnvironmentEvidence",
+      "name": "test_missing_cgroup_v2_or_ancestor_limit_is_invalid_even_if_frozen_unknown",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_freeze_plan.py",
+      "class": "FrozenPlan",
+      "name": "test_actual_binary_identity_reference_work_and_reproducible_order",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_capture_cannot_be_admitted_as_performance",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_cpu_overlap_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_explicit_cpu_sets_and_original_defaults",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_malformed_cpu_sets_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_peer_workload_and_stack_mapping_must_match",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_sampler_cannot_be_admitted_as_performance",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "MeasurementAdmission",
+      "name": "test_sampler_is_allowed_in_explicit_diagnostic",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "PeerEvidenceAdmission",
+      "name": "test_accepts_distinct_leases_egress_and_overlapping_progress",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "PeerEvidenceAdmission",
+      "name": "test_late_only_light_requests_are_not_progress_under_pressure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "PeerEvidenceAdmission",
+      "name": "test_over_budget_or_reader_peer_fallback_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_case.py",
+      "class": "PeerEvidenceAdmission",
+      "name": "test_source_labels_without_real_peer_egress_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "MixedLatency",
+      "name": "test_all_late_completions_still_produce_latency",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "MixedLatency",
+      "name": "test_requests_started_outside_load_window_are_excluded",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "MixedLatency",
+      "name": "test_slow_request_started_under_load_is_not_discarded",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "MixedLatency",
+      "name": "test_worker_failure_remains_a_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "UpstreamBurstAdmission",
+      "name": "test_connection_uses_declared_source_identity",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform == 'linux', 'requires Linux loopback /8 source routing')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_issue23_tun_load.py",
+      "class": "UpstreamBurstAdmission",
+      "name": "test_supported_burst_connects_before_handlers_are_scheduled",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "CalibrationTests",
+      "name": "test_calibration_requires_two_aa_levels_heldout_power_and_false_positive_bounds",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "CalibrationTests",
+      "name": "test_reproducible_independent_builds_can_have_identical_hashes",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "CalibrationTests",
+      "name": "test_reusing_training_as_heldout_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "CalibrationTests",
+      "name": "test_undetected_delta_and_false_positives_never_qualify",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "ObservedAbsoluteSLO",
+      "name": "test_absolute_slo_schema_is_strict_and_bound_into_plan_and_calibration",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "ObservedAbsoluteSLO",
+      "name": "test_fixed_candidate_value_bound_is_distinct_from_relative_degradation",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "ObservedAbsoluteSLO",
+      "name": "test_lower_cost_max_and_higher_throughput_min_are_directional",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "ObservedAbsoluteSLO",
+      "name": "test_single_violation_cannot_be_averaged_away_or_hidden_by_missing_data",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "ObservedAbsoluteSLO",
+      "name": "test_unrelated_arm_wrong_identity_and_missing_values_cannot_prove_candidate_bound",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_all_config_and_plan_changes_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_bootstrap_is_fixed_seed_paired_whole_block",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_case_version_is_a_positive_integer",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_cost_and_throughput_budgets_have_distinct_transforms",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_explicit_aa_allows_same_binary_only_there",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_failure_cannot_be_hidden_by_invalid_or_missing_other_arm",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_incomplete_duplicate_overlap_and_changed_order_are_invalid",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_nonfinite_negative_missing_and_zero_metrics_are_not_passes",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_pass_fail_inconclusive_and_calibration_binding",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_predeclared_absolute_metric_handles_zero_baseline",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_perf_gate.py",
+      "class": "StatisticalGate",
+      "name": "test_student_t_quantiles_match_reference_values",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_detached_descendant_is_failed_and_reaped",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform == 'linux', 'subreaper containment requires Linux')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_lost_lease_interrupts_and_retains_failure_reason",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_missing_output_is_not_a_product_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_observer_tracks_dut_pid_and_preserves_pre_exec_phase",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_output_limit_is_enforced_without_unbounded_pipe_capture",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_run_plan.py",
+      "class": "FormalRunner",
+      "name": "test_timeout_retains_stdout_and_kills_owned_child",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_cancellation_must_not_release_other_ports_or_leave_charges",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_complete_evidence_passes",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_idle_transfer_without_a_real_waiter_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_missing_drop_evidence_is_not_assumed_lossless",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_sampled_limit_violation_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_success_summary_cannot_hide_missing_round_or_pressure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_tcp_completion_cannot_hide_host_or_kernel_packet_loss",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "bench/pareto/test_shared_budget_case.py",
+      "class": "SharedBudgetEvidence",
+      "name": "test_unreleased_or_short_payload_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_both_arms_empty_zero_cpu_window_and_nan_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_capture_loss_and_heavy_corruption_invalidate_baseline_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_changed_workload_binary_and_retransmission_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_contamination_in_either_arm_is_not_performance_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_fast_completed_samples_cannot_hide_a_failed_candidate_request",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_full_configuration_changes_include_light_churn_udp_and_unknown_new_keys",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_longer_deadline_and_missing_recovery_do_not_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_missing_delayed_evidence_and_mismatched_limits_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_old_cpu_approximation_cannot_pass_an_explicit_limit",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_performance_limits_use_cpu_per_delivered_gib",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_qdisc_loss_in_either_arm_invalidates_comparison",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_compare.py",
+      "class": "CompareTests",
+      "name": "test_success_and_censored_baseline",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_missing_endpoint_reset_identity_and_phase_are_invalid",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_missing_perf_endpoint_does_not_erase_functional_success_or_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_observer_failure_cannot_skip_generator_queue_or_sample_cleanup",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_proc_reader_never_collects_command_lines_and_preserves_zombie",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'portable /proc parser fixture uses symlinks')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_real_sampler_file_survives_freeze_and_independent_inspection",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform == 'linux', 'actual endpoint /proc CPU sampling requires Linux')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_endpoints.py",
+      "class": "EndpointTests",
+      "name": "test_zombie_retains_cpu_but_rss_must_stay_unknown",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_compiler_contamination_keeps_functional_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_cpu_and_verified_bytes_use_same_actual_boundaries",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_frozen_case_recomputes_from_clean_qa_import_without_sibling_path",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_general_case_export_preserves_three_distinct_scopes",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_missing_identity_timestamps_are_not_fabricated",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_missing_light_peer_and_path_never_become_functional_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_nonfinite_duplicate_and_expanding_input_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_offline_accounting_imports_without_posix_file_locks",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_unknown_runtime_profile_and_bypassed_path_block",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_wrong_config_or_binary_cannot_certify_functional_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "EvidenceTests",
+      "name": "test_zero_missing_negative_and_reset_byte_evidence_is_not_low_cpu",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "MeasurementContractTests",
+      "name": "test_arrivals_are_fixed_without_completion_feedback",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "MeasurementContractTests",
+      "name": "test_empty_single_and_counter_reset_samples_do_not_crash_or_invent_zero",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "MeasurementContractTests",
+      "name": "test_failures_and_unstarted_arrivals_stay_in_denominator",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "MeasurementContractTests",
+      "name": "test_interior_window_cannot_exclude_load_onset",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_evidence.py",
+      "class": "MeasurementContractTests",
+      "name": "test_verified_progress_accumulates_all_flows",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_idle_load.py",
+      "class": "IdleSockets",
+      "name": "test_connections_are_held_without_payload_and_detect_eof",
+      "occurrence": 1,
+      "async": true,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_idle_load.py",
+      "class": "IdleSockets",
+      "name": "test_refused_connections_are_reported",
+      "occurrence": 1,
+      "async": true,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_isolation.py",
+      "class": "IsolatedRig",
+      "name": "test_host_namespace_or_control_socket_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_isolation.py",
+      "class": "IsolatedRig",
+      "name": "test_marker_alone_and_host_init_are_insufficient",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_isolation.py",
+      "class": "IsolatedRig",
+      "name": "test_script_rejects_isolated_mode_before_rig_services_without_wrapper",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_mixed_load.py",
+      "class": "MixedLoadTest",
+      "name": "test_churn_and_pipelined_udp_validate_replies_and_unique_sequences",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_actual_limit_and_enabled_qdisc_must_match",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_counter_deltas_and_zero_delay",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_invalid_settings_are_rejected_before_rig_setup",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_missing_invalid_reset_or_replaced_counters_never_mean_zero_loss",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_numeric_zero_disables_netem_and_positive_delay_enables_it",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_queue_overflow_invalidates_delay_only_run",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_netem.py",
+      "class": "NetemTests",
+      "name": "test_run_rig_validates_limit_before_creating_output",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_coalesced_on_time_arrivals_drain_bounded_fifo_without_false_misses",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_failed_connection_keeps_every_planned_epoch_and_request",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_partial_frame_timeout_closes_epoch_without_reusing_corrupt_stream",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_ready_cli_does_not_rebase_arrivals_after_an_armed_stall",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_real_cli_open_loop_keeps_all_churn_arrivals",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_schedule_is_fixed_bounded_and_not_response_derived",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_selector_registration_failure_keeps_full_schedule_and_closes_sockets",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_open_loop.py",
+      "class": "OpenLoopTests",
+      "name": "test_slow_responses_do_not_postpone_next_connection_epoch",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_active_and_drain_cannot_hide_additional_impairments",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_queue_evidence_is_bound_to_load_window_and_never_clean_performance",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_queue_is_opt_in_bounded_and_refuses_nonisolated_shell",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_queue_oracle_requires_backlog_zero_loss_and_clean_restoration",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_relay_uses_separate_forwarder_and_real_payload_edges",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_runner_keeps_original_active_command_and_changes_existing_queue_for_v3_drain",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_same_linked_binary_without_relay_execution_is_not_coverage",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_path_queue.py",
+      "class": "PathAndQueueTests",
+      "name": "test_v3_requires_explicit_strategy_and_exact_rate_in_both_raw_views",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_queue_links.py",
+      "class": "QueueLinkTests",
+      "name": "test_every_endpoint_direction_drop_or_error_delta_invalidates",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_queue_links.py",
+      "class": "QueueLinkTests",
+      "name": "test_missing_malformed_scope_interface_and_resets_are_not_zero",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_queue_links.py",
+      "class": "QueueLinkTests",
+      "name": "test_queue_raw_closure_scope_failure_and_payload_failure_are_independent",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_queue_links.py",
+      "class": "QueueLinkTests",
+      "name": "test_sampler_is_owned_bounded_and_retains_command_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_queue_links.py",
+      "class": "QueueLinkTests",
+      "name": "test_zero_deltas_with_existing_nonzero_counters_are_valid",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "ProgressDeadlineTests",
+      "name": "test_cpu_observation_cost_is_included_in_the_progress_deadline",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'native POSIX record-lock accounting')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "ProgressDeadlineTests",
+      "name": "test_real_cross_process_lock_timeout_returns_missing_without_fabrication",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'native POSIX record-lock accounting')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "ProgressDeadlineTests",
+      "name": "test_short_lock_contention_retries_within_the_original_deadline",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'native POSIX record-lock accounting')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_actual_proc_samples_are_frozen_and_recomputed_without_claiming_test_load",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform == 'linux', 'actual worker /proc sampling requires native Linux')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_all_derived_phase_cpu_bytes_rss_and_windows_are_compared",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_generated_worker_file_survives_freeze_archive_deletion_and_clean_import",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_internal_sample_timing_remains_bounded_after_summary_recompute",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_late_boundary_and_extended_cpu_byte_read_budget_remain_invalid",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_missing_raw_and_malformed_counts_invalidate_performance_without_erasing_function",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_preparation_compilers_and_tampered_contamination_flag_are_recomputed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "harness/l2/test_worker_samples.py",
+      "class": "WorkerEvidenceTests",
+      "name": "test_raw_reset_or_missing_interior_sample_stays_invalid_after_summary_recompute",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_arbitrary_shell_runner_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_artifact_tamper",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_candidate_policy_loosen_blocked",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_case_identity_includes_features_and_size",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_ci_missing_jobs",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_ci_skipped_cancelled_failed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_ci_success",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_cleaning_failed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_command_log_is_not_calibrated_analysis",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_duplicate_results_do_not_rerun_to_green",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_empty_artifact_inventory",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_empty_plan_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_empty_success_assertions",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_enforced_inconclusive_blocks",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_exemption_expiry_and_scope",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_failure_survives_contamination",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_html_is_escaped",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_missing_child_execution_records_cannot_claim_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_missing_manifest",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_negative_time",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_no_samples_never_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_optional_service_contract_changes_identity",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_pass_with_nonzero_exit",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_placeholder_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_preexisting_does_not_waive",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_rehashed_zero_tests_cannot_claim_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_runner_cannot_declare_na",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_shadow_is_explicit",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_unsafe_artifact_path",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_wrong_config",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_wrong_plan",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "GateTests",
+      "name": "test_wrong_sha",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_archive_budget",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_archive_excludes_keys_and_worker_config",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_child_lifecycle_failure_survives_exit_zero",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_child_nonzero",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_child_watchdog",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_exclusive_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_json_nonfinite_duplicate_truncated",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_l0_bare_ok_is_not_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_lease_lost_does_not_delete_foreign_owner",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_lease_no_stale_takeover",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_no_promotion_from_pr_or_shadow",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_symlink_artifact_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'symlinks require a separately granted Windows privilege')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_test_util_on_production_tokio_graph_is_a_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_unbuilt_factorial_and_wrong_path_block",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_contracts.py",
+      "class": "InfrastructureTests",
+      "name": "test_zero_tests_is_not_run",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_comments_strings_and_nested_block_comments_never_create_tests",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_deleting_renaming_or_swapping_names_with_equal_count_is_drift",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_explicit_review_inventory_and_hash_bound_audit_shape",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_file_module_gates_and_restricted_visibility_are_not_invisible",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_generated_artifacts_are_excluded_and_source_symlinks_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_git_sources_include_new_tests_and_exclude_ignored_caches",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_ignored_names_sources_and_duplicate_occurrences_are_checked",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_malformed_sources_and_missing_inventory_fail_closed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_missing_wrong_inventory_hash_counts_and_old_bare_ok_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_new_ignore_runtime_capability_or_new_test_requires_policy_review",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_python_ast_inventory_tracks_class_method_and_skip_capability",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_python_conditional_class_capability_is_frozen_even_when_not_executed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_coverage.py",
+      "class": "CoverageInventoryTests",
+      "name": "test_same_named_tests_have_distinct_occurrences_and_removal_is_detected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_all_combinations_and_same_private_tun_are_required",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_dirty_source_and_tracked_secrets_are_not_exported",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_disk_reserve_remains_enforced_under_shared_lease",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_failed_runtime_records_all_arms_without_modifying_archive",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_later_arm_interrupt_retains_pending_prior_command_cleanup",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_lost_lease_cancels_compiler_and_seals_failed_cleanup_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_measurement_lease_blocks_every_compiler_before_execution",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_missing_ref_is_recorded_for_affected_combinations",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_public_build_requires_shared_physical_domain_and_generation",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_successful_build_manifest_and_added_source_rejection",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_successful_parent_with_detached_compiler_is_not_a_successful_build",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')",
+        "unittest.skipUnless(sys.platform.startswith('linux'), 'Linux build descendant containment')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
+      "name": "test_symlink_build_input_is_refused",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_builder_selects_normal_build_graph_and_nested_lock",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_compiler_host_must_match_actual_platform",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_complete_identity",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_dirty_wrong_sha_and_patch",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_every_environment_field_is_required",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_every_manifest_field_is_required",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_identity_mismatch",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_native_evidence_cannot_be_cross_platform",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "IdentityTests",
+      "name": "test_nested_workspaces_use_own_lock",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_detached_descendant_causes_failure_and_is_reaped",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform.startswith('linux'), 'Linux subreaper descendant ownership')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_linux_output_budget",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform.startswith('linux'), 'independent supervisor output budget')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_nonzero",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_output_budget_checked_even_if_child_already_exited",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_success_and_explicit_scope",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_timeout_is_bounded",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "ProcessTests",
+      "name": "test_unrelated_child_is_never_reaped_or_killed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(sys.platform.startswith('linux'), 'Linux subreaper isolation')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_changed_binary_after_execution_cannot_receive_valid_identity",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_empty_or_wrong_binary_inventory_cannot_supply_execution_identity",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_explicit_cross_target_and_foreign_compiler_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_failed_build_remains_failed_and_never_launches_benchmark",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_harness_launch_uses_the_same_frozen_artifact",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_inherited_binary_and_output_directory_cannot_replace_build_product",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_l1_runs_and_records_the_same_controlled_build_artifact",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_manifest_cannot_hide_a_contradictory_explicit_target",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_identity_process.py",
+      "class": "RunnableIdentityTests",
+      "name": "test_missing_build_product_does_not_run_inherited_or_stale_binary",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_bare_ok_is_not_l1_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_l1_command_is_isolated_and_serial_build",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_l2_all_workload_fields_and_executed_binary_are_checked",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_observed_failure_survives_missing_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_real_l1_path_and_every_user_are_required",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_self_reported_l1_pass_is_recomputed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_unbuildable_wrong_profile_and_missing_cleanup_workers_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_worker_build_identity_is_frozen_and_shared_by_live_admission",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_worker_source_graph_and_compiler_fingerprints_are_cross_checked",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_integration.py",
+      "class": "IntegrationTests",
+      "name": "test_wrong_path_and_configuration_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_absolute_slo_fail_survives_clean_raw_audit_and_shadow_mode",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_absolute_slo_fail_survives_performance_contamination_and_missing_slots",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_absolute_slo_failure_cannot_be_washed_out_of_outer_envelope",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_absolute_slo_only_in_artifact_is_not_a_trusted_product_contract",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_allowed_probe_filename_cannot_upload_a_symlink_target",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipIf(os.name == 'nt', 'symlink creation requires separate Windows privilege')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_calibration_verifier_receives_a_sealed_temporary_artifact_view",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_changed_static_config_version_hash_and_candidate_are_rejected_before_execution",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_cleanup_failure_cannot_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_compiler_contamination_keeps_functional_but_invalidates_performance",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_cpu_and_unknown_cgroup_only_affect_shadow_performance",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_failure_survives_incomplete_truncated_and_contaminated_companion_data",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_fake_validated_calibration_is_not_published_as_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_forged_below_slo_metrics_cannot_replace_raw_probe_values",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_frozen_absolute_slo_boundary_passes_independent_raw_recomputation",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_missing_block_and_forged_metric_cannot_be_functional_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_missing_node_inputs_always_emit_complete_not_run_envelope",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_nonstandard_calibration_paths_and_unsupported_declared_logs_fail_explicitly",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_reporter_rejects_wrong_environment_association_and_rehashed_raw_tamper",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_shadow_absolute_slo_cannot_be_removed_or_relaxed_from_frozen_policy",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_shadow_runs_fixed_experiment_and_is_independently_recomputed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_spec_calibration_tree_roundtrip_and_unreferenced_files_excluded",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_perf_integration.py",
+      "class": "PerformanceIntegration",
+      "name": "test_stage_and_archive_preserve_complete_performance_proof",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_nonfunctional_perf_noise_does_not_erase_slo_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_payload_failure_cannot_impersonate_a_successful_queue_control",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_and_relay_config_reach_the_existing_load_cli",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_control_rejects_missing_drop_or_untriggered_controls",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_control_requires_healthy_baseline_slo_failure_and_recovery",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_expected_failure_cannot_hide_an_incomplete_peer",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_pair_missing_execution_cannot_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_queue_pair_preserves_recovery_failures_and_rejects_different_runtime",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_relay_queue.py",
+      "class": "RelayQueueIntegration",
+      "name": "test_relay_admission_checks_executed_forwarder_and_frozen_build",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ProvenanceAndEntrypointTests",
+      "name": "test_collect_requires_positive_run_ids_before_any_request",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ProvenanceAndEntrypointTests",
+      "name": "test_dependency_patch_is_reviewable_without_committing",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ProvenanceAndEntrypointTests",
+      "name": "test_dependency_update_rejects_option_injection_and_dirty_sources",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ProvenanceAndEntrypointTests",
+      "name": "test_missing_cli_evidence_writes_blocked_report",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ProvenanceAndEntrypointTests",
+      "name": "test_wrong_workflow_repo_branch_and_conclusion_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_allowlisted_upload_preserves_complete_raw_release_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_calibration_report_cannot_replace_missing_raw_trial",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_complete_raw_release_and_review_only_promotion",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_expired_calibration_and_longer_baseline_expiry_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_forged_promotion_summary_is_not_accepted",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_functional_failure_survives_missing_other_scope",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_job_skipped_and_wrong_tested_sha_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_missing_platform_is_not_green",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_missing_probe_raw_log_cannot_certify_release",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_modified_summary_is_rejected_even_with_raw_evidence",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_moving_release_anchor_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_registry_generation_and_expiry_are_required",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_rehashed_calibration_trial_tamper_is_recomputed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_rehashed_probe_output_tamper_is_independently_recomputed",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_shadow_and_inconclusive_cannot_certify_release",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_uploaded_pass_summary_does_not_replace_raw_results",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_release.py",
+      "class": "ReleaseTests",
+      "name": "test_wrong_native_environment_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_evaluation.py",
+      "class": "SafetyEvaluationTests",
+      "name": "test_complete_fuzz_evidence_passes_independent_gate",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_evaluation.py",
+      "class": "SafetyEvaluationTests",
+      "name": "test_observed_failure_survives_missing_safety_proof",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_evaluation.py",
+      "class": "SafetyEvaluationTests",
+      "name": "test_present_but_unhashed_safety_proof_cannot_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_evaluation.py",
+      "class": "SafetyEvaluationTests",
+      "name": "test_tampered_safety_proof_is_bound_to_inventory",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_changed_reviewed_seed_is_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_command_binds_copy_artifacts_native_target_and_budget",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_cross_compiler_host_and_inherited_target_are_rejected",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_darwin_native_asan_fuzz_and_explicit_leak_limitation",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_exit_zero_without_fuzz_iterations_is_not_run",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_failure_index_archives_without_raw_crash_or_corpus",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_independent_validator_requires_copy_identity_and_completed_runs",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_inherited_flags_cannot_disable_sanitizer",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_missing_indexes_or_changed_source_cannot_pass_but_nonzero_retains_failure",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_real_child_mutates_only_writable_copy_and_keeps_source",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_sanitizer_command_uses_probed_native_target",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_source_mutation_fails_and_preserves_index",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_unsupported_asan_is_capability_missing",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_safety_runner.py",
+      "class": "SafetyRunnerTests",
+      "name": "test_unsupported_entrypoint_records_not_run_without_executing_tests",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_arrival_to_completion_includes_generator_and_queue_wait",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_bounds_are_inclusive_and_extra_observations_do_not_change_contract",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_complete_observed_population_passes_without_probability_claim",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_contract_is_strict_typed_and_has_no_implicit_thresholds",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_each_peer_phase_requires_its_own_minimum",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_failed_timed_out_and_unfinished_requests_stay_in_denominator",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_generator_misses_are_not_business_drops_or_silent_deletions",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_malformed_duplicate_or_missing_measurements_do_not_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_missing_peer_phase_samples_and_counters_never_pass",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_no_successful_latency_sample_cannot_establish_a_latency_slo",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_service.py",
+      "class": "ServiceTests",
+      "name": "test_observed_failure_survives_missing_peer_and_malformed_companion",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [],
+      "guards": []
+    }
+  ]
+}

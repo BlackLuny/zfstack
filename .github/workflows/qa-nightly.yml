@@ -1,0 +1,148 @@
+name: QA nightly
+on:
+  schedule:
+    - cron: '20 18 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TRUSTED_REF: ${{ vars.QA_TRUSTED_REF || github.sha }}
+concurrency:
+  group: qa-nightly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  extended:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: rustup toolchain install 1.94.1 --profile minimal --component rustfmt --component clippy
+      - run: python -m pip install -r qa/requirements.lock
+      - name: Freeze reviewed policy
+        run: python -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+      - name: Full fixed-seed matrix, named heavy tests and bounded models
+        run: |
+          python -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite nightly --output plan.json
+          python -m qa.workflow run-group extended --plan plan.json --policy "$RUNNER_TEMP/qa-policy" --output qa/results/extended
+      - name: Stage evidence
+        if: always()
+        run: python -m qa.workflow stage-upload --source qa/results/extended --output "$RUNNER_TEMP/upload"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-nightly-extended
+          path: ${{ runner.temp }}/upload
+          if-no-files-found: error
+          retention-days: 30
+  l1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: rustup toolchain install 1.94.1 --profile minimal
+      - run: python -m pip install -r qa/requirements.lock
+      - name: Freeze reviewed policy
+        run: python -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+      - run: cargo +1.94.1 build --locked --release -p zfbench
+      - name: Designate this disposable hosted VM
+        env:
+          QA_GENERATION: ${{ github.run_id }}-${{ github.run_attempt }}
+          QA_DOMAIN: ${{ runner.name }}
+        run: |
+          python -c 'import json,os,pathlib; pathlib.Path("node.json").write_text(json.dumps({"kind":"ephemeral-vm","isolated":True,"physical_domain":os.environ["QA_DOMAIN"],"generation":os.environ["QA_GENERATION"]}))'
+          python -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite nightly --output plan.json
+      - name: Kernel TCP plus TUN on disposable VM
+        run: sudo -E env PATH="$PATH" RUSTUP_HOME="$HOME/.rustup" CARGO_HOME="$HOME/.cargo" python -m qa.workflow run-group l1 --plan plan.json --policy "$RUNNER_TEMP/qa-policy" --node node.json --lease-dir /tmp/zfstack-qa-leases --output qa/results/l1
+      - name: Stage evidence
+        if: always()
+        run: sudo -E env PATH="$PATH" python -m qa.workflow stage-upload --source qa/results/l1 --output "$RUNNER_TEMP/upload"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-nightly-l1
+          path: ${{ runner.temp }}/upload
+          if-no-files-found: error
+          retention-days: 30
+  l2:
+    # Never dispatch an untrusted PR onto a persistent privileged node.
+    if: github.ref == 'refs/heads/main' && vars.QA_L2_ENABLED == 'true'
+    runs-on: [self-hosted, linux, qa-ephemeral]
+    environment: qa-integration
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require externally provisioned node, worker and existing rig lease
+        env:
+          QA_NODE_JSON: ${{ vars.QA_L2_NODE_JSON }}
+        run: |
+          python3 -c 'import os,pathlib; pathlib.Path("node.json").write_text(os.environ["QA_NODE_JSON"])'
+          python3 -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+          python3 -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite nightly --output plan.json
+          python3 -m qa.workflow run-group l2 --plan plan.json --policy "$RUNNER_TEMP/qa-policy" --node node.json --lease-dir /var/lock/zfstack-qa --output qa/results/l2
+      - name: Stage only allowlisted evidence
+        if: always()
+        run: python3 -m qa.workflow stage-upload --source qa/results/l2 --output "$RUNNER_TEMP/upload"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-nightly-l2
+          path: ${{ runner.temp }}/upload
+          if-no-files-found: error
+          retention-days: 30
+  gate:
+    name: qa/nightly-gate
+    if: always()
+    needs: [extended, l1, l2]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.QA_TRUSTED_REF || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r qa/requirements.lock
+      - name: Freeze reviewed policy
+        run: python -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qa-nightly-*
+          path: evidence
+      - name: Missing integration evidence remains BLOCKED
+        if: always()
+        env:
+          TESTED_SHA: ${{ github.sha }}
+          JOBS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python -c 'import os,pathlib; pathlib.Path("jobs.json").write_text(os.environ["JOBS_JSON"])'
+          python -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite nightly --tested-sha "$TESTED_SHA" --output expected-plan.json
+          python -m qa evaluate --policy "$RUNNER_TEMP/qa-policy" --ci --jobs jobs.json --plan expected-plan.json --results evidence --expected-sha "$TESTED_SHA" --output summary.json --report report.md
+      - if: always()
+        run: test ! -f report.md || cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-nightly-report
+          path: |
+            summary.json
+            report.md
+          if-no-files-found: error
+          retention-days: 90

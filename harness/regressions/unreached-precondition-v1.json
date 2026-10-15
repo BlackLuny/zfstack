@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scenario": "wall-bulk",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 8000,
+  "events": [
+    {
+      "id": "require-memory-block",
+      "at_ms": 0,
+      "action": {
+        "kind": "ExecutionGap",
+        "millis": 5
+      },
+      "when": {
+        "kind": "memory-blocked",
+        "flow": 0
+      },
+      "deadline_ms": 100
+    }
+  ],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-negative-control",
+  "description": "No physical pressure is injected. The promised memory-blocked trigger must be PRECONDITION_NOT_REACHED, never a passing fault test."
+}

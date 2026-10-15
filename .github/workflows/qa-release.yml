@@ -1,0 +1,153 @@
+name: QA release evidence
+on:
+  workflow_dispatch:
+    inputs:
+      tested_sha:
+        description: Full reviewed commit SHA; nightly and safety must test this exact SHA
+        type: string
+        required: true
+      nightly_run_id:
+        description: Successful QA nightly run for this SHA
+        type: string
+        required: true
+      safety_run_id:
+        description: Successful QA safety run for this SHA
+        type: string
+        required: true
+      performance_run_id:
+        description: Successful calibrated QA performance run
+        type: string
+        required: true
+      generation:
+        description: Reviewed hardware/kernel/toolchain baseline generation
+        type: string
+        required: true
+      release_anchor:
+        description: Immutable full release anchor SHA; never a moving tag or branch
+        type: string
+        required: true
+      expires:
+        description: Candidate expiry in UTC ISO format; cannot outlive calibration
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qa-release-${{ inputs.tested_sha }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require immutable reviewed inputs
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          RELEASE_ANCHOR: ${{ inputs.release_anchor }}
+          TRUSTED_REF: ${{ vars.QA_TRUSTED_REF || github.sha }}
+          NIGHTLY_RUN: ${{ inputs.nightly_run_id }}
+          SAFETY_RUN: ${{ inputs.safety_run_id }}
+          PERFORMANCE_RUN: ${{ inputs.performance_run_id }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          for key in ('TESTED_SHA','RELEASE_ANCHOR','TRUSTED_REF'):
+              if not re.fullmatch('[a-f0-9]{40}',os.environ[key]):
+                  raise SystemExit(key + ': full immutable SHA required')
+          for key in ('NIGHTLY_RUN','SAFETY_RUN','PERFORMANCE_RUN'):
+              if not re.fullmatch('[1-9][0-9]{0,19}',os.environ[key]):
+                  raise SystemExit(key + ': positive run ID required')
+          PY
+  native:
+    needs: preflight
+    uses: ./.github/workflows/qa-native.yml
+    with:
+      tested_sha: ${{ inputs.tested_sha }}
+  report:
+    name: qa/release-gate
+    if: always() && needs.preflight.result == 'success' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [preflight, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TRUSTED_REF: ${{ vars.QA_TRUSTED_REF || github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TRUSTED_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Require trusted reporter bootstrap
+        run: |
+          test "$(git rev-parse HEAD)" = "$TRUSTED_REF" || exit 2
+          test -f qa/release.py || { echo 'BLOCKED: configure a reviewed immutable QA_TRUSTED_REF containing the release reporter'; exit 2; }
+          python -m pip install -r qa/requirements.lock
+      - name: Fetch authenticated provenance independently of artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NIGHTLY_RUN: ${{ inputs.nightly_run_id }}
+          SAFETY_RUN: ${{ inputs.safety_run_id }}
+          PERFORMANCE_RUN: ${{ inputs.performance_run_id }}
+        run: |
+          python -m qa.release collect-runs --repository "$GITHUB_REPOSITORY" --nightly-run "$NIGHTLY_RUN" --safety-run "$SAFETY_RUN" --performance-run "$PERFORMANCE_RUN" --output "$RUNNER_TEMP/provenance.json"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        with:
+          pattern: qa-native-*
+          path: evidence/native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.nightly_run_id }}
+          pattern: qa-nightly-*
+          path: evidence/nightly
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.safety_run_id }}
+          name: qa-safety
+          path: evidence/safety
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.performance_run_id }}
+          name: qa-performance
+          path: evidence/performance
+      - name: Recompute every required scope and prepare review-only baseline
+        if: always()
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          NATIVE_STATUS: ${{ needs.native.result }}
+          GENERATION: ${{ inputs.generation }}
+          RELEASE_ANCHOR: ${{ inputs.release_anchor }}
+          BASELINE_EXPIRES: ${{ inputs.expires }}
+        run: |
+          test -f qa/release.py || exit 2
+          python -m qa.release prepare-baseline --tested-sha "$TESTED_SHA" --evidence evidence --policy qa/policy --provenance "$RUNNER_TEMP/provenance.json" --repository "$GITHUB_REPOSITORY" --default-branch "$DEFAULT_BRANCH" --native-status "$NATIVE_STATUS" --generation "$GENERATION" --release-anchor "$RELEASE_ANCHOR" --expires "$BASELINE_EXPIRES" --output release-report.json --candidate baseline-candidate.json
+      - name: Publish qualification status
+        if: always()
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          path=pathlib.Path('release-report.json')
+          status=json.loads(path.read_text()).get('status','BLOCKED') if path.exists() else 'BLOCKED'
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+              out.write('Release qualification: **'+status+'**. See raw-scope report and review-only baseline candidate artifact.\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-release-review
+          path: |
+            release-report.json
+            baseline-candidate.json
+          if-no-files-found: error
+          retention-days: 90

@@ -9,25 +9,10 @@ import subprocess
 import time
 
 
-def snapshot():
-    result = {}
-    for name, path in [
-        ("loadavg", "/proc/loadavg"),
-        ("cpu_stat", "/sys/fs/cgroup/cpu.stat"),
-        ("cpu_max", "/sys/fs/cgroup/cpu.max"),
-        ("proc_stat", "/proc/stat"),
-    ]:
-        try:
-            value = Path(path).read_text()
-            if name == "proc_stat":
-                value = "\n".join(line for line in value.splitlines() if line.startswith("cpu"))
-            result[name] = value.strip()
-        except OSError as error:
-            result[name] = str(error)
-    return result
+from environment import snapshot
 
 
-def main():
+def legacy_main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--candidate", required=True)
@@ -91,5 +76,13 @@ def main():
     (out / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
 
+def main():
+    import sys
+    if "--plan" in sys.argv:
+        from run_plan import main
+        return main()
+    return legacy_main()
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

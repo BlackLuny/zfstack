@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scenario": "sink-full-iface",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 3000,
+  "events": [
+    {
+      "id": "block",
+      "at_ms": 40,
+      "action": {
+        "kind": "SinkFull",
+        "port": 0
+      }
+    },
+    {
+      "id": "release",
+      "at_ms": 200,
+      "action": {
+        "kind": "SinkRelease",
+        "port": 0
+      }
+    }
+  ],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-regression",
+  "description": "Iface 0 is Full after establishment while the open neighbor starts and finishes; then release the blocked sink."
+}

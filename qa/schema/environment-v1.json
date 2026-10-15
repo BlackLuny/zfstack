@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zfstack.invalid/qa/environment-v1.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "system": {
+      "enum": [
+        "Linux",
+        "Darwin",
+        "Windows"
+      ]
+    },
+    "machine": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "kernel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "cpu_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "affinity": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "cpuinfo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 65536
+    },
+    "proc_stat": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 65536
+    },
+    "cgroup_membership": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 65536
+    },
+    "cgroup_ancestors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "files": {
+            "type": "object",
+            "properties": {
+              "cpu.max": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "cpu.stat": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "cpuset.cpus.effective": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "memory.max": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "memory.current": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "memory.events": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "cpu.pressure": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "memory.pressure": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              },
+              "io.pressure": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 65536
+              }
+            },
+            "required": [
+              "cpu.max",
+              "cpu.stat",
+              "cpuset.cpus.effective",
+              "memory.max",
+              "memory.current",
+              "memory.events",
+              "cpu.pressure",
+              "memory.pressure",
+              "io.pressure"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "path",
+          "files"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "pressure": {
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "memory": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "io": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        }
+      },
+      "required": [
+        "cpu",
+        "memory",
+        "io"
+      ],
+      "additionalProperties": false
+    },
+    "performance_certified": {
+      "type": "boolean"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "system",
+    "machine",
+    "kernel",
+    "cpu_count",
+    "pid",
+    "affinity",
+    "cpuinfo",
+    "proc_stat",
+    "cgroup_membership",
+    "cgroup_ancestors",
+    "pressure",
+    "performance_certified",
+    "limitations"
+  ],
+  "additionalProperties": false
+}

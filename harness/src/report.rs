@@ -45,6 +45,13 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
     json!({
         "scenario": name,
         "ok": report.ok,
+        "app_drive": report.app_drive.as_str(),
+        "contract_ids": crate::oracle::contract_ids(name),
+        "assertions": crate::oracle::assertions(report),
+        "events": report.events,
+        "resource_samples": report.resources,
+        "scheduler": report.scheduler,
+        "trace": trace_value(report),
         "errors": report.errors,
         "notes": notes,
         "clock": report.clock,
@@ -57,7 +64,7 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
         "steps": report.steps,
         "wall_sec": report.wall_sec,
         "process_cpu_sec": report.cpu_sec,
-        "driver": "L0 app pump visits in-progress flows every step. That cost is the harness, not the production event-driven adapter.",
+        "driver": match report.app_drive { crate::schedule::AppDriveMode::Eager => "L0-C eager application pump", crate::schedule::AppDriveMode::EventOnly => "L0-E readiness-only application pump" },
         "profile": "StackConfig::default (server). Not StackConfig::client().",
         "comparability": COMPARABILITY,
         "budget": {
@@ -88,6 +95,7 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
         "sink_full": {
             "before": report.sink_full_before,
             "total": report.sink_full_total,
+            "window_ns": report.sink_window_ns,
         },
         "rebuild": {
             "happened": report.rebuild.happened,
@@ -106,6 +114,20 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
     })
 }
 
+pub(crate) fn trace_value(report: &Report) -> Value {
+    let mut trace = report.trace.clone();
+    if report.ok {
+        for scope in ["servers", "clients", "link_down", "link_up"] {
+            if let Some(streams) = trace[scope].as_array_mut() {
+                for stream in streams {
+                    stream["recent"] = json!([]);
+                }
+            }
+        }
+    }
+    trace
+}
+
 fn flow_json(f: &FlowReport) -> Value {
     json!({
         "id": f.id,
@@ -118,6 +140,10 @@ fn flow_json(f: &FlowReport) -> Value {
         "server_sent": f.server_sent,
         "server_recv": f.server_recv,
         "target_recv": f.client_target_recv,
+        "target_send": f.client_target_send,
+        "client_eof": f.client_eof,
+        "server_eof": f.server_eof,
+        "server_queued_end": f.server_queued_end,
         "corrupt": f.corrupt,
         "reset": f.reset,
         "finished_at_us": f.finished_at_ns.map(|n| n / 1000),
@@ -157,7 +183,7 @@ fn pct(sorted: &[u64], p: f64) -> Option<u64> {
 }
 
 pub fn matrix_value(scenarios: Vec<Value>) -> Value {
-    let ok = scenarios.iter().all(|s| s["ok"].as_bool().unwrap_or(false));
+    let ok = !scenarios.is_empty() && scenarios.iter().all(|s| s["ok"].as_bool().unwrap_or(false));
     json!({
         "scenario": "matrix",
         "ok": ok,

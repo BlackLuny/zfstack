@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 import resource
 import socket
@@ -89,7 +90,15 @@ def run(a):
                 child.wait()
             # Keep the normal light requests, byte validation, resource sampling
             # and path checks, including the other peer on the saturated port.
-            load.run(a)
+            previous_pid = os.environ.get("L2_IDLE_GENERATOR_PID")
+            os.environ["L2_IDLE_GENERATOR_PID"] = str(child.pid)
+            try:
+                load.run(a)
+            finally:
+                if previous_pid is None:
+                    os.environ.pop("L2_IDLE_GENERATOR_PID", None)
+                else:
+                    os.environ["L2_IDLE_GENERATOR_PID"] = previous_pid
         finally:
             stop.touch()
             try:

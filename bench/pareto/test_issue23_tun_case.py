@@ -17,7 +17,7 @@ class MeasurementAdmission(unittest.TestCase):
                 "--outdir", "/tmp/result", "--label", "test", "--variant", "B",
                 "--source-sha", "a" * 40, "--pair", "0", "--pair-order", "AB",
                 "--pair-position", "0", "--build-flags", '{"release":true}', *extra]
-        with patch.object(sys, "argv", argv), patch.object(case.os, "geteuid", return_value=0):
+        with patch.object(sys, "argv", argv), patch.object(case.os, "geteuid", return_value=0), patch.object(case.sys, "platform", "linux"):
             return case.arguments()
 
     def test_sampler_cannot_be_admitted_as_performance(self):

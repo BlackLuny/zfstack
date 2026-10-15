@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "contracts": {
+    "C01": {
+      "required_layers": [
+        "L0-C",
+        "P0",
+        "L1"
+      ],
+      "evidence": "wall-bulk; core tests; L1"
+    },
+    "C02": {
+      "required_layers": [
+        "L0-C",
+        "A1"
+      ],
+      "evidence": "crowd; splice 64/256"
+    },
+    "C03": {
+      "required_layers": [
+        "CORE",
+        "L2"
+      ],
+      "evidence": "idle admission regressions; rig idle mode"
+    },
+    "C04": {
+      "required_layers": [
+        "L0-E",
+        "A0"
+      ],
+      "evidence": "quota; unique memory release"
+    },
+    "C05": {
+      "required_layers": [
+        "A0",
+        "A1"
+      ],
+      "evidence": "watermark/share tests"
+    },
+    "C06": {
+      "required_layers": [
+        "A0",
+        "L0-E"
+      ],
+      "evidence": "waiter transitions"
+    },
+    "C07": {
+      "required_layers": [
+        "L0-E",
+        "L1"
+      ],
+      "evidence": "zero-window; paused reader"
+    },
+    "C08": {
+      "required_layers": [
+        "L0-E",
+        "A1"
+      ],
+      "evidence": "sink-full-iface"
+    },
+    "C09": {
+      "required_layers": [
+        "L0-C",
+        "L1"
+      ],
+      "evidence": "lossy; sim mutation"
+    },
+    "C10": {
+      "required_layers": [
+        "L0-C"
+      ],
+      "evidence": "tuple-isolation; peer-reuse; alias"
+    },
+    "C11": {
+      "required_layers": [
+        "L0-C",
+        "L1"
+      ],
+      "evidence": "port-density 16/64/128"
+    },
+    "C12": {
+      "required_layers": [
+        "L0-C",
+        "L2"
+      ],
+      "evidence": "noisy and heavy-fanout"
+    },
+    "C13": {
+      "required_layers": [
+        "A1"
+      ],
+      "evidence": "burst ownership and waiter reclamation"
+    },
+    "C14": {
+      "required_layers": [
+        "A1",
+        "L2"
+      ],
+      "evidence": "splice lifecycle and churn"
+    },
+    "C15": {
+      "required_layers": [
+        "L0-C"
+      ],
+      "evidence": "execution-gap scripts and sim soak"
+    },
+    "C16": {
+      "required_layers": [
+        "L2"
+      ],
+      "evidence": "load-onset UDP; unresolved issue43 retained"
+    },
+    "C17": {
+      "required_layers": [
+        "CORE",
+        "A1",
+        "L1"
+      ],
+      "evidence": "buf/pktpool/borrowed ingress; offload tests"
+    },
+    "C18": {
+      "required_layers": [
+        "A1",
+        "A0"
+      ],
+      "evidence": "cross-thread budget and scoped model"
+    },
+    "C19": {
+      "required_layers": [
+        "CORE"
+      ],
+      "evidence": "SYN/cookie/TIME_WAIT regressions"
+    },
+    "C20": {
+      "required_layers": [
+        "L0-C",
+        "A1",
+        "L2"
+      ],
+      "evidence": "registered soak and lifecycle; node long-run evidence required"
+    }
+  },
+  "claim": "This is a coverage inventory; only per-run case evidence proves execution."
+}

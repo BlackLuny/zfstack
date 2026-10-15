@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "scenario": "wall-bulk",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 1000,
+  "events": [
+    {
+      "id": "arrive",
+      "at_ms": 0,
+      "action": {
+        "kind": "AppWrite",
+        "flow": 0,
+        "side": "server",
+        "bytes": 32768
+      },
+      "when": {
+        "kind": "accepted",
+        "flow": 0
+      },
+      "deadline_ms": 100
+    },
+    {
+      "id": "arrive-again",
+      "at_ms": 100,
+      "action": {
+        "kind": "AppWrite",
+        "flow": 0,
+        "side": "server",
+        "bytes": 32768
+      }
+    },
+    {
+      "id": "fin",
+      "at_ms": 200,
+      "action": {
+        "kind": "CloseWrite",
+        "flow": 0,
+        "side": "server"
+      }
+    }
+  ],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-regression",
+  "description": "Two externally scheduled application arrivals and explicit half-close, with no eager polling."
+}

@@ -1735,6 +1735,7 @@ impl<E: Egress, I, F> Drop for Driver<E, I, F> {
 
 #[cfg(test)]
 mod tests {
+    mod qa;
     use super::*;
     use crate::sim::pattern_byte;
     use std::sync::atomic::{AtomicUsize, Ordering};

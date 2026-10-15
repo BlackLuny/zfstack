@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "toolchain": "1.94.1",
+  "suites": {
+    "pr": [
+      "QA-lint",
+      "QA-no-default",
+      "QA-core",
+      "QA-adapter",
+      "QA-adapter-directed",
+      "QA-budget-directed",
+      "QA-harness",
+      "QA-tools",
+      "QA-l2-tools",
+      "QA-perf-tools",
+      "QA-bench-build",
+      "QA-bench",
+      "QA-bench-all",
+      "QA-coverage",
+      "QA-features",
+      "QA-l0-eager",
+      "QA-l0-event-only",
+      "QA-replay-external-owner",
+      "QA-replay-network-recovery",
+      "QA-replay-scripted-arrivals",
+      "QA-replay-sink-recovery"
+    ],
+    "portable": [
+      "QA-no-default",
+      "QA-core",
+      "QA-adapter",
+      "QA-adapter-directed",
+      "QA-budget-directed",
+      "QA-harness",
+      "QA-tools",
+      "QA-l2-tools",
+      "QA-perf-tools",
+      "QA-coverage",
+      "QA-features",
+      "QA-l0-eager",
+      "QA-l0-event-only",
+      "QA-replay-external-owner",
+      "QA-replay-network-recovery",
+      "QA-replay-scripted-arrivals",
+      "QA-replay-sink-recovery"
+    ],
+    "nightly": [
+      "QA-lint",
+      "QA-no-default",
+      "QA-core",
+      "QA-adapter",
+      "QA-adapter-directed",
+      "QA-budget-directed",
+      "QA-harness",
+      "QA-tools",
+      "QA-l2-tools",
+      "QA-perf-tools",
+      "QA-bench-build",
+      "QA-bench",
+      "QA-bench-all",
+      "QA-coverage",
+      "QA-features",
+      "QA-l0-eager",
+      "QA-l0-event-only",
+      "QA-full-eager-1",
+      "QA-full-eager-17",
+      "QA-full-eager-509",
+      "QA-full-event-only-1",
+      "QA-full-event-only-17",
+      "QA-full-event-only-509",
+      "C20-soak",
+      "C02-splice-256",
+      "C18-loom",
+      "C11-l1",
+      "C16-l2",
+      "C16-l2-relay",
+      "C16-l2-queue-control",
+      "C13-burst-one",
+      "QA-replay-external-owner",
+      "QA-replay-network-recovery",
+      "QA-replay-scripted-arrivals",
+      "QA-replay-sink-recovery",
+      "C01-throughput-256"
+    ],
+    "safety": [
+      "QA-miri",
+      "QA-sanitizer",
+      "QA-fuzz-wire_parser",
+      "QA-fuzz-sequence_sack",
+      "QA-fuzz-event_script",
+      "C18-loom"
+    ],
+    "release": [
+      "QA-lint",
+      "QA-no-default",
+      "QA-core",
+      "QA-adapter",
+      "QA-adapter-directed",
+      "QA-budget-directed",
+      "QA-harness",
+      "QA-tools",
+      "QA-l2-tools",
+      "QA-perf-tools",
+      "QA-bench-build",
+      "QA-bench",
+      "QA-bench-all",
+      "QA-coverage",
+      "QA-features",
+      "QA-l0-eager",
+      "QA-l0-event-only",
+      "QA-full-eager-1",
+      "QA-full-eager-17",
+      "QA-full-eager-509",
+      "QA-full-event-only-1",
+      "QA-full-event-only-17",
+      "QA-full-event-only-509",
+      "C20-soak",
+      "C02-splice-256",
+      "C18-loom",
+      "C11-l1",
+      "C16-l2",
+      "C16-l2-relay",
+      "C16-l2-queue-control",
+      "QA-performance",
+      "C13-burst-one",
+      "QA-replay-external-owner",
+      "QA-replay-network-recovery",
+      "QA-replay-scripted-arrivals",
+      "QA-replay-sink-recovery",
+      "C01-throughput-256"
+    ],
+    "perf": [
+      "QA-performance"
+    ]
+  },
+  "release_native_platforms": [
+    "linux-x86_64",
+    "linux-aarch64",
+    "darwin-aarch64",
+    "windows-x86_64"
+  ],
+  "performance_enforcement": "shadow_until_per_case_runner_profile_calibration",
+  "jobs": {
+    "pr": [
+      "lint",
+      "test",
+      "bench",
+      "l0",
+      "tools"
+    ],
+    "portable": [
+      "portable"
+    ],
+    "nightly": [
+      "extended",
+      "l1",
+      "l2"
+    ],
+    "safety": [
+      "safety"
+    ],
+    "release": [
+      "native",
+      "integration",
+      "performance"
+    ],
+    "perf": [
+      "performance"
+    ]
+  },
+  "platform_suites": {
+    "portable": {
+      "windows-x86_64": [
+        "QA-no-default",
+        "QA-core",
+        "QA-adapter",
+        "QA-adapter-directed",
+        "QA-budget-directed",
+        "QA-tools",
+        "QA-coverage",
+        "QA-features"
+      ]
+    }
+  },
+  "release_calibrations": []
+}
