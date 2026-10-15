@@ -787,7 +787,21 @@ impl Shard {
             let (iface, peer, remote, local) = (conn.iface, conn.peer, conn.remote, conn.local);
             self.push_stateless_rst(iface, peer, local, remote, h.ack, None);
         }
+        self.reprice_pacing(idx, now);
         self.after_conn_change(idx);
+    }
+
+    /// Reprice outstanding pacing debt at the instant CC changes the rate,
+    /// including while the connection has nothing to send (§7.2). An armed
+    /// pacing wake is left to `schedule`, which detects the rate change and
+    /// lets `serve` reprice and re-arm it.
+    fn reprice_pacing(&mut self, idx: u32, now: Instant) {
+        if self.pacing.contains(idx) {
+            return;
+        }
+        let Some(conn) = self.slots[idx as usize].conn.as_mut() else { return };
+        let rate = conn.egress_pacing_rate(&self.cfg);
+        conn.sync_pacing_debt(now, rate);
     }
 
     /// Reconcile the half-open and TIME_WAIT counters with the connection state.
@@ -1725,6 +1739,7 @@ impl Shard {
                 let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
                 conn.on_timer(now, &mut ctx);
             }
+            self.reprice_pacing(idx, now);
             self.after_conn_change(idx);
         }
         while let Some(idx) = self.pacing.pop_due(now) {
@@ -3927,6 +3942,38 @@ mod pacing_wake_tests {
             assert_eq!(sh.pacing.peek().unwrap().0, expected);
             assert!(collect(sh, expected - Duration::from_nanos(1)).1.is_empty());
             assert_eq!(collect(sh, expected).1.len(), 1);
+        }
+    }
+    #[test]
+    fn idle_rate_change_reprices_debt_when_the_segment_arrives() {
+        // (old, new, debt): a slowdown must not forgive debt and a speedup
+        // must not keep charging the old rate until the next write.
+        for (old_rate, new_rate, debt) in [(10_000, 500, Duration::from_millis(100)), (500, 10_000, Duration::from_secs(2))] {
+            let (mut sim, server, client) = connected(new_rate, 10);
+            let t0 = sim.now;
+            {
+                let c = sim.a.shard.slots[server.idx()].conn.as_mut().unwrap();
+                assert!(!c.wants_tx(), "the server must be idle");
+                c.sync_pacing_debt(t0, Some(old_rate));
+                c.next_send_time = t0 + debt;
+            }
+            assert_eq!(sim.b.shard.write(client, &[1]), WriteResult::Written(1));
+            let deadline = t0 + Duration::from_millis(5);
+            while sim.a.conns[&server].received < 1 && sim.now < deadline {
+                sim.run_until(sim.now + Duration::from_micros(100));
+            }
+            let arrived = sim.now;
+            assert!(arrived < deadline && sim.a.conns[&server].received == 1);
+            let c = sim.a.shard.slots[server.idx()].conn.as_ref().unwrap();
+            assert!(!c.pacing_rate_changed(Some(new_rate)), "the segment path must reprice");
+            let edt = c.next_send_time;
+            // Repricing happened within the last 100 µs step; units are byte-ns.
+            let step = Duration::from_micros(100).as_nanos();
+            let owed_before = (t0 + debt - (arrived - Duration::from_micros(100))).as_nanos() * old_rate as u128;
+            let owed_after = (t0 + debt - arrived).as_nanos() * old_rate as u128;
+            let remaining = edt.saturating_since(arrived).as_nanos() * new_rate as u128;
+            assert!(remaining + step * new_rate as u128 >= owed_after, "no forgiven byte debt: {remaining} < {owed_after}");
+            assert!(remaining <= owed_before + new_rate as u128, "no stale-rate charge: {remaining} > {owed_before}");
         }
     }
     #[test]
