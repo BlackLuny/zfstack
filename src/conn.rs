@@ -294,6 +294,8 @@ pub struct Conn {
     adv_mss: u16,
     /// Next time a paced segment may leave (EDT).
     pub next_send_time: Instant,
+    /// Rate that prices outstanding virtual EDT debt; zero before first pacing.
+    pacing_debt_rate: u64,
 
     // ---- receive side ----
     rx_sp: SeqSpace,
@@ -559,6 +561,7 @@ impl Conn {
             cwnd_limited_prev: false,
             adv_mss: mss.min(65535) as u16,
             next_send_time: Instant::ZERO,
+            pacing_debt_rate: 0,
             rx_sp: SeqSpace { isn: Seq(0) },
             rcv_nxt: 0,
             rcv_adv: 0,
@@ -2654,8 +2657,28 @@ impl Conn {
         }
     }
 
+    /// A rate change must re-enter the ready queue to reprice an armed EDT.
+    pub(crate) fn pacing_rate_changed(&self, rate: Option<u64>) -> bool {
+        rate.map_or(self.pacing_debt_rate != 0, |r| self.pacing_debt_rate != r.max(1))
+    }
+
+    /// Reprice only outstanding virtual byte debt when pacing changes rate.
+    /// Elapsed time is already paid; past credit is neither enlarged nor reset.
+    /// Unpaced intervals retain the last known unit until pacing resumes.
+    pub(crate) fn sync_pacing_debt(&mut self, now: Instant, rate: Option<u64>) {
+        let Some(rate) = rate.map(|r| r.max(1)) else { return };
+        let old_rate = self.pacing_debt_rate;
+        if old_rate != 0 && rate != old_rate && self.next_send_time > now {
+            let owed = (self.next_send_time - now).as_nanos() * old_rate as u128;
+            let ns = owed / rate as u128 + u128::from(owed % rate as u128 != 0);
+            self.next_send_time = now + Duration::from_nanos(ns.min(u64::MAX as u128) as u64);
+        }
+        self.pacing_debt_rate = rate;
+    }
+
     /// Account paced transmission (EDT, §7.2).
     pub(crate) fn on_paced_send(&mut self, now: Instant, bytes: usize, rate: u64, credit: Duration) {
+        self.sync_pacing_debt(now, Some(rate));
         let floor = now - credit;
         let start = if self.next_send_time < floor { floor } else { self.next_send_time };
         let dt = Duration::from_nanos((bytes as u128 * 1_000_000_000 / rate.max(1) as u128) as u64);
