@@ -12,6 +12,7 @@ use crate::world::{execute, Config, Expect, FlowSpec, FullFault, Kind, Limits, R
 #[derive(Clone, Debug, Default)]
 pub struct Overrides {
     pub seed: Option<u64>,
+    pub app_drive: crate::schedule::AppDriveMode,
     pub ports: Option<u16>,
     pub lights: Option<u16>,
     pub heavy_bytes: Option<u64>,
@@ -38,6 +39,7 @@ pub fn scenario_names() -> &'static [&'static str] {
         "sink-full",
         "sink-full-iface",
         "idle-reclaim",
+        "capacity-recovery",
         "lossy",
         "iface-rebuild",
         "wall-bulk",
@@ -124,6 +126,12 @@ fn run_noisy(name: &str, kind: Noisy, o: &Overrides) -> Value {
         "ok": errors.is_empty(),
         "errors": errors,
         "notes": [noisy_note(kind)],
+        "app_drive": loaded.app_drive.as_str(),
+        "contract_ids": crate::oracle::contract_ids(name),
+        "assertions": crate::oracle::assertions(&loaded),
+        "scheduler": loaded.scheduler,
+        "trace": crate::report::trace_value(&loaded),
+        "events": loaded.events,
         "clock": "virtual",
         "clock_note": b["clock_note"],
         "seed": loaded.seed,
@@ -139,6 +147,8 @@ fn run_noisy(name: &str, kind: Noisy, o: &Overrides) -> Value {
         "budget": l["budget"],
         "baseline": {
             "steps": base.steps,
+            "assertions": crate::oracle::assertions(&base),
+            "trace": crate::report::trace_value(&base),
             "users": b["users"],
             "budget": b["budget"],
         },
@@ -188,7 +198,7 @@ fn latency_delta(base: &Value, loaded: &Value) -> Value {
     json!(rows)
 }
 
-fn build(name: &str, o: &Overrides) -> Result<Config, String> {
+pub(crate) fn build(name: &str, o: &Overrides) -> Result<Config, String> {
     let mut cfg = match name {
         "tuple-isolation" => cfg_tuple(),
         "peer-reuse" => cfg_peer_reuse(),
@@ -201,6 +211,7 @@ fn build(name: &str, o: &Overrides) -> Result<Config, String> {
         "sink-full-iface" => cfg_sink_full_iface(),
         "crowd" => cfg_crowd(o),
         "idle-reclaim" => cfg_idle(),
+        "capacity-recovery" => cfg_capacity(o.heavy_conns.unwrap_or(64)),
         "lossy" => cfg_lossy(),
         "iface-rebuild" => cfg_rebuild(),
         "wall-bulk" => cfg_wall(o.heavy_bytes.unwrap_or(64 * 1024)),
@@ -211,6 +222,7 @@ fn build(name: &str, o: &Overrides) -> Result<Config, String> {
 }
 
 fn apply(o: &Overrides, cfg: &mut Config) {
+    cfg.app_drive = o.app_drive;
     if o.tx_cache_trim {
         cfg.tx_cache_trim = Some(zfstack::TxCacheTrimPolicy {
             check_interval: Duration::from_millis(10),
@@ -249,7 +261,7 @@ fn notes_for(name: &str, report: &Report) -> Vec<String> {
     }
 }
 
-fn extra_checks(name: &str, report: &Report) -> Vec<String> {
+pub(crate) fn extra_checks(name: &str, report: &Report) -> Vec<String> {
     let mut errors = Vec::new();
     match name {
         "zero-window" => {
@@ -275,12 +287,12 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
                 None => errors.push("zero-window heavy flow missing".into()),
             }
         }
-        "sink-full" => check_backpressure(&mut errors, report, 200_000_000),
+        "sink-full" => check_backpressure(&mut errors, report, report.sink_window_ns.map_or(200_000_000, |(_, until)| until)),
         "sink-full-iface" => {
-            check_backpressure(&mut errors, report, 200_000_000);
+            let (start, until) = report.sink_window_ns.unwrap_or((40_000_000, 200_000_000));
+            check_backpressure(&mut errors, report, until);
             match report.flows.iter().find(|f| f.class == "open").and_then(|f| f.finished_at_ns) {
-                Some(t)
-                    if (40_000_000..200_000_000).contains(&t) && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
+                Some(t) if (start..until).contains(&t) && !report.flows.iter().find(|f| f.class == "open").is_some_and(|f| f.queued_during_block) => {}
                 Some(t) => errors.push(format!("unblocked iface did not finish during the other iface's Full window (finished={t})")),
                 None => errors.push("unblocked iface flow did not finish".into()),
             }
@@ -293,6 +305,22 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
                 Some(at) if report.reserved_end <= at => {}
                 Some(at) => errors.push(format!("reserved grew during idle: complete {at} end {}", report.reserved_end)),
                 None => errors.push("idle run never reached a settled point".into()),
+            }
+        }
+        "capacity-recovery" => {
+            let sample = |label| report.resources.iter().find(|v| v["label"] == label);
+            let conns = |label| sample(label).and_then(|v| v["server_connections"].as_u64());
+            if conns("peak").is_none_or(|n| n <= 1)
+                || conns("one") != Some(1)
+                || conns("zero") != Some(0)
+                || conns("reburst").is_none_or(|n| n <= 1)
+                || conns("final") != Some(0)
+            {
+                errors.push(format!("C13 capacity phases were not observed: {:?}", report.resources));
+            }
+            let reserved = |label| sample(label).and_then(|v| v["reserved_bytes"].as_u64());
+            if reserved("final").zip(reserved("zero")).is_none_or(|(last, first)| last > first) {
+                errors.push("C13 second drain retained more physical budget than first drain".into());
             }
         }
         "iface-rebuild" => {
@@ -328,7 +356,7 @@ fn extra_checks(name: &str, report: &Report) -> Vec<String> {
             }
         }
         "quota" => {
-            if report.share_blocked == 0 && report.allocation_failures_by_level == [0; 3] {
+            if report.share_blocked == 0 && report.allocation_failures_by_level == [0; 3] && report.scheduler["short_writes"].as_u64().unwrap_or(0) == 0 {
                 errors.push("quota run never reached a send share or physical budget limit".into());
             }
         }
@@ -495,6 +523,27 @@ fn cfg_idle() -> Config {
     cfg.until = Duration::from_secs(4);
     cfg.flows.push(bulk(0, 1, "a", 4096));
     cfg.flows.push(bulk(0, 2, "b", 4096));
+    cfg
+}
+
+fn cfg_capacity(burst: u16) -> Config {
+    let mut cfg = Config::skeleton(1, Topology::SharedShard);
+    cfg.time_wait = Some(Duration::from_millis(100));
+    cfg.client_max_rcv = Some(32 * 1024);
+    cfg.until = Duration::from_secs(3);
+    let mut survivor = bulk(0, 1, "survivor", 128 * 1024);
+    survivor.read_pause = Some(Duration::from_millis(600));
+    cfg.flows.push(survivor);
+    for n in 0..burst {
+        cfg.flows.push(bulk(0, n as u64 + 2, "burst", 4096));
+        let mut again = bulk(0, n as u64 + 2, "reburst", 4096);
+        again.start_after = Duration::from_millis(1600);
+        cfg.flows.push(again);
+    }
+    cfg.resource_samples = [("peak", 30), ("one", 400), ("zero", 1400), ("reburst", 1630), ("final", 2800)]
+        .into_iter()
+        .map(|(label, ms)| (label.to_owned(), Duration::from_millis(ms)))
+        .collect();
     cfg
 }
 
@@ -682,6 +731,7 @@ mod tests {
         assert!(extra_checks("quota", &r).is_empty(), "{:?}", extra_checks("quota", &r));
         r.share_blocked = 0;
         r.allocation_failures_by_level = [0; 3];
+        r.scheduler["short_writes"] = json!(0);
         assert!(!extra_checks("quota", &r).is_empty());
     }
 
@@ -754,6 +804,46 @@ mod tests {
         for name in ["quota", "zero-window", "sink-full-iface", "lossy", "iface-rebuild", "noisy-same-iface", "noisy-cross-shard", "same-shard-peer-alias"] {
             let value = run_named(name, &o).unwrap();
             assert!(value["ok"].as_bool().unwrap(), "{name}: {value}");
+        }
+    }
+
+    #[test]
+    fn event_only_full_matrix_and_trace_replay() {
+        let o = Overrides { app_drive: crate::schedule::AppDriveMode::EventOnly, full: true, ..Overrides::default() };
+        let matrix = run_named("matrix", &o).unwrap();
+        for row in matrix["scenarios"].as_array().unwrap() {
+            assert_eq!(row["ok"], true, "{}: {}", row["scenario"], row["errors"]);
+        }
+        let a = run_named("lossy", &o).unwrap();
+        let b = run_named("lossy", &o).unwrap();
+        assert_eq!(a["trace"], b["trace"]);
+    }
+
+    #[test]
+    fn suppress_sole_writable_stalls_event_only_while_eager_recovers() {
+        let mut cfg = cfg_quota();
+        cfg.suppress_writable = Some(0);
+        let eager = execute(cfg.clone());
+        cfg.app_drive = crate::schedule::AppDriveMode::EventOnly;
+        let event = execute(cfg);
+        assert!(eager.ok, "{:?}", eager.errors);
+        assert!(!event.ok, "the notification fault must be detected");
+        // Eager can keep polling below the notification watermark, so the
+        // matching Writable need not be emitted in its different history.
+        assert!(eager.scheduler["suppressed_writable"].as_u64().unwrap() <= 1);
+        assert_eq!(event.scheduler["suppressed_writable"], 1);
+        let blocked = &event.flows[0];
+        assert!(blocked.server_write_blocked);
+        assert_eq!(blocked.server_queued_end, 0, "no in-flight data can produce a rescue ACK");
+        assert!(blocked.server_sent < blocked.client_target_recv);
+        assert_eq!(blocked.server_sent, blocked.client_recv, "accepted payload drained completely");
+    }
+
+    #[test]
+    fn capacity_burst_one_zero_reburst_both_drivers() {
+        for app_drive in [crate::schedule::AppDriveMode::Eager, crate::schedule::AppDriveMode::EventOnly] {
+            let result = run_named("capacity-recovery", &Overrides { app_drive, ..Overrides::default() }).unwrap();
+            assert_eq!(result["ok"], true, "{}", result["errors"]);
         }
     }
 

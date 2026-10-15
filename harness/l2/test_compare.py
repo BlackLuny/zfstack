@@ -112,6 +112,35 @@ class CompareTests(unittest.TestCase):
         self.assertIn("missing qdisc evidence", str(report["errors"]))
         self.assertIn("workload dimensions", str(report["errors"]))
 
+    def test_contamination_in_either_arm_is_not_performance_evidence(self):
+        for source in ("base", "candidate"):
+            self.edit(f"normal-{source}-a", "result.json", lambda r: r.update(performance_contaminated=True))
+        report = compare(self.root)
+        self.assertFalse(report["ok"])
+        self.assertIn("contaminated", str(report["errors"]))
+
+    def test_full_configuration_changes_include_light_churn_udp_and_unknown_new_keys(self):
+        for field, value in (("light_conns", 2), ("churn_requests", 4), ("udp_enabled", True),
+                             ("config", {"future_setting": "changed"})):
+            self.edit("small-candidate-a", "result.json", lambda r, k=field, v=value: r.update({k: v}))
+            self.assertIn("workload dimensions", str(compare(self.root)["errors"]))
+        self.edit("normal-base-a", "result.json", lambda r: r.update(effective_config={"future_setting": 1}))
+        self.edit("normal-candidate-a", "result.json", lambda r: r.update(effective_config={"future_setting": 2}))
+        self.assertIn("workload dimensions", str(compare(self.root)["errors"]))
+
+    def test_both_arms_empty_zero_cpu_window_and_nan_are_rejected(self):
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertFalse(compare(Path(empty))["ok"])
+        self.edit("small-candidate-a", "result.json", lambda r: r["worker"]["loaded"].update(sample_window_sec=0))
+        self.edit("normal-base-a", "result.json", lambda r: r.update(heavy_mbps=float("nan")))
+        report = compare(self.root)
+        self.assertFalse(report["ok"])
+        self.assertIn("nonfinite", str(report["errors"]))
+
+    def test_old_cpu_approximation_cannot_pass_an_explicit_limit(self):
+        self.assertFalse(compare(self.root, throughput_drop=100)["ok"])
+        self.assertEqual(compare(self.root)["performance"], "INCONCLUSIVE")
+
 
 if __name__ == "__main__":
     unittest.main()

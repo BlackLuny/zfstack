@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "exemptions": [],
+  "issues": [
+    {
+      "issue": "https://github.com/BlackLuny/zfstack/issues/43",
+      "scope": "L2 load-onset UDP",
+      "status": "UNATTRIBUTED",
+      "exemption": false,
+      "note": "Historical observation only. No automatic waiver of current failures."
+    },
+    {
+      "issue": "qa/issues/queue-control-atomic-restoration.md",
+      "scope": "C16-l2-queue-control injector qualification",
+      "status": "known-BLOCKED",
+      "exemption": false,
+      "note": "Stock tc root snapshot and deletion are not atomic under ongoing traffic. Retain observed NOT_RUN/BLOCKED and every payload failure; no exemption, threshold change, retry-until-pass, or new injector implementation is included."
+    }
+  ]
+}

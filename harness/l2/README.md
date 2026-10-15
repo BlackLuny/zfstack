@@ -55,7 +55,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s harness/l2 -p 'test_*.
 
 比较器对基线和候选都检查 qdisc 证据，并把 netem 包上限加入负载一致性检查。上述历史案卷的 delayed 组未保存该证据，现在会明确判为比较证据不足；不要补写零丢包，应在修正台架重跑。历史无延迟案卷仍可读取。
 
-CPU 按加载期 `worker_cpu_sec / sample_window_sec` 折算平均核数，再除以有效吞吐得到 CPU 秒 / GiB；RSS 取加载期采样峰值。比较器可显式传 `--max-throughput-drop <百分比>` / `--max-cpu-rise <百分比>` 作为本次测试门槛，没有隐藏的性能阈值。这些值是整条集成路径的指标，仍不能当作 core 微基准。
+旧案卷的 CPU/GiB 是采样子窗口平均 CPU 与整加载期 goodput 的近似组合，只保留为标明局限的描述值。新的 `measurement_window` 在预先排定的 phase 起止处采样，拒绝以内部子窗口代替加载开始；在同一组单调时钟边界同时记录 worker CPU 与累计已验证重流字节，再分别取增量；记录 `/proc` CPU 计时分辨率和每个边界的观测偏差（默认上限 5 ms）。缺边界、计数回退、零有效字节或精度超限时 CPU/GiB 为 null，不能写成零。整个加载窗口的 goodput 继续单列，不覆盖加载开始异常。
+
+`compare.py` 是历史 small/normal/delayed 案卷模式，完整性 `ok` 不等于正式性能 PASS。它拒绝编译污染，比较完整 effective_config（历史输入保留已存在配置字段），只允许显式 `--aa` 使用相同二进制。旧案卷缺完整配置或同窗计数时不能通过 `--max-throughput-drop` / `--max-cpu-rise` 的数值放行；历史性能结论保持 INCONCLUSIVE。
 
 脚本暂时停止 rig watcher 及其独立的 `rig-watch-*.scope` 批次，持有 `watch.lock`，等待原用例的退出清理，再创建自己代际标识的隔离 netns/veth；退出时杀掉测试进程、删除拓扑和 undo timer、恢复原 watcher 状态。建议通过 systemd 或有足够余量的 `timeout 360 bash ...` 运行，节点租约由调用方续期。它不修改面板数据库和已安装的 `zf` 服务。等待命名空间退出默认最多 150 秒，可用 `L2_NAMESPACE_WAIT_SECS` 调整；仍有命名空间或其他 rig owner 时拒绝开始，不删除未知资源。
 
@@ -64,3 +66,73 @@ CPU 按加载期 `worker_cpu_sec / sample_window_sec` 折算平均核数，再�
 案卷包含临时 WG 密钥、控制器密钥与配置；共享结果仅导出结果、原始负载样本、资源/路径计数、qdisc 前后快照与汇总、环境与构建出处，保留密钥在测试节点。`namespaces-after.txt` 与 `watcher-after.txt` 记录清理结果。
 
 这是小规模功能与负载切换验证。没有声明百端口容量、WAN 丢包/漫游/重建覆盖；首轮没有 AB/BA 重复，后续修复对比采用 ABBA，每种二进制每配置两次。报告单列实测代价，没有设默认数值回归门槛，也不能据此比较 TCP core 与内核的性能。
+
+
+## 通用 QA 证据导出
+
+`export_case.py` 支持任意 case ID，无需 small/normal/delayed 目录命名或强制抓包。它读取 `result.json` 加 `raw.json.gz`，或直接读取新 rig 输出的 `load/client-*.json` / `load/udp-*.json`。JSON 拒绝重复键、NaN/Infinity、负计数与过大输入；gzip 解压上限 64 MiB。输入缺失时不补写成功样本、零丢包、时间戳或源码身份。
+
+```sh
+python3 harness/l2/export_case.py /absolute/rig-case \
+  --identity /absolute/orchestrator-identity.json --output /absolute/case-v2.json
+```
+
+identity 由可信编排提供 QA v2 的 run/block/arm/case/instance、tested SHA、plan/build/environment/config hash、binary SHA256 和真实 execution 生命周期。导出器保存实际结果 artifact hash，功能、测量有效性、性能三个域分别输出。单个 run 的性能始终 INCONCLUSIVE，正式判断使用 `bench/pareto/perf_gate.py`。配置、二进制、WG 路径、必需 peer 或阶段证据不符时功能证据为 UNKNOWN，已观察到的数据错误仍保留为 FAIL。仅编译污染或 CPU 边界精度不足不会抹掉可用的功能结论。
+
+`load_contract.effective_configuration(args, environment)` 是编排与负载生成器共用的配置构造器，覆盖 heavy/light、churn、UDP、请求尺寸/速率、阶段/超时、内存、MTU、netem、方向、runtime/profile、抓包和边界精度。`L2_RUNTIME_ID` 与 `L2_PROFILE_ID` 必须与实际构建/启动 manifest 核对，未设置时记录 null 并拒绝正式性能认证；设置标签本身不是验证。`L2_EFFECTIVE_CONFIG_JSON` 可保存额外的完整编排配置，放入 `orchestrator_manifest`，不能覆盖观察到的负载设置。run-rig 加入实际 worker tuning fingerprints、load/idle 模式，以及 idle 参数；原始 WG 路径前后计数和 startup port 数保留在 `path_evidence`，缺失或回退均拒绝。
+
+## 到达过程与加载开始异常
+
+默认 TCP 轻请求保留历史 closed-loop 模式；`L2_LIGHT_MODE=open-loop` 选择运行前生成的固定到达表，`L2_LIGHT_RATE_HZ` 固定每条逻辑 lane 的绝对速率。UDP 始终使用预生成到达表，`L2_UDP_RATE_HZ` 默认 100。`L2_MAX_GENERATOR_LAG_SECS`（默认 0.02）预先限制发生器迟到；超限 arrival 记为 missed，不补发，也不从 scheduled 分母删除。open-loop 与 `L2_CHURN_REQUESTS=N` 可同时使用：每 N 个计划 arrival 组成连接 epoch，各 epoch 固定在首个请求前 0.25 秒尝试连接；后续 epoch 的开启和发送日程不依赖任何响应。旧连接可等待自己的 deadline，与新连接重叠，绝不推迟新连接、退回 closed-loop 或降低负载。
+
+每条 lane 使用一个事件循环，最多同时保留 64 个 epoch；每个 epoch 的待发送 FIFO 上限为 32 个请求。正常调度合并多个仍在预算内的 arrival 时，按原顺序非阻塞发送直到 EAGAIN；每条请求首次实际发送前仍检查原 scheduled + max_generator_lag，不延后日程。队列满或超过原 deadline 才记 miss；部分 frame 发送后超时必须关闭该 epoch，避免复用错帧流。一个 peer 的所有 lane 合计最多 200000 个预定 arrival、最多 128 条 lane。容量耗尽、迟到、连接失败、发送背压和请求 timeout 都保留对应连接/请求记录。每条 lane 保存 `schedule` 及其 SHA256、每个 sample 的 epoch/scheduled/started/outcome、所有连接实际生命周期和最大并发数。独立分析器从实际全量配置重建计划，核对每个 epoch、请求、聚合计数与原始 lane 列表；不能用“offered_rate_hz=100”标签代替实际供给证据。固定日程预计算的上限是显式能力限制，超出时拒绝配置，不能静默截短计划。
+
+每个请求/数据报保存 scheduled/started/completed/failed/timed_out/unfinished/missed、phase、seq、实际起止和 generator lag。超时与迟到回包分别保留，成功分位数不会吸收超时伪值。UDP load-onset 首秒的失败额外保存为 `startup_anomalies`，所有原始样本仍在文件中；它们不是被删掉的预热段。发生器 missed arrivals 使性能证据无效，已送出请求的超时或 payload mismatch 仍是功能失败。根目录的 `test_mixed_load.py` 回环检查只检验已送出响应完整性并核对全部 missed 记录；它不认证未绑核宿主的 20 ms 调度精度。
+
+这些新增 Python 观测只在测试端执行，未修改生产协议栈、adapter 默认缓冲或工作线程。精密性能仍须在受控 Linux 节点做真实 A/A、held-out 已知退化校准及真实 WG 重放；本地单元测试不能替代这些证据。
+
+## 两端进程资源观测
+
+`load/endpoint-samples.json` 保存 heavy/light/UDP 发生器、业务 TCP/UDP 目标服务、Relay 探测目标和实际 forwarder 的 CPU/RSS 时间线；idle 模式另含 idle 发生器。TCP 和 UDP 目标共用一个 Python 进程，因此只报告该进程总量，不伪造协议级拆分。身份字段限于角色、namespace、PID、进程 starttime、comm 和 executable；不读取 cmdline、进程环境或配置/密钥。
+
+端点采样在线程中独立进行，包含 baseline/loaded/recovery 的完整边界及每 0.5 秒观测点，记录每个进程自己的读数起止偏差和 CPU 时钟分辨率。它不扩展 worker CPU/已验证字节读取之间的窗口，也不声称各端点完全同时采样。父进程在最后一个端点边界完成后才回收发生器；已退出的 zombie 可保留最终 CPU，RSS 必须为 null，不能用零伪造撤载回收。每个端点按冻结的 `boundary_tolerance_ns` 单独验收。
+
+`evidence.load_case` 自动把该文件收入 typed raw，正式 runner 的 `freeze_l2_raw` 将其包含在既有 `raw.json.gz` 白名单中。离线复算从原始样本检查完整角色集合、进程身份、阶段边界、CPU 转换、计数回退及实际偏差，并输出 `endpoint_diagnostics`。缺端点或采样失败只使性能证据 INVALID，独立功能 PASS/FAIL 保留；观察器异常不能跳过发生器、队列或原有 worker 样本的清理。原来的 worker CPU/GiB 定义保持不变，这些端点数值用于识别发生器和目标瓶颈，不从 worker CPU 中相减，也不称为纯核心成本。
+
+
+## 共用宿主机的隔离入口
+
+共用生产宿主不得调用默认 watcher/service 管理路径。由 `qa/isolate-linux.sh` 建立私有 mount、network、PID namespaces、私有 `/run/netns` 并屏蔽 host systemd/dbus sockets 后，才可设置 `L2_ISOLATED=1`。隔离检查在任何 rig 服务操作前运行，要求 wrapper 标记，并核对 `QA_HOST_NETNS_ID` / `QA_HOST_MNTNS_ID` / `QA_HOST_PIDNS_ID` 与当前 namespace 不同；没有相应隔离证据即拒绝。
+
+隔离模式不执行任何 watcher/scopes `systemctl`，也不创建或取消 host undo timers；退出记录明确为 watcher `not_applicable`。拓扑状态和锁固定在本次新输出目录的 `isolated-rig-state`，已有工具/build 路径仅用于读取。外层 namespace wrapper 负责终止和回收自身子树，测试不清理宿主的未知 netns、服务、路由或其他工作区。默认专用 rig 入口的行为保持原样。
+
+## Relay / private_tun 的独立实际路径
+
+默认 `L2_OUTBOUND=direct` 保持原有路径及配置。`L2_OUTBOUND=relay` 使用冻结 rig 的 `wg-portmap.py --outbound relay` 和 `lib/fwd.sh`，在 fwd1 启动真实 `forwarder-server`；原来的第二个客户端移到 fwd4，避免 fwd1 的客户端 WG 路由把转发流量送回 worker。业务端口仍为 19001，健康探测改为 19002。前后原始计数要求 target → fwd1 → worker 两条边均承载已验证重流字节，同时业务端口 worker → target 捷径计数必须为零，forwarder → target 计数必须增长。仅在构建图中链接 private_tun 不计为这项覆盖。
+
+构建固定源码矩阵时显式增加 forwarder：
+
+```sh
+python3 -m qa.crossrepo build --archive /absolute/frozen-source-matrix \
+  --output /absolute/new-build-output --cell head-head --forwarder
+```
+
+构建器执行同一 toolchain/profile/features 的锁定构建，核对实际 forwarder 的 `--build-info` 中 ZFC 和 private_tun commit，并在 worker manifest 中冻结其二进制 hash、大小和依赖图。正式节点配置增加绝对 `forwarder_binary`，QA 验证后通过 `L2_FORWARDER_BINARY` 传给现有 `run-rig.sh RIG WORKER NEW_OUTPUT`。Relay case 的配置在 Direct 全量配置上增加 `outbound: relay`、`probe_port: 19002`、`topology.client_nodes: [client,fwd4,fwd2,fwd3]`，其余字段仍逐项冻结。缺构建、能力、路径计数或执行身份只能产生未执行/证据不足结论。
+
+## 共享出口队列负对照
+
+`l2-queue-control` 是测试侧诊断 case：同一租约先执行健康基线，再执行带 `queue_control` 的相同负载，验证绝对服务延迟合同确实能抓住深出口排队。它不声明复现历史 #44 的具体实现或根因，也不进入干净性能比较。推荐冻结 closed-loop、churn 0，并使用如下唯一受支持的注入形状：
+
+```json
+{"kind":"netem-delay","node":"worker","interface":"eth0","phase":"loaded","delay_ms":500.0,"limit_packets":100000}
+```
+
+只有经过验证的 QA namespace 隔离模式允许注入。负载脚本在自己的 worker eth0 上从空 `noqueue` 添加带唯一 handle 的 netem，记录 JSON/text 原始计数和单调时钟。注入从 loaded 开始，提前 `delay_ms / 1000 + 0.25` 秒结束，必须在 recovery 前恢复原根队列。全部 loaded 请求和统计窗口照常保留，实际注入 start/end/restored 时间也必须吻合预先冻结的窗口。发生器不会删掉未完成请求或缩短服务样本窗口。
+
+v3 证据明确区分持续注入与收尾：持续阶段仍为原 delay-only 配置；收尾在同一个 netem 上改为 `delay 0ms rate 2000000000bit`，保留现有积压，再等待 backlog 清空并删除自己的 qdisc。非零 rate 给新包分配顺序的序列化时间，避免直接清零 delay 时越过旧积压；有限的 2 Gbit/s 排空速率同时约束集中排出。它来自预注册的 2/3/4 Gbit/s 台架容量对照中最低合格候选；最终 `8bf5bb8` 独立完整复验因读空后重新积压而被严格拒绝（NOT_RUN），不能作为已完成的台架。它不是产品带宽承诺、性能通过阈值或任意负载的排空保证。旧 v2 的 100 Gbit/s 排空在完整负载下产生链路丢包，已拒绝，不能作为 v3 成功证据。
+
+`queue_negative_evidence(case, baseline_output, fault_output, worker)` 独立复算两次原始证据。PASS 要求基线服务 PASS、故障期 payload/路径 PASS、故障期服务合同 FAIL、真实 backlog > 0 且 drops = 0、恢复期相同服务合同 PASS、完整排空及清理证据。基线、数据完整性或恢复失败仍为 FAIL；缺能力、丢包、配置漂移或缺计数为 NOT_RUN。基线会显式清空 `L2_QUEUE_DELAY_MS` 和 `L2_QUEUE_LIMIT_PACKETS`，防止继承故障运行的参数。服务 peer ID 是 `client-1`、`client-2`、`client-3`，延迟包含 scheduled 到 started 的发生器排队及请求本身耗时。
+
+QueueControl 同时归档六个端点全部接口的前后原始计数与身份；任意 drop/error 增量、身份改变、缺样或计数器回退均使延迟注入不合格。独立校验器要求原 500 ms 注入与 250 ms guard、JSON/text 两种实际 tc 参数、零 qdisc 丢包、draining 和 cleanup 均无积压，并在固定 recovery 边界前恢复原 qdisc。TCP/UDP payload 失败不能被预期 SLO 失败或台架不合格覆盖。容量抓包的记录顺序不是严格线上接收顺序的证明；实际交付配对及 UDP 完整性另行保留。
+
+持续负载下，`tc show` 读空与 `tc qdisc del` 之间不存在原子排空保证，甚至同一采样的 JSON 与文本计数也可能不同。缩短间隔、反复读零或重复运行不能修复该竞态；零 link/qdisc drop 也不覆盖删除时的队列 reset。后续需要不会在测量中实时替换 root 的持久注入器或等价原子能力，保留原负载、窗口与合同后重新验收。当前未以该缺口修改生产配置或放宽校验，细节见 [验证记录](../../qa/VALIDATION.md)。

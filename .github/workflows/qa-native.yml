@@ -1,0 +1,72 @@
+name: QA native platforms
+on:
+  workflow_call:
+    inputs:
+      tested_sha:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tested_sha:
+        description: Full reviewed commit SHA
+        type: string
+        required: true
+permissions:
+  contents: read
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TRUSTED_REF: ${{ vars.QA_TRUSTED_REF || github.sha }}
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - os: macos-14
+            platform: darwin-aarch64
+          - os: windows-2022
+            platform: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: rustup toolchain install 1.94.1 --profile minimal
+      - run: python -m pip install -r qa/requirements.lock
+      - name: Freeze reviewed policy
+        run: python -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+      - name: Native core and adapter contracts
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          QA_PLATFORM: ${{ matrix.platform }}
+        run: |
+          python -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite portable --tested-sha "$TESTED_SHA" --platform "$QA_PLATFORM" --output plan.json
+          python -m qa run-plan --policy "$RUNNER_TEMP/qa-policy" --plan plan.json --output qa/results/native
+      - name: Evaluate native scope
+        if: always()
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+        run: python -m qa evaluate --policy "$RUNNER_TEMP/qa-policy" --plan plan.json --results qa/results/native --expected-sha "$TESTED_SHA" --output qa/results/native/summary.json --report qa/results/native/report.md
+      - name: Stage evidence
+        if: always()
+        run: python -m qa.workflow stage-upload --source qa/results/native --output "$RUNNER_TEMP/qa-upload"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-native-${{ matrix.platform }}
+          path: ${{ runner.temp }}/qa-upload
+          if-no-files-found: error
+          retention-days: 14

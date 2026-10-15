@@ -1,0 +1,37 @@
+[package]
+name = "zfstack-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Coverage instrumentation and libFuzzer stay outside the product workspace.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+bytes = "1"
+zfstack = { path = "..", features = ["test-peer"] }
+
+[[bin]]
+name = "wire_parser"
+path = "fuzz_targets/wire_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sequence_sack"
+path = "fuzz_targets/sequence_sack.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_script"
+path = "fuzz_targets/event_script.rs"
+test = false
+doc = false
+bench = false

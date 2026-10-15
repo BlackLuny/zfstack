@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zfstack.invalid/qa/plan-v1.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "suite": {
+      "enum": [
+        "pr",
+        "nightly",
+        "release",
+        "perf",
+        "portable",
+        "safety"
+      ]
+    },
+    "tested_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "policy_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "toolchain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "case_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "case_instance_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "layer": {
+            "enum": [
+              "META",
+              "L0-C",
+              "L0-E",
+              "A0",
+              "A1",
+              "L1",
+              "L2",
+              "P0",
+              "P1",
+              "P2",
+              "CORE"
+            ]
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "config": {
+            "type": "object"
+          },
+          "runner": {
+            "enum": [
+              "lint",
+              "core-build",
+              "core-test",
+              "adapter-test",
+              "adapter-qa",
+              "budget-qa",
+              "harness-test",
+              "python-qa",
+              "python-l2",
+              "python-perf",
+              "bench-build",
+              "bench-test",
+              "bench-all-test",
+              "l0",
+              "replay",
+              "ignored",
+              "coverage",
+              "feature-audit",
+              "l1",
+              "l2",
+              "l2-queue-control",
+              "external-performance",
+              "miri",
+              "sanitizer",
+              "fuzz",
+              "loom"
+            ]
+          },
+          "requiredness": {
+            "enum": [
+              "REQUIRED",
+              "OPTIONAL",
+              "EXEMPTED"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "performance": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "enum": [
+                  "not_applicable",
+                  "shadow",
+                  "enforce"
+                ]
+              },
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "minItems": 0
+              },
+              "calibration_id": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "experiment_plan_hash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "absolute_slos": {
+                "type": "object",
+                "propertyNames": {
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "scope": {
+                      "const": "observed-per-run"
+                    },
+                    "min": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "max": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "scope"
+                  ],
+                  "oneOf": [
+                    {
+                      "required": [
+                        "min"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "max"
+                      ]
+                    }
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "mode",
+              "metrics"
+            ],
+            "additionalProperties": false
+          },
+          "exemption_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "toolchain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "service_contract": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "const": 1
+              },
+              "peer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "phases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "min_samples_per_peer_phase": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_latency_ms": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "deadline_ms": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "max_deadline_miss_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "schema_version",
+              "peer_ids",
+              "phases",
+              "min_samples_per_peer_phase",
+              "max_latency_ms",
+              "deadline_ms",
+              "max_deadline_miss_rate"
+            ],
+            "additionalProperties": false
+          },
+          "integration_build": {
+            "type": "object",
+            "properties": {
+              "toolchain": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profile": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "toolchain",
+              "profile",
+              "features"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "case_id",
+          "case_version",
+          "case_instance_id",
+          "layer",
+          "platform",
+          "profile",
+          "config",
+          "runner",
+          "requiredness",
+          "timeout_seconds",
+          "performance",
+          "toolchain",
+          "features"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "suite",
+    "tested_sha",
+    "base_sha",
+    "head_sha",
+    "policy_hash",
+    "toolchain",
+    "seed",
+    "cases"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scenario": "wall-bulk",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 1000,
+  "events": [
+    {
+      "id": "hold",
+      "at_ms": 0,
+      "action": {
+        "kind": "HoldMemory",
+        "port": 0,
+        "peer": 10,
+        "lease": "external-owner",
+        "bytes": 65536
+      }
+    },
+    {
+      "id": "release",
+      "at_ms": 100,
+      "action": {
+        "kind": "ReleaseMemory",
+        "lease": "external-owner"
+      }
+    }
+  ],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-regression",
+  "description": "A named external memory owner is charged and released exactly once."
+}

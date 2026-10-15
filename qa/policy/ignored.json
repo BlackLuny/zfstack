@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "tests": [
+    {
+      "name": "sim::tests::bbr_trace",
+      "source": "src/sim/tests.rs",
+      "category": "diagnostic",
+      "schedule": "manual",
+      "reason": "Packet trace for investigation, not a correctness oracle."
+    },
+    {
+      "name": "sim::tests::bbr_probe_steady_state",
+      "source": "src/sim/tests.rs",
+      "category": "benchmark",
+      "schedule": "manual",
+      "reason": "Virtual protocol work report; not physical performance."
+    },
+    {
+      "name": "sim::tests::soak_paused_reader_lossy_multiflow",
+      "source": "src/sim/tests.rs",
+      "category": "soak",
+      "schedule": "nightly",
+      "reason": "Fixed historical failure seeds."
+    },
+    {
+      "name": "tokio_adapter::tests::issue37_splice_256_streams_keep_progressing_with_delayed_acks",
+      "source": "src/tokio_adapter.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Full 256-stream complement to normal 64-stream test."
+    },
+    {
+      "name": "tokio_adapter::tests::issue43_repeated_splice_cpu_evidence",
+      "source": "src/tokio_adapter.rs",
+      "category": "benchmark",
+      "schedule": "manual-exclusive-node",
+      "reason": "CPU diagnostics run alone, never part of functional CI timing."
+    },
+    {
+      "name": "shard::share_waiter_observation::issue43_waiter_burst_then_one_long_connection",
+      "source": "src/shard.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Burst to one long-lived connection capacity evidence; full scale runs nightly."
+    },
+    {
+      "name": "issue37_full_256_streams_at_50ms_rtt",
+      "source": "tests/issue37_throughput.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Full 256-stream simulated protocol throughput complement; virtual work, never physical performance evidence."
+    }
+  ]
+}

@@ -52,13 +52,58 @@ cargo run -p zfharness --release -- l0 --scenario matrix --full --format md
 
 重建 iface 时，旧连接与另一 iface 的长流必须已经在服务端建立。通过条件是 `remove_iface` 之后旧 iface 上没有连接、`info` 看不到旧 slot、`conns_freed` 至少增加了这些连接、客户端 `abort` 之后栈报告 `Closed`，以及 `reserved` 不增加。另一 iface 的原连接须保留并跨过重建时刻完成。客户端关闭用实际状态验证。
 
-`quota` 的四个 peer 各发送 512 KiB，必须观察到 `share_blocked` 或物理预算分层失败计数，再恢复推进至完成。只配置小额度而未撞到额度不算通过。
+`quota` 的四个 peer 各发送 512 KiB，必须观察到短写、`share_blocked` 或物理预算分层失败计数，再恢复推进至完成。EventOnly 在短写时停止，不为增加失败计数额外重试。三个 `world::tests::c04_*` 测试另外逐一撞 global / port / peer 的物理上限，核对唯一对应的失败计数、事务回滚和最后 owner 释放，再用真实连接完成传输。
 
 `port-density` 的 128 端口每口只有 1 KiB，只说明大量 iface 能握手。`crowd` 才是一个重端口加许多轻端口；`--ports 128` 可以加大，不放进每次 CI。
 
 L0 的 `wall_sec` / `process_cpu_sec` 是 **这个进程把虚拟时钟跑完花的 CPU**，不是 PPS，也不是 RSS。`wall-bulk` 把这两列当成标题，虚拟完成时间不当延迟。
 
-应用泵每步会看所有未结束的流。这是 harness 的成本，不是生产里那种只在事件上唤醒的 adapter。
+默认 `--app-drive eager` 保留原来的应用泵（L0-C）。`--app-drive event-only` 使用 L0-E：Accepted/Connected 启动应用，Readable 只激活读，Writable 只激活写；RR 消费请求/响应后才产生新写任务。读至 WouldBlock、写至短写/阻塞，沿用 core 的兴趣重新登记。应用到达、读恢复和显式外部 owner 释放分别是记录在脚本中的外部唤醒源。`RunOutcome.more` 只驱动 core，不重试所有 writer。
+
+ready 集按含 generation 的完整 ConnId 去重；关闭/移除 iface 会清理旧项。每 endpoint 每轮最多 1024 个应用任务，每步最多 64 轮，还有总 step cap 和同一虚拟时刻的 watchdog。服务端执行间隙不会令虚拟时间倒退。这里仍是测试器调度，并非生产 adapter 的线程或 waker 测试。
+
+```sh
+cargo +1.94.1 run -p zfharness --release -- list --format json
+cargo +1.94.1 run -p zfharness --release -- l0 --scenario matrix --full --app-drive event-only --json /tmp/l0-e.json
+cargo +1.94.1 run -p zfharness --release -- l0 --scenario capacity-recovery --app-drive event-only
+cargo +1.94.1 run -p zfharness --release -- replay --script harness/regressions/sink-recovery-v1.json
+# 负对照，预期 exit 1；不能把它作为普通成功场景提交给门禁。
+cargo +1.94.1 run -p zfharness --release -- replay --script harness/regressions/missing-writable-v1.json --failure-dir /tmp/missing-writable
+cargo +1.94.1 run -p zfharness --release -- reduce --script harness/regressions/missing-writable-v1.json --assertion liveness.flow_complete --output /tmp/minimized.json
+```
+
+JSON 保留兼容的 `ok` 和 `errors`，增加 `app_drive`、`contract_ids`、逐流 `assertions`、调度计数、事件执行证据和资源快照。`ok` 只是功能结论，不是性能放行。机器目录给出场景名字、关联契约和驱动模式。退出码：0 功能通过；1 功能或故障前提失败；2 无效输入；3 输出文件写入失败。
+
+`capacity-recovery` 默认使用 64 条小流突发，保留一条停读连接，再归零和重复突发；`resource_samples` 要实际观察峰值→1→0→峰值→0，并检查第二次撤载的物理预算不高于第一次。采样测量连接表、物理账本和 ready 项，不是 RSS，也不等于内部容器 retained capacity。`--heavy-conns` 可改变该场景的突发规模；4096 连接及本机 RSS 属于独立重规模验收，默认矩阵不宣称这些已覆盖。
+
+### 有界事件重放
+
+`harness/regressions/` 保存版本化脚本和每个反例的来源/triage。脚本只引用固定 catalogue 的逻辑 flow / port，禁止直接传进 ConnId。最多 1 MiB、4096 个事件、1 小时虚拟时间；unknown field、重复 ID、缺条件截止、越界目标都会拒绝。触发时间是从 origin 开始的 `at_ms`；同刻按 `priority`、脚本顺序执行。`when` 支持 accepted、write-blocked、memory-blocked、received；条件事件必须带 `deadline_ms`。截止没有达到条件，或重复释放、未建连关闭，结果为 `PRECONDITION_NOT_REACHED`。
+
+支持 StartFlow、AppWrite、PauseRead、ResumeRead、CloseWrite、Abort、RemoveIface、RebuildIface、LinkBlackhole、LossBurst、SinkFull、SinkRelease、HoldMemory、ReleaseMemory、ExecutionGap 和 SetMtu。StartFlow 指定的流由事件启动；AppWrite 限制该方向只能发送脚本已经到达的字节，全部到达量不得超过 catalogue 的目标。CloseWrite 要求所有目标字节已接受。RebuildIface 先要求 RemoveIface。SinkRelease 要实际观察过 Full，黑洞恢复要实际丢过包，LossBurst 要消耗完规定丢包数；只配置故障但没有触发不会通过。
+
+```json
+{
+  "schema_version": 1,
+  "scenario": "wall-bulk",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 1000,
+  "events": [{
+    "id": "first-arrival",
+    "at_ms": 0,
+    "deadline_ms": 100,
+    "when": {"kind": "accepted", "flow": 0},
+    "action": {"kind": "AppWrite", "flow": 0, "side": "server", "bytes": 65536}
+  }]
+}
+```
+
+流 payload 按流/方向 salt 和绝对 offset 生成，超过 251 条流不再出现旧周期 pattern 的同内容碰撞。每条链路的上下行使用独立 PRNG；同源码/依赖/seed/调度下可重放。随机数按该链路发包消耗，因此跨版本包数变化时**不保证**丢掉相同 TCP 序号。
+
+端点、应用进度和真实 packet 内容/丢弃/交付摘要进入版本化 JSON 轨迹，各 ring 最多 128 项。通过只保留摘要，失败附最近轨迹；FNV-1a-64 是稳定诊断摘要，不是安全身份哈希，源码/依赖/二进制的 SHA-256 由统一 QA manifest 负责。重放失败会导出 `case.json`、`result.json`、`identity.json` 到 `--failure-dir`，未指定则使用临时目录。缩减器执行确定性事件删除，保留同一逐流失败证据、原条件事件和抑制通知次数；不支持自动缩减流/字节，不声称穷尽并发或覆盖引导 fuzz。
+
+永久缺 Writable 反例只丢弃 server flow 0 第一次阻塞后的 Writable。EventOnly 必须留下未完成写入、零在途队列，且已接受字节全部送达；没有未来 ACK 能救场。Eager 在相同抑制策略下完成；它可能在到达通知水位前已经轮询写入，所以 Eager 的实际抑制计数可能是 0，不能伪称两种调度有同一发包/事件历史。
 
 ## L1
 

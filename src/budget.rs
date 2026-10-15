@@ -1792,6 +1792,7 @@ impl Drop for AdmitDebt {
 
 #[cfg(test)]
 mod tests {
+    mod qa;
 
     #[test]
     fn issue37_credit_caps_roll_back_at_every_level_and_return_on_drop() {

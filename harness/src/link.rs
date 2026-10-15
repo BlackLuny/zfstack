@@ -6,7 +6,9 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use crate::schedule::{content_digest, Trace};
 use bytes::Bytes;
+use serde_json::json;
 use zfstack::sim::Rng;
 use zfstack::{Instant, PeerId};
 
@@ -68,14 +70,25 @@ pub struct Link {
     inflight: BTreeMap<(Instant, u64), Flight>,
     seq: u64,
     pub stats: LinkStats,
+    pub trace: Trace,
 }
 
 impl Link {
     pub fn new(p: LinkParams) -> Self {
-        Link { p, busy_until: Instant::ZERO, queued: VecDeque::new(), queued_bytes: 0, inflight: BTreeMap::new(), seq: 0, stats: LinkStats::default() }
+        Link {
+            p,
+            busy_until: Instant::ZERO,
+            queued: VecDeque::new(),
+            queued_bytes: 0,
+            inflight: BTreeMap::new(),
+            seq: 0,
+            stats: LinkStats::default(),
+            trace: Trace::default(),
+        }
     }
 
     pub fn enqueue(&mut self, now: Instant, tag: u32, peer: PeerId, pkt: Bytes, rng: &mut Rng) {
+        self.trace.push(json!({"event":"enqueue", "at_ns":now.as_nanos(), "port":tag, "peer":peer.0, "len":pkt.len(), "packet":content_digest(&pkt)}));
         self.stats.sent += 1;
         while let Some(&(dep, n)) = self.queued.front() {
             if dep <= now {
@@ -87,10 +100,12 @@ impl Link {
         }
         let len = pkt.len();
         if self.p.rate_bps > 0 && self.queued_bytes + len > self.p.queue_bytes {
+            self.trace.push(json!({"event":"queue_drop", "at_ns":now.as_nanos(), "port":tag}));
             self.stats.queue_drops += 1;
             return;
         }
         if rng.chance(self.p.loss) {
+            self.trace.push(json!({"event":"random_drop", "at_ns":now.as_nanos(), "port":tag}));
             self.stats.random_drops += 1;
             return;
         }
@@ -135,6 +150,7 @@ impl Link {
             return None;
         }
         let v = self.inflight.remove(&k).unwrap();
+        self.trace.push(json!({"event":"deliver", "at_ns":now.as_nanos(), "port":v.tag, "packet":content_digest(&v.pkt)}));
         self.stats.delivered += 1;
         self.stats.bytes_delivered += v.pkt.len() as u64;
         Some((v.tag, v.peer, v.pkt))

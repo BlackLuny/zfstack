@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "scenario": "sink-full-iface",
+  "seed": 7,
+  "app_drive": "event-only",
+  "until_ms": 5000,
+  "events": [
+    {
+      "id": "blackhole",
+      "at_ms": 30,
+      "action": {
+        "kind": "LinkBlackhole",
+        "port": 0,
+        "enabled": true
+      }
+    },
+    {
+      "id": "clear-blackhole",
+      "at_ms": 180,
+      "action": {
+        "kind": "LinkBlackhole",
+        "port": 0,
+        "enabled": false
+      }
+    },
+    {
+      "id": "loss-burst",
+      "at_ms": 185,
+      "action": {
+        "kind": "LossBurst",
+        "port": 0,
+        "packets": 2
+      }
+    },
+    {
+      "id": "small-mtu",
+      "at_ms": 190,
+      "action": {
+        "kind": "SetMtu",
+        "port": 0,
+        "bytes": 1200
+      }
+    },
+    {
+      "id": "cpu-gap",
+      "at_ms": 195,
+      "action": {
+        "kind": "ExecutionGap",
+        "millis": 10
+      }
+    }
+  ],
+  "source": "QA design sections 6 and 8; synthetic harness fault",
+  "triage": "permanent-regression",
+  "description": "Finite network outage, two dropped packets, MTU reduction and a bounded server execution pause."
+}

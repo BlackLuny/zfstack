@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zfstack.invalid/qa/build-v1.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "source_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "patch_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sha",
+        "tree",
+        "source_hash",
+        "patch_hash",
+        "dirty"
+      ],
+      "additionalProperties": false
+    },
+    "lock_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "lock_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "manifest_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "selected_package": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "toolchain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "rustc": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "cargo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "native_platform": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "requested_features": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536
+      },
+      "uniqueItems": true
+    },
+    "dependency_scope": {
+      "const": "normal,build"
+    },
+    "dependency_graph": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8388608
+    },
+    "dependency_graph_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "build_flags": {
+      "type": "object",
+      "properties": {
+        "RUSTFLAGS": {
+          "type": "string"
+        },
+        "CARGO_ENCODED_RUSTFLAGS": {
+          "type": "string"
+        },
+        "RUSTDOCFLAGS": {
+          "type": "string"
+        },
+        "CC": {
+          "type": "string"
+        },
+        "CXX": {
+          "type": "string"
+        },
+        "CARGO_BUILD_TARGET": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "CC",
+        "CXX",
+        "CARGO_BUILD_TARGET"
+      ],
+      "additionalProperties": false
+    },
+    "python": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "binaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "sha256",
+          "size_bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "qa_requirements_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "tool_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "source",
+    "lock_hash",
+    "lock_path",
+    "manifest_path",
+    "selected_package",
+    "toolchain",
+    "rustc",
+    "cargo",
+    "host",
+    "target",
+    "native_platform",
+    "profile",
+    "requested_features",
+    "dependency_scope",
+    "dependency_graph",
+    "dependency_graph_hash",
+    "build_flags",
+    "python",
+    "binaries",
+    "qa_requirements_hash",
+    "tool_hashes"
+  ],
+  "additionalProperties": false
+}

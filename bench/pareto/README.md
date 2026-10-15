@@ -256,3 +256,114 @@ v1 `tx-alloc.sampled_peak_reserved_bytes` 使用硬编码 `payload + 64`，没�
 `run_ab.py` 原样保留 v1/v2 JSON，无需修改。`analyze.py` 接受旧记录和可空峰值，单独汇总/显示 warmup ledger；旧 TX 估算被标为缺失值并说明原因，不能与快照混算，也不填零。旧记录没有 warmup 样本，不派生相应的成对百分比。历史证据文件保持原样；新实验仍必须向 A/B 两侧复制同一 probe 并记录 hash。
 
 消费回归只使用模拟记录和 mock 子进程，不运行 A/B 测量：`python3 -m unittest discover -s bench/pareto -p 'test_*.py'`。
+
+## 冻结计划与三态性能门禁
+
+`analyze.py` 保留现有 AB/BA 描述性报告。正式入口为 `perf_gate.py`，只接受运行前冻结的完整 ABBA/BAAB block；不能将两个时段的半个 block 拼接，不能删去失败或污染记录。候选功能 FAIL 优先于测量 INVALID。每臂执行新进程，所有记录必须与计划中的配置、二进制、构建及环境 hash 一致，单调时钟区间不得重叠。
+
+计划是 schema v1 的 JSON object，包含：
+
+- `runner_id`、`profile`、任意稳定 `case_id` / `case_version`、完整 `config`、`binary_sha256: {A, B}`、`build_manifest_hash`、`environment_hash`。
+- `comparison: "AB" | "AA"`、`mode: "shadow" | "enforce"`。只有显式 AA 可使用相同二进制 hash；构建 AA 可使用相同源码独立构建的不同二进制。
+- `blocks: [{block_id, order: "ABBA" | "BAAB"}, ...]`，按正式执行顺序保存；`min_blocks >= 2`、`seed`、`alpha`、`max_abs_lag1`，可选 `max_abs_skew`（schema v1 默认 2）。正式 N 和主指标集合必须在候选结果产生前冻结。
+- `metrics: [{id, unit, direction: "lower" | "higher", budget_fraction}, ...]`。接近零的指标可事先选择 `scale: "absolute", budget_absolute`；不会在看到结果后自动选较宽松的口径。
+- `method: "block_t"`（默认建议）或 `"paired_block_bootstrap"`；后者还需 `bootstrap_iterations >= 1000`，且每个同时区间尾部至少具有 10 个 bootstrap 重复的分辨率。执行预算限制会拒绝过大的分析计划。
+- 强制门禁须固定 `calibration_id` 与实际校准报告的 `calibration_hash`。未完成真实节点校准时只使用 shadow；仓库不附带任何已验证节点资格。
+
+每个 block 对每个指标先计算两次 A 与两次 B 的均值 log 差，统一正值表示退化。成本预算为 `log(1 + δ)`，吞吐预算为 `-log(1 - δ)`。默认使用 block 均值的 Student t 区间，K 个主指标采用 Bonferroni `α/K` 同时区间；可选 bootstrap 对整 block 联合重采样，同一组 indices 用于所有指标。`U <= budget` 为 PASS，`L > budget` 为 FAIL，其余 INCONCLUSIVE。明显的 lag-1 依赖、分布偏斜或不足的 bootstrap 尾部分辨率使结论保持 INCONCLUSIVE，不会事后更换方法。统计假设、block effects、区间和诊断均保留。
+
+```sh
+python3 bench/pareto/perf_gate.py --plan /absolute/plan.json \
+  --rows /absolute/runs.jsonl --calibration /absolute/calibration.json \
+  --output /absolute/performance.json
+```
+
+行格式包含 `run_id, case_id, block_id, position, arm, plan_hash, config_hash, build_manifest_hash, environment_hash, binary_sha256, metrics`，并包含与 QA v2 同形的 `validity`、`functional`、`execution`。`execution` 必须含真实 `CLOCK_MONOTONIC` 的整数 `start_ns/end_ns`、退出状态与清理结果。缺失、零 log 指标、负计数、NaN/Infinity、身份变化、重复 slot、漏 slot、时间重叠均无法进入正式区间。JSON 拒绝重复键与指数溢出，并有输入大小上限。
+
+## 串行执行与环境
+
+`run_ab.py` 的旧参数继续运行历史探索入口。传入 `--plan` 切换为正式单场景执行；它不会编译，也不会重新采样直到通过。多个 case 的计划顺序由上层可信 QA 计划固定。
+
+```sh
+python3 bench/pareto/run_ab.py --plan /absolute/plan.json \
+  --expected-plan-hash "$PLAN_HASH" \
+  --baseline /absolute/baseline --candidate /absolute/candidate \
+  --environment /absolute/environment.json \
+  --lease-directory /absolute/leases --physical-domain "$DOMAIN" \
+  --generation "$GENERATION" --outdir /absolute/fresh-results
+```
+
+正式 runner 的 `config` 另需 `args`（probe 参数数组）、`cpu`、`timeout_sec`、`expected_measurement`（已冻结的工作量字段和值，例如 operations、effective_bytes、iterations、flows、peers、payload_bytes、checksum）。CPU 固定在子进程 exec 前生效。环境 JSON 固定 `kernel/cpu_model/affinity/governors/cgroup_limits`；`cgroup_limits` 为 DUT 所属 cgroup-v2 及所有祖先的 `{path,cpu.max,cpuset.cpus.effective,memory.max}` 数组。`environment.snapshot(pid)` / `environment.cgroup_snapshot(pid)` 可用于节点预检，缺少数据保持 unknown。计划 hash 使用排序 key、紧凑分隔符、UTF-8、拒绝非有限数的 canonical JSON SHA256。
+
+runner 复用 `qa.lease.Lease` 与 `qa.process.run_child`，轮询子进程时检查所有权和 generation。Linux 独立 subreaper 清理本次拥有的全部后代，包括新建 session 的子进程，检测到遗留后代仍记录 execution failed；不会删掉失败 slot 或在原 block 补跑。输出文件不覆盖已有目录；取消/超时保留当前记录和未完成 block，清理不能证明时隔离节点。每个 slot 原始 stdout/stderr 合流落盘并记录 hash，exec helper 的 `RLIMIT_FSIZE` 限制继承到后代，默认 1 MiB，最大 64 MiB；触顶会使运行失败。`config.max_output_bytes` 与 `config.sample_interval_sec` 随计划冻结，历史计划缺省分别为 1048576 和 0.1。
+
+环境线程通过 exec 前 PID 握手与 Linux `/proc/PID/exe` 确认采样对象是 DUT，exec 前样本单独标记，不能替代运行中样本。环境观察总量限制为 16 MiB，触顶或采样异常均明确失效。所有共用物理域的构建、测试与性能任务须使用同一租约，额外宿主独占性由编排端确保。采样读取 DUT 自己的 cgroup v2 路径及祖先限制，缺失的 v2 能力或任何祖先限制均为 INVALID；保留 PSI、throttle、频率策略、CPU、内存与编译进程，不会将候选自身引起的 throttling 一概删为噪声。采样安静不等于节点已获性能资格。
+
+## A/A 校准与检测能力
+
+`calibrate.py --spec /absolute/spec.json --output /absolute/calibration.json` 消费已冻结的校准计划和真实 runner 记录。spec 包含 `schema_version:1, calibration_id, target_plan, min_training_blocks, min_null_trials, min_delta_trials, max_false_positive_rate, min_detection_rate, trials`。`trials` 项包含 `trial_id, kind, plan_file, rows_file, provenance_file`，路径相对 spec；kind 为 `run-AA`、`build-AA`、`held-out-null` 或 `held-out-delta`。
+
+每个 A/A 层至少 20 个完整训练 block；这只是起点。构建 AA 需独立同源码构建 manifest 出处，null 与 delta 记录必须与训练记录的 run ID 不相交。已知退化 trial 额外固定 `known_delta: {metric_id: amount}`，退化必须超过对应预算，并提供已测控制产物的 hash 与 `kind: controlled-work | controlled-delay | known-regression-binary, synthetic:false`。不能把候选样本乘一个系数冒充控制实验。每个主指标都需要足够的 held-out delta 检测次数。
+
+报告给出 null family 误报率和每指标检测率的 Wilson 95% 区间；其上/下界必须满足预注册策略，样本不足会拒绝验证。控制出处与独立构建源码仍由可信编排校验。单测中的合成数据只证明统计器会拒绝反例，绝不生成实际节点校准证书。环境、profile、配置、N、指标集合或统计政策变化会使原校准失配。
+
+## 最小真实 shadow A/A
+
+case_version 与主 QA v2 一致，为正整数。`freeze_plan.py` 使用真实 binary / build manifest / 环境与一次探索性 reference measurement，生成固定顺序的 shadow 计划，不执行二进制，也不颁发性能资格。以下调用在已隔离的 Linux 执行目录内进行；构建已完成且停止，`CPU` 来自允许的 cpuset，`PROBE` 是实际不可变的 pareto_probe。
+
+```sh
+# 先在节点租约内保存一次探索性输出；此文件不进入正式样本。
+taskset -c "$CPU" "$PROBE" budget --iterations 5000000 --flows 1 --payload 2112 > reference.json
+# 对实际绑核进程采样，保存稳定的环境指纹。
+taskset -c "$CPU" python3 - <<'PY'
+import json, sys
+from pathlib import Path
+sys.path.insert(0, 'bench/pareto')
+from environment import snapshot
+s = snapshot()
+e = {k: s[k] for k in ('kernel', 'cpu_model', 'affinity', 'governors')}
+e['cgroup_limits'] = [{k: row.get(k) for k in ('path', 'cpu.max', 'cpuset.cpus.effective', 'memory.max')}
+                     for row in s['cgroup'].get('ancestors', [])]
+Path('environment.json').write_text(json.dumps(e, sort_keys=True) + '\n')
+PY
+PLAN_HASH="$(python3 bench/pareto/freeze_plan.py \
+  --baseline "$PROBE" --candidate "$PROBE" --reference reference.json \
+  --environment environment.json --build-manifest build-manifest.json \
+  --runner-id "$NODE" --profile release --case-id P0-budget --comparison AA \
+  --trial-id run-aa-001 --cpu "$CPU" --blocks 20 --budget .03 --output plan.json \
+  -- budget --iterations 5000000 --flows 1 --payload 2112)"
+# 若编排持有外层租约，先结束该准备阶段租约，再由 runner 接管同一域；不双重申请。
+python3 bench/pareto/run_ab.py --plan plan.json --expected-plan-hash "$PLAN_HASH" \
+  --baseline "$PROBE" --candidate "$PROBE" --environment environment.json \
+  --lease-directory "$LEASES" --physical-domain "$DOMAIN" --generation "$GENERATION" --outdir run-aa-001
+python3 bench/pareto/perf_gate.py --plan plan.json --rows run-aa-001/runs.jsonl --output run-aa-001/performance.json
+```
+
+这里 `.03` 仅是 shadow 分辨率探索参数。没有校准时预期输出 `decision: SHADOW, performance: INCONCLUSIVE`；异常/缺证据仍会阻断。较短的 smoke 可使用 `--blocks 2`，但不能作为校准训练。
+
+构建 A/A 使用同一源码和规范构建路径独立生成的 A1/A2，向 `freeze_plan.py` 传入两个实际产物、`--comparison AA --trial-id build-aa-001`，其余 workload / 环境 / profile / N 与目标校准档一致。provenance 需 `same_source_verified:true`、两项 `independent_build_manifest_hashes` 和两个不同的 `independent_build_invocation_ids`；可信编排必须验证源码与构建调用出处。相同源码的独立可重现构建可能产生相同二进制与 manifest hash，因此不要求这些 hash 不同，不能仅凭 hash 声称已做两次构建。训练之外的 null、已知退化使用独立 trial ID 和新正式记录。全部记录和 provenance 交给前述 `calibrate.py --spec ... --output ...`，通过后将实际报告 hash 绑定到新的 enforce 计划；一次 shadow A/A 不会自动升级为阻断门禁。
+
+## 可选冻结的绝对服务合同
+
+相对非劣（包括 `scale:absolute` 的差值预算）不等于固定的服务上限。`qa.service.validate_contract(contract)` 和 `evaluate_service(contract, peers)` 提供独立、纯 QA 的可选合同；维护者必须先审核并将合同冻结进 case identity，工具不提供任何产品默认阈值。合同禁止未知字段，完整字段为：
+
+```python
+contract = {
+    "schema_version": 1,
+    "peer_ids": reviewed_peer_ids,                  # 非空、唯一 string 数组
+    "phases": reviewed_phases,                      # 非空、唯一 string 数组
+    "min_samples_per_peer_phase": reviewed_minimum, # 正整数，每 peer/phase 独立满足
+    "max_latency_ms": reviewed_latency_bound,        # 正有限数，逐请求上限
+    "deadline_ms": reviewed_deadline,                # 正有限数
+    "max_deadline_miss_rate": reviewed_miss_bound,   # [0,1]，已观察比例上限
+}
+report = evaluate_service(contract, peers)
+```
+
+`peers` 映射冻结的 peer ID 到 `{samples:[...],counters:{...}}`。每条 sample 需要 `phase,seq,status,scheduled_at,started_at`，成功完成的请求另需有限、非负 `latency_ms`；失败/删失请求可缺少或使用 null latency。时间戳为同一单调时钟的秒数，`latency_ms` 是开始请求至完成的毫秒数，因此合同逐请求比较 `(started_at-scheduled_at)*1000+latency_ms`，包含生成、排队和服务等待。额外原始观察字段可以保留。`seq` 必须在同一 peer 的完整样本中唯一；`counters` 恰含七个非负整数 `scheduled,started,completed,failed,timed_out,unfinished,missed`，须与整个原始样本集合精确复算一致，不能只上传筛选后的成功请求。
+
+检查每个冻结 peer/phase 的最小样本数、每个已完成请求的延迟上限，以及已观察的 deadline miss 比例。`failed/timed_out/unfinished` 均进入业务请求分母并计 miss；已完成但端到端延迟超过 deadline 也计 miss。generator `missed` 不当作业务丢弃、不进入业务分母，而使证据 `NOT_RUN`。没有完整 samples、缺 peer/phase、重复序号、计数不符或没有可观察的成功延迟都不能变绿。不会将 timeout 填成 deadline 或计算仅包含成功样本的服务尾部保证。结果是 `{status:PASS|FAIL|NOT_RUN,assertions:[{id,status,kind:"service",detail}],observations:{contract_hash,scope,peers}}`；已有超限 `FAIL` 优先于其他缺证 `NOT_RUN`，性能环境污染也不能抹掉功能合同失败。此检查描述已观察请求与比例，零 miss 不表示真实失败概率为零，也不承诺总体 p99/p999。
+
+性能计划还可对指定主指标添加 `absolute_slo`，单位沿用该 metric 的 `unit`。`direction:lower` 恰需 `{scope:"observed-per-run",max:reviewed_bound}`，`direction:higher` 恰需 `{scope:"observed-per-run",min:reviewed_bound}`；不能混用 min/max 或使用概率/分位数 scope。计划 hash 和校准 scope 包含这个阈值，修改后不得沿用原校准。
+
+该检查逐个比较身份绑定的候选 B 原始 metric，不能被 block 均值、相对非劣或另一指标抵消。任一明确超限使 `absolute_slo.status`、`functional` 和 `decision` 为 `FAIL`，即使校准缺失、其他 slot 缺失或环境污染；缺少完整 B slot/metric 时不能给绝对合同 PASS。没有可选字段时保持原分析行为。绝对检查只声明 **observed-per-run**，不声称候选总体的尾概率界限。正式 QA reporter 仍需通过 `qa.performance.inspect_rows` 从原始 probe 日志重算 metric，不能只信上传行的数值。产品阈值与深 egress queue 等负对照的合同应由维护者预注册；单测合成阈值不构成发布政策。

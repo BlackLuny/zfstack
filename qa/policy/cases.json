@@ -1,0 +1,1160 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "case_id": "QA-lint",
+      "case_version": 1,
+      "layer": "META",
+      "profile": "dev",
+      "runner": "lint",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio"
+      ]
+    },
+    {
+      "case_id": "QA-no-default",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "release",
+      "runner": "core-build",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-core",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "release",
+      "runner": "core-test",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-adapter",
+      "case_version": 1,
+      "layer": "A1",
+      "profile": "release",
+      "runner": "adapter-test",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    },
+    {
+      "case_id": "QA-adapter-directed",
+      "case_version": 1,
+      "layer": "A0",
+      "profile": "release",
+      "runner": "adapter-qa",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    },
+    {
+      "case_id": "QA-budget-directed",
+      "case_version": 1,
+      "layer": "A1",
+      "profile": "release",
+      "runner": "budget-qa",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-harness",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "harness-test",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-tools",
+      "case_version": 1,
+      "layer": "META",
+      "profile": "release",
+      "runner": "python-qa",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-l2-tools",
+      "case_version": 1,
+      "layer": "META",
+      "profile": "release",
+      "runner": "python-l2",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-perf-tools",
+      "case_version": 1,
+      "layer": "META",
+      "profile": "release",
+      "runner": "python-perf",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-bench-build",
+      "case_version": 1,
+      "layer": "L1",
+      "profile": "release",
+      "runner": "bench-build",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "default"
+      ]
+    },
+    {
+      "case_id": "QA-bench",
+      "case_version": 1,
+      "layer": "L1",
+      "profile": "release",
+      "runner": "bench-test",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "default"
+      ]
+    },
+    {
+      "case_id": "QA-bench-all",
+      "case_version": 1,
+      "layer": "L1",
+      "profile": "release",
+      "runner": "bench-all-test",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "default",
+        "packet-pool-idle-trim",
+        "zfstack"
+      ]
+    },
+    {
+      "case_id": "QA-coverage",
+      "case_version": 1,
+      "layer": "META",
+      "profile": "release",
+      "runner": "coverage",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-features",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "release",
+      "runner": "feature-audit",
+      "config": {},
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-l0-eager",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "eager",
+        "full": false,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd"
+        ]
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-eager-1",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "eager",
+        "full": true,
+        "seed": 1,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-eager-17",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "eager",
+        "full": true,
+        "seed": 17,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-eager-509",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "eager",
+        "full": true,
+        "seed": 509,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-l0-event-only",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "event-only",
+        "full": false,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd"
+        ]
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-event-only-1",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "event-only",
+        "full": true,
+        "seed": 1,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-event-only-17",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "event-only",
+        "full": true,
+        "seed": 17,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "QA-full-event-only-509",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "runner": "l0",
+      "config": {
+        "scenario": "matrix",
+        "app_drive": "event-only",
+        "full": true,
+        "seed": 509,
+        "expected_scenarios": [
+          "tuple-isolation",
+          "peer-reuse",
+          "same-shard-peer-alias",
+          "noisy-same-iface",
+          "noisy-cross-iface",
+          "noisy-cross-shard",
+          "noisy-shared-uplink",
+          "heavy-fanout",
+          "port-density",
+          "quota",
+          "zero-window",
+          "sink-full",
+          "sink-full-iface",
+          "idle-reclaim",
+          "capacity-recovery",
+          "lossy",
+          "iface-rebuild",
+          "wall-bulk",
+          "crowd",
+          "port-density",
+          "port-density"
+        ]
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "C18-loom",
+      "case_version": 1,
+      "layer": "A0",
+      "profile": "release",
+      "runner": "loom",
+      "config": {},
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "C20-soak",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "ignored",
+      "config": {
+        "test_name": "sim::tests::soak_paused_reader_lossy_multiflow"
+      },
+      "timeout_seconds": 3600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    },
+    {
+      "case_id": "C02-splice-256",
+      "case_version": 1,
+      "layer": "A1",
+      "profile": "release",
+      "runner": "ignored",
+      "config": {
+        "test_name": "tokio_adapter::tests::issue37_splice_256_streams_keep_progressing_with_delayed_acks"
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    },
+    {
+      "case_id": "QA-fuzz-wire_parser",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "dev",
+      "runner": "fuzz",
+      "config": {
+        "target": "wire_parser",
+        "seconds": 30
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "nightly-2026-07-11",
+      "features": []
+    },
+    {
+      "case_id": "QA-fuzz-sequence_sack",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "dev",
+      "runner": "fuzz",
+      "config": {
+        "target": "sequence_sack",
+        "seconds": 30
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "nightly-2026-07-11",
+      "features": []
+    },
+    {
+      "case_id": "QA-fuzz-event_script",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "dev",
+      "runner": "fuzz",
+      "config": {
+        "target": "event_script",
+        "seconds": 30
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "nightly-2026-07-11",
+      "features": []
+    },
+    {
+      "case_id": "QA-miri",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "dev",
+      "runner": "miri",
+      "config": {
+        "test_filter": "buf::tests::write_with_never_offers_uninitialized_bytes"
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "nightly-2026-07-11",
+      "features": []
+    },
+    {
+      "case_id": "QA-sanitizer",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "dev",
+      "runner": "sanitizer",
+      "config": {
+        "test_filter": "buf::tests::"
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "nightly-2026-07-11",
+      "features": []
+    },
+    {
+      "case_id": "C11-l1",
+      "case_version": 1,
+      "layer": "L1",
+      "profile": "release",
+      "runner": "l1",
+      "config": {
+        "stack": "zfstack-cubic",
+        "test": "isolate",
+        "ports": 16,
+        "lights": 16,
+        "heavy_conns": 1,
+        "placement": "cross-iface",
+        "topology": "shared-shard",
+        "budget_mb": 64,
+        "seed": 1,
+        "secs": 10,
+        "warmup": 2,
+        "idle_rr_secs": 3,
+        "rr_size": 1024,
+        "rr_interval_ms": 100,
+        "connect_timeout_ms": 3000,
+        "rate_mbps": 200.0,
+        "rate_up_mbps": 200.0,
+        "rtt_ms": 12.0,
+        "loss": 0.0,
+        "loss_up": 0.0,
+        "queue_bdp": 2.0,
+        "sock_buf_kb": 4096,
+        "client_cc": "cubic"
+      },
+      "timeout_seconds": 600,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "default"
+      ]
+    },
+    {
+      "case_id": "C16-l2",
+      "case_version": 1,
+      "layer": "L2",
+      "profile": "fast-release",
+      "runner": "l2",
+      "config": {
+        "schema_version": 1,
+        "heavy_conns": 4,
+        "request_bytes": 256,
+        "request_rate_hz": 100.0,
+        "light_mode": "open-loop",
+        "max_generator_lag_sec": 0.02,
+        "light_conns": 1,
+        "churn_requests": 8,
+        "udp_enabled": true,
+        "udp_rate_hz": 100.0,
+        "udp_payload_bytes": 1032,
+        "request_timeout_sec": 3.0,
+        "phases_sec": {
+          "baseline": 8,
+          "loaded": 16,
+          "recovery": 8
+        },
+        "direction": "heavy-download/light-echo",
+        "application_port": 19001,
+        "memory_mb": 64,
+        "uplink_delay_ms": 0.0,
+        "netem_limit_packets": 100000,
+        "mtu": 1420,
+        "runtime": "tokio-multi-thread",
+        "profile": "fast-release",
+        "capture": false,
+        "boundary_tolerance_ns": 5000000,
+        "topology": {
+          "wg_ports": 2,
+          "peers": 4,
+          "heavy_peer": 0,
+          "light_peers": [
+            1,
+            2,
+            3
+          ]
+        },
+        "mode": "load"
+      },
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "shadow",
+        "metrics": [
+          "heavy_mbps",
+          "worker_cpu_sec_per_gib"
+        ]
+      },
+      "toolchain": "1.98.1",
+      "features": [
+        "jemalloc",
+        "mmsg"
+      ],
+      "integration_build": {
+        "toolchain": "1.98.1",
+        "profile": "fast-release",
+        "features": [
+          "jemalloc",
+          "mmsg"
+        ]
+      }
+    },
+    {
+      "case_id": "C16-l2-relay",
+      "case_version": 1,
+      "layer": "L2",
+      "profile": "fast-release",
+      "runner": "l2",
+      "config": {
+        "schema_version": 1,
+        "heavy_conns": 4,
+        "request_bytes": 256,
+        "request_rate_hz": 100.0,
+        "light_mode": "open-loop",
+        "max_generator_lag_sec": 0.02,
+        "light_conns": 1,
+        "churn_requests": 8,
+        "udp_enabled": true,
+        "udp_rate_hz": 100.0,
+        "udp_payload_bytes": 1032,
+        "request_timeout_sec": 3.0,
+        "phases_sec": {
+          "baseline": 8,
+          "loaded": 16,
+          "recovery": 8
+        },
+        "direction": "heavy-download/light-echo",
+        "application_port": 19001,
+        "memory_mb": 64,
+        "uplink_delay_ms": 0.0,
+        "netem_limit_packets": 100000,
+        "mtu": 1420,
+        "runtime": "tokio-multi-thread",
+        "profile": "fast-release",
+        "capture": false,
+        "boundary_tolerance_ns": 5000000,
+        "topology": {
+          "wg_ports": 2,
+          "peers": 4,
+          "heavy_peer": 0,
+          "light_peers": [
+            1,
+            2,
+            3
+          ],
+          "client_nodes": [
+            "client",
+            "fwd4",
+            "fwd2",
+            "fwd3"
+          ]
+        },
+        "mode": "load",
+        "outbound": "relay",
+        "probe_port": 19002
+      },
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "shadow",
+        "metrics": [
+          "heavy_mbps",
+          "worker_cpu_sec_per_gib"
+        ]
+      },
+      "toolchain": "1.98.1",
+      "features": [
+        "jemalloc",
+        "mmsg"
+      ],
+      "integration_build": {
+        "toolchain": "1.98.1",
+        "profile": "fast-release",
+        "features": [
+          "jemalloc",
+          "mmsg"
+        ]
+      }
+    },
+    {
+      "case_id": "C16-l2-queue-control",
+      "case_version": 1,
+      "layer": "L2",
+      "profile": "fast-release",
+      "runner": "l2-queue-control",
+      "config": {
+        "schema_version": 1,
+        "heavy_conns": 4,
+        "request_bytes": 256,
+        "request_rate_hz": 100.0,
+        "light_mode": "closed-loop",
+        "max_generator_lag_sec": 0.02,
+        "light_conns": 1,
+        "churn_requests": 0,
+        "udp_enabled": true,
+        "udp_rate_hz": 100.0,
+        "udp_payload_bytes": 1032,
+        "request_timeout_sec": 3.0,
+        "phases_sec": {
+          "baseline": 8,
+          "loaded": 16,
+          "recovery": 8
+        },
+        "direction": "heavy-download/light-echo",
+        "application_port": 19001,
+        "memory_mb": 64,
+        "uplink_delay_ms": 0.0,
+        "netem_limit_packets": 100000,
+        "mtu": 1420,
+        "runtime": "tokio-multi-thread",
+        "profile": "fast-release",
+        "capture": false,
+        "boundary_tolerance_ns": 5000000,
+        "topology": {
+          "wg_ports": 2,
+          "peers": 4,
+          "heavy_peer": 0,
+          "light_peers": [
+            1,
+            2,
+            3
+          ]
+        },
+        "mode": "load",
+        "queue_control": {
+          "kind": "netem-delay",
+          "node": "worker",
+          "interface": "eth0",
+          "phase": "loaded",
+          "delay_ms": 500.0,
+          "limit_packets": 100000
+        }
+      },
+      "timeout_seconds": 900,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.98.1",
+      "features": [
+        "jemalloc",
+        "mmsg"
+      ],
+      "integration_build": {
+        "toolchain": "1.98.1",
+        "profile": "fast-release",
+        "features": [
+          "jemalloc",
+          "mmsg"
+        ]
+      },
+      "service_contract": {
+        "schema_version": 1,
+        "peer_ids": [
+          "client-1",
+          "client-2",
+          "client-3"
+        ],
+        "phases": [
+          "loaded"
+        ],
+        "min_samples_per_peer_phase": 3,
+        "max_latency_ms": 250.0,
+        "deadline_ms": 250.0,
+        "max_deadline_miss_rate": 0.0
+      }
+    },
+    {
+      "case_id": "QA-performance",
+      "case_version": 1,
+      "layer": "P0",
+      "profile": "release",
+      "runner": "external-performance",
+      "config": {
+        "args": [
+          "budget",
+          "--iterations",
+          "5000000",
+          "--flows",
+          "1",
+          "--payload",
+          "2112"
+        ],
+        "timeout_sec": 120,
+        "max_output_bytes": 1048576,
+        "sample_interval_sec": 0.1,
+        "comparison": "AA",
+        "blocks": 20
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "shadow",
+        "metrics": [
+          "cpu_primary"
+        ]
+      },
+      "toolchain": "1.94.1",
+      "features": []
+    },
+    {
+      "case_id": "C13-burst-one",
+      "case_version": 1,
+      "layer": "CORE",
+      "profile": "release",
+      "runner": "ignored",
+      "config": {
+        "test_name": "shard::share_waiter_observation::issue43_waiter_burst_then_one_long_connection"
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    },
+    {
+      "case_id": "QA-replay-external-owner",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "toolchain": "1.94.1",
+      "features": [],
+      "runner": "replay",
+      "config": {
+        "script": "external-owner-v1.json",
+        "script_sha256": "71b7318ae72ff55bf958e07ab48ea5ac0b24ae952d5adf7c72ff1726402c2314",
+        "scenario": "wall-bulk",
+        "app_drive": "event-only",
+        "seed": 7,
+        "script_input_hash": "5b9ebe6f1ca546f201466a00778eb54023fa970aac5a3ed7a2e56b749e3a8374"
+      },
+      "timeout_seconds": 180,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      }
+    },
+    {
+      "case_id": "QA-replay-network-recovery",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "toolchain": "1.94.1",
+      "features": [],
+      "runner": "replay",
+      "config": {
+        "script": "network-recovery-v1.json",
+        "script_sha256": "bdf9cf116314ec9691555cf57909fc78e8948ab3c3c1e7ba20905a794fe465f8",
+        "scenario": "sink-full-iface",
+        "app_drive": "event-only",
+        "seed": 7,
+        "script_input_hash": "88745ecba265bda44534da1922aad19250f33e31346794eef312fb80b1ab8e2a"
+      },
+      "timeout_seconds": 180,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      }
+    },
+    {
+      "case_id": "QA-replay-scripted-arrivals",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "toolchain": "1.94.1",
+      "features": [],
+      "runner": "replay",
+      "config": {
+        "script": "scripted-arrivals-v1.json",
+        "script_sha256": "0bf778deefc755ed43f7539c8590df36337845f52bb662beefa245859022f032",
+        "scenario": "wall-bulk",
+        "app_drive": "event-only",
+        "seed": 7,
+        "script_input_hash": "3d982755ca471c970f00be7e9f3cec9b244ceb24c108a752642ceb4e8312f230"
+      },
+      "timeout_seconds": 180,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      }
+    },
+    {
+      "case_id": "QA-replay-sink-recovery",
+      "case_version": 1,
+      "layer": "L0-E",
+      "profile": "release",
+      "toolchain": "1.94.1",
+      "features": [],
+      "runner": "replay",
+      "config": {
+        "script": "sink-recovery-v1.json",
+        "script_sha256": "3f0d3c74eb7488d6ec2c4a919977806baaeb2a9dc9c8162187f9df89c0e35ce0",
+        "scenario": "sink-full-iface",
+        "app_drive": "event-only",
+        "seed": 7,
+        "script_input_hash": "830e94e935996fa3c2c264936ee7843dce564547033d1c6e7ca00cc82c488070"
+      },
+      "timeout_seconds": 180,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      }
+    },
+    {
+      "case_id": "C01-throughput-256",
+      "case_version": 1,
+      "layer": "L0-C",
+      "profile": "release",
+      "runner": "ignored",
+      "config": {
+        "test_name": "issue37_full_256_streams_at_50ms_rtt"
+      },
+      "timeout_seconds": 1800,
+      "performance": {
+        "mode": "not_applicable",
+        "metrics": []
+      },
+      "toolchain": "1.94.1",
+      "features": [
+        "tokio",
+        "test-peer"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zfstack.invalid/qa/result-v2.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "block_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "arm": {
+      "enum": [
+        "A",
+        "B"
+      ]
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "case_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "case_instance_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "tested_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "build_manifest_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "environment_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "config_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "validity": {
+      "type": "object",
+      "properties": {
+        "functional": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "UNKNOWN"
+          ]
+        },
+        "performance": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "UNKNOWN"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "functional",
+        "performance",
+        "reasons"
+      ],
+      "additionalProperties": false
+    },
+    "functional": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_RUN"
+          ]
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "status": {
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "NOT_RUN"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "safety",
+                  "liveness",
+                  "slo",
+                  "precondition",
+                  "execution"
+                ]
+              },
+              "detail": {
+                "type": "string",
+                "maxLength": 16384
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "kind",
+              "detail"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "status",
+        "assertions"
+      ],
+      "additionalProperties": false
+    },
+    "performance": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "metrics": {
+          "type": "object"
+        },
+        "analysis_hash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "metrics",
+        "analysis_hash"
+      ],
+      "additionalProperties": false
+    },
+    "attribution": {
+      "enum": [
+        "NEW",
+        "PREEXISTING",
+        "FIXED",
+        "UNATTRIBUTED"
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "timeout",
+            "cancelled",
+            "capability_missing"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "start_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clock": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "cleanup": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "exit_code",
+        "start_ns",
+        "end_ns",
+        "clock",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_./-]*$",
+            "maxLength": 512
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "observations": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "block_id",
+    "arm",
+    "case_id",
+    "case_version",
+    "case_instance_id",
+    "tested_sha",
+    "plan_hash",
+    "build_manifest_hash",
+    "environment_hash",
+    "config_hash",
+    "validity",
+    "functional",
+    "performance",
+    "attribution",
+    "execution",
+    "artifacts",
+    "observations"
+  ],
+  "additionalProperties": false
+}

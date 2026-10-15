@@ -1,0 +1,92 @@
+name: QA performance
+on:
+  workflow_dispatch:
+    inputs:
+      tested_sha:
+        description: Full reviewed commit already on the protected default branch
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: qa-performance-physical-domain
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TRUSTED_REF: ${{ vars.QA_TRUSTED_REF || github.sha }}
+jobs:
+  performance:
+    if: github.ref_name == github.event.repository.default_branch && vars.QA_PERF_ENABLED == 'true'
+    runs-on: [self-hosted, linux, qa-performance]
+    environment: qa-performance
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restrict execution to reviewed default-branch history
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          git merge-base --is-ancestor "$TESTED_SHA" "refs/remotes/origin/$DEFAULT_BRANCH"
+      - name: Run the externally prepared immutable experiment
+        env:
+          QA_NODE_JSON: ${{ vars.QA_PERF_NODE_JSON }}
+        run: |
+          python3 -c 'import os,pathlib; pathlib.Path("node.json").write_text(os.environ["QA_NODE_JSON"])'
+          python3 -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"
+          python3 -m qa make-plan --suite perf --policy "$RUNNER_TEMP/qa-policy" --output plan.json
+          python3 -m qa.workflow run-group performance --plan plan.json --policy "$RUNNER_TEMP/qa-policy" --node node.json --lease-dir /var/lock/zfstack-qa --output "$RUNNER_TEMP/qa-performance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Retain every attempted block and failure
+        if: always()
+        run: python3 -m qa.workflow stage-upload --source "$RUNNER_TEMP/qa-performance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output "$RUNNER_TEMP/qa-upload-performance"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-performance
+          path: ${{ runner.temp }}/qa-upload-performance
+          if-no-files-found: error
+          retention-days: 90
+  gate:
+    name: qa/performance-gate
+    if: always()
+    needs: performance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.QA_TRUSTED_REF || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r qa/requirements.lock
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qa-performance
+          path: evidence
+      - name: Recompute against reviewed policy
+        if: always()
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          JOBS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python -c 'import os,pathlib; pathlib.Path("jobs.json").write_text(os.environ["JOBS_JSON"])'
+          python -m qa make-plan --suite perf --tested-sha "$TESTED_SHA" --output expected-plan.json
+          python -m qa evaluate --ci --jobs jobs.json --plan expected-plan.json --results evidence --expected-sha "$TESTED_SHA" --output summary.json --report report.md
+      - if: always()
+        run: test ! -f report.md || cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qa-performance-report
+          path: |
+            summary.json
+            report.md
+          if-no-files-found: error
+          retention-days: 90

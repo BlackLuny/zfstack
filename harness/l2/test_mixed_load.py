@@ -28,7 +28,7 @@ class MixedLoadTest(unittest.TestCase):
                     children.append(child)
                 for child in children:
                     stdout, stderr = child.communicate(timeout=5)
-                    self.assertEqual(child.returncode, 0, (stdout, stderr))
+                    self.assertIn(child.returncode, (0, 1), (stdout, stderr))
                 mixed = json.loads((Path(directory) / 'mixed_load.py.json').read_text())
                 self.assertFalse(mixed['errors'])
                 self.assertEqual(len(mixed['connections']), 2)
@@ -37,7 +37,15 @@ class MixedLoadTest(unittest.TestCase):
                 self.assertEqual(len(sequences), len(set(sequences)))
                 self.assertEqual({s['phase'] for s in mixed['samples']}, {'baseline', 'loaded', 'recovery'})
                 udp = json.loads((Path(directory) / 'udp_probe.py.json').read_text())
-                self.assertFalse(udp['errors'])
+                # This is an unpinned protocol test, not generator calibration.
+                # Fixed-arrival mode retains host scheduling misses instead of
+                # silently lowering offered load. Verify each recorded miss and
+                # preserve the failing exit; never tolerate a lost sent reply.
+                self.assertTrue(all(e.startswith('missed datagram arrival') for e in udp['errors']), udp['errors'])
+                self.assertEqual(udp['scheduled'], udp['sent'] + udp['missed'])
+                self.assertEqual(len(udp['errors']), udp['missed'])
+                self.assertEqual(children[1].returncode, int(bool(udp['errors'])))
+                self.assertEqual(children[0].returncode, 0)
                 self.assertEqual(udp['sent'], udp['received'])
                 self.assertGreater(udp['received'], 10)
         finally:
