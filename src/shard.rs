@@ -944,9 +944,9 @@ impl Shard {
             return;
         }
         if self.pacing.contains(idx) {
-            // Paced data waits, but ACKs / RSTs / probes must not: serve now; `serve`
-            // puts the connection back into the pacing heap for its data.
-            if !conn.wants_unpaced_tx() {
+            // Control work and a changed pacing rate must be served now. `serve`
+            // reprices outstanding debt before installing the updated data wake.
+            if !conn.wants_unpaced_tx() && !conn.pacing_rate_changed(conn.egress_pacing_rate(&self.cfg)) {
                 return;
             }
             self.pacing.remove(idx);
@@ -1913,6 +1913,7 @@ impl Shard {
             return (0, true);
         }
         let rate = conn.egress_pacing_rate(&self.cfg);
+        conn.sync_pacing_debt(now, rate);
         conn.tso_max = iface.tso_max;
         let mss = conn.mss as usize;
         let quantum = match rate {
@@ -1950,8 +1951,12 @@ impl Shard {
                     let ahead = pacing_ahead(r, mss, self.cfg.max_quantum);
                     if conn.next_send_time > now + ahead {
                         conn.note_pacing_limited(now);
-                        // Wake when a full quantum of credit has accumulated.
-                        let t = conn.next_send_time;
+                        // A finite small burst (including unacknowledged and
+                        // adapter bytes) cannot use a full batch: wake as soon
+                        // as the unchanged pacing gate allows it. Bulk keeps
+                        // full-quantum batching instead of per-packet wakeups.
+                        let small_burst = conn.send_occupancy() <= quantum_for(r, mss, self.cfg.max_quantum) as u64;
+                        let t = if small_burst { conn.next_send_time - ahead } else { conn.next_send_time };
                         self.pacing.set(idx, t);
                         return (sent, false);
                     }
@@ -3655,5 +3660,373 @@ mod tso_loss_tests {
             // Exactly the missing segment (MSS 1448 with timestamps).
             assert_eq!(st.bytes_retrans, 1448, "segment {which}");
         }
+    }
+}
+
+#[cfg(test)]
+mod pacing_wake_tests {
+    use super::*;
+    use crate::cc::CcAlgo;
+    use crate::sim::{pattern_byte, LinkParams, Sim};
+
+    fn connected(rate: u64, cwnd_segs: u32) -> (Sim, ConnId, ConnId) {
+        let cfg = StackConfig { cc: CcAlgo::Brutal(rate), init_cwnd_segs: cwnd_segs, ..Default::default() };
+        let link = LinkParams { rate_bps: 0, delay: Duration::from_millis(1), queue_bytes: 1 << 20, ..Default::default() };
+        let mut sim = Sim::new(4405, cfg, StackConfig::default(), link.clone(), link);
+        let client = sim.connect(44005, Default::default());
+        sim.run_until(sim.now + Duration::from_millis(100));
+        let server = sim.a.accepted[0];
+        assert_eq!(sim.a.shard.info(server).unwrap().state, State::Established);
+        (sim, server, client)
+    }
+
+    fn collect(shard: &mut Shard, now: Instant) -> (RunOutcome, Vec<(usize, Vec<u8>)>) {
+        let mut packets = Vec::new();
+        let outcome = shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            packets.push((pkt.len(), pkt.payload.concat()));
+            SendResult::Accepted
+        });
+        shard.check_invariants();
+        (outcome, packets)
+    }
+
+    #[test]
+    fn small_reply_wakes_at_eligibility_without_a_control_packet() {
+        for rate in [505, 632] {
+            let (mut sim, server, _) = connected(rate, 10);
+            let now = sim.now;
+            let sh = &mut sim.a.shard;
+            let info = sh.info(server).unwrap();
+            let ahead = pacing_ahead(rate, info.mss as usize, sh.cfg.max_quantum);
+            // A reachable state after earlier paced transmissions: EDT still
+            // carries debt, while this reply has never entered the wire.
+            let eligible = now + Duration::from_millis(20);
+            let edt = eligible + ahead;
+            sh.slots[server.idx()].conn.as_mut().unwrap().next_send_time = edt;
+            assert_eq!(sh.write(server, &[7; 256]), WriteResult::Written(256));
+            assert!(collect(sh, now).1.is_empty());
+            assert_eq!(sh.next_deadline(), Some(eligible), "small reply at {rate} B/s must not wait for a full quantum");
+            assert!(collect(sh, eligible - Duration::from_nanos(1)).1.is_empty(), "no early send");
+            let (out, packets) = collect(sh, eligible);
+            assert_eq!(out.packets, 1, "timer alone must resume the eligible reply");
+            assert_eq!(packets[0].1, [7; 256]);
+            let after = sh.info(server).unwrap();
+            assert_eq!((after.cwnd, after.pacing_rate), (info.cwnd, Some(rate)));
+            assert!(after.pipe <= after.cwnd && after.pipe <= after.snd_wnd);
+            let charged = Duration::from_nanos((packets[0].0 as u128 * 1_000_000_000 / rate as u128) as u64);
+            assert_eq!(sh.slots[server.idx()].conn.as_ref().unwrap().next_send_time, edt + charged, "wire bytes must retain the full pacing charge");
+        }
+    }
+
+    fn replies_with_retransmission_debt(rate: u64) {
+        let (mut sim, server, client) = connected(rate, 10);
+        // The established flow has a 200 ms RTO; an abrupt one-way delay
+        // causes genuine retransmissions before its 256-byte reply arrives.
+        assert_eq!(sim.a.shard.info(server).unwrap().rto, Duration::from_millis(200));
+        sim.ab.p.delay = Duration::from_millis(500);
+        let mut slowest = Duration::ZERO;
+        for n in 0..24 {
+            let payload: Vec<_> = (n * 256..(n + 1) * 256).map(pattern_byte).collect();
+            assert_eq!(sim.a.shard.write(server, &payload), WriteResult::Written(256));
+            let start = sim.now;
+            let expected = (n + 1) * 256;
+            while sim.b.conns[&client].received < expected && sim.now < start + Duration::from_secs(3) {
+                sim.run_until(sim.now + Duration::from_millis(10));
+            }
+            let info = sim.a.shard.info(server).unwrap();
+            slowest = slowest.max(sim.now - start);
+            assert_eq!(
+                sim.b.conns[&client].received,
+                expected,
+                "reply {n}, rate {rate}, elapsed {:?}, EDT {:?}, {info:?}",
+                sim.now - start,
+                sim.a.shard.slots[server.idx()].conn.as_ref().unwrap().next_send_time
+            );
+            assert!(!sim.b.conns[&client].corrupt);
+            assert_eq!(info.pacing_rate, Some(rate));
+        }
+        let info = sim.a.shard.info(server).unwrap();
+        assert!(info.stats.bytes_retrans > 0 && info.stats.rto_count > 0, "test must create real retransmission debt");
+        assert!(info.stats.limited_pacing_ns > 0, "test must reach the pacing gate");
+        eprintln!("small replies: rate={rate} B/s, slowest={slowest:?}, retransmitted={}, RTOs={}", info.stats.bytes_retrans, info.stats.rto_count);
+    }
+
+    #[test]
+    fn small_replies_with_retransmission_debt_at_505_bytes_per_second() {
+        replies_with_retransmission_debt(505);
+    }
+
+    #[test]
+    fn small_replies_with_retransmission_debt_at_632_bytes_per_second() {
+        replies_with_retransmission_debt(632);
+    }
+
+    #[test]
+    fn continuous_backlog_keeps_full_quantum_wake_and_batch() {
+        for rate in [500_000, 62_500_000] {
+            let (mut sim, server, _) = connected(rate, 128);
+            let now = sim.now;
+            let sh = &mut sim.a.shard;
+            let mss = sh.info(server).unwrap().mss as usize;
+            let quantum = quantum_for(rate, mss, sh.cfg.max_quantum);
+            let ahead = pacing_ahead(rate, mss, sh.cfg.max_quantum);
+            let eligible = now + Duration::from_millis(20);
+            let edt = eligible + ahead;
+            sh.slots[server.idx()].conn.as_mut().unwrap().next_send_time = edt;
+            assert_eq!(sh.write(server, &vec![3; quantum * 3]), WriteResult::Written(quantum * 3));
+            assert!(collect(sh, now).1.is_empty());
+            assert_eq!(sh.next_deadline(), Some(edt), "bulk must retain coalesced wakeups");
+            assert!(collect(sh, eligible).1.is_empty(), "a bulk flow must not gain a per-packet wakeup");
+            assert!(collect(sh, edt - Duration::from_nanos(1)).1.is_empty());
+            let (out, packets) = collect(sh, edt);
+            assert!(out.bytes >= quantum, "the wake must still serve a full batch");
+            assert!(out.bytes <= quantum + mss + MAX_HEADER, "the unchanged gate bounds burst overshoot to one packet");
+            assert!(packets.len() >= 2);
+            let next_edt = sh.slots[server.idx()].conn.as_ref().unwrap().next_send_time;
+            assert_eq!(sh.pacing.peek().map(|x| x.0), Some(next_edt), "remaining backlog must stay on the full-quantum deadline");
+            assert!(next_edt > edt + ahead);
+        }
+    }
+
+    #[test]
+    fn small_burst_boundary_counts_inflight_bytes_and_uses_full_quantum() {
+        for (inflight, extra, clipped_round) in [(false, 0, false), (false, 1, false), (true, 1, false), (false, 0, true)] {
+            let rate = 505;
+            let (mut sim, server, _) = connected(rate, 10);
+            let now = sim.now;
+            let sh = &mut sim.a.shard;
+            let mss = sh.info(server).unwrap().mss as usize;
+            let quantum = quantum_for(rate, mss, sh.cfg.max_quantum);
+            let queued = if inflight {
+                assert_eq!(sh.write(server, &vec![5; quantum - 1]), WriteResult::Written(quantum - 1));
+                let (_, sent) = collect(sh, now);
+                assert_eq!(sent.iter().map(|(_, payload)| payload.len()).sum::<usize>(), quantum - 1);
+                assert_eq!(sh.info(server).unwrap().pipe, (quantum - 1) as u64);
+                2
+            } else {
+                quantum + extra
+            };
+            if clipped_round {
+                sh.cfg.round_bytes_cap = mss;
+            }
+            let eligible = now + Duration::from_millis(20);
+            let edt = eligible + pacing_ahead(rate, mss, sh.cfg.max_quantum);
+            sh.slots[server.idx()].conn.as_mut().unwrap().next_send_time = edt;
+            assert_eq!(sh.write(server, &vec![5; queued]), WriteResult::Written(queued));
+            assert!(collect(sh, now).1.is_empty());
+            assert_eq!(sh.pacing.peek().map(|x| x.0), Some(if extra == 0 { eligible } else { edt }));
+        }
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn small_burst_boundary_counts_adapter_bytes() {
+        for extra in [0, 1] {
+            let rate = 505;
+            let (mut sim, server, _) = connected(rate, 10);
+            let now = sim.now;
+            let sh = &mut sim.a.shard;
+            let mss = sh.info(server).unwrap().mss as usize;
+            let quantum = quantum_for(rate, mss, sh.cfg.max_quantum);
+            sh.set_adapter_tx(server, (quantum - 256 + extra) as u32);
+            let eligible = now + Duration::from_millis(20);
+            let edt = eligible + pacing_ahead(rate, mss, sh.cfg.max_quantum);
+            sh.slots[server.idx()].conn.as_mut().unwrap().next_send_time = edt;
+            assert_eq!(sh.write(server, &[5; 256]), WriteResult::Written(256));
+            assert!(collect(sh, now).1.is_empty());
+            assert_eq!(sh.pacing.peek().map(|x| x.0), Some(if extra == 0 { eligible } else { edt }));
+        }
+    }
+
+    #[test]
+    fn debt_rate_changes_conserve_remaining_bytes_and_round_up() {
+        for (old_rate, new_rate, remaining_ns) in [(100, 200, 1_000_000_000), (200, 100, 1_000_000_000), (505, 505, 7), (2, 3, 1), (3, 2, 1)] {
+            let (mut sim, server, _) = connected(505, 10);
+            let now = sim.now;
+            let c = sim.a.shard.slots[server.idx()].conn.as_mut().unwrap();
+            c.sync_pacing_debt(now, Some(old_rate));
+            c.next_send_time = now + Duration::from_nanos(remaining_ns);
+            c.sync_pacing_debt(now, Some(new_rate));
+            let owed = remaining_ns as u128 * old_rate as u128;
+            let expected = owed.div_ceil(new_rate as u128) as u64;
+            assert_eq!(c.next_send_time, now + Duration::from_nanos(expected));
+            assert!((c.next_send_time - now).as_nanos() * new_rate as u128 >= owed, "no forgiven byte debt");
+            let t = c.next_send_time;
+            c.sync_pacing_debt(now, Some(new_rate));
+            assert_eq!(c.next_send_time, t, "same-rate synchronization must be idempotent");
+        }
+    }
+    #[test]
+    fn debt_none_transition_past_credit_and_saturation_are_explicit() {
+        let (mut sim, server, _) = connected(505, 10);
+        let now = sim.now;
+        let c = sim.a.shard.slots[server.idx()].conn.as_mut().unwrap();
+        c.sync_pacing_debt(now, Some(505));
+        c.next_send_time = now + Duration::from_secs(2);
+        c.sync_pacing_debt(now, None);
+        assert_eq!(c.next_send_time, now + Duration::from_secs(2));
+        c.sync_pacing_debt(now, Some(1010));
+        assert_eq!(c.next_send_time, now + Duration::from_secs(1), "unpaced transition cannot erase positive debt");
+        c.next_send_time = now - Duration::from_millis(1);
+        c.sync_pacing_debt(now, Some(505));
+        assert_eq!(c.next_send_time, now - Duration::from_millis(1), "past credit must not expand");
+        c.sync_pacing_debt(now, Some(u64::MAX));
+        c.next_send_time = Instant::MAX;
+        c.sync_pacing_debt(now, Some(1));
+        assert_eq!(c.next_send_time, Instant::MAX, "unrepresentable future debt must saturate conservatively");
+        c.sync_pacing_debt(now, Some(0));
+        assert_eq!(c.next_send_time, Instant::MAX, "zero external rate uses existing minimum-one semantics");
+    }
+    #[test]
+    fn accepted_retransmission_retains_full_wire_charge() {
+        let rate = 505;
+        let (mut sim, server, _) = connected(rate, 10);
+        let now = sim.now;
+        let sh = &mut sim.a.shard;
+        assert_eq!(sh.write(server, &[7; 256]), WriteResult::Written(256));
+        let (_, first) = collect(sh, now);
+        assert_eq!(first.len(), 1);
+        let before = sh.slots[server.idx()].conn.as_ref().unwrap().next_send_time;
+        let rto = sh.info(server).unwrap().rto;
+        let (_, resent) = collect(sh, now + rto);
+        assert!(!resent.is_empty());
+        assert!(sh.info(server).unwrap().stats.bytes_retrans >= 256);
+        let bytes = resent.iter().map(|(n, _)| *n).sum::<usize>();
+        assert_eq!(
+            sh.slots[server.idx()].conn.as_ref().unwrap().next_send_time,
+            before + Duration::from_nanos((bytes as u128 * 1_000_000_000 / rate as u128) as u64)
+        );
+    }
+    #[test]
+    fn rate_change_repositions_armed_heap_without_control_work() {
+        for (old_rate, new_rate) in [(10_000, 100_000), (100_000, 10_000)] {
+            let (mut sim, server, _) = connected(new_rate, 10);
+            let now = sim.now;
+            let sh = &mut sim.a.shard;
+            let idx = server.idx() as u32;
+            {
+                let c = sh.slots[server.idx()].conn.as_mut().unwrap();
+                c.sync_pacing_debt(now, Some(new_rate));
+                c.next_send_time = now + Duration::from_secs(1);
+            }
+            assert_eq!(sh.write(server, &[3; 256]), WriteResult::Written(256));
+            assert!(collect(sh, now).1.is_empty());
+            // An old-rate debt and armed timer, while CC now reports new_rate.
+            // No ACK/RST/probe is pending to wake this heap entry.
+            let c = sh.slots[server.idx()].conn.as_mut().unwrap();
+            c.sync_pacing_debt(now, Some(old_rate));
+            c.next_send_time = now + Duration::from_secs(1);
+            let old_wake = c.next_send_time - pacing_ahead(old_rate, c.info().mss as usize, sh.cfg.max_quantum);
+            sh.pacing.set(idx, old_wake);
+            sh.after_conn_change(idx);
+            assert!(sh.slots[server.idx()].sched.in_ready);
+            assert!(collect(sh, now).1.is_empty());
+            let c = sh.slots[server.idx()].conn.as_ref().unwrap();
+            let expected = c.next_send_time - pacing_ahead(new_rate, c.info().mss as usize, sh.cfg.max_quantum);
+            assert_eq!(old_wake > expected, old_rate < new_rate);
+            assert_eq!(sh.pacing.peek().unwrap().0, expected);
+            assert!(collect(sh, expected - Duration::from_nanos(1)).1.is_empty());
+            assert_eq!(collect(sh, expected).1.len(), 1);
+        }
+    }
+    #[test]
+    fn unchanged_rate_does_not_repeatedly_requeue_paced_flow() {
+        let (mut sim, server, _) = connected(10_000, 10);
+        let now = sim.now;
+        let sh = &mut sim.a.shard;
+        let c = sh.slots[server.idx()].conn.as_mut().unwrap();
+        c.sync_pacing_debt(now, Some(10_000));
+        c.next_send_time = now + Duration::from_secs(1);
+        assert_eq!(sh.write(server, &[3; 256]), WriteResult::Written(256));
+        assert!(collect(sh, now).1.is_empty());
+        let before = sh.pacing.peek().unwrap();
+        for _ in 0..100 {
+            sh.after_conn_change(server.idx() as u32);
+            assert!(!sh.slots[server.idx()].sched.in_ready);
+            assert_eq!(sh.pacing.peek().unwrap(), before);
+        }
+    }
+}
+#[cfg(test)]
+mod pacing_rate_recovery_tests {
+    use super::*;
+    use crate::cc::CcAlgo;
+    use crate::sim::{pattern_byte, LinkParams, Sim};
+
+    fn replies_across_rate_recovery(slow_upstream: bool) {
+        let cfg = StackConfig { cc: CcAlgo::Bbr, ..Default::default() };
+        let fast = LinkParams { rate_bps: 100_000_000, delay: Duration::from_millis(1), queue_bytes: 1 << 20, ..Default::default() };
+        let mut sim = Sim::new(4405, cfg, StackConfig::default(), fast.clone(), fast);
+        sim.gap_a = Duration::from_millis(10); // 100 Hz server driver.
+        let client = sim.connect(44005, Default::default());
+        sim.run_until(sim.now + Duration::from_secs(2));
+        let server = sim.a.accepted[0];
+        let origin = sim.now;
+        let end = origin + Duration::from_secs(32);
+        let mut next_request = origin;
+        let mut request: Option<(Instant, bool)> = None;
+        let mut seq = 0u64;
+        let mut recovery_completed = 0;
+        let mut max_recovery_latency = Duration::ZERO;
+        // The same 8/16/8 s windows as the queue rig: inject 500 ms from
+        // 8 s through 23.25 s, then restore fast links before recovery at 24 s.
+        // Model either delayed upstream requests or an application waiting
+        // 500 ms after each loaded-phase reply. BBR evolves without overrides.
+        while sim.now < end || request.is_some() {
+            let loaded = sim.now >= origin + Duration::from_secs(8) && sim.now < origin + Duration::from_millis(23_250);
+            sim.ab.p.delay = if loaded { Duration::from_millis(500) } else { Duration::from_millis(1) };
+            sim.ba.p.delay = if loaded && slow_upstream { Duration::from_millis(500) } else { Duration::from_millis(1) };
+            if request.is_none() && sim.now >= next_request && sim.now < end {
+                let payload: Vec<_> = (seq * 256..(seq + 1) * 256).map(pattern_byte).collect();
+                assert_eq!(sim.b.shard.write(client, &payload), WriteResult::Written(256));
+                request = Some((sim.now, false));
+            }
+            if let Some((started, ref mut replied)) = request.as_mut() {
+                if !*replied && sim.a.conns[&server].received >= (seq + 1) * 256 {
+                    let payload: Vec<_> = (seq * 256..(seq + 1) * 256).map(pattern_byte).collect();
+                    assert_eq!(sim.a.shard.write(server, &payload), WriteResult::Written(256));
+                    *replied = true;
+                }
+                if sim.b.conns[&client].received >= (seq + 1) * 256 {
+                    let latency = sim.now - *started;
+                    assert!(latency < Duration::from_secs(3));
+                    if *started >= origin + Duration::from_secs(24) {
+                        recovery_completed += 1;
+                        max_recovery_latency = max_recovery_latency.max(latency);
+                    }
+                    next_request =
+                        if !slow_upstream && loaded { sim.now + Duration::from_millis(500) } else { (*started + Duration::from_millis(10)).max(sim.now) };
+                    seq += 1;
+                    request = None;
+                } else {
+                    let conn = sim.a.shard.slots[server.idx()].conn.as_ref().unwrap();
+                    assert!(
+                        sim.now < *started + Duration::from_secs(3),
+                        "reply {seq}, slow_upstream={slow_upstream}, started {:?}, elapsed {:?}, server EDT {:?}, server {:?}, client {:?}",
+                        *started - origin,
+                        sim.now - *started,
+                        conn.next_send_time.saturating_since(sim.now),
+                        sim.a.shard.info(server),
+                        sim.b.shard.info(client)
+                    );
+                }
+            }
+            sim.run_until(sim.now + Duration::from_millis(1));
+        }
+        assert!(recovery_completed > 0, "recovery must execute requests, not pass with no observations");
+        assert!(!sim.a.conns[&server].corrupt && !sim.b.conns[&client].corrupt);
+        assert_eq!(sim.ab.stats.queue_drops + sim.ab.stats.random_drops + sim.ba.stats.queue_drops + sim.ba.stats.random_drops, 0);
+        assert!(sim.a.shard.info(server).unwrap().stats.bytes_retrans > 0, "natural delay must exercise retransmission debt");
+        eprintln!("BBR recovery: slow_upstream={slow_upstream}, completed={seq}, recovery_completed={recovery_completed}, max_recovery_latency={max_recovery_latency:?}");
+    }
+
+    #[test]
+    fn bbr_recovers_after_delayed_requests_and_replies() {
+        replies_across_rate_recovery(true);
+    }
+
+    #[test]
+    fn bbr_recovers_after_spaced_requests_and_delayed_replies() {
+        replies_across_rate_recovery(false);
     }
 }
