@@ -17,6 +17,8 @@
   用户指定新 KVM VPS 的 [三模式自检及正式 C16](../harness/l2/results/2026-10-16-fifo-remote23/REPORT.md)：自检通过，full 最大迟到 10.51 ms；原生 worker/fakectl 冻结构建后，只执行一次正式 baseline/fault。基线通过，故障臂有 35 个 UDP 超时、172 次发送失败，最大释放迟到 162.72 ms、透明切换晚 3.17 ms，独立评估 FAIL/VALID。20 ms 上限未改，known-BLOCKED 保留。准备阶段的 Python 补丁包升级及完整失败构建记录一并保留，现有服务 PID/容器健康核对见报告。
 
   正式故障臂的 [离线根因分析](../harness/l2/results/2026-10-16-fifo-formal-analysis/REPORT.md) 显示，失败来自用户态发送容量不足和账本外的读取前等待。候选 `netem-fifo` 的 [仿真自检](../harness/l2/results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，负例通过，但 full 因 veth 下游跨 CPU 投递导致 UDP 乱序而 FAIL。预注册对照中普通 netem 未出现乱序，因此不放宽判据。下一步是在真机上做三模式自检，步骤见 PR #75；全部通过之前，不要以 `netem-fifo` 登记 case、冻结 worker 或执行正式运行。若采用它，宿主还需 `sch_netem`、`dummy` 及 AF_PACKET TPACKET_V3。
+  后续 `7811fda` 的 [netem-fifo 真机门禁](../harness/l2/results/2026-10-16-netem-fifo-remote23/REPORT.md) 已执行一次：能力通过，full 因 9 个 loaded UDP 被超越而 FAIL；cancel/overflow 负例通过，三次普通 netem 对照均零乱序、零丢失。远端及本地原始账本复算一致。已停止注册 v3、第二轮 gate、worker 构建和正式 C16；case v2、严格顺序及 known-BLOCKED 保留。
+
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。

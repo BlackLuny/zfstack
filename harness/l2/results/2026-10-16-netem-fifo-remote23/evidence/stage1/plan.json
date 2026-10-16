@@ -1,0 +1,20 @@
+{
+  "written_before_execution_unix_ns": 1792157811589013893,
+  "tested_sha": "7811fda9e067cb5a021cf4988e0a31b479f9c656",
+  "kernel": "6.1.0-29-amd64",
+  "boot_id": "7cc58440-68a8-4a79-9cbf-2f504b63e3a7",
+  "domain": "zfstack-qa-vps-23.136.204.72-23826",
+  "run_id": "netem-fifo-stage1-20261016",
+  "order": [
+    "capabilities",
+    "full",
+    "cancel",
+    "overflow"
+  ],
+  "runs_each": 1,
+  "kind": "netem-fifo",
+  "lateness_limit_ns": 20000000,
+  "conditional": "only if any mode fails udp_exactly_once_in_order: exactly 3 plain-netem controls; order analysis is always recomputed",
+  "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
+  "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"
+}
