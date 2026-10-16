@@ -1,0 +1,20 @@
+{
+  "written_before_execution_unix_ns": 1792157152253282430,
+  "tested_sha": "c3abb7826abbfc49dbce7b6eb98b70585a359327",
+  "kernel": "6.8.0-147-generic",
+  "boot_id": "17408bb0-2b34-496c-a7f1-bd51341bf323",
+  "domain": "local-tcg-smoke",
+  "run_id": "driver-smoke",
+  "order": [
+    "capabilities",
+    "full",
+    "cancel",
+    "overflow"
+  ],
+  "runs_each": 1,
+  "kind": "netem-fifo",
+  "lateness_limit_ns": 20000000,
+  "conditional": "only if full fails udp_exactly_once_in_order: offline order analysis and exactly 3 plain-netem controls",
+  "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
+  "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"
+}

@@ -72,6 +72,19 @@
 
 按预注册规则，**乱序没有被证明是普通 netem 也会有的属性，因此不采用路线 1，不修改自检判据**。`netem-fifo` 独有的成分包括 clsact mirror、两个 TPACKET 捕获环、`qlen` 轮询，以及注入器进程在仿真 CPU 上的负载，哪一个使跨 CPU 投递的差异显现，尚未定位。真实 CPU 上是否复现须在真机自检中确定，步骤见 PR 中的真机运行说明。
 
+## 真机驱动的本地冒烟（TCG，`c3abb78`，不是门禁）
+
+真机步骤使用 [netem_capabilities.py](netem_capabilities.py)（能力探针）和 [remote_selftests.py](remote_selftests.py)（一次性门禁驱动），本地在仿真中完整跑过一遍，输出见 [driver-smoke/](driver-smoke/)：
+
+- 能力探针 PASS：两次 netlink change 的选项读回都与冻结策略一致，qlen 读取正常，两个环可以打开。
+- 驱动的租约、计划先写、记录和复算均正常，三种模式各一次：
+  - full PASS，UDP 0 乱序；
+  - cancel 因接收端 23 个 UDP 被超越而 FAIL，oracle 按预期拒绝取消；
+  - overflow 负例 PASS（4913 帧丢失）。
+- 门禁判为 FAIL。
+
+这次乱序出现在 cancel 而不是 full，说明它在仿真中是间歇性的。由于这次 cancel 失败，驱动改为任一模式 UDP 乱序都触发 3 次普通 netem 对照（此前只看 full）。这次冒烟不归属任何门禁或资格。
+
 ## 开发阶段运行（不归属任何 SHA）
 
 [development/](development/) 保留了提交前在未提交源码上运行的一组三模式（三个都符合预期，其中 full 当时 UDP 有序）和原型探针 `netem_probe.py` 的结果，只作为开发记录：

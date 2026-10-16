@@ -5,8 +5,8 @@ Run as root from a clean checkout of the frozen SHA. It writes its plan before
 executing, holds the public QA lease for the whole sequence, runs every
 privileged step inside qa/isolate-linux.sh, never repeats a run, and records
 the gate verdict: PASS only if the probe and all three modes pass and the
-oracle verdicts recompute identically. If full fails receiver UDP order, it
-also runs the offline order analysis and exactly three plain-netem controls.
+oracle verdicts recompute identically. If any mode fails receiver UDP order,
+it also runs exactly three plain-netem controls.
 """
 import argparse
 import json
@@ -50,7 +50,7 @@ def main():
     plan = {"written_before_execution_unix_ns": time.time_ns(), "tested_sha": head, "kernel": os.uname().release,
             "boot_id": boot, "domain": a.domain, "run_id": a.run_id, "order": ["capabilities", *MODES],
             "runs_each": 1, "kind": ledger.KIND, "lateness_limit_ns": ledger.LATENESS_LIMIT_NS,
-            "conditional": f"only if full fails udp_exactly_once_in_order: offline order analysis and exactly {CONTROLS} plain-netem controls",
+            "conditional": f"only if any mode fails udp_exactly_once_in_order: exactly {CONTROLS} plain-netem controls; order analysis is always recomputed",
             "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
             "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"}
     (a.output / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -81,8 +81,9 @@ def main():
                 isolated(mode, [sys.executable, str(ROOT / "harness/l2/fifo_selftest.py"), "--kind", ledger.KIND,
                                 "--mode", mode, "--output", str(a.output / (mode + ".json"))], 300)
                 lease.check()
-            full = a.output / "full.json"
-            if full.is_file() and not json.loads(full.read_text())["checks"].get("udp_exactly_once_in_order", True):
+            summaries = [a.output / (mode + ".json") for mode in MODES]
+            if any(path.is_file() and json.loads(path.read_text())["checks"].get("udp_exactly_once_in_order") is False
+                   for path in summaries):
                 for index in range(1, CONTROLS + 1):
                     isolated(f"control-{index}", [sys.executable, str(HERE / "netem_order_control.py"),
                                                   "--output", str(a.output / f"control-{index}.json")], 300)
