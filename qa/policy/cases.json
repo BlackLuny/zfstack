@@ -910,7 +910,7 @@
     },
     {
       "case_id": "C16-l2-queue-control",
-      "case_version": 2,
+      "case_version": 3,
       "layer": "L2",
       "profile": "fast-release",
       "runner": "l2-queue-control",
@@ -954,7 +954,7 @@
         },
         "mode": "load",
         "queue_control": {
-          "kind": "fifo-delay-line",
+          "kind": "netem-fifo",
           "node": "worker",
           "interface": "eth0",
           "phase": "loaded",
