@@ -1,0 +1,651 @@
+{
+  "layer": "L2",
+  "ok": false,
+  "errors": [
+    "test rig: client 4 exited 1; inspect retained request outcomes",
+    "test rig: client 5 exited 1; inspect retained request outcomes",
+    "test rig: client 6 exited 1; inspect retained request outcomes",
+    "test rig: client 7 exited 1; inspect retained request outcomes",
+    "datagram timeout seq=1987",
+    "datagram timeout seq=1988",
+    "datagram timeout seq=1989",
+    "datagram timeout seq=2301",
+    "datagram timeout seq=2302",
+    "datagram timeout seq=2303",
+    "datagram timeout seq=2304",
+    "datagram timeout seq=2305",
+    "datagram timeout seq=2306",
+    "datagram timeout seq=1987",
+    "datagram timeout seq=1988",
+    "datagram timeout seq=1989",
+    "datagram timeout seq=2301",
+    "datagram timeout seq=2302",
+    "datagram timeout seq=2303",
+    "datagram timeout seq=2304",
+    "datagram timeout seq=2305",
+    "datagram timeout seq=2306",
+    "datagram timeout seq=1988",
+    "datagram timeout seq=1989",
+    "datagram timeout seq=2301",
+    "datagram timeout seq=2302",
+    "datagram timeout seq=2303",
+    "datagram timeout seq=2304",
+    "datagram timeout seq=2305",
+    "datagram timeout seq=2306",
+    "datagram timeout seq=1987",
+    "datagram timeout seq=1988",
+    "datagram timeout seq=1989",
+    "datagram timeout seq=2301",
+    "datagram timeout seq=2302",
+    "datagram timeout seq=2303",
+    "datagram timeout seq=2304",
+    "datagram timeout seq=2305",
+    "datagram timeout seq=2306"
+  ],
+  "clock": "wall-monotonic",
+  "start_at": 37315679.520603664,
+  "effective_config": {
+    "schema_version": 1,
+    "heavy_conns": 4,
+    "request_bytes": 256,
+    "request_rate_hz": 100.0,
+    "light_mode": "closed-loop",
+    "max_generator_lag_sec": 0.02,
+    "light_conns": 1,
+    "churn_requests": 0,
+    "udp_enabled": true,
+    "udp_rate_hz": 100.0,
+    "udp_payload_bytes": 1032,
+    "request_timeout_sec": 3.0,
+    "phases_sec": {
+      "baseline": 8.0,
+      "loaded": 16.0,
+      "recovery": 8.0
+    },
+    "direction": "heavy-download/light-echo",
+    "application_port": 19001,
+    "memory_mb": 64,
+    "uplink_delay_ms": 0.0,
+    "netem_limit_packets": 100000,
+    "mtu": 1420,
+    "runtime": "tokio-multi-thread",
+    "profile": "fast-release",
+    "capture": false,
+    "boundary_tolerance_ns": 5000000,
+    "topology": {
+      "wg_ports": 2,
+      "peers": 4,
+      "heavy_peer": 0,
+      "light_peers": [
+        1,
+        2,
+        3
+      ]
+    },
+    "queue_control": {
+      "kind": "fifo-delay-line",
+      "node": "worker",
+      "interface": "eth0",
+      "phase": "loaded",
+      "delay_ms": 500.0,
+      "limit_packets": 100000
+    },
+    "mode": "load"
+  },
+  "load_counters": {
+    "client-1": {
+      "scheduled": 1543,
+      "started": 1543,
+      "completed": 1543,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-2": {
+      "scheduled": 1541,
+      "started": 1541,
+      "completed": 1541,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-3": {
+      "scheduled": 1554,
+      "started": 1554,
+      "completed": 1554,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    }
+  },
+  "startup_anomalies": [],
+  "phases_sec": {
+    "baseline": 8.0,
+    "loaded": 16.0,
+    "recovery": 8.0
+  },
+  "request_timeout_sec": 3.0,
+  "uplink_delay_ms": 0.0,
+  "light_conns": 1,
+  "churn_requests": 0,
+  "udp": [
+    {
+      "peer": 0,
+      "sent": 3200,
+      "received": 3191,
+      "bytes": 3293112,
+      "errors": [
+        "datagram timeout seq=1987",
+        "datagram timeout seq=1988",
+        "datagram timeout seq=1989",
+        "datagram timeout seq=2301",
+        "datagram timeout seq=2302",
+        "datagram timeout seq=2303",
+        "datagram timeout seq=2304",
+        "datagram timeout seq=2305",
+        "datagram timeout seq=2306"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5859285593032837,
+          "p95_ms": 1.0022670030593872,
+          "p99_ms": 1.2709349393844604,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1591,
+          "p50_ms": 1034.9909514188766,
+          "p95_ms": 1586.0740467905998,
+          "p99_ms": 1607.7105104923248,
+          "p999_ms": 1617.5278350710869
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.5271807312965393,
+          "p95_ms": 214.09622579813004,
+          "p99_ms": 531.8407639861107,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3191,
+        "failed": 0,
+        "timed_out": 9,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 9,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 1,
+      "sent": 3200,
+      "received": 3191,
+      "bytes": 3293112,
+      "errors": [
+        "datagram timeout seq=1987",
+        "datagram timeout seq=1988",
+        "datagram timeout seq=1989",
+        "datagram timeout seq=2301",
+        "datagram timeout seq=2302",
+        "datagram timeout seq=2303",
+        "datagram timeout seq=2304",
+        "datagram timeout seq=2305",
+        "datagram timeout seq=2306"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5952194333076477,
+          "p95_ms": 1.0176971554756165,
+          "p99_ms": 1.4400780200958252,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1591,
+          "p50_ms": 1035.2007523179054,
+          "p95_ms": 1586.2786620855331,
+          "p99_ms": 1608.1371009349823,
+          "p999_ms": 1617.9800927639008
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.5277246236801147,
+          "p95_ms": 215.12313187122345,
+          "p99_ms": 532.0317149162292,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3191,
+        "failed": 0,
+        "timed_out": 9,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 9,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 2,
+      "sent": 3200,
+      "received": 3192,
+      "bytes": 3294144,
+      "errors": [
+        "datagram timeout seq=1988",
+        "datagram timeout seq=1989",
+        "datagram timeout seq=2301",
+        "datagram timeout seq=2302",
+        "datagram timeout seq=2303",
+        "datagram timeout seq=2304",
+        "datagram timeout seq=2305",
+        "datagram timeout seq=2306"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5778297781944275,
+          "p95_ms": 1.0225921869277954,
+          "p99_ms": 1.5004053711891174,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1592,
+          "p50_ms": 1035.3577882051468,
+          "p95_ms": 1585.5329856276512,
+          "p99_ms": 1607.046440243721,
+          "p999_ms": 1616.819478571415
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.5295649170875549,
+          "p95_ms": 213.97764980793,
+          "p99_ms": 531.7467004060745,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3192,
+        "failed": 0,
+        "timed_out": 8,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 8,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 3,
+      "sent": 3200,
+      "received": 3191,
+      "bytes": 3293112,
+      "errors": [
+        "datagram timeout seq=1987",
+        "datagram timeout seq=1988",
+        "datagram timeout seq=1989",
+        "datagram timeout seq=2301",
+        "datagram timeout seq=2302",
+        "datagram timeout seq=2303",
+        "datagram timeout seq=2304",
+        "datagram timeout seq=2305",
+        "datagram timeout seq=2306"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5775243043899536,
+          "p95_ms": 0.9967833757400513,
+          "p99_ms": 1.3267770409584045,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1591,
+          "p50_ms": 1035.3256911039352,
+          "p95_ms": 1585.2562561631203,
+          "p99_ms": 1606.108896434307,
+          "p999_ms": 1616.6741624474525
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.5212351679801941,
+          "p95_ms": 214.53168988227844,
+          "p99_ms": 530.8025404810905,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3191,
+        "failed": 0,
+        "timed_out": 9,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 9,
+      "unfinished": 0,
+      "missed": 0
+    }
+  ],
+  "performance_contaminated": false,
+  "endpoint_observer_error": null,
+  "heavy_bytes": 346237248,
+  "heavy_mbps": 173.118624,
+  "light_users": [
+    {
+      "peer": 1,
+      "placement": "same-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.7128044962882996,
+          "p95_ms": 1.0835379362106323,
+          "p99_ms": 1.46455317735672,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 14,
+          "p50_ms": 1002.622663974762,
+          "p95_ms": 1598.2186496257782,
+          "p99_ms": null,
+          "p999_ms": null
+        },
+        "recovery": {
+          "n": 729,
+          "p50_ms": 0.45959651470184326,
+          "p95_ms": 0.6811469793319702,
+          "p99_ms": 1.9489079713821411,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 2,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.7960125803947449,
+          "p95_ms": 1.110948622226715,
+          "p99_ms": 1.3426914811134338,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 14,
+          "p50_ms": 1002.4153664708138,
+          "p95_ms": 1598.040632903576,
+          "p99_ms": null,
+          "p999_ms": null
+        },
+        "recovery": {
+          "n": 727,
+          "p50_ms": 0.44404715299606323,
+          "p95_ms": 0.657498836517334,
+          "p99_ms": 2.4524852633476257,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 3,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.7949844002723694,
+          "p95_ms": 1.0959580540657043,
+          "p99_ms": 1.347467303276062,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 14,
+          "p50_ms": 1002.3946687579155,
+          "p95_ms": 1597.1837267279625,
+          "p99_ms": null,
+          "p999_ms": null
+        },
+        "recovery": {
+          "n": 740,
+          "p50_ms": 0.497668981552124,
+          "p95_ms": 0.7057487964630127,
+          "p99_ms": 1.641109585762024,
+          "p999_ms": null
+        }
+      }
+    }
+  ],
+  "worker": {
+    "baseline": {
+      "sample_count": 17,
+      "worker_cpu_sec": 0.8300000000000001,
+      "sample_window_sec": 8.000058409,
+      "rss_peak_kib": 75620,
+      "rss_end_kib": 73340,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315679520942951,
+        "end_ns": 37315687521001360,
+        "cpu_sec": 0.8300000000000001,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 1177872,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315679520603664,
+        "planned_end_ns": 37315687520603664,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "loaded": {
+      "sample_count": 33,
+      "worker_cpu_sec": 4.680000000000001,
+      "sample_window_sec": 15.999905316,
+      "rss_peak_kib": 116748,
+      "rss_end_kib": 116748,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315687521001360,
+        "end_ns": 37315703520906676,
+        "cpu_sec": 4.680000000000001,
+        "verified_bytes": 346237248,
+        "sample_count": 33,
+        "max_boundary_skew_ns": 1596089,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315687520603664,
+        "planned_end_ns": 37315703520603664,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "recovery": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.0899999999999999,
+      "sample_window_sec": 7.999946803,
+      "rss_peak_kib": 116748,
+      "rss_end_kib": 116748,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315703520906676,
+        "end_ns": 37315711520853479,
+        "cpu_sec": 1.0899999999999999,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 542480,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315703520603664,
+        "planned_end_ns": 37315711520603664,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    }
+  },
+  "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold.",
+  "queue_control": {
+    "schema_version": 4,
+    "strategy": {
+      "kind": "tc-mirred-tap-userspace-fifo",
+      "path": "persistent from before baseline until after recovery",
+      "active": "release = arrival + delay_ms",
+      "drain": "FIFO behind backlog at drain_rate_bps",
+      "drain_rate_bps": 2000000000,
+      "transparent": "release = arrival once the FIFO is empty",
+      "lateness_limit_ns": 20000000,
+      "memory_limit_bytes": 268435456,
+      "max_frames": 4000000
+    },
+    "scope": "test-side shared worker egress queue; persistent userspace FIFO, not historical root-cause reproduction",
+    "config": {
+      "kind": "fifo-delay-line",
+      "node": "worker",
+      "interface": "eth0",
+      "phase": "loaded",
+      "delay_ms": 500.0,
+      "limit_packets": 100000
+    },
+    "clock": "CLOCK_MONOTONIC",
+    "planned": {
+      "measurement_start_ns": 37315679520603664,
+      "start_ns": 37315687520603664,
+      "end_ns": 37315702770603664,
+      "recovery_start_ns": 37315703520603664,
+      "measurement_end_ns": 37315711520603664
+    },
+    "actual": {
+      "installed_ns": 37315676602939495,
+      "transparent_ns": 37315703523772557,
+      "owner_released_ns": 37315711636714693,
+      "removed_ns": 37315711639280808,
+      "closed_ns": 37315711742006954
+    },
+    "kernel": {
+      "qdisc_before": [
+        {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {}
+        }
+      ],
+      "tap_qdisc": [
+        {
+          "kind": "noqueue",
+          "handle": "80c7:",
+          "root": true,
+          "refcnt": 2,
+          "options": {}
+        }
+      ],
+      "tap_before": {
+        "rx": {
+          "packets": 0,
+          "bytes": 0,
+          "dropped": 0,
+          "errors": 0
+        },
+        "tx": {
+          "packets": 0,
+          "bytes": 0,
+          "dropped": 0,
+          "errors": 0
+        }
+      },
+      "qdisc_installed": [
+        {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {}
+        },
+        {
+          "kind": "clsact",
+          "handle": "ffff:",
+          "parent": "ffff:fff1",
+          "options": {}
+        }
+      ],
+      "action": {
+        "packets": 355584,
+        "bytes": 447310894,
+        "drops": 0,
+        "overlimits": 0
+      },
+      "tap_after": {
+        "rx": {
+          "packets": 0,
+          "bytes": 0,
+          "dropped": 0,
+          "errors": 0
+        },
+        "tx": {
+          "packets": 355584,
+          "bytes": 447310894,
+          "dropped": 0,
+          "errors": 0
+        }
+      },
+      "qdisc_restored": [
+        {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {}
+        }
+      ]
+    },
+    "resources": {
+      "max_frames": 22526,
+      "max_bytes": 30089968
+    },
+    "ledger": {
+      "path": "queue-ledger.bin.gz",
+      "sha256": "68c4da441700d14f60bd9344c7532727745b0081be5037768c02b0015ca6734a",
+      "frames": 355584,
+      "record_format": "<IBBBxHIQIIQH gzip"
+    },
+    "errors": [],
+    "cancelled": false,
+    "cleanup": "PASS",
+    "summary": {
+      "pre": {
+        "frames": 11235,
+        "max_residence_ns": 444710,
+        "p99_residence_ns": 95281
+      },
+      "active": {
+        "frames": 288987,
+        "max_residence_ns": 662718680,
+        "p99_residence_ns": 643325930
+      },
+      "drain": {
+        "frames": 18536,
+        "max_residence_ns": 492238194,
+        "p99_residence_ns": 278596466
+      },
+      "transparent": {
+        "frames": 36826,
+        "max_residence_ns": 15280892,
+        "p99_residence_ns": 70295
+      }
+    }
+  }
+}

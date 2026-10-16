@@ -13,6 +13,8 @@
   2026-10-16 本机后续诊断和取消修复见 [原始证据与复验](../harness/l2/results/2026-10-16-fifo-diagnosis/REPORT.md)：`1b19023` 保持路径直到父进程回收客户端并结束测量，cancel/overflow 负例通过；正常 full 仍迟到超限，正式 C16 尚未运行。旧报告使用未经结清的宿主累计计数作为 CPU 上界，相关归因范围以后续同步观测报告中的修订为准。不能把本机负例通过当作完整时序资格。
 
   修复后增加同步观测的 [CPU 调度对照](../harness/l2/results/2026-10-16-fifo-scheduling/REPORT.md) 保留六轮诊断 full 和一组三模式无插桩复验：154.76 ms 窗口在宿主 CPU 计数结清后仍主要缺少 vCPU 执行时间；guest 绑定、SCHED_FIFO 与 VM 10→4 vCPU 均未消除超限。无插桩 full 最大迟到 24.05 ms，仍高于冻结的 20 ms；cancel/overflow 负例通过，worker 构建与正式 C16 继续 NOT_RUN，known-BLOCKED 保留。VM 资源设置已恢复。
+
+  用户指定新 KVM VPS 的 [三模式自检及正式 C16](../harness/l2/results/2026-10-16-fifo-remote23/REPORT.md)：自检通过，full 最大迟到 10.51 ms；原生 worker/fakectl 冻结构建后，只执行一次正式 baseline/fault。基线通过，故障臂有 35 个 UDP 超时、172 次发送失败，最大释放迟到 162.72 ms、透明切换晚 3.17 ms，独立评估 FAIL/VALID。20 ms 上限未改，known-BLOCKED 保留。准备阶段的 Python 补丁包升级及完整失败构建记录一并保留，现有服务 PID/容器健康核对见报告。
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。

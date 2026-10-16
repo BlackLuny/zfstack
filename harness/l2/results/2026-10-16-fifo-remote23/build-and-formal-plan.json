@@ -1,0 +1,44 @@
+{
+  "created_unix_ns": 1792146911443878000,
+  "prerequisite": "all three frozen selftests passed; full raw maximum lateness 10513299 ns",
+  "source_refs": {
+    "zfc": "975c677d2920c86a14dcd1e08ae743abf7b7be1c",
+    "private_tun": "ca922c518992426bfaea4a2d60abf653c5c694de",
+    "shadow_tls": "787b8e261a919689f90d9d89ee9362b344da56df",
+    "rig": "8c9e737ed505306b97c9f2971635c75808fbc04d",
+    "zfstack": "16b0d13a0fba59dc4748b530bd854a9cccd5ea70"
+  },
+  "build": {
+    "toolchain": "1.98.1",
+    "profile": "fast-release",
+    "features": [
+      "mmsg",
+      "jemalloc"
+    ],
+    "cells": [
+      "head-head"
+    ],
+    "jobs": 2,
+    "timeout_per_command_sec": 3600,
+    "minimum_free_bytes": 3221225472,
+    "fakectl": true,
+    "forwarder": false,
+    "cache": "new task-owned target cache; no previously built worker reused"
+  },
+  "formal": {
+    "case": "C16-l2-queue-control",
+    "case_version": 2,
+    "instances": 1,
+    "arms": [
+      "baseline",
+      "fault"
+    ],
+    "lease_directory": "/var/lock/zfstack-qa",
+    "physical_domain": "zfstack-qa-vps-23.136.204.72-23826",
+    "isolation": "private net/mount/PID wrapper; shared KVM host, physical CPU exclusivity unproven",
+    "scheduler": "unchanged",
+    "no_retries_or_best_selection": true,
+    "policy_fields": "unchanged from 16b0d13; 20ms FIFO limit and full 500ms/100000/8-16-8/250ms/3s contract unchanged"
+  },
+  "factorial": "only head-head; base=head identities, other cells UNEXECUTED, no full 2x2 inference"
+}

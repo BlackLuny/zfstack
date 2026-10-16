@@ -1,0 +1,413 @@
+{
+  "layer": "L2",
+  "ok": true,
+  "errors": [],
+  "clock": "wall-monotonic",
+  "start_at": 37315638.78584614,
+  "effective_config": {
+    "schema_version": 1,
+    "heavy_conns": 4,
+    "request_bytes": 256,
+    "request_rate_hz": 100.0,
+    "light_mode": "closed-loop",
+    "max_generator_lag_sec": 0.02,
+    "light_conns": 1,
+    "churn_requests": 0,
+    "udp_enabled": true,
+    "udp_rate_hz": 100.0,
+    "udp_payload_bytes": 1032,
+    "request_timeout_sec": 3.0,
+    "phases_sec": {
+      "baseline": 8.0,
+      "loaded": 16.0,
+      "recovery": 8.0
+    },
+    "direction": "heavy-download/light-echo",
+    "application_port": 19001,
+    "memory_mb": 64,
+    "uplink_delay_ms": 0.0,
+    "netem_limit_packets": 100000,
+    "mtu": 1420,
+    "runtime": "tokio-multi-thread",
+    "profile": "fast-release",
+    "capture": false,
+    "boundary_tolerance_ns": 5000000,
+    "topology": {
+      "wg_ports": 2,
+      "peers": 4,
+      "heavy_peer": 0,
+      "light_peers": [
+        1,
+        2,
+        3
+      ]
+    },
+    "mode": "load"
+  },
+  "load_counters": {
+    "client-1": {
+      "scheduled": 3197,
+      "started": 3197,
+      "completed": 3197,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-2": {
+      "scheduled": 3199,
+      "started": 3199,
+      "completed": 3199,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-3": {
+      "scheduled": 3200,
+      "started": 3200,
+      "completed": 3200,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    }
+  },
+  "startup_anomalies": [],
+  "phases_sec": {
+    "baseline": 8.0,
+    "loaded": 16.0,
+    "recovery": 8.0
+  },
+  "request_timeout_sec": 3.0,
+  "uplink_delay_ms": 0.0,
+  "light_conns": 1,
+  "churn_requests": 0,
+  "udp": [
+    {
+      "peer": 0,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.4146993160247803,
+          "p95_ms": 0.8509606122970581,
+          "p99_ms": 1.2419074773788452,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 2.699337899684906,
+          "p95_ms": 5.029246211051941,
+          "p99_ms": 7.386356592178345,
+          "p999_ms": 14.281921088695526
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.40183961391448975,
+          "p95_ms": 0.6481483578681946,
+          "p99_ms": 2.2743940353393555,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 1,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.40671974420547485,
+          "p95_ms": 0.870928168296814,
+          "p99_ms": 1.2165382504463196,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 2.743437886238098,
+          "p95_ms": 5.176909267902374,
+          "p99_ms": 7.654398679733276,
+          "p999_ms": 15.189111232757568
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.38404762744903564,
+          "p95_ms": 0.6140545010566711,
+          "p99_ms": 1.828126609325409,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 2,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.402107834815979,
+          "p95_ms": 0.7872283458709717,
+          "p99_ms": 1.0981485247612,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.6733834743499756,
+          "p95_ms": 2.2198855876922607,
+          "p99_ms": 4.728339612483978,
+          "p999_ms": 12.60349154472351
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.39950013160705566,
+          "p95_ms": 0.6425082683563232,
+          "p99_ms": 2.1056383848190308,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 3,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.3965646028518677,
+          "p95_ms": 0.8024647831916809,
+          "p99_ms": 1.3061314821243286,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.6782636046409607,
+          "p95_ms": 2.223469316959381,
+          "p99_ms": 5.006998777389526,
+          "p999_ms": 12.858502566814423
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.3955960273742676,
+          "p95_ms": 0.6279274821281433,
+          "p99_ms": 1.4550313353538513,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    }
+  ],
+  "performance_contaminated": false,
+  "endpoint_observer_error": null,
+  "heavy_bytes": 2905801320,
+  "heavy_mbps": 1452.90066,
+  "light_users": [
+    {
+      "peer": 1,
+      "placement": "same-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5647316575050354,
+          "p95_ms": 0.9114742279052734,
+          "p99_ms": 1.1570081114768982,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1597,
+          "p50_ms": 3.6909207701683044,
+          "p95_ms": 6.268106400966644,
+          "p99_ms": 9.52952355146408,
+          "p999_ms": 15.659749507904053
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.35806000232696533,
+          "p95_ms": 0.5344673991203308,
+          "p99_ms": 2.8070956468582153,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 2,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.5991905927658081,
+          "p95_ms": 0.9254813194274902,
+          "p99_ms": 1.0996907949447632,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1599,
+          "p50_ms": 0.6599798798561096,
+          "p95_ms": 2.244599163532257,
+          "p99_ms": 5.057133734226227,
+          "p999_ms": 13.799525797367096
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.3613606095314026,
+          "p95_ms": 0.588931143283844,
+          "p99_ms": 2.1435394883155823,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 3,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.6023570895195007,
+          "p95_ms": 0.9220689535140991,
+          "p99_ms": 1.265212893486023,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.6519630551338196,
+          "p95_ms": 2.0194798707962036,
+          "p99_ms": 3.9919614791870117,
+          "p999_ms": 9.737394750118256
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.3622323274612427,
+          "p95_ms": 0.5469545722007751,
+          "p99_ms": 1.8510520458221436,
+          "p999_ms": null
+        }
+      }
+    }
+  ],
+  "worker": {
+    "baseline": {
+      "sample_count": 17,
+      "worker_cpu_sec": 0.8899999999999999,
+      "sample_window_sec": 7.999995477,
+      "rss_peak_kib": 70908,
+      "rss_end_kib": 70908,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315638786270790,
+        "end_ns": 37315646786266267,
+        "cpu_sec": 0.8899999999999999,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 849771,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315638785846136,
+        "planned_end_ns": 37315646785846136,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "loaded": {
+      "sample_count": 33,
+      "worker_cpu_sec": 20.13,
+      "sample_window_sec": 15.999875325,
+      "rss_peak_kib": 89316,
+      "rss_end_kib": 83988,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315646786266267,
+        "end_ns": 37315662786141592,
+        "cpu_sec": 20.13,
+        "verified_bytes": 2905801320,
+        "sample_count": 33,
+        "max_boundary_skew_ns": 1576502,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315646785846136,
+        "planned_end_ns": 37315662785846136,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "recovery": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.0300000000000011,
+      "sample_window_sec": 8.000055696,
+      "rss_peak_kib": 83988,
+      "rss_end_kib": 83988,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 37315662786141592,
+        "end_ns": 37315670786197288,
+        "cpu_sec": 1.0300000000000011,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 1124769,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 37315662785846136,
+        "planned_end_ns": 37315670785846136,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    }
+  },
+  "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold."
+}
