@@ -85,6 +85,28 @@
 
 这次乱序出现在 cancel 而不是 full，说明它在仿真中是间歇性的。由于这次 cancel 失败，驱动改为任一模式 UDP 乱序都触发 3 次普通 netem 对照（此前只看 full）。这次冒烟不归属任何门禁或资格。
 
+## 真机 gate 之后：驱动修正与汇总（`8fa27df`）
+
+真机 gate（[记录](../2026-10-16-netem-fifo-remote23/REPORT.md)）FAIL：full 中 9 个 loaded UDP 被超越，起因是一次约 21.7 ms 的整机暂停。Codex 指出两处说明和驱动的缺口，现已修正：
+
+- overflow 没有 `udp_exactly_once_in_order` 键，所以对照触发现在改为直接统计每个模式接收端的被超越数；
+- 每一步前后保存 `/proc/stat`（逐 CPU steal）和 `/proc/softirqs`，便于将来区分 hypervisor steal 与 guest 内部的工作。
+
+修正后的驱动在本地仿真中又完整跑了一次（[driver-smoke-2/](driver-smoke-2/)，不是门禁）：
+
+- full PASS；
+- cancel 有 30 个 loaded UDP 被超越，FAIL，并触发了 3 次对照；
+- 3 次普通 netem 对照均 0 乱序（control-3 少收 1 个数据报，属于历史 v3 删除时的丢包路径）。
+
+以下汇总所有已提交代码上、检查接收端顺序的运行。这是事后汇总的描述性统计，不是预注册检验：
+
+| 环境 | `netem-fifo` 出现被超越的运行 | 普通 netem 出现被超越的运行 |
+|---|---|---|
+| TCG 仿真 | 4 / 8（full 99、诊断 full 29、两次冒烟的 cancel 23 和 30） | 0 / 6 |
+| 真实 CPU（共享 VPS） | 1 / 2（full 9） | 0 / 3 |
+
+这提示 `netem-fifo` 的某个成分（clsact mirror、两个捕获环、注入器进程本身的 CPU 占用或常设 rate）提高了跨 CPU 投递被超越的概率，但目前没有定位到具体是哪一个。要定位，需要在允许 trace 的非生产隔离宿主上，预注册一个逐一去掉这些成分的对照实验。
+
 ## 开发阶段运行（不归属任何 SHA）
 
 [development/](development/) 保留了提交前在未提交源码上运行的一组三模式（三个都符合预期，其中 full 当时 UDP 有序）和原型探针 `netem_probe.py` 的结果，只作为开发记录：
