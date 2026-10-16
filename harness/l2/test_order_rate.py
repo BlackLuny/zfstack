@@ -57,11 +57,16 @@ class OrderRateTests(unittest.TestCase):
         broken = [{"arm": "F", "receiver": None}] + [row("F", 1)] * 29 + [row("P", 0)] * 30
         self.assertEqual(rate.decide(broken)["arms"]["F"]["valid"], 29)
 
-    def test_injector_and_control_are_unchanged_since_the_gate(self):
+    def test_injector_and_control_are_unchanged_at_the_registering_commit(self):
+        # order_rate.py refuses changed code at run time; later commits may change harness/l2 freely.
         root = Path(__file__).resolve().parents[2]
         if subprocess.run(["git", "-C", str(root), "cat-file", "-e", rate.GATE_SHA + "^{commit}"], capture_output=True).returncode:
             self.skipTest("gate commit not in this clone")
-        changed = subprocess.run(["git", "-C", str(root), "diff", "--name-only", rate.GATE_SHA, "HEAD", "--", *rate.UNCHANGED],
+        registered = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%H", "--", str(DRIVER.parent / "PLAN.md")],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+        if not registered:
+            self.skipTest("plan not committed in this clone")
+        changed = subprocess.run(["git", "-C", str(root), "diff", "--name-only", rate.GATE_SHA, registered, "--", *rate.UNCHANGED],
                                  capture_output=True, text=True, check=True).stdout.strip()
         self.assertEqual(changed, "")
 

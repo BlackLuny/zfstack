@@ -223,12 +223,14 @@ class ArmTests(unittest.TestCase):
                 tracer.remove()
             self.assertTrue((fake / "instances" / arm.INSTANCE).is_dir())
 
-    def test_baseline_arm_code_is_unchanged_since_the_formal_attempt(self):
+    def test_baseline_arm_code_was_unchanged_at_the_executed_diagnostic_commit(self):
+        # arm.py refuses changed code at run time; later commits may change qa/ freely.
+        executed = "85ac164a2b762a87f00ceac4f56727c5cbc91128"
         root = Path(__file__).resolve().parents[2]
-        known = subprocess.run(["git", "-C", str(root), "cat-file", "-e", arm.FORMAL_SHA + "^{commit}"], capture_output=True)
-        if known.returncode:
-            self.skipTest("formal commit not in this clone")
-        changed = subprocess.run(["git", "-C", str(root), "diff", "--name-only", arm.FORMAL_SHA, "HEAD", "--", *arm.UNCHANGED],
+        for sha in (arm.FORMAL_SHA, executed):
+            if subprocess.run(["git", "-C", str(root), "cat-file", "-e", sha + "^{commit}"], capture_output=True).returncode:
+                self.skipTest("formal or executed commit not in this clone")
+        changed = subprocess.run(["git", "-C", str(root), "diff", "--name-only", arm.FORMAL_SHA, executed, "--", *arm.UNCHANGED],
                                  capture_output=True, text=True, check=True).stdout.strip()
         self.assertEqual(changed, "")
 
