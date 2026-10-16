@@ -1,0 +1,81 @@
+{
+  "experiment_id": "issue48-tun-relay-ab-2026-10-16",
+  "registered_before_measurement": true,
+  "purpose": "Paired TUN-proxy A/B of PR #70 extra per-pump poll_read_ready on continuously-ready bulk and mixed RR. Reuses unmodified bench/pareto/issue23_tun_case.py and issue23_tun_load.py. Not qa-perf.yml and not a calibrated production gate.",
+  "baseline_sha": "88a2e3f7a2e86fb6948223054a377e8a7f831af1",
+  "candidate_sha": "b98c5c33be1d0f8775064706a8aa81d373a1f744",
+  "harness_sha": "b98c5c33be1d0f8775064706a8aa81d373a1f744",
+  "harness_files": [
+    "bench/pareto/issue23_tun_case.py",
+    "bench/pareto/issue23_tun_load.py"
+  ],
+  "build": {
+    "rustc": "1.94.1",
+    "profile": "release",
+    "lto": "fat",
+    "codegen_units": 1,
+    "panic": "abort",
+    "incremental": false,
+    "locked": true,
+    "package": "zfbench",
+    "features": ["zfstack"]
+  },
+  "proxy_flags": [
+    "--tun-proxy",
+    "--client-profile",
+    "--proxy-workers=1",
+    "--splice",
+    "--vnet-hdr",
+    "--driver-thread"
+  ],
+  "case": {
+    "mtu": 1500,
+    "idle_secs": "2",
+    "idle_count": 0,
+    "flows": 8,
+    "rr_samples": 1000,
+    "rr_sizes": "64,512,1400,4096",
+    "bulk_bytes_per_flow": 67108864,
+    "mixed_rr_interval_ms": 1,
+    "direction": "both",
+    "peer_mode": "single",
+    "low_secs": 0,
+    "settle_secs": 1.0,
+    "proxy_cpus": [0, 1],
+    "loader_cpus": [2, 3],
+    "case_timeout_secs": 240,
+    "diagnostic": false
+  },
+  "protocol": {
+    "smoke": "one candidate run with rr_samples=100 and bulk_bytes_per_flow=1048576; diagnostic; excluded from statistics",
+    "aa_pairs": 4,
+    "aa_orders": ["AB", "AB", "BA", "BA"],
+    "ab_pairs": 8,
+    "ab_order_rule": "pair i uses AB if i even else BA; positions 0 then 1; no replacement of failed slots",
+    "cpu_metric": "whole proxy process utime+stime from /proc ticks during bulk windows (issue23 Observer), not harness/system CPU",
+    "goodput_metric": "verified application bytes / bulk wall from issue23_tun_load bulk records",
+    "p99_metrics": [
+      "mixed RR RTT for exchanges started during bulk (n>=100 required for p99)",
+      "standalone RR p99 for size 64 in phase 1"
+    ],
+    "fairness_metric": "Jain index of per-flow verified_bytes/wall within each bulk window; equal bytes are required by the loader"
+  },
+  "metrics": [
+    "down.cpu_s_GB",
+    "up.cpu_s_GB",
+    "down.goodput_Mbps",
+    "up.goodput_Mbps",
+    "down.mixed_p99_us",
+    "up.mixed_p99_us",
+    "down.mixed_n",
+    "up.mixed_n",
+    "rr64.phase1.p99_us",
+    "down.jain_fairness",
+    "up.jain_fairness"
+  ],
+  "inference": {
+    "method": "paired median percent change with descriptive bootstrap 95% interval when n>=6; no multiple-comparison correction; no registered non-inferiority budget",
+    "aa_use": "noise floor only; if A/B interval is inside A/A noise, result is INCONCLUSIVE",
+    "qualification": "isolated Cloud Agent VM TUN diagnostic. Not physical-domain exclusive, not cgroup-certified, not WireGuard, not qa-perf.yml. Cannot establish production PASS."
+  }
+}
