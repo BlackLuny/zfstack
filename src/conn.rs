@@ -1121,8 +1121,12 @@ impl Conn {
     /// Send-space and budget admission shared by `write` and `write_with`:
     /// the bytes reserved (at most `want`), or why none can be accepted, with
     /// `want_write` armed for the matching wakeup.
+    pub(crate) fn accepts_writes(&self) -> bool {
+        matches!(self.state, State::Established | State::CloseWait | State::SynReceived) && self.fin_off.is_none()
+    }
+
     fn admit_write(&mut self, want: usize, ctx: &mut Ctx) -> Result<usize, WriteResult> {
-        if !matches!(self.state, State::Established | State::CloseWait | State::SynReceived) || self.fin_off.is_some() {
+        if !self.accepts_writes() {
             return Err(WriteResult::Closed);
         }
         let space = self.send_space(ctx.cfg, ctx.budget);

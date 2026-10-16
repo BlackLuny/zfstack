@@ -2136,6 +2136,11 @@ impl Shard {
         self.budget.send_share(peer)
     }
 
+    /// Check write closure without reserving budget or preparing TX backing.
+    pub(crate) fn accepts_writes_for_adapter(&self, id: ConnId) -> bool {
+        self.slots.get(id.idx()).filter(|s| s.gen == id.gen()).and_then(|s| s.conn.as_ref()).is_some_and(|c| c.accepts_writes())
+    }
+
     /// Bytes in the connection's core send buffer (in-flight plus unsent).
     #[cfg(feature = "tokio")]
     pub(crate) fn tx_queued(&self, id: ConnId) -> Option<usize> {

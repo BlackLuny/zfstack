@@ -1,0 +1,14 @@
+
+#[tokio::test(flavor = "current_thread")]
+async fn issue48_measure_idle_pump() {
+    let (mut driver, stream, up) = issue48_empty_socket().await;
+    let global = stream.sh.memory.global().clone();
+    let initial = global.reserved();
+    let start = std::time::Instant::now();
+    for _ in 0..250_000 { driver.pump(stream.sh.id); }
+    let elapsed = start.elapsed().as_nanos();
+    assert_eq!(driver.shard.tx_queued(stream.sh.id), Some(0));
+    println!("ISSUE48_MEASURE elapsed_ns={} initial_bytes={} final_bytes={} pumps=250000", elapsed, initial, global.reserved());
+    drop((stream, driver, up));
+    assert_eq!(global.reserved(), 0);
+}

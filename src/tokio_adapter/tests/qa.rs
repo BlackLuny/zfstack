@@ -453,3 +453,107 @@ fn a1_pending_read_write_cancel_two_workers() {
 fn a1_pending_read_write_cancel_four_workers() {
     on_runtime(4, pending_cancel());
 }
+
+async fn issue48_empty_socket() -> (TestRelayDriver, TcpStream, tokio::net::TcpStream) {
+    let (driver, stream, up, _peer) = parked_relay(&[]).await;
+    let mut drained = [0u8; 32];
+    assert_eq!(driver.relays[&stream.sh.id].sock.try_read(&mut drained).unwrap(), b"socket tail".len());
+    assert_eq!(driver.relays[&stream.sh.id].sock.try_read(&mut drained).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+    driver.ctl.dirty.lock().unwrap().clear();
+    (driver, stream, up)
+}
+
+async fn issue48_wait_for_socket_wake(driver: &TestRelayDriver, id: ConnId) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if driver.ctl.dirty.lock().unwrap().contains(&id) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("socket readiness did not wake the parked relay");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn issue48_idle_socket_skips_tx_preparation_and_wakes_on_data() {
+    let (mut driver, stream, mut up) = issue48_empty_socket().await;
+    let id = stream.sh.id;
+    let global = stream.sh.memory.global().clone();
+    let before = global.reserved();
+    for _ in 0..128 {
+        driver.pump(id);
+    }
+    assert_eq!(driver.shard.tx_queued(id), Some(0));
+    assert_eq!(global.reserved(), before, "idle socket prepared TX backing");
+    assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+    assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+    driver.ctl.dirty.lock().unwrap().clear();
+    up.write_all(b"later response").await.unwrap();
+    issue48_wait_for_socket_wake(&driver, id).await;
+    driver.pump(id);
+    assert_eq!(driver.shard.tx_queued(id), Some(b"later response".len()));
+    assert_eq!(driver.relays[&id].stats.downloaded, b"later response".len() as u64);
+    drop((stream, driver, up));
+    assert_eq!(global.reserved(), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn issue48_idle_socket_clears_obsolete_quota_wait() {
+    let (mut driver, stream, mut up, _peer) = parked_relay(&[]).await;
+    let id = stream.sh.id;
+    let global = stream.sh.memory.global().clone();
+    assert!(driver.shard.budget_mut_for_test().try_reserve(stream.sh.peer, 1 << 20, false));
+    driver.pump(id);
+    assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_QUOTA);
+    // Model readiness becoming stale while a budget wait is registered.
+    let mut drained = [0u8; 32];
+    assert_eq!(driver.relays[&id].sock.try_read(&mut drained).unwrap(), b"socket tail".len());
+    assert_eq!(driver.relays[&id].sock.try_read(&mut drained).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+    driver.pump(id);
+    assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+    driver.ctl.dirty.lock().unwrap().clear();
+    driver.shard.budget_mut_for_test().release(stream.sh.peer, 1 << 20);
+    assert!(driver.ctl.dirty.lock().unwrap().is_empty(), "obsolete quota release woke idle socket");
+    up.write_all(b"after quota").await.unwrap();
+    issue48_wait_for_socket_wake(&driver, id).await;
+    driver.pump(id);
+    assert_eq!(driver.shard.tx_queued(id), Some(b"after quota".len()));
+    drop((stream, driver, up));
+    assert_eq!(global.reserved(), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn issue48_closed_core_does_not_wait_for_silent_socket() {
+    let (mut driver, stream, up) = issue48_empty_socket().await;
+    let id = stream.sh.id;
+    let global = stream.sh.memory.global().clone();
+    driver.shard.shutdown_write(id);
+    driver.pump(id);
+    assert!(driver.relays[&id].sock_eof, "closed core must be observed even with no socket readiness");
+    assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+    drop((stream, driver, up));
+    assert_eq!(global.reserved(), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn issue48_stale_readiness_parks_then_observes_eof() {
+    let (mut driver, stream, mut up, _peer) = parked_relay(&[]).await;
+    let id = stream.sh.id;
+    let global = stream.sh.memory.global().clone();
+    let mut drained = [0u8; 32];
+    assert_eq!(driver.relays[&id].sock.try_read(&mut drained).unwrap(), b"socket tail".len());
+    // Do not clear Tokio's cached readiness: the next actual read returns WouldBlock.
+    driver.pump(id);
+    assert_eq!(driver.shard.tx_queued(id), Some(0));
+    assert!(!driver.relays[&id].sock_eof);
+    assert_eq!(stream.sh.driver_tx_wait.load(Ordering::Acquire), TX_WAIT_NONE);
+    driver.ctl.dirty.lock().unwrap().clear();
+    up.shutdown().await.unwrap();
+    issue48_wait_for_socket_wake(&driver, id).await;
+    driver.pump(id);
+    assert!(driver.relays[&id].sock_eof);
+    drop((stream, driver, up));
+    assert_eq!(global.reserved(), 0);
+}
