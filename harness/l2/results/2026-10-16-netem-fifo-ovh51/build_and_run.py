@@ -88,6 +88,10 @@ run("make-frozen-qa-plan", [python, "-m", "qa", "make-plan", "--suite", "nightly
 worker = json.loads((build / "head-head/worker-manifest.json").read_text())
 assert worker["status"] == "BUILT" and not worker["errors"]
 assert worker["zfstack_sha"] == sha
+# Do not begin the held-out run if another compiler is active after our build.
+for name in ("cargo", "rustc"):
+    assert subprocess.run(["pgrep", "-x", name], stdout=subprocess.DEVNULL).returncode == 1, "competing compiler before formal run"
+run("host-before-formal", ["python3", str(ROOT / "snapshot.py"), str(E / "host-before-formal.json")])
 prereg = {"created_unix_ns": time.time_ns(), "case": "C16-l2-queue-control", "runs": 1,
           "arms": ["baseline", "fault"], "settle_before_measurement_sec": 5,
           "worker_binary_sha256": worker["binary_sha256"],

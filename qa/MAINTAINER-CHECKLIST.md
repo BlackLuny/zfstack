@@ -19,6 +19,8 @@
   正式故障臂的 [离线根因分析](../harness/l2/results/2026-10-16-fifo-formal-analysis/REPORT.md) 显示，失败来自用户态发送容量不足和账本外的读取前等待。候选 `netem-fifo` 的 [仿真自检](../harness/l2/results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，负例通过，但 full 因 veth 下游跨 CPU 投递导致 UDP 乱序而 FAIL。预注册对照中普通 netem 未出现乱序，因此不放宽判据。下一步是在真机上做三模式自检，步骤见 PR #75；全部通过之前，不要以 `netem-fifo` 登记 case、冻结 worker 或执行正式运行。若采用它，宿主还需 `sch_netem`、`dummy` 及 AF_PACKET TPACKET_V3。
   后续 `7811fda` 的 [netem-fifo 真机门禁](../harness/l2/results/2026-10-16-netem-fifo-remote23/REPORT.md) 已执行一次：能力通过，full 因 9 个 loaded UDP 被超越而 FAIL；cancel/overflow 负例通过，三次普通 netem 对照均零乱序、零丢失。远端及本地原始账本复算一致。已停止注册 v3、第二轮 gate、worker 构建和正式 C16；case v2、严格顺序及 known-BLOCKED 保留。
 
+  OVH 物理宿主的 [两轮门禁与正式尝试](../harness/l2/results/2026-10-16-netem-fifo-ovh51/REPORT.md)：`9ba31a7` gate PASS 后单独以 `604a618` 登记 case v3 / netem-fifo，新 SHA gate 也 PASS。冻结 worker 后只执行一次正式 C16：基线 udp-3 请求 186 因生成器调度迟到 23.053 ms 超过原 20 ms 容差被标 missed，故障臂未启动；远端及取回复算为 NOT_RUN/UNKNOWN、汇总 BLOCKED，cleanup PASS。不是注入器释放迟到判失败；没有更改阈值或重跑。用户报告 CPU 0 网卡中断问题，只读核实 IRQ 130 绑定 CPU 0、其 SMT 同胞为 CPU 4；样本没有当时 CPU 归属，因果尚未证明。下一步需另行预登记同步调度/IRQ 诊断。known-BLOCKED 保留。
+
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。

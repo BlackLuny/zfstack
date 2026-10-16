@@ -1,4 +1,4 @@
-# OVH physical host: stage1 PASS
+# OVH physical host: both gates PASS; formal NOT_RUN / UNKNOWN
 
 Tested SHA: `9ba31a7dcedec2fae05efd304831b9d469caf756`. The plan was committed
 and posted to PR #75 before execution. The driver ran exactly once; no tracing,
@@ -79,7 +79,7 @@ Length alone cannot uniquely identify protocol/flow. All captured frames pair
 without loss, the complete oracle and receiver strict-order checks passed;
 no per-packet timing attribution is claimed from that optional mapper.
 
-Preparation: three SSH handshakes were closed (two startup attempts and one
+Preparation: three SSH connections were closed (two startup attempts and one
 read-only check). After recovery we verified source3, driver, plan and output
 did not exist, then used a multiplexed SSH connection to start stage3 once.
 These are connection/setup failures, not repeated measurements.
@@ -89,3 +89,88 @@ held-out formal C16 are now planned in build-and-formal-plan.json. Four other
 repository SHAs and Rust 1.98.1 remain frozen. Rust archives are verified against
 the retained distribution manifest; Python wheels match qa/requirements.lock.
 All tool installation is task-local; no apt/system-package operation.
+
+
+## Frozen build and single formal attempt: NOT_RUN / UNKNOWN
+
+Frozen worker SHA-256:
+`d921130672b975fb48f646e7ff159301ea5089d51a8fdd06b16cd0a08477a551`.
+Source remains `604a618`; the later evidence-only commits are not claimed as
+measured. Rust 1.98.1, fast-release, default features plus mmsg/jemalloc, jobs=2,
+the same other four source SHAs, task-local target cache. Native worker/fakectl
+build completed on the first attempt. Added a pre-formal compiler check to the
+owned orchestration script; no competing cargo/rustc was found. The signed-off
+case/workload/threshold values did not change. Worker/plan hashes were recorded
+in formal-preregistration.json before the five-second settle and measurement.
+
+**Exactly one formal invocation.** Baseline ran; fault never started. The runner
+stopped after the baseline process returned nonzero. Independent remote
+verification and local verification agree: functional **NOT_RUN**, functional
+validity **UNKNOWN**, aggregate **BLOCKED**, execution failed, cleanup **PASS**.
+This is not a measured netem-fifo failure or pass: the injector was absent in
+baseline and there is no fault-arm queue ledger.
+
+Raw UDP evidence:
+
+| Flow | Scheduled | Completed | Missed | Max generator lag ms |
+| --- | --- | --- | --- | --- |
+| udp-0 | 3200 | 3200 | 0 | 3.779 |
+| udp-1 | 3200 | 3200 | 0 | 4.428 |
+| udp-2 | 3200 | 3200 | 0 | 3.788 |
+| udp-3 | 3200 | 3199 | 1 | 23.053 |
+
+There were zero UDP timeouts or send failures. udp-3 sequence 186, at baseline
++1.86 seconds, was 23.052927 ms late to its scheduled arrival. udp_probe.py
+checks the unchanged 20 ms **generator scheduling tolerance**, marks it missed
+and does not send it. This is a different condition from the injector's 20 ms
+release-lateness ceiling; neither threshold was changed. The baseline's observed
+service contract and raw payload checks pass, but generator/endpoint/worker
+sampling errors remain, and the complete two-arm C16 qualification is missing.
+All boundary precision errors are retained in formal-recomputed.json.
+
+`analyze_baseline.py` reads only the archived raw samples. Between udp-3's last
+completion and its next send there is a 30.362524 ms interval; each other UDP
+process starts three requests within it. Therefore a shared stop of the whole
+host across that full interval cannot explain the evidence. The data do not
+separate scheduler delay, CPU-local IRQ/softirq delay, and Python/runtime delay.
+There was no scheduler tracing in this formal attempt, and the endpoint samples
+do not record current CPU IDs. No rerun was performed or substituted.
+
+The 62 collected build/formal evidence files were hash-verified. Collection
+archive SHA-256: `d158bce61a066633ce3f6677c89956118295dd838385d344946265c594f20715`.
+Artifact, build and command identities verify locally. Integration validation
+correctly rejects missing fault workload evidence. The first local analysis
+mistakenly passed worker-manifest to the build-v1 validator; its error output is
+retained as formal-recomputed-wrong-manifest-type.json. Correcting that analysis
+to validate the actual build manifest passes identity checks and does not alter
+NOT_RUN/UNKNOWN/BLOCKED. No runtime or qualification code was changed to regrade.
+
+Host service PIDs and persistent containers are unchanged; public lease and
+host registered namespaces are empty after cleanup. Rust and pinned QA wheels
+were installed only below the task directory. No apt, host network, affinity,
+priority, service, or tracing configuration was changed for measurements.
+
+## User-reported CPU 0 NIC interrupt issue: read-only inspection
+
+After the result, the user reported a known CPU 0 NIC interrupt issue. We saved
+/proc/interrupts, softirqs, stat and softnet_stat twice over ten seconds, IRQ
+bindings and RPS/XPS masks, without changing settings. This observation was
+**after formal, under idle conditions**, not synchronized with sequence 186.
+
+- eno1 IRQ 130 / eno1-TxRx-1 effectively binds to CPU 0. Over the ten seconds it
+  recorded 513 interrupts on CPU 0; this count alone is not evidence of a storm.
+- Other active NIC queues bind to CPU 7, 1 and 2 (432, 579 and 656 increments).
+  Thus the NIC's interrupt work is not confined to CPU 0.
+- CPU 0 and CPU 4 are SMT siblings on physical core 0; the other sibling pairs
+  are 1/5, 2/6 and 3/7. RPS/XPS masks read zero.
+- No retained CPU ID links udp-3 to CPU 0 at the missed request. The report is
+  a concrete hypothesis for the per-task pause, not a confirmed causal finding.
+
+Next diagnostic should be separately pre-registered: baseline-only synchronized
+sched_switch/sched_wakeup plus IRQ/softirq events, identify the generator's host
+PID/CPU, and distinguish late wakeup from runnable-but-unscheduled time. Any
+CPU placement comparison must account for physical cores/SMT and all active NIC
+queues, explicitly revise the previous no-affinity rule, and preserve this
+failed formal attempt. Merely excluding logical CPU 0 is not physical-core
+isolation. No additional gate, formal invocation or trace was run after the
+failure. Case v3 remains registered; **known-BLOCKED, draft PR and open #59 remain**.
