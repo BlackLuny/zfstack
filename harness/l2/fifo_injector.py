@@ -43,6 +43,7 @@ FRAME_BUFFER = 65536 + 64
 READ_BATCH = 128
 SEND_BUFFER = 64 * 1024 * 1024
 LEDGER_DISK_MARGIN = 256 * 1024 * 1024
+CANCEL_OWNER_TIMEOUT_NS = 60_000_000_000
 
 
 def header_length(frame):
@@ -117,6 +118,23 @@ class Injector:
         self.tap = self.sender = None
         self.clsact = self.action = self.filter = False
         self.stop_reason = None
+        self.owner_released = self.owner_gone = False
+        self.cancel_deadline_ns = None
+
+    def request_cancel(self):
+        """Record cancellation without withdrawing a path with live senders.
+
+        The parent owns the load clients. Only its final control message (or
+        pipe EOF after owner death) releases that ownership. A signal alone
+        cannot attest that the clients stopped sending.
+        """
+        self.stop_reason = "cancel"
+        if self.cancel_deadline_ns is None:
+            now = time.monotonic_ns()
+            self.cancel_deadline_ns = now + CANCEL_OWNER_TIMEOUT_NS
+            self.report["actual"]["cancel_requested_ns"] = now
+            self.report["cancelled"] = True
+            self.report["errors"].append("FIFO injector cancelled before the measurement completed")
 
     def install(self):
         self.report["kernel"]["qdisc_before"] = before = qdiscs()
@@ -230,7 +248,6 @@ class Injector:
         poller = select.epoll()
         poller.register(self.tap, select.EPOLLIN)
         poller.register(control, select.EPOLLIN)
-        finishing = False
         while True:
             self.emit(time.monotonic_ns())
             # Read the clock after emit: a long flush must not stamp the
@@ -238,9 +255,11 @@ class Injector:
             now = time.monotonic_ns()
             if self.transparent_ns is None and now >= self.planned["end_ns"] and not self.fifo:
                 self.transparent_ns = self.report["actual"]["transparent_ns"] = now
-            if self.stop_reason == "cancel":
+            if self.cancel_deadline_ns is not None and now >= self.cancel_deadline_ns:
+                self.report["errors"].append("FIFO cancellation timed out waiting for owner release/drain")
                 return
-            if finishing and now >= self.planned["measurement_end_ns"] and not self.fifo:
+            if (self.owner_released and (self.owner_gone or now >= self.planned["measurement_end_ns"])
+                    and not self.fifo):
                 return
             timeout = .05
             if self.fifo:
@@ -250,18 +269,18 @@ class Injector:
                     self.read_batch()
                 elif fd == control:
                     line = os.read(control, 64)
-                    if line.strip() == b"finish":
-                        finishing = True
-                    else:
-                        self.stop_reason = "cancel"
+                    self.owner_released = True
+                    self.owner_gone = not line
+                    self.report["actual"]["owner_released_ns"] = time.monotonic_ns()
+                    if line.strip() != b"finish":
+                        self.request_cancel()
                     poller.unregister(control)
 
     def teardown(self):
         errors = []
         cancelled = self.stop_reason == "cancel"
         if cancelled:
-            self.report["cancelled"] = True
-            self.report["errors"].append("FIFO injector cancelled before the measurement completed")
+            self.request_cancel()
             if self.tap is not None and self.sender is not None:
                 # Release the backlog in order while the redirect still owns
                 # the path, so direct frames cannot overtake it after removal.
@@ -349,8 +368,8 @@ def main():
     args = parser.parse_args()
     injector = Injector(json.loads(args.spec.read_text()))
     control = sys.stdin.fileno()
-    signal.signal(signal.SIGTERM, lambda *_: setattr(injector, "stop_reason", "cancel"))
-    signal.signal(signal.SIGINT, lambda *_: setattr(injector, "stop_reason", "cancel"))
+    signal.signal(signal.SIGTERM, lambda *_: injector.request_cancel())
+    signal.signal(signal.SIGINT, lambda *_: injector.request_cancel())
     gc.disable()
     try:
         injector.install()

@@ -179,14 +179,21 @@ def scenario(a):
                                    "--out", str(out / "sender.json")])
         procs.append(sender)
         cancelled = False
+        lifecycle = {"measurement_end_ns": round(phases[3] * 1e9)}
         if a.mode == "cancel":
             time.sleep(max(0, phases[1] + a.loaded / 2 - time.monotonic()))
+            lifecycle["cancel_signal_before_ns"] = time.monotonic_ns()
             os.kill(control.process.pid, signal.SIGTERM)
+            lifecycle["cancel_signal_after_ns"] = time.monotonic_ns()
             cancelled = True
         sender.wait(timeout=phases[3] - time.monotonic() + 30)
+        lifecycle["sender_reaped_ns"] = time.monotonic_ns()
         report = control.finish(cancelled=cancelled)
+        lifecycle["injector_reaped_ns"] = time.monotonic_ns()
         receiver.wait(timeout=60)
         link_after = {name: links(name) for name in (worker, target)}
+        (out / "link-counters.json").write_text(json.dumps({"before": link_before, "after": link_after}, indent=2) + "\n")
+        (out / "lifecycle.json").write_text(json.dumps(lifecycle, indent=2) + "\n")
         blob = (out / LEDGER_NAME).read_bytes() if (out / LEDGER_NAME).is_file() else None
         rows = fifo_ledger.decode(blob) if blob else []
         oracle = fifo_ledger.validate(report, config, blob)
@@ -229,21 +236,18 @@ def scenario(a):
                 "recovery_transparent": bool(latency["recovery"]) and max(latency["recovery"]) < 500_000_000 // 4,
             })
         elif a.mode == "cancel":
-            # Traffic keeps flowing here, unlike load.py which reaps clients
-            # before finish(): frames still in the tap ring at filter removal
-            # can be overtaken, and the clsact graft deactivates eth0. Neither
-            # may surface while the FIFO owned the path.
+            # A signal requests cancellation; the parent's final message after
+            # reaping clients releases the path. No post-removal loss/order
+            # exception is permitted while these senders are still alive.
             removed = report.get("actual", {}).get("removed_ns", 0)
             by_seq = {row[0]: row for row in received["udp"]}
             inversions = [row for previous, row in zip(received["udp"], received["udp"][1:]) if row[0] < previous[0]]
             missing = [seq for seq in range(sent["sent"]) if seq not in by_seq]
-            checks.pop("udp_exactly_once_in_order")
             checks.update({"cancel_recorded": report.get("cancelled") is True,
                            "oracle_rejects_cancel": any("cancelled" in error for error in oracle),
                            "udp_no_duplicates": len(by_seq) == len(sequence),
-                           "udp_anomalies_only_after_redirect_removal": bool(removed)
-                               and all(row[2] >= removed for row in inversions)
-                               and all(by_seq.get(seq + 1, (0, 2**63))[1] >= removed for seq in missing)})
+                           "redirect_kept_until_clients_reaped_and_measurement_ended":
+                               removed >= max(lifecycle["sender_reaped_ns"], lifecycle["measurement_end_ns"])})
             summary_extra = {"udp_inversions": len(inversions), "udp_missing_after_removal": missing}
         else:
             overflowed = [row for row in rows if row[2] == fifo_ledger.OVERFLOW]

@@ -355,6 +355,12 @@ class FifoQueueControl:
             self.errors.append("FIFO injector reported an invalid readiness line")
 
     def finish(self, cancelled=False):
+        """Release the FIFO path only after the caller reaped its load clients.
+
+        A signal to the injector requests cancellation but cannot establish
+        client quiescence. This final control message provides that ownership
+        handoff; the injector still preserves the full measurement lifetime.
+        """
         if self.process is not None:
             try:
                 self.process.stdin.write(b"cancel\n" if cancelled or self.errors else b"finish\n")
