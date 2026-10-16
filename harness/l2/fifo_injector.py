@@ -146,6 +146,8 @@ class Injector:
         self.sender.setsockopt(socket.SOL_SOCKET, SO_SNDBUFFORCE, SEND_BUFFER)
         self.sender.bind(("eth0", 0))
         self.report["kernel"]["tap_before"] = tap_stats()
+        # Grafting clsact runs dev_deactivate on eth0, which silently drops
+        # egress for an instant; install and removal stay outside measurement.
         command(["tc", "qdisc", "add", "dev", "eth0", "clsact"])
         self.clsact = True
         command(["tc", "actions", "add", "action", "mirred", "egress", "redirect", "dev", ledger.TAP,
@@ -260,6 +262,17 @@ class Injector:
         if cancelled:
             self.report["cancelled"] = True
             self.report["errors"].append("FIFO injector cancelled before the measurement completed")
+            if self.tap is not None and self.sender is not None:
+                # Release the backlog in order while the redirect still owns
+                # the path, so direct frames cannot overtake it after removal.
+                deadline = time.monotonic_ns() + 2_000_000_000
+                while time.monotonic_ns() < deadline:
+                    before = self.seq
+                    self.emit(0, flush=True)
+                    self.read_batch()
+                    self.emit(0, flush=True)
+                    if self.seq == before and not self.fifo:
+                        break
         if self.filter:
             try:
                 command(["tc", "filter", "del", "dev", "eth0", "egress", "pref", str(ledger.FILTER_PREF)])
