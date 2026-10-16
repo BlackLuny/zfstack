@@ -11,7 +11,7 @@ from .common import EvidenceError, file_hash, read_json, safe_path, write_json
 ALLOWED = {"plan.json", "result.json", "build-manifest.json", "environment.json", "execution.json",
            "harness.json", "l1.json", "l2-result.json", "raw.json.gz", "analysis.json", "worker.sha256", "build-info.json", "worker-manifest.json", "calibration-spec.json", "calibration-provenance.json", "coverage.json", "summary.json", "report.md", "perf-plan.json",
            "perf-analysis.json", "perf-rows.jsonl", "perf-environment.json", "perf-audit.json", "calibration.json", "qdisc.json", "path-pre.json", "path-post.json",
-           "queue-control.json", "forwarder.sha256", "forwarder-build-info.json",
+           "queue-control.json", "queue-ledger.bin.gz", "forwarder.sha256", "forwarder-build-info.json",
            "fuzz-seeds.json", "fuzz-artifacts.json", "safety-capability.json"}
 
 CALIBRATION_FILES = {"plan_file": "perf-plan.json", "rows_file": "perf-rows.jsonl",
