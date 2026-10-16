@@ -35,7 +35,27 @@
 
 若同步观测显示线程自身 CPU 热点，再评估有界发送批次、避免阻塞整个循环、减少 Python 逐帧分配/哈希/系统调用或 Rust 单线程实现。所有候选仍须保持唯一 FIFO、字节内容、顺序、500 ms、2 Gbit/s、20 ms、原业务输入及透明恢复语义。修复后先重新做三模式自检，再冻结 worker 按流程正式验证；全部失败保留，不择优重跑。
 
-远端可继续使用 `/root/zfstack-qa-pr75-20261016-remote23-01` 的冻结输入、worker、缓存和失败记录。该机有生产服务；继续使用 `qa/isolate-linux.sh` 和公共 QA Lease，不停止现有服务、不清理未知资源。准备 venv 曾间接升级 7 个 Python 3.11 补丁包；最终核对主 PID 未变、7 个容器 healthy，完整事务与局限均在报告中。
+### 接手后：根因与候选 `netem-fifo`
+
+- 根因先于修改，结论见 [离线逐帧分析](../../harness/l2/results/2026-10-16-fifo-formal-analysis/REPORT.md)。
+  - 容量：用户态单线程发送容量 p50 69.7k fps，而负载突发约 128.7k fps。
+  - 读取停顿：emit 期间读取停顿最长 340 ms。
+  - 隐藏等待：读取前的等待（UDP 在 recovery 期最大 533 ms）不在账本内。
+  - SEND_FAILED：发生在帧已迟到约 71 ms 之后，是后果而非起因。
+
+  因此没有盲重发 ENOBUFS，没有忽略失败，也没有新增队列或修改 due。
+- 这就是 CPU 热点证据，据此评估了更快的实现：候选 `netem-fifo` 由内核里单个持久 netem 承担 FIFO，在队列前后各取一份内核时间戳，因此队列前的等待对 oracle 可见。它只用于自检，未写入 case。
+- [仿真三模式自检](../../harness/l2/results/2026-10-16-netem-fifo/REPORT.md)：
+  - cancel 和 overflow 负例 PASS。
+  - full **FAIL**：出口 FIFO 精确，但接收端 UDP 乱序。
+  - 预注册 trace 诊断证明，乱序来自 netem 多 CPU 出队后 veth 按 CPU 积压投递。
+- 要继续推进，需要维护者二选一：
+  1. 重新预注册“顺序义务止于 eth0 出口”的自检判据（原 v1 netem 注入理论上也有这一属性，但本次未验证），这不追认本次结果；
+  2. 找到不改变发送端、不新增队列、不改对端设备的单路径交付实现。
+
+  在此之前 C16 保持 case v2，known-BLOCKED 不变。
+
+远端可继续使用 `/root/zfstack-qa-pr75-20261016-remote23-01` 的冻结输入、worker、缓存和失败记录；本次因没有 SSH 凭据没有执行远端操作。该机有生产服务；继续使用 `qa/isolate-linux.sh` 和公共 QA Lease，不停止现有服务、不清理未知资源。准备 venv 曾间接升级 7 个 Python 3.11 补丁包；最终核对主 PID 未变、7 个容器 healthy，完整事务与局限均在报告中。
 
 ## 验收要求
 

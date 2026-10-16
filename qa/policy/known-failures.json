@@ -14,7 +14,7 @@
       "scope": "C16-l2-queue-control injector qualification",
       "status": "known-BLOCKED",
       "exemption": false,
-      "note": "Stock tc root snapshot and deletion (v3 netem-delay) are not atomic under ongoing traffic. Case v2 uses the persistent single-FIFO injector fifo-delay-line with frozen schema-4 criteria; it passed only a privileged isolated-VM self-test, not a held-out formal C16 run on an isolated host. Retain observed NOT_RUN/BLOCKED and every payload failure; no exemption, threshold change or retry-until-pass."
+      "note": "Stock tc root snapshot and deletion (v3 netem-delay) are not atomic under ongoing traffic. Case v2 uses the persistent single-FIFO injector fifo-delay-line with frozen schema-4 criteria; it passed only a privileged isolated-VM self-test, and its one formal C16 run on a shared KVM host was FAIL/VALID (userspace send capacity below load bursts; pre-read wait outside the ledger). The candidate netem-fifo kernel injector is not in any case: its emulated full self-test failed end-to-end UDP order after eth0 egress. Retain observed NOT_RUN/BLOCKED and every payload failure; no exemption, threshold change or retry-until-pass."
     }
   ]
 }

@@ -197,6 +197,20 @@ Queue 基线三路 TCP 各完成 3199 次，四路 UDP 各完成 3200 次。故�
 
 QueueControl 仍为 known-BLOCKED：须在具备真实 CPU 和所需内核能力的隔离宿主上，冻结 worker 后执行一次 held-out 正式运行（见 [手工清单](MAINTAINER-CHECKLIST.md)）。
 
+### 正式失败的根因分析与候选 `netem-fifo`（未进入 case）
+
+- 根因：[离线逐帧分析](../harness/l2/results/2026-10-16-fifo-formal-analysis/REPORT.md) 复算 remote23 的正式故障臂，结论仍为 FAIL / VALID。
+  - 单线程发送容量 p50 69.7k fps，而负载突发约 128.7k fps。
+  - 有 12 次超过 50 ms 的读取停顿，最长 340 ms。
+  - UDP “准入 − 计划” 在 recovery 期最大 533 ms，但账本中透明期 p99 只有 70 µs，即读取前的等待对 oracle 不可见。
+  - 172 次 SEND_FAILED 发生在帧已经迟到约 71 ms 之后。
+- 候选：据此实现 `netem-fifo`（schema 5，持久内核 netem 加队列前后两份内核时间戳捕获），设计见 [L2 README](../harness/l2/README.md#共享出口队列负对照)。新增 17 项可移植测试（`harness/l2/test_netem_fifo_ledger.py`），覆盖链式释放上下界、偏斜界、丢失、重复、旁路、全局和逐流乱序、早释放和迟到（含 drain 速率）、相位边界、读回和截止、recovery 积压、计数闭合、时钟漂移和空隙、生命周期、GSO、占用，以及 netlink 报文布局和分派。`harness/l2` 122 项、`qa/tests` 208 项（1 项既有 skip）通过，`audit-coverage` 通过。
+- [仿真自检](../harness/l2/results/2026-10-16-netem-fifo/REPORT.md)（TCG 6.8，代码 `96a3fcc`，计划先于执行提交，每种一次）：
+  - cancel 和 overflow 负例 PASS，信息性 full-heavy PASS。
+  - full **FAIL**：出口顺序精确且 oracle PASS，但接收端 99 个 UDP 被超越。
+  - 预注册的 tracefs 诊断再次出现乱序，并定位到 netem 多 CPU 出队后经 veth 按 CPU 积压投递（32/32 跨 CPU）。
+- 因此 C16 保持 case v2 `fifo-delay-line`，没有冻结或正式运行 `netem-fifo`，也没有放宽判据。远端宿主本次不可达（无凭据）。
+
 ## 性能与发布资格的限制
 
 真实 A/A experiment hash 为 `43fab4881c29993120e2612e9d88ccf3206c994c0f2df8c5b9239e20f22f7b8a`，A/B 二进制均为 `c07844345f0783f22b72c62807970049360f4e9d9efe5f26258986d8160480cb`。

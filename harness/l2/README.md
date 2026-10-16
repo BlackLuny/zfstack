@@ -151,6 +151,23 @@ python3 -m qa.crossrepo build --archive /absolute/frozen-source-matrix \
 
 这些常量随 schema 4 预注册冻结。`fifo_selftest.py` 是需要 root 的端到端检查，只能在 `bash qa/isolate-linux.sh python3 harness/l2/fifo_selftest.py --output /abs/new.json` 中运行；它用独立的 UDP 序号/载荷、TCP 字节流、接收端 UDP MIB、发送端 EAGAIN 与链路计数核对 oracle，`--mode cancel`、`--mode overflow` 必须得到明确 FAIL。它不能替代 held-out 正式 C16 运行。
 
+候选 `netem-fifo`（schema 5，`netem_fifo.py` / `netem_fifo_ledger.py`）尚未写入任何 case，只能通过 `fifo_selftest.py --kind netem-fifo` 运行。依据 [正式故障臂分析](results/2026-10-16-fifo-formal-analysis/REPORT.md)，旧方案用户态逐帧转发约 70k fps，低于约 129k fps 的突发，而且读取前的等待不在账本内。新方案的路径和证据如下：
+
+- worker eth0 从 baseline 前到 recovery 后只有一个 root netem `44:`，测量期间不删除、不替换。
+- 它始终带 rate，所以 `release = max(t_in + delay, 上一帧 release) + qdisc_pkt_len / rate`。各相位经 netlink `RTM_NEWQDISC` 原地 change：pre 为 0 延迟 / 10 Tbit/s，active 为 500 ms，drain 为 0 / 2 Gbit/s，透明在观测到 `qlen == 0` 时恢复 0 / 10 Tbit/s。
+- 到达时刻来自 clsact matchall mirred **mirror** 到私有 dummy `qa44in`，释放时刻来自 eth0 outgoing。两者都是 TPACKET_V3 加 vnet 头，带内核时间戳。
+
+oracle 自行配对两份捕获，并复算以下内容：
+
+- change 窗口内按相位候选取区间链式上下界；
+- 跨 CPU 到达的偏斜（≤ 2 ms）和逐流严格顺序；
+- 早于或晚于 20 ms 的释放，以及 recovery 帧不得排在积压之后；
+- 相位读回、时钟映射、qdisc、mirror、dummy、ring 计数的闭合，以及安装和拆除时刻。
+
+运行需要 `sch_netem`、`dummy`、clsact/matchall/mirred，以及 AF_PACKET TPACKET_V3 与 `PACKET_VNET_HDR`。
+
+[仿真自检](results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，cancel 和 overflow 负例按预期被拒。但 full 因接收端 UDP 乱序 FAIL：netem 在多个 CPU 上出队，veth 按 CPU 积压交付，trace 中 32/32 次超越都跨 CPU。该判据是预注册的，没有放宽；是否将顺序义务限定在 eth0 出口须由维护者重新预注册决定。在此之前不得用它替换 case v2。
+
 历史 v3（`netem-delay`）只用于复判已归档报告，新运行不再使用。v3 证据明确区分持续注入与收尾：持续阶段仍为原 delay-only 配置；收尾在同一个 netem 上改为 `delay 0ms rate 2000000000bit`，保留现有积压，再等待 backlog 清空并删除自己的 qdisc。非零 rate 给新包分配顺序的序列化时间，避免直接清零 delay 时越过旧积压；有限的 2 Gbit/s 排空速率同时约束集中排出。它来自预注册的 2/3/4 Gbit/s 台架容量对照中最低合格候选；最终 `8bf5bb8` 独立完整复验因读空后重新积压而被严格拒绝（NOT_RUN），不能作为已完成的台架。它不是产品带宽承诺、性能通过阈值或任意负载的排空保证。旧 v2 的 100 Gbit/s 排空在完整负载下产生链路丢包，已拒绝，不能作为 v3 成功证据。
 
 `queue_negative_evidence(case, baseline_output, fault_output, worker)` 独立复算两次原始证据。PASS 要求基线服务 PASS、故障期 payload/路径 PASS、故障期服务合同 FAIL、真实 backlog > 0 且 drops = 0、恢复期相同服务合同 PASS、完整排空及清理证据。基线、数据完整性或恢复失败仍为 FAIL；缺能力、丢包、配置漂移或缺计数为 NOT_RUN。基线会显式清空 `L2_QUEUE_DELAY_MS`、`L2_QUEUE_LIMIT_PACKETS` 和 `L2_QUEUE_KIND`，防止继承故障运行的参数。服务 peer ID 是 `client-1`、`client-2`、`client-3`，延迟包含 scheduled 到 started 的发生器排队及请求本身耗时。
