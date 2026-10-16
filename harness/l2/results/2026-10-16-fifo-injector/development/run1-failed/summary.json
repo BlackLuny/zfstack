@@ -1,0 +1,98 @@
+{
+  "mode": "full",
+  "kernel": "6.8.0-147-generic",
+  "checks": {
+    "udp_exactly_once_in_order": false,
+    "udp_payload_intact": true,
+    "tcp_stream_intact": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "oracle_pass": false,
+    "active_delay_applied": true,
+    "recovery_transparent": false
+  },
+  "ok": false,
+  "oracle_errors": [
+    "FIFO ledger does not close against redirect and tap frame counters"
+  ],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899943
+  },
+  "frames": 45742,
+  "gso_frames": 10665,
+  "link_drop_deltas": {
+    "rig-cd0cfa-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-cd0cfa-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18429,
+  "tcp_bytes": 73899943,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.50633,
+      "max": 525.0974
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.39474,
+      "max": 134.75115
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.39181,
+      "max": 10.75111
+    }
+  },
+  "resources": {
+    "max_frames": 314,
+    "max_bytes": 2393772
+  },
+  "summary": {
+    "pre": {
+      "frames": 23092,
+      "max_residence_ns": 9193690,
+      "p99_residence_ns": 515780
+    },
+    "active": {
+      "frames": 8219,
+      "max_residence_ns": 504301100,
+      "p99_residence_ns": 501456870
+    },
+    "drain": {
+      "frames": 312,
+      "max_residence_ns": 498149270,
+      "p99_residence_ns": 492559000
+    },
+    "transparent": {
+      "frames": 14119,
+      "max_residence_ns": 2614250,
+      "p99_residence_ns": 1022800
+    }
+  },
+  "actual": {
+    "installed_ns": 16833961744,
+    "transparent_ns": 47034603074,
+    "removed_ns": 55389181794,
+    "closed_ns": 55748425704
+  },
+  "planned": {
+    "measurement_start_ns": 23257901064,
+    "start_ns": 31257901064,
+    "end_ns": 46507901064,
+    "recovery_start_ns": 47257901064,
+    "measurement_end_ns": 55257901064
+  },
+  "report_errors": []
+}

@@ -1,0 +1,64 @@
+{
+  "ok": false,
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "oracle_pass": false,
+    "active_delay_applied": true,
+    "recovery_transparent": true
+  },
+  "oracle_errors": [
+    "FIFO frame 27467 was released early or exceeded the lateness bound"
+  ]
+}
+exit-full=1
+{
+  "ok": true,
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "cancel_recorded": true,
+    "oracle_rejects_cancel": true,
+    "udp_no_duplicates": true,
+    "udp_anomalies_only_after_redirect_removal": true
+  },
+  "oracle_errors": [
+    "FIFO injector execution was cancelled or incomplete",
+    "missing FIFO install/transparent/removal timestamps"
+  ]
+}
+exit-cancel=0
+{
+  "ok": true,
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "overflow_recorded": true,
+    "oracle_rejects_overflow": true,
+    "udp_loss_equals_ledger_overflow": true
+  },
+  "oracle_errors": [
+    "FIFO frame was dropped, failed or left unsent: seq 28142"
+  ]
+}
+exit-overflow=0
+done
