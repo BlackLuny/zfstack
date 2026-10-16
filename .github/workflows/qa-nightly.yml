@@ -134,9 +134,34 @@ jobs:
         run: |
           python -c 'import os,pathlib; pathlib.Path("jobs.json").write_text(os.environ["JOBS_JSON"])'
           python -m qa make-plan --policy "$RUNNER_TEMP/qa-policy" --suite nightly --tested-sha "$TESTED_SHA" --output expected-plan.json
+          # Trusted evaluate stays fail-closed (exit 2 when L2 is missing). The
+          # following helper, from this workflow commit, only decides whether
+          # the hosted GitHub check may be green.
+          set +e
           python -m qa evaluate --policy "$RUNNER_TEMP/qa-policy" --ci --jobs jobs.json --plan expected-plan.json --results evidence --expected-sha "$TESTED_SHA" --output summary.json --report report.md
+          set -e
+          test -f summary.json && test -f expected-plan.json && test -f jobs.json
       - if: always()
         run: test ! -f report.md || cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        if: always()
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-commit
+          persist-credentials: false
+      - name: Hosted jobs must pass; skipped L2 stays uncertified
+        if: always()
+        env:
+          QA_L2_ENABLED: ${{ vars.QA_L2_ENABLED }}
+        run: |
+          python workflow-commit/qa/hosted_nightly_gate.py \
+            --summary summary.json \
+            --plan expected-plan.json \
+            --jobs jobs.json \
+            --l2-enabled "${QA_L2_ENABLED:-}"
+          if [ "${QA_L2_ENABLED:-}" != "true" ]; then
+            echo "GitHub check is green for hosted jobs only; summary.json remains BLOCKED and is not release evidence." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

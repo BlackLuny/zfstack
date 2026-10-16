@@ -196,11 +196,11 @@ def test_inventory(root):
             raise EvidenceError("test inventory refuses symlink source: " + str(path))
         source = relative.as_posix()
         if path.suffix == ".rs":
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
             rust.extend(rust_tests(text, source))
             attributes = rust_configuration(text)
             if attributes: configuration.append({"source": source, "attributes": attributes})
-        else: python.extend(python_tests(path.read_text(), source))
+        else: python.extend(python_tests(path.read_text(encoding="utf-8"), source))
     return {"schema_version": 1, "scope": SCOPE, "rust_tests": sorted(rust, key=lambda e: (e["source"], e["name"], e["occurrence"])),
             "rust_configuration": sorted(configuration, key=lambda e: e["source"]),
             "python_tests": sorted(python, key=lambda e: (e["source"], e["class"], e["name"], e["occurrence"]))}

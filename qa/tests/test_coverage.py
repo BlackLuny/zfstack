@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from qa.common import EvidenceError, read_json, write_json
 from qa.coverage import audit, python_tests, rust_tests, test_inventory, verify_audit
@@ -215,6 +216,21 @@ class AdapterTests(unittest.TestCase):
         subprocess.run(["git", "add", "src/adapter.rs", ".gitignore"], cwd=self.root, check=True)
         (self.root / "test_new.py").write_text("def test_untracked_new_source(): pass")
         self.assertEqual([entry["name"] for entry in test_inventory(self.root)["python_tests"]], ["test_untracked_new_source"])
+
+    def test_utf8_sources_ignore_host_default_encoding(self):
+        # U+0410 contains byte 0x90 in UTF-8, which is undefined in cp1252.
+        original = self.rust.read_text(encoding="utf-8")
+        self.rust.write_text("// \u0410\n" + original, encoding="utf-8")
+        (self.root / "test_unicode.py").write_text("# \u0410\ndef test_unicode(): pass\n", encoding="utf-8")
+        read_text = Path.read_text
+
+        def windows_read_text(path, encoding=None, errors=None):
+            return read_text(path, encoding=encoding or "cp1252", errors=errors)
+
+        with mock.patch.object(Path, "read_text", windows_read_text):
+            inventory = test_inventory(self.root)
+        self.assertEqual([entry["name"] for entry in inventory["rust_tests"]], ["another", "release_wakes_writer"])
+        self.assertEqual([entry["name"] for entry in inventory["python_tests"]], ["test_unicode"])
 
     def test_malformed_sources_and_missing_inventory_fail_closed(self):
         for text in ('/* missing end', 'const A:&str = r#"missing end', '#[test fn broken() {}'):

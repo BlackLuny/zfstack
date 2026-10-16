@@ -498,6 +498,15 @@
     },
     {
       "source": "harness/src/world.rs",
+      "name": "process_cpu_records_work",
+      "occurrence": 1,
+      "attributes": [
+        "test"
+      ],
+      "ignored": false
+    },
+    {
+      "source": "harness/src/world.rs",
       "name": "salted_patterns_distinguish_large_flow_ids_and_absolute_offsets",
       "occurrence": 1,
       "attributes": [
@@ -3137,6 +3146,20 @@
   ],
   "rust_configuration": [
     {
+      "source": "bench/examples/pool_idle_probe.rs",
+      "attributes": [
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( not ( target_os = \"linux\" ) )"
+      ]
+    },
+    {
+      "source": "bench/examples/shared_budget_tun.rs",
+      "attributes": [
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( not ( target_os = \"linux\" ) )"
+      ]
+    },
+    {
       "source": "bench/src/adapters/mod.rs",
       "attributes": [
         "cfg ( feature = \"zfstack\" )"
@@ -3157,10 +3180,17 @@
       ]
     },
     {
-      "source": "bench/src/main.rs",
+      "source": "bench/src/linux.rs",
       "attributes": [
         "cfg ( feature = \"zfstack\" )",
         "cfg ( not ( feature = \"zfstack\" ) )"
+      ]
+    },
+    {
+      "source": "bench/src/main.rs",
+      "attributes": [
+        "cfg ( target_os = \"linux\" )",
+        "cfg ( not ( target_os = \"linux\" ) )"
       ]
     },
     {
@@ -3243,6 +3273,8 @@
     {
       "source": "harness/src/world.rs",
       "attributes": [
+        "cfg ( unix )",
+        "cfg ( windows )",
         "cfg ( test )"
       ]
     },

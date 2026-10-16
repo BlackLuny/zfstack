@@ -45,6 +45,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: rustup toolchain install 1.94.1 --profile minimal
+      - name: Compile workspace and check process CPU accounting
+        run: |
+          cargo +1.94.1 build --locked --release --workspace --all-targets --all-features
+          cargo +1.94.1 test --locked --release -p zfharness process_cpu_records_work
       - run: python -m pip install -r qa/requirements.lock
       - name: Freeze reviewed policy
         run: python -m qa.workflow prepare-policy --ref "$TRUSTED_REF" --output "$RUNNER_TEMP/qa-policy"

@@ -2087,27 +2087,54 @@ fn take_down_iface(ep: &mut Endpoint, iface: IfaceId, live: &[ConnId], now: Inst
     gone && live.iter().all(|id| ep.shard.info(*id).is_none())
 }
 
+/// User + kernel CPU time of this process, excluding child processes.
+#[cfg(unix)]
 fn process_cpu() -> f64 {
-    let Ok(s) = std::fs::read_to_string("/proc/self/stat") else { return 0.0 };
-    let Some((_, rest)) = s.rsplit_once(')') else { return 0.0 };
-    let f: Vec<&str> = rest.split_whitespace().collect();
-    if f.len() < 13 {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage initializes the output on success; it is read only then.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } != 0 {
         return 0.0;
     }
-    let utime: f64 = f[11].parse().unwrap_or(0.0);
-    let stime: f64 = f[12].parse().unwrap_or(0.0);
-    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
-    if hz <= 0.0 {
-        0.0
-    } else {
-        (utime + stime) / hz
+    let usage = unsafe { usage.assume_init() };
+    let seconds = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 * 1e-6;
+    seconds(usage.ru_utime) + seconds(usage.ru_stime)
+}
+
+#[cfg(windows)]
+fn process_cpu() -> f64 {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    // SAFETY: the pseudo-handle refers to this process and all outputs are valid
+    // FILETIME pointers. The pseudo-handle does not need to be closed.
+    if unsafe { GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user) } == 0 {
+        return 0.0;
     }
+    let seconds = |t: FILETIME| ((u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)) as f64 * 1e-7;
+    seconds(kernel) + seconds(user)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use zfstack::budget::{AllocationKind, Level, Tier};
+
+    #[test]
+    fn process_cpu_records_work() {
+        let before = process_cpu();
+        let mut value = 1u64;
+        for _ in 0..32_000_000 {
+            value = std::hint::black_box(value.wrapping_mul(6364136223846793005).wrapping_add(1));
+        }
+        std::hint::black_box(value);
+        let after = process_cpu();
+        assert!(before.is_finite() && before >= 0.0);
+        assert!(after.is_finite() && after > before, "process CPU clock did not advance: {before} -> {after}");
+    }
 
     fn physical_level(level: Level) {
         let mut cfg = crate::scenario::build("wall-bulk", &crate::scenario::Overrides::default()).unwrap();
