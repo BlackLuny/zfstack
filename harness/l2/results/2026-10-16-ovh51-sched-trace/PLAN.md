@@ -137,3 +137,20 @@ Keep everything below `$O` on the host. Bring back into this directory:
 
 Bulky rig outputs stay on the host with their hashes. Failures and preparation problems are reported
 as they happened.
+
+## Codex pre-execution correction (2026-10-16)
+
+Read-only inspection before any arm found the existing task venv uses a symlink to
+`/usr/bin/python3.13`. Check `sys.prefix` plus the executable's venv directory,
+not the resolved executable's location. The frozen baseline code and worker remain unchanged.
+IRQ 128 has configured mask `0-7` and effective CPU `6`: C must restore and verify
+both configured and effective placement, seeding the original effective CPU before
+restoring the wider mask. Attempt restoration of every vector even if one write fails;
+stop the sequence on any restoration error. Verify C's effective placement before its arm.
+The analyzer also rejects incomplete generator-state coverage inside an otherwise covered
+trace time range. These are execution/validity corrections before observations, not changes
+to the arm schedule, metrics, hypotheses or limits. Use the correction commit as expected SHA.
+
+Read-only host preflight: no cargo/rustc or irqbalance process, irqbalance inactive,
+tracefs mounted with no private instances, 25 GiB available memory, 87 GiB disk free.
+No diagnostic arm, affinity write, or trace was started during these checks.

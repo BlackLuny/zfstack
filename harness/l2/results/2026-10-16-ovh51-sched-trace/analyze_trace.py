@@ -194,7 +194,7 @@ def attribute(model, pid, start, end, siblings):
     sibling_irq = {str(s): model["irq"].union(s, start, end) for cpu in cpus for s in siblings.get(cpu, ()) if s != cpu}
     dominant = max(CLASSES, key=lambda key: parts[key]) if covered else None
     return {"class": dominant, "components_ms": {key: round(parts[key] / 1e6, 3) for key in CLASSES},
-            "covered_ms": round(covered / 1e6, 3), "cpus": sorted(cpus),
+            "covered_ms": round(covered / 1e6, 3), "uncovered_ns": end - start - covered, "cpus": sorted(cpus),
             "top_irq_softirq_ms": {k: round(v / 1e6, 3) for k, v in irq_labels.most_common(5)},
             "top_other_tasks_ms": {k: round(v / 1e6, 3) for k, v in tasks.most_common(5)},
             "sibling_irq_softirq_ms": {k: round(v / 1e6, 3) for k, v in sibling_irq.items()},
@@ -277,6 +277,8 @@ def analyze(directory):
                 reasons.append(f"trace does not cover late sample flow={flow} seq={row['seq']}")
             else:
                 entry.update(attribute(model, mapping[flow], start, end, siblings))
+                if entry["uncovered_ns"] != 0:
+                    reasons.append(f"scheduler state does not cover late sample flow={flow} seq={row['seq']}")
                 core0 = set(siblings.get(0, [0]))
                 spans = [(label, b - a) for cpu in core0 for a, b, label in model["irq"].overlapping(cpu, start, end)]
                 entry["core0_irq130_ms"] = round(sum(d for label, d in spans if label.split()[:2] == ["irq", "130"]) / 1e6, 3)

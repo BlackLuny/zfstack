@@ -124,6 +124,13 @@ class AttributionTests(unittest.TestCase):
         with Fixture(idle) as result:
             self.assertEqual(result["late_samples"][0]["class"], "runnable, CPU idle")
 
+    def test_trace_envelope_does_not_hide_missing_generator_state(self):
+        lines = [line(9.9, 1, "hrtimer_start", "hrtimer=abc expires=1")]
+        lines += [switch(10.010, 0, OTHER, "S", GEN)] + END
+        with Fixture(lines) as result:
+            self.assertFalse(result["valid"])
+            self.assertGreater(result["late_samples"][0]["uncovered_ns"], 0)
+
     def test_generator_busy_on_cpu(self):
         with Fixture(START + END) as result:
             self.assertEqual(result["late_samples"][0]["class"], "generator on CPU")
@@ -141,6 +148,24 @@ class AttributionTests(unittest.TestCase):
 
 
 class IsolationTests(unittest.TestCase):
+    def test_restore_checks_effective_cpu_and_attempts_every_vector(self):
+        original = {"128": {"smp_affinity_list": "0-7", "effective_affinity_list": "6"},
+                    "129": {"smp_affinity_list": "7", "effective_affinity_list": "7"}}
+        with patch.object(Path, "write_text") as write, patch.object(isolation, "affinity", side_effect=lambda irq: original[irq]):
+            restored, errors = isolation.restore_affinities(original)
+            self.assertEqual(errors, [])
+            self.assertEqual([c.args[0] for c in write.call_args_list], ["6\n", "0-7\n", "7\n", "7\n"])
+        with patch.object(Path, "write_text", side_effect=[OSError("blocked"), None, None]) as write, \
+                patch.object(isolation, "affinity", side_effect=lambda irq: original[irq]):
+            _, errors = isolation.restore_affinities(original)
+            self.assertTrue(errors)
+            self.assertEqual(write.call_count, 3)
+        wrong = dict(original, **{"128": dict(original["128"], effective_affinity_list="0")})
+        with patch.object(Path, "write_text"), patch.object(isolation, "affinity", side_effect=lambda irq: wrong[irq]):
+            _, errors = isolation.restore_affinities(original)
+            self.assertTrue(errors)
+
+
     def test_rotated_schedule_runs_every_arm_once_per_round(self):
         order = isolation.schedule(("A", "B", "C"))
         self.assertEqual(len(order), 15)
@@ -180,6 +205,13 @@ class IsolationTests(unittest.TestCase):
 
 
 class ArmTests(unittest.TestCase):
+    def test_task_venv_identity_allows_system_symlink_but_not_system_interpreter(self):
+        task = Path("/task")
+        self.assertTrue(arm.task_venv_matches(task, "/task/qa-venv/bin/python", "/task/qa-venv", "/usr"))
+        self.assertFalse(arm.task_venv_matches(task, "/usr/bin/python3", "/usr", "/usr"))
+        self.assertFalse(arm.task_venv_matches(task, "/task/other/bin/python", "/task/other", "/usr"))
+
+
     def test_tracer_never_removes_an_instance_it_did_not_create(self):
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory)

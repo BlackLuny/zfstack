@@ -52,6 +52,32 @@ def affinity(irq):
     return {name: (base / name).read_text().strip() for name in ("smp_affinity_list", "effective_affinity_list")}
 
 
+def cpu_set(text):
+    result = set()
+    for part in text.split(","):
+        low, _, high = part.partition("-")
+        result.update(range(int(low), int(high or low) + 1))
+    return result
+
+
+def restore_affinities(original):
+    # Restore every vector even if one write fails. A broad configured mask alone
+    # does not restore the previous effective CPU (IRQ 128 is 0-7, effective 6).
+    errors = []
+    for irq, value in original.items():
+        try:
+            path = Path("/proc/irq", irq, "smp_affinity_list")
+            path.write_text(value["effective_affinity_list"] + "\n")
+            path.write_text(value["smp_affinity_list"] + "\n")
+        except OSError as error:
+            errors.append(f"IRQ {irq}: {error}")
+    restored = {irq: affinity(irq) for irq in original}
+    for irq, value in original.items():
+        if restored[irq] != value:
+            errors.append(f"IRQ {irq}: configured/effective affinity differs from original")
+    return restored, errors
+
+
 def run_metric(directory):
     """Per-run maximum UDP generator lag and miss count from the arm's own samples."""
     lags = []
@@ -134,6 +160,10 @@ def main():
                     for irq in irqs:
                         Path("/proc/irq", irq, "smp_affinity_list").write_text(IRQ_CORE0 + "\n")
                     record["irq_during"] = {irq: affinity(irq) for irq in irqs}
+                    if not irqs or any(not cpu_set(v["effective_affinity_list"])
+                                       or not cpu_set(v["effective_affinity_list"]) <= {0, 4}
+                                       for v in record["irq_during"].values()):
+                        raise RuntimeError("eno1 IRQ effective affinity is not confined to core 0")
                 argv = [sys.executable, str(HERE / "arm.py"), "--expected-sha", a.expected_sha, "--task-dir", str(a.task_dir),
                         "--output", str(a.output / label), "--label", label, "--domain", a.domain, "--run-id", a.run_id,
                         "--lease-dir", a.lease_dir, "--parent-lease"]
@@ -144,12 +174,10 @@ def main():
                                                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")).returncode
             finally:
                 if moved:
-                    for irq, value in original.items():
-                        Path("/proc/irq", irq, "smp_affinity_list").write_text(value["smp_affinity_list"] + "\n")
-                    record["irq_restored"] = {irq: affinity(irq) for irq in irqs}
+                    record["irq_restored"], record["restore_errors"] = restore_affinities(original)
                 records.append(record)
                 (a.output / "execution.json").write_text(json.dumps(records, indent=2) + "\n")
-            if moved and any(record["irq_restored"][irq]["smp_affinity_list"] != original[irq]["smp_affinity_list"] for irq in irqs):
+            if moved and record["restore_errors"]:
                 raise SystemExit("IRQ affinity was not restored; sequence stopped")
             record["metric"] = run_metric(a.output / label)
             metrics[arm].append(record["metric"])

@@ -168,6 +168,14 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def task_venv_matches(task, executable, prefix, base_prefix):
+    expected = task / "qa-venv"
+    # venv executables normally symlink to the system binary; prefix identifies the venv.
+    return (Path(prefix).resolve() == expected.resolve()
+            and Path(prefix).resolve() != Path(base_prefix).resolve()
+            and Path(executable).absolute().parent == expected / "bin")
+
+
 def main():
     from qa.integration import l2_environment
     from qa.lease import Lease
@@ -193,7 +201,7 @@ def main():
     if changed:
         raise SystemExit("baseline arm code differs from the formal attempt: " + changed.replace("\n", ", "))
     task = a.task_dir.resolve()
-    if not Path(sys.executable).resolve().is_relative_to(task):
+    if not task_venv_matches(task, sys.executable, sys.prefix, sys.base_prefix):
         raise SystemExit("run with the task's QA venv interpreter, as the formal runner did")
     node = json.loads((task / "node.json").read_text())
     if sha256(node["worker_binary"]) != WORKER_SHA256:
