@@ -42,6 +42,7 @@ VNET_HDR = struct.Struct("<BBHHHH")
 FRAME_BUFFER = 65536 + 64
 READ_BATCH = 128
 SEND_BUFFER = 64 * 1024 * 1024
+SEND_FAILURE_LIMIT = 1024
 LEDGER_DISK_MARGIN = 256 * 1024 * 1024
 CANCEL_OWNER_TIMEOUT_NS = 60_000_000_000
 
@@ -108,6 +109,9 @@ class Injector:
                        "scope": "test-side shared worker egress queue; persistent userspace FIFO, not historical root-cause reproduction",
                        "config": self.config, "clock": "CLOCK_MONOTONIC", "planned": self.planned,
                        "actual": {}, "kernel": {}, "resources": {"max_frames": 0, "max_bytes": 0},
+                       "send_diagnostics": {"attempts": 0, "failed": 0, "failures": [],
+                                            "failure_limit": SEND_FAILURE_LIMIT, "omitted_failures": 0,
+                                            "max_send": None},
                        "ledger": None, "errors": [], "cancelled": False, "cleanup": "UNKNOWN"}
         self.fifo = collections.deque()
         self.records = []
@@ -225,14 +229,35 @@ class Injector:
         while self.fifo and (flush or self.fifo[0][0] <= now):
             _, frame, row = self.fifo.popleft()
             self.held_bytes -= len(frame)
+            sent, failure_errno, failure_kind = None, None, None
+            started_ns = time.monotonic_ns()
             try:
                 sent = self.sender.send(frame)
                 row[2] = ledger.DELIVERED if sent == len(frame) else ledger.SEND_FAILED
-            except OSError:
+                if row[2] == ledger.SEND_FAILED:
+                    failure_kind = "short_write"
+            except OSError as error:
                 row[2] = ledger.SEND_FAILED
-            row[8] = min(time.monotonic_ns() - row[6], ledger.NOT_SENT - 1)
-            self._record(row)
+                failure_errno, failure_kind = error.errno, "os_error"
             now = time.monotonic_ns()
+            row[8] = min(now - row[6], ledger.NOT_SENT - 1)
+            diagnostics = self.report["send_diagnostics"]
+            diagnostics["attempts"] += 1
+            wall_ns = now - started_ns
+            if diagnostics["max_send"] is None or wall_ns > diagnostics["max_send"]["wall_ns"]:
+                diagnostics["max_send"] = {"seq": row[0], "started_ns": started_ns,
+                                           "completed_ns": now, "wall_ns": wall_ns}
+            if row[2] == ledger.SEND_FAILED:
+                diagnostics["failed"] += 1
+                if len(diagnostics["failures"]) < SEND_FAILURE_LIMIT:
+                    diagnostics["failures"].append({"seq": row[0], "phase": row[1], "kind": failure_kind,
+                        "errno": failure_errno, "expected_bytes": len(frame), "returned_bytes": sent,
+                        "started_ns": started_ns, "completed_ns": now, "wall_ns": wall_ns})
+                else:
+                    diagnostics["omitted_failures"] += 1
+            # Reuse the completion clock for the next due check. Never move
+            # a due time or retry a possibly consumed frame to hide a failure.
+            self._record(row)
 
     def read_batch(self):
         for _ in range(READ_BATCH):

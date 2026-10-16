@@ -134,7 +134,7 @@ python3 -m qa.crossrepo build --archive /absolute/frozen-source-matrix \
 - 收尾（注入结束且 FIFO 非空）：新帧排在积压之后，`due = max(t_in, 上一帧 due) + len·8 / 2 Gbit/s`；
 - 透明：注入结束后，同一线程在 FIFO 为空时切换（在帧入队时判断，或在 emit 之后读时钟判断），之后 `due = t_in`。不保留 2 Gbit/s 整形，不暂停或减少业务输入。
 
-过滤器只在 `measurement_end` 之后删除，随后排空 tap 环与 FIFO，读取最终 action/tap 计数，再删除动作和 `clsact`，并核对 eth0 只剩原 `noqueue`。挂载或删除 `clsact` 会让内核对 eth0 执行 `dev_deactivate`，其间出口包被 noop qdisc 静默丢弃且不计入链路计数（`results/2026-10-16-fifo-injector/clsact_probe.py`：30 次挂/删丢 16–18 个包，`tx_dropped` 为 0）。因此安装在负载客户端启动前完成，拆除只在 `load.py` 回收全部客户端且过了 `measurement_end` 之后进行。取消时先在重定向仍在时按序放完 FIFO 积压（不丢 FIFO 内帧），再删除过滤器；若此时业务仍在发送，删除瞬间仍在 tap 环中的帧可能被直连帧超越、挂载切换也可能丢包，所以取消的运行一律判 FAIL。全部 loaded 请求和统计窗口照常保留，发生器不会删掉未完成请求或缩短服务样本窗口。
+过滤器只在 `measurement_end` 之后删除，随后排空 tap 环与 FIFO，读取最终 action/tap 计数，再删除动作和 `clsact`，并核对 eth0 只剩原 `noqueue`。挂载或删除 `clsact` 会让内核对 eth0 执行 `dev_deactivate`，其间出口包被 noop qdisc 静默丢弃且不计入链路计数（`results/2026-10-16-fifo-injector/clsact_probe.py`：30 次挂/删丢 16–18 个包，`tx_dropped` 为 0）。因此安装在负载客户端启动前完成，拆除只在 `load.py` 回收全部客户端且过了 `measurement_end` 之后进行。取消信号只记录取消，路径继续由父进程持有；父进程回收客户端且测量窗口结束后，才按序排空 FIFO 并撤掉重定向。父进程死亡或等待超过有界期限时明确记录失败并清理；取消的运行一律判 FAIL。全部 loaded 请求和统计窗口照常保留，发生器不会删掉未完成请求或缩短服务样本窗口。
 
 选用 tap 而非 NFQUEUE：`tun_net_xmit` 像 netem 处理延迟包一样 orphan skb，而 NFQUEUE 排队项仍计入发送 socket，会增加原注入没有的发送缓冲反压。6.8 内核实验（`results/2026-10-16-fifo-injector/backpressure.py`）中，同样 500 ms 延迟下 NFQUEUE 让非阻塞 UDP 发送方出现 2608 次 EAGAIN，netem 与本 FIFO 均为 0。
 
@@ -146,6 +146,8 @@ python3 -m qa.crossrepo build --archive /absolute/frozen-source-matrix \
 - 占用按到达/发送复算，不超过 100000 包与 256 MiB；必须观测到真实排队的 loaded 流量及 baseline、透明期流量并覆盖到测量结束；
 - tap tx 帧数/字节与账本逐一闭合；mirred 动作按 GSO 段计数（`qdisc_pkt_len`），与账本复算的段数及 `len + (段数 - 1)·头长` 字节精确闭合；任何 action drop/overlimit、tap 丢弃/错误、tap rx 都失败；
 - eth0 在安装前、安装中、恢复后的原始 qdisc 列表，tap 自身无队列；安装早于测量开始 0.5 秒，删除不早于测量结束；取消、执行错误或 cleanup 非 PASS 均失败。
+
+`queue-control.json.send_diagnostics` 另存发送尝试/失败总数、前 1024 个失败的 seq、phase、errno、期望/返回字节数和原始发送起止时刻，以及最长一次 send 的墙钟区间。详情截断时显式记录 `omitted_failures`，逐帧账本不省略失败；没有自动重试。墙钟包含系统调用及失去调度的时间，不能据此单独归因内核阻塞或 CPU 抢占。诊断字段不参与资格判定，SEND_FAILED 和超过 20 ms 仍由原始账本严格拒绝。该新增诊断尚未进行特权自检或正式 C16 复验，不能追认旧 SHA 的通过结果。
 
 这些常量随 schema 4 预注册冻结。`fifo_selftest.py` 是需要 root 的端到端检查，只能在 `bash qa/isolate-linux.sh python3 harness/l2/fifo_selftest.py --output /abs/new.json` 中运行；它用独立的 UDP 序号/载荷、TCP 字节流、接收端 UDP MIB、发送端 EAGAIN 与链路计数核对 oracle，`--mode cancel`、`--mode overflow` 必须得到明确 FAIL。它不能替代 held-out 正式 C16 运行。
 
