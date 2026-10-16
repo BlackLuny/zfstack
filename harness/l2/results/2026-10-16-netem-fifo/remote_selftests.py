@@ -5,7 +5,8 @@ Run as root from a clean checkout of the frozen SHA. It writes its plan before
 executing, holds the public QA lease for the whole sequence, runs every
 privileged step inside qa/isolate-linux.sh, never repeats a run, and records
 the gate verdict: PASS only if the probe and all three modes pass and the
-oracle verdicts recompute identically. If any mode's receiver shows an
+oracle verdicts recompute identically, and every receiver is strictly ordered
+without duplicates (overflow may have gaps). If any mode's receiver shows an
 overtaken UDP datagram, it also runs exactly three plain-netem controls.
 """
 import argparse
@@ -32,6 +33,33 @@ def git(*args):
     return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
+def receiver_order(path):
+    """Read socket delivery order independently of the self-test verdict."""
+    try:
+        rows = json.loads(path.read_text())["udp"]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("missing or empty UDP samples")
+        seq = [row[0] for row in rows]
+        if any(type(value) is not int or value < 0 for value in seq):
+            raise ValueError("invalid UDP sequence")
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as error:
+        return {"ok": False, "error": str(error)}
+    overtaken = len(inversions(seq))
+    duplicates = len(seq) - len(set(seq))
+    return {"ok": not overtaken and not duplicates, "received": len(seq),
+            "overtaken": overtaken, "duplicates": duplicates,
+            "complete_sequence": sorted(seq) == list(range(len(seq)))}
+
+
+def gate_passes(probe, recomputed, records):
+    return probe == 0 and all(
+        recomputed.get(mode, {}).get("selftest_ok")
+        and recomputed[mode].get("oracle_matches_selftest")
+        and recomputed[mode].get("receiver_order", {}).get("ok")
+        and [r["returncode"] for r in records if r["label"] == mode] == [0]
+        for mode in MODES)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-sha", required=True)
@@ -52,7 +80,7 @@ def main():
             "runs_each": 1, "kind": ledger.KIND, "lateness_limit_ns": ledger.LATENESS_LIMIT_NS,
             "conditional": f"only if any mode's receiver shows an overtaken UDP datagram: exactly {CONTROLS} plain-netem controls; order analysis is always recomputed",
             "per_step_evidence": "/proc/stat (per-CPU steal) and /proc/softirqs before and after every step",
-            "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
+            "gate": "PASS only if capabilities and all three modes pass, recomputed oracle verdicts match, and every receiver is strictly increasing without duplicates (overflow gaps allowed)",
             "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"}
     (a.output / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
@@ -86,8 +114,7 @@ def main():
                 lease.check()
             # overflow has no order check key, so count overtakes from every receiver directly.
             receivers = [a.output / mode / "receiver.json" for mode in MODES]
-            if any(path.is_file() and inversions([row[0] for row in json.loads(path.read_text())["udp"]])
-                   for path in receivers):
+            if any(receiver_order(path).get("overtaken", 0) for path in receivers):
                 for index in range(1, CONTROLS + 1):
                     isolated(f"control-{index}", [sys.executable, str(HERE / "netem_order_control.py"),
                                                   "--output", str(a.output / f"control-{index}.json")], 300)
@@ -104,14 +131,18 @@ def main():
         value = json.loads(summary.read_text())
         errors = ledger.validate(report, report.get("config"), blob)
         recomputed[mode] = {"selftest_ok": value["ok"], "failed_checks": sorted(k for k, v in value["checks"].items() if not v),
-                            "oracle_errors": errors, "oracle_matches_selftest": errors == value["oracle_errors"]}
+                            "oracle_errors": errors, "oracle_matches_selftest": errors == value["oracle_errors"],
+                            "receiver_order": receiver_order(directory / "receiver.json")}
         try:
-            recomputed[mode]["order"] = analyze(directory, None)
+            # Timing analysis indexes by sequence number and needs a complete set.
+            # Overflow gaps must still be checked by receiver_order above.
+            recomputed[mode]["order"] = (analyze(directory, None)
+                if recomputed[mode]["receiver_order"].get("complete_sequence")
+                else "timing analysis skipped: receiver sequence is incomplete or duplicated")
         except SystemExit as error:
             recomputed[mode]["order"] = str(error)
     verdict["recomputed"] = recomputed
-    passed = (probe == 0 and all(r.get("selftest_ok") and r.get("oracle_matches_selftest") for r in recomputed.values())
-              and all(r["returncode"] == 0 for r in records if r["label"] in MODES))
+    passed = gate_passes(probe, recomputed, records)
     verdict["gate"] = "PASS" if passed else "FAIL"
     (a.output / "gate.json").write_text(json.dumps(verdict, indent=2) + "\n")
     print("gate", verdict["gate"], flush=True)

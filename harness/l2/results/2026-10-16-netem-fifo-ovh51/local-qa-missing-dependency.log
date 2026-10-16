@@ -1,0 +1,904 @@
+E...........................s.QA BLOCKED: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+.............EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEsss.....sEE.EE.EEEEEEEEE...........
+======================================================================
+ERROR: test_contracts (unittest.loader._FailedTest.test_contracts)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_contracts
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_contracts.py", line 16, in <module>
+    from qa.evaluate import evaluate
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/evaluate.py", line 12, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_compiler_host_must_match_actual_platform (test_identity_process.IdentityTests.test_compiler_host_must_match_actual_platform)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 110, in test_compiler_host_must_match_actual_platform
+    self.verify()
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 59, in verify
+    return verify_manifest(self.manifest, self.case, self.plan, self.environment)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_complete_identity (test_identity_process.IdentityTests.test_complete_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 62, in test_complete_identity
+    self.assertEqual(self.verify(), self.manifest)
+                     ^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 59, in verify
+    return verify_manifest(self.manifest, self.case, self.plan, self.environment)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_dirty_wrong_sha_and_patch (test_identity_process.IdentityTests.test_dirty_wrong_sha_and_patch) (key='sha')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 98, in test_dirty_wrong_sha_and_patch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_dirty_wrong_sha_and_patch (test_identity_process.IdentityTests.test_dirty_wrong_sha_and_patch) (key='dirty')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 98, in test_dirty_wrong_sha_and_patch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_dirty_wrong_sha_and_patch (test_identity_process.IdentityTests.test_dirty_wrong_sha_and_patch) (key='patch_hash')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 98, in test_dirty_wrong_sha_and_patch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='schema_version')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='system')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='machine')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='kernel')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='cpu_count')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='pid')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='affinity')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='cpuinfo')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='proc_stat')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='cgroup_membership')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='cgroup_ancestors')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='pressure')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='performance_certified')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_environment_field_is_required (test_identity_process.IdentityTests.test_every_environment_field_is_required) (key='limitations')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 78, in test_every_environment_field_is_required
+    verify_manifest(self.manifest, self.case, self.plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='schema_version')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='source')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='lock_hash')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='lock_path')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='manifest_path')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='selected_package')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='toolchain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='rustc')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='cargo')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='host')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='target')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='native_platform')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='profile')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='requested_features')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='dependency_scope')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='dependency_graph')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='dependency_graph_hash')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='build_flags')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='python')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='binaries')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='qa_requirements_hash')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_every_manifest_field_is_required (test_identity_process.IdentityTests.test_every_manifest_field_is_required) (key='tool_hashes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 70, in test_every_manifest_field_is_required
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='toolchain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='profile')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='requested_features')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='native_platform')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='target')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='dependency_graph_hash')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='manifest_path')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='lock_path')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_identity_mismatch (test_identity_process.IdentityTests.test_identity_mismatch) (key='tool_hashes')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 90, in test_identity_mismatch
+    verify_manifest(manifest, self.case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_native_evidence_cannot_be_cross_platform (test_identity_process.IdentityTests.test_native_evidence_cannot_be_cross_platform)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 104, in test_native_evidence_cannot_be_cross_platform
+    self.verify()
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 59, in verify
+    return verify_manifest(self.manifest, self.case, self.plan, self.environment)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_nested_workspaces_use_own_lock (test_identity_process.IdentityTests.test_nested_workspaces_use_own_lock) (runner='loom')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 117, in test_nested_workspaces_use_own_lock
+    verify_manifest(manifest, case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_nested_workspaces_use_own_lock (test_identity_process.IdentityTests.test_nested_workspaces_use_own_lock) (runner='fuzz')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 117, in test_nested_workspaces_use_own_lock
+    verify_manifest(manifest, case, self.plan, self.environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_changed_binary_after_execution_cannot_receive_valid_identity (test_identity_process.RunnableIdentityTests.test_changed_binary_after_execution_cannot_receive_valid_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 262, in test_changed_binary_after_execution_cannot_receive_valid_identity
+    result, calls, _ = self.run_l1(replace_after_run=True)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 213, in run_l1
+    from qa.run import run_case
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_empty_or_wrong_binary_inventory_cannot_supply_execution_identity (test_identity_process.RunnableIdentityTests.test_empty_or_wrong_binary_inventory_cannot_supply_execution_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 206, in test_empty_or_wrong_binary_inventory_cannot_supply_execution_identity
+    verify_manifest(manifest, case, plan, environment)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_failed_build_remains_failed_and_never_launches_benchmark (test_identity_process.RunnableIdentityTests.test_failed_build_remains_failed_and_never_launches_benchmark)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 255, in test_failed_build_remains_failed_and_never_launches_benchmark
+    result, calls, _ = self.run_l1(materialize=False, exit_code=7)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 213, in run_l1
+    from qa.run import run_case
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_harness_launch_uses_the_same_frozen_artifact (test_identity_process.RunnableIdentityTests.test_harness_launch_uses_the_same_frozen_artifact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 188, in test_harness_launch_uses_the_same_frozen_artifact
+    from qa.run import commands
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_l1_runs_and_records_the_same_controlled_build_artifact (test_identity_process.RunnableIdentityTests.test_l1_runs_and_records_the_same_controlled_build_artifact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 242, in test_l1_runs_and_records_the_same_controlled_build_artifact
+    result, calls, binary = self.run_l1()
+                            ^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 213, in run_l1
+    from qa.run import run_case
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_manifest_cannot_hide_a_contradictory_explicit_target (test_identity_process.RunnableIdentityTests.test_manifest_cannot_hide_a_contradictory_explicit_target)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 184, in test_manifest_cannot_hide_a_contradictory_explicit_target
+    verify_manifest(manifest, case, {"tested_sha": SHA, "toolchain": "1.94.1"},
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 158, in verify_manifest
+    _schema(manifest, "build-v1")
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/build_manifest.py", line 147, in _schema
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_missing_build_product_does_not_run_inherited_or_stale_binary (test_identity_process.RunnableIdentityTests.test_missing_build_product_does_not_run_inherited_or_stale_binary)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 248, in test_missing_build_product_does_not_run_inherited_or_stale_binary
+    result, calls, _ = self.run_l1(materialize=False)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_identity_process.py", line 213, in run_l1
+    from qa.run import run_case
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+======================================================================
+ERROR: test_integration (unittest.loader._FailedTest.test_integration)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_integration
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_integration.py", line 10, in <module>
+    from qa.run import commands
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_perf_integration (unittest.loader._FailedTest.test_perf_integration)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_perf_integration
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_perf_integration.py", line 16, in <module>
+    from qa.evaluate import evaluate
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/evaluate.py", line 12, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_relay_queue (unittest.loader._FailedTest.test_relay_queue)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_relay_queue
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_relay_queue.py", line 10, in <module>
+    from qa.tests.test_integration import worker_manifest_fixture
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_integration.py", line 10, in <module>
+    from qa.run import commands
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/run.py", line 24, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_release (unittest.loader._FailedTest.test_release)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_release
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_release.py", line 18, in <module>
+    from qa.plan import make_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_safety_evaluation (unittest.loader._FailedTest.test_safety_evaluation)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_safety_evaluation
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_safety_evaluation.py", line 10, in <module>
+    from qa.evaluate import evaluate
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/evaluate.py", line 12, in <module>
+    from .plan import check_trusted_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+======================================================================
+ERROR: test_safety_runner (unittest.loader._FailedTest.test_safety_runner)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_safety_runner
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/tests/test_safety_runner.py", line 14, in <module>
+    from qa.plan import make_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/plan.py", line 8, in <module>
+    from .validate import validate_plan
+  File "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack/qa/validate.py", line 7, in <module>
+    from jsonschema import Draft202012Validator
+ModuleNotFoundError: No module named 'jsonschema'
+
+
+----------------------------------------------------------------------
+Ran 86 tests in 30.041s
+
+FAILED (errors=67, skipped=5)
+QA PASS: hosted nightly passed; L2 not certified
