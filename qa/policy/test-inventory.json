@@ -5270,6 +5270,17 @@
     {
       "source": "qa/tests/test_crossrepo.py",
       "class": "CrossRepoTests",
+      "name": "test_cold_cache_stderr_progress_never_reaches_parsed_stdout",
+      "occurrence": 1,
+      "async": false,
+      "decorators": [
+        "unittest.skipUnless(os.name == 'posix', 'cross-repository build helpers require the designated POSIX build node')"
+      ],
+      "guards": []
+    },
+    {
+      "source": "qa/tests/test_crossrepo.py",
+      "class": "CrossRepoTests",
       "name": "test_dirty_source_and_tracked_secrets_are_not_exported",
       "occurrence": 1,
       "async": false,

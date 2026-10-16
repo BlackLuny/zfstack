@@ -201,20 +201,23 @@ def validate_matrix(manifest):
                 raise EvidenceError(f"inconsistent {name} {arm} factor")
 
 
-def _run(argv, cwd, log, env, timeout, minimum_free, *, lease):
+def _run(argv, cwd, log, env, timeout, minimum_free, *, lease, stderr=None):
     class Reserve:
         def check(self):
             lease.check()
             if shutil.disk_usage(log.parent).free < minimum_free:
                 raise EvidenceError("disk reserve below required minimum")
     Reserve().check()
-    execution = run_child(argv, cwd, log, timeout, env, Reserve())
+    execution = run_child(argv, cwd, log, timeout, env, Reserve(), stderr=stderr)
     passed = (execution["status"] == "completed" and execution["exit_code"] == 0
               and execution["cleanup_status"] == "PASS")
-    return {"argv": argv, "log": log.name, "status": "PASS" if passed else "FAILED",
-            "exit_code": execution["exit_code"], "cleanup": execution["cleanup_status"],
-            "execution": execution,
-            "elapsed_seconds": (execution["end_ns"] - execution["start_ns"]) / 1_000_000_000}
+    record = {"argv": argv, "log": log.name, "status": "PASS" if passed else "FAILED",
+              "exit_code": execution["exit_code"], "cleanup": execution["cleanup_status"],
+              "execution": execution,
+              "elapsed_seconds": (execution["end_ns"] - execution["start_ns"]) / 1_000_000_000}
+    if stderr is not None:
+        record["stderr_log"] = stderr.name
+    return record
 
 
 def _progress(entry, out, lease):
@@ -267,8 +270,12 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
         worker_target = cache / "worker" if cache else out / "target"
         env.update(CARGO_TARGET_DIR=str(worker_target), CARGO_BUILD_JOBS=str(jobs))
         entry["target_directory"] = str(worker_target)
-        def run(argv, cwd=root / "zfc"):
-            rec = _run(argv, cwd, out / f"command-{len(entry['commands'])}.log", env, timeout, minimum_free, lease=lease)
+        def run(argv, cwd=root / "zfc", *, parsed=False):
+            # Cargo writes download progress and warnings to stderr; parsed
+            # stdout must not share a file with them. Both logs are retained.
+            index = len(entry["commands"])
+            rec = _run(argv, cwd, out / f"command-{index}.log", env, timeout, minimum_free, lease=lease,
+                       stderr=out / f"command-{index}.stderr.log" if parsed else None)
             entry["commands"].append(rec)
             _progress(entry, out, lease)
             if rec["status"] != "PASS":
@@ -294,8 +301,8 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
                     patch = next((p for p in source.get("patches", []) if name == "zfc" and p["path"] == item["path"]), None)
                     if not path.is_file() or path.is_symlink() or file_hash(path) != (patch["after_sha256"] if patch else item["sha256"]):
                         raise EvidenceError("source changed since archive: " + str(path.relative_to(root)))
-            rust_log = run([rustc, "+" + toolchain, "-vV"])
-            cargo_log = run([cargo, "+" + toolchain, "-V"])
+            rust_log = run([rustc, "+" + toolchain, "-vV"], parsed=True)
+            cargo_log = run([cargo, "+" + toolchain, "-V"], parsed=True)
             entry["rustc_vv"] = rust_log.read_text().strip()
             entry["cargo_version"] = cargo_log.read_text().strip()
             entry["host"] = next((line[6:] for line in entry["rustc_vv"].splitlines() if line.startswith("host: ")), None)
@@ -310,7 +317,7 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
             run([cargo, "+" + toolchain, "update", "-p", "zfstack"])
             entry["lock_sha256"] = file_hash(lock)
             shutil.copyfile(lock, out / "worker-Cargo.lock")
-            meta_log = run([cargo, "+" + toolchain, "metadata", "--locked", "--format-version", "1"])
+            meta_log = run([cargo, "+" + toolchain, "metadata", "--locked", "--format-version", "1"], parsed=True)
             metadata = read_json(meta_log)
             packages = [p for p in metadata["packages"] if p["name"] == "zfstack"]
             if len(packages) != 1 or Path(packages[0]["manifest_path"]).resolve() != (root / "zfstack/Cargo.toml").resolve() or packages[0]["source"] is not None:
@@ -322,7 +329,7 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
                 tree += ["--features", ",".join(features)]
             if env.get("CARGO_BUILD_TARGET"):
                 tree += ["--target", env["CARGO_BUILD_TARGET"]]
-            entry["dependency_graph"] = run(tree).read_text().strip()
+            entry["dependency_graph"] = run(tree, parsed=True).read_text().strip()
             if not entry["dependency_graph"]:
                 raise EvidenceError("worker dependency graph is empty")
             entry["dependency_graph_hash"] = digest(entry["dependency_graph"])
@@ -340,7 +347,7 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
             installed.chmod(0o755)
             entry["binary_path"] = str(installed)
             entry["binary_sha256"] = file_hash(installed)
-            build_log = run([str(installed), "--build-info"])
+            build_log = run([str(installed), "--build-info"], parsed=True)
             entry["build_info"] = read_json(build_log)
             if (not isinstance(entry["build_info"], dict)
                     or entry["build_info"].get("source", {}).get("commit") != source["source_refs"]["zfc"]
@@ -353,7 +360,7 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
                     raise EvidenceError("forwarder did not resolve the frozen local private_tun")
                 fwd_tree = list(tree)
                 fwd_tree[fwd_tree.index("-p") + 1] = "forwarder-server"
-                graph = run(fwd_tree).read_text().strip()
+                graph = run(fwd_tree, parsed=True).read_text().strip()
                 if not graph.startswith("0forwarder-server v"):
                     raise EvidenceError("forwarder selected dependency graph is missing")
                 fwd_argv = list(argv)
@@ -366,7 +373,7 @@ def _build_matrix_locked(archive, output, *, lease, cargo="cargo", rustc="rustc"
                 installed_fwd = out / "forwarder-server"
                 shutil.copyfile(built, installed_fwd)
                 installed_fwd.chmod(0o755)
-                fwd_info = read_json(run([str(installed_fwd), "--build-info"]))
+                fwd_info = read_json(run([str(installed_fwd), "--build-info"], parsed=True))
                 if (not isinstance(fwd_info, dict) or fwd_info.get("source", {}).get("commit") != source["source_refs"]["zfc"]
                         or fwd_info.get("private_tun", {}).get("commit") != source["source_refs"]["private_tun"]):
                     raise EvidenceError("forwarder build-info does not identify the frozen product sources")

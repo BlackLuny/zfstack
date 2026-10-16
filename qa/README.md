@@ -108,6 +108,9 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 最终 worker/matrix 清单在校验并释放租约后封存，记录 `build_lease` 的域、generation、owner 与释放状态。
 每条命令和每臂结束时另写 `build-progress.json`，保留原始退出及 cleanup 记录；其状态与租约释放状态始终为
 `PENDING`，取消后仍可诊断，但不能替代正式 worker/matrix 终态清单或作为已构建资格。
+输出被当作数据解析的命令（`rustc -vV`、`cargo -V`、`cargo metadata`、`cargo tree`、`--build-info`）把 stderr
+单独写入 `command-N.stderr.log`，只解析 `command-N.log` 中的 stdout；冷 cache 的下载进度和告警不会混入
+JSON 或依赖图。两路日志都保留，并共用同一个 64 MiB 输出预算；命令记录的 `stderr_log` 指向该文件。其他命令仍合并两路输出。
 入口从指定 Git 提交导出允许的构建输入，不复制 dirty/untracked 内容、凭据或历史。
 四个组合固定同一 private_tun 版本；依赖 path override 和锁文件变化都会保留。
 `--cell head-head` 只验证单个组合，另外三臂是 `UNEXECUTED`，不宣称四因子对照通过。
