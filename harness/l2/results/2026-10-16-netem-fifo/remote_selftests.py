@@ -5,8 +5,8 @@ Run as root from a clean checkout of the frozen SHA. It writes its plan before
 executing, holds the public QA lease for the whole sequence, runs every
 privileged step inside qa/isolate-linux.sh, never repeats a run, and records
 the gate verdict: PASS only if the probe and all three modes pass and the
-oracle verdicts recompute identically. If any mode fails receiver UDP order,
-it also runs exactly three plain-netem controls.
+oracle verdicts recompute identically. If any mode's receiver shows an
+overtaken UDP datagram, it also runs exactly three plain-netem controls.
 """
 import argparse
 import json
@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "harness/l2"))
 from qa.lease import Lease  # noqa: E402
 import netem_fifo_ledger as ledger  # noqa: E402
-from analyze_order import analyze  # noqa: E402
+from analyze_order import analyze, inversions  # noqa: E402
 
 MODES = ("full", "cancel", "overflow")
 CONTROLS = 3
@@ -50,7 +50,8 @@ def main():
     plan = {"written_before_execution_unix_ns": time.time_ns(), "tested_sha": head, "kernel": os.uname().release,
             "boot_id": boot, "domain": a.domain, "run_id": a.run_id, "order": ["capabilities", *MODES],
             "runs_each": 1, "kind": ledger.KIND, "lateness_limit_ns": ledger.LATENESS_LIMIT_NS,
-            "conditional": f"only if any mode fails udp_exactly_once_in_order: exactly {CONTROLS} plain-netem controls; order analysis is always recomputed",
+            "conditional": f"only if any mode's receiver shows an overtaken UDP datagram: exactly {CONTROLS} plain-netem controls; order analysis is always recomputed",
+            "per_step_evidence": "/proc/stat (per-CPU steal) and /proc/softirqs before and after every step",
             "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
             "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"}
     (a.output / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -58,6 +59,7 @@ def main():
     records = []
 
     def isolated(label, argv, timeout):
+        before = {name: Path("/proc", name).read_text() for name in ("stat", "softirqs")}
         started = time.time_ns()
         with (a.output / (label + ".log")).open("xb") as log:
             try:
@@ -66,7 +68,8 @@ def main():
             except subprocess.TimeoutExpired:
                 code = "timeout"
         records.append({"label": label, "argv": argv, "returncode": code, "started_unix_ns": started,
-                        "finished_unix_ns": time.time_ns(), "proc_modules": Path("/proc/modules").read_text()})
+                        "finished_unix_ns": time.time_ns(), "proc_modules": Path("/proc/modules").read_text(),
+                        "proc_before": before, "proc_after": {name: Path("/proc", name).read_text() for name in before}})
         (a.output / "execution.json").write_text(json.dumps(records, indent=2) + "\n")
         print(label, "exit", code, flush=True)
         return code
@@ -81,9 +84,10 @@ def main():
                 isolated(mode, [sys.executable, str(ROOT / "harness/l2/fifo_selftest.py"), "--kind", ledger.KIND,
                                 "--mode", mode, "--output", str(a.output / (mode + ".json"))], 300)
                 lease.check()
-            summaries = [a.output / (mode + ".json") for mode in MODES]
-            if any(path.is_file() and json.loads(path.read_text())["checks"].get("udp_exactly_once_in_order") is False
-                   for path in summaries):
+            # overflow has no order check key, so count overtakes from every receiver directly.
+            receivers = [a.output / mode / "receiver.json" for mode in MODES]
+            if any(path.is_file() and inversions([row[0] for row in json.loads(path.read_text())["udp"]])
+                   for path in receivers):
                 for index in range(1, CONTROLS + 1):
                     isolated(f"control-{index}", [sys.executable, str(HERE / "netem_order_control.py"),
                                                   "--output", str(a.output / f"control-{index}.json")], 300)
