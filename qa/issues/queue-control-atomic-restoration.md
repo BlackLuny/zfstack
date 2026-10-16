@@ -1,6 +1,6 @@
 # Issue draft: QueueControl 原子恢复（known-BLOCKED）
 
-状态：独立后续 issue 文本，未创建远程 issue，本 PR 不实现。
+状态：对应 [#59](https://github.com/BlackLuny/zfstack/issues/59)。持久单 FIFO 注入器已实现，资格标准随 schema 4 冻结，并通过隔离 VM 自检（见下文“实现状态”）；**held-out 正式 C16 运行尚未执行，QueueControl 仍为 known-BLOCKED**。
 
 当前 `C16-l2-queue-control` 的业务请求超时与台架资格分别判定。冻结 `8bf5bb8` 的首轮及追加两轮均保留真实判定；请求完成不能把台架 NOT_RUN/BLOCKED 改成 PASS。`known-failures.json` 的标注不是豁免，required case、阈值和聚合规则不变。
 
@@ -10,7 +10,14 @@
 
 首轮故障期 TCP 三 peer 有 17/16/16 次超过固定 250 ms，最大请求耗时约 1.003 s；这是保留的负对照事实。完整三轮摘要和原始证据索引见 [review-evidence](../review-evidence/README.md) 与 [VALIDATION](../VALIDATION.md)。
 
-## 后续方案（需隔离宿主，未实现）
+## 实现状态
+
+- case v2 的 `queue_control.kind` 为 `fifo-delay-line`。`harness/l2/fifo_injector.py` 用 `clsact` + 共享 mirred 动作把 worker eth0 全部出口帧重定向到私有 tap，单线程有界 FIFO 原样经 AF_PACKET 写回；路径在测量开始至少 0.5 s 前安装，在 `measurement_end` 且负载客户端全部回收后才拆除。透明切换由同一线程依据 FIFO 自身为空决定，之后不再整形；不暂停或减少业务输入。
+- 未采用候选 NFQUEUE：同等 500 ms 延迟下它让非阻塞 UDP 发送方出现 2608 次 EAGAIN（netem 与 FIFO 为 0），即增加原注入没有的发送缓冲反压。
+- `harness/l2/fifo_ledger.py` 只从逐帧原始账本与内核原始计数复算 seq、阶段、释放时间、顺序、占用、tap 帧/字节与 mirred GSO 段计数闭包、安装/切换/拆除时刻及 qdisc 恢复；`harness/l2/test_fifo_ledger.py` 覆盖缺失、重复、乱序、溢出、早/晚释放、切换越界、空队列后继续整形、计数不闭合、取消、清理失败等负例。
+- 隔离 VM（6.8 内核）自检的 full/cancel/overflow 结果及此前保留的失败见 [REPORT](../../harness/l2/results/2026-10-16-fifo-injector/REPORT.md)。v3 旧三轮失败原样保留，不追认。
+
+## 原后续方案（已按上述实现，待 held-out）
 
 采用持续存在的单 FIFO 注入器，让所有包始终经过同一路径；候选为 NFQUEUE 配合有界队列。在同一串行状态机或锁内完成空队列确认与透明转发切换，在整个测量结束后才拆除规则/资源。不得在恢复阶段继续保留 2 Gbit/s 整形来冒充原始无整形网络，也不得暂停、减少业务输入来制造空队列。
 

@@ -7,7 +7,7 @@
 
 生产分支 `codex/pacing-fixes` 从 `df432fd` 开始，仅有 `src/conn.rs`、`src/shard.rs` 两处修复及确定性回归；QA 分支 `codex/qa-framework` 基于该分支，初始 QA 提交 `609c72a` 的完整 tree 与原文档提交 `5daed24` 相同。原 `codex/qa-system` 保留，不重写旧执行身份。新 PR 描述仅保存在本机，没有 push、创建远程 PR 或修改仓库设置。
 
-关键报告、原始文件哈希索引与复验摘要已整理为 [review-evidence](review-evidence/README.md)，维护者任务见 [手工清单](MAINTAINER-CHECKLIST.md)。QueueControl 为 **known-BLOCKED**，后续 [原子恢复 issue 草稿](issues/queue-control-atomic-restoration.md) 仅描述方案和验收要求，不实现或豁免。
+关键报告、原始文件哈希索引与复验摘要已整理为 [review-evidence](review-evidence/README.md)，维护者任务见 [手工清单](MAINTAINER-CHECKLIST.md)。QueueControl 为 **known-BLOCKED**。[原子恢复 issue](issues/queue-control-atomic-restoration.md) 的持久 FIFO 注入器已实现（见下文“QueueControl 持久 FIFO 注入器”），但未经 held-out 正式运行，不豁免。
 
 ## 生产影响
 
@@ -187,6 +187,16 @@ Queue 基线三路 TCP 各完成 3199 次，四路 UDP 各完成 3200 次。故�
 
 追加第 1 次 cleanup 仍有 45248 B 积压，未证明删除前排空；恢复距边界尚有 76.492910 ms。追加第 2 次 cleanup 读数为零，但恢复晚于固定 recovery 边界 52.097270 ms，故仍未合格。两次均保持 NOT_RUN/UNKNOWN，独立聚合 BLOCKED，资源清理及租约释放 PASS；不扩大 guard 接纳第二次迟到。112 项追加导出文件的大小/哈希已核验，原首轮及之前失败均未覆盖。完整原始文件在归档 `qa/results/validation-20261015/8bf5bb8-queue-two/`，评审用摘要见 [受版本控制的证据](review-evidence/README.md)。三轮无超时是新增观察证据，不是对所有负载永不超时的保证。
 
+## QueueControl 持久 FIFO 注入器（#59，未 held-out）
+
+`C16-l2-queue-control` 升为 case v2，`queue_control.kind` 为 `fifo-delay-line`；500 ms、100000 包、8/16/8 秒、250 ms guard、3 秒 deadline、250 ms 合同和业务负载均未改变。v3 `netem-delay` 只用于复判已归档报告，旧三轮失败不覆盖、不追认。设计、预注册常量和 oracle 见 [L2 README](../harness/l2/README.md#共享出口队列负对照)。
+
+新增 17 项可移植测试（`harness/l2/test_fifo_ledger.py`）按冻结策略回放生成账本，并逐项验证缺失、重复、乱序、溢出/发送失败/未发送、早释放、迟到、阶段错标、收尾空队列后继续整形、透明帧排在积压后、切换越过 recovery 或早于积压排空、GSO 段/字节/tap 帧不闭合、动作/tap 丢弃、tap 自带队列、qdisc 未恢复、账本摘要/帧数不符、取消、清理失败、安装过晚、拆除过早、覆盖不足、占用越界，以及父进程未就绪、提前退出、挂起、报告缺失或畸形均失败。`harness/l2` 96 项、`qa/tests` 208 项（1 项既有 skip）通过，`audit-coverage` 以纯新增通过。
+
+隔离 VM（TCG、6.8 内核）特权自检的全部运行见 [REPORT](../harness/l2/results/2026-10-16-fifo-injector/REPORT.md)。开发中发现并修正了 GSO 段计数闭合、接收端缓冲截断、透明切换时间戳早于最后积压帧、取消时直连帧超越积压四个问题，失败运行均保留。最终提交上的 cancel 与 overflow 负例按预期被拒且清理通过；final full 其余独立检查全过，但收尾期迟到 26.20 ms 超过预注册的 20 ms，原因是模拟 CPU 无法以 2 Gbit/s 写出，未放宽常量或重跑择优。另实测 NFQUEUE 引入 2608 次发送 EAGAIN（netem/FIFO 为 0），以及挂/删 clsact 会静默丢包，据此确定 tap 路径与安装/拆除时机。
+
+QueueControl 仍为 known-BLOCKED：须在具备真实 CPU 和所需内核能力的隔离宿主上，冻结 worker 后执行一次 held-out 正式运行（见 [手工清单](MAINTAINER-CHECKLIST.md)）。
+
 ## 性能与发布资格的限制
 
 真实 A/A experiment hash 为 `43fab4881c29993120e2612e9d88ccf3206c994c0f2df8c5b9239e20f22f7b8a`，A/B 二进制均为 `c07844345f0783f22b72c62807970049360f4e9d9efe5f26258986d8160480cb`。
@@ -198,7 +208,7 @@ Queue 基线三路 TCP 各完成 3199 次，四路 UDP 各完成 3200 次。故�
 2. Linux aarch64、Windows 原生运行，以及同一发布 SHA 上完整平台、Nightly、安全、集成与性能证据。
 3. 跨仓四种实际组合的完整执行；只构建 head-head 不宣称 2×2 归因成立。
 4. 维护者审查并设置 `QA_TRUSTED_REF`、required `qa/gate` 与 CODEOWNERS 规则，使用试验 PR 验证真实合并阻断；指定 L2/perf 节点环境和启用变量。
-5. QueueControl 业务超时修复已得到确定性回归和真实节点观察；仍须消除台架实时删除竞态并通过新的独立正式复验，当前 NOT_RUN 不能当作成功负对照。
+5. QueueControl 业务超时修复已得到确定性回归和真实节点观察；台架实时删除竞态已由持久 FIFO 注入器（case v2）取代，但仍须通过新的独立 held-out 正式复验，当前 NOT_RUN 不能当作成功负对照。
 
 共享节点上的 `ae17834` 跨仓构建前两次分别在 worker、forwarder 阶段被 3 GiB 磁盘守卫取消，第三次完成构建；所有失败尝试、构建进度、子树清理与租约释放证据均保留，未覆盖成重试结果。只对本任务已完整备份且验证哈希的缓存/归档副本进行空间回收；没有调低保护阈值或更换冻结 profile。
 
