@@ -57,3 +57,35 @@ coverage audit passed. These were local preparation checks, not repeated gates.
 Next: separately register case v3/netem-fifo after this evidence commit; gate
 that new SHA once. Only its PASS permits frozen worker build and one held-out
 formal C16. known-BLOCKED remains even if later formal evidence passes.
+
+## Case v3 preregistration and stage3
+
+Evidence was committed as f285459 before the separate registration commit
+`604a61834db76a1b94583932585fb24a0265964b`. cases.json changed exactly version
+2→3 and kind fifo-delay-line→netem-fifo; the known-failures note retains BLOCKED.
+L2 128 (2 skips), QA 208 (5 skips) and coverage audit passed on that change.
+
+Stage3 ran once at this new SHA: capabilities, full, cancel and overflow all
+PASS; no controls triggered. Full/cancel each received 18475 unique ordered UDP,
+zero missing. Overflow received 13539 (4936 missing UDP); 4965 total frames lost,
+no reorder/duplicates; negative loss accounting and oracle errors agree. The
+48 archived files were hash-verified and independently recomputed locally.
+Stage3 archive SHA-256:
+`d06d0e42f04188c9869dea001df8e3983112a72dd606a4a6ac2f9edca53f5ba7`.
+
+The optional cancel timing mapper declined: it identifies UDP by 1074-byte
+frame length and found 18476 matched frames versus 18475 receiver datagrams.
+Length alone cannot uniquely identify protocol/flow. All captured frames pair
+without loss, the complete oracle and receiver strict-order checks passed;
+no per-packet timing attribution is claimed from that optional mapper.
+
+Preparation: three SSH handshakes were closed (two startup attempts and one
+read-only check). After recovery we verified source3, driver, plan and output
+did not exist, then used a multiplexed SSH connection to start stage3 once.
+These are connection/setup failures, not repeated measurements.
+
+Both gates passed without tracing. A separately frozen native build and one
+held-out formal C16 are now planned in build-and-formal-plan.json. Four other
+repository SHAs and Rust 1.98.1 remain frozen. Rust archives are verified against
+the retained distribution manifest; Python wheels match qa/requirements.lock.
+All tool installation is task-local; no apt/system-package operation.
