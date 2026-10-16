@@ -166,7 +166,7 @@ oracle 自行配对两份捕获，并复算以下内容：
 
 运行需要 `sch_netem`、`dummy`、clsact/matchall/mirred，以及 AF_PACKET TPACKET_V3 与 `PACKET_VNET_HDR`。
 
-[仿真自检](results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，cancel 和 overflow 负例按预期被拒。但 full 因接收端 UDP 乱序 FAIL：netem 在多个 CPU 上出队，veth 按 CPU 积压交付，trace 中 32/32 次超越都跨 CPU。该判据是预注册的，没有放宽；是否将顺序义务限定在 eth0 出口须由维护者重新预注册决定。在此之前不得用它替换 case v2。
+[仿真自检](results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，cancel 和 overflow 负例按预期被拒。但 full 因接收端 UDP 乱序 FAIL：netem 在多个 CPU 上出队，veth 按 CPU 积压交付，trace 中 32/32 次超越都跨 CPU。该判据是预注册的，没有放宽。预注册对照中，普通 netem（历史 v3 时间线）3 次运行 0 乱序，因此也不把顺序义务改为止于 eth0 出口。真实 CPU 上的三模式自检通过之前，不得用它替换 case v2。
 
 历史 v3（`netem-delay`）只用于复判已归档报告，新运行不再使用。v3 证据明确区分持续注入与收尾：持续阶段仍为原 delay-only 配置；收尾在同一个 netem 上改为 `delay 0ms rate 2000000000bit`，保留现有积压，再等待 backlog 清空并删除自己的 qdisc。非零 rate 给新包分配顺序的序列化时间，避免直接清零 delay 时越过旧积压；有限的 2 Gbit/s 排空速率同时约束集中排出。它来自预注册的 2/3/4 Gbit/s 台架容量对照中最低合格候选；最终 `8bf5bb8` 独立完整复验因读空后重新积压而被严格拒绝（NOT_RUN），不能作为已完成的台架。它不是产品带宽承诺、性能通过阈值或任意负载的排空保证。旧 v2 的 100 Gbit/s 排空在完整负载下产生链路丢包，已拒绝，不能作为 v3 成功证据。
 

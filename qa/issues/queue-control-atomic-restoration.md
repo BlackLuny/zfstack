@@ -49,11 +49,9 @@
   - cancel 和 overflow 负例 PASS。
   - full **FAIL**：出口 FIFO 精确，但接收端 UDP 乱序。
   - 预注册 trace 诊断证明，乱序来自 netem 多 CPU 出队后 veth 按 CPU 积压投递。
-- 要继续推进，需要维护者二选一：
-  1. 重新预注册“顺序义务止于 eth0 出口”的自检判据（原 v1 netem 注入理论上也有这一属性，但本次未验证），这不追认本次结果；
-  2. 找到不改变发送端、不新增队列、不改对端设备的单路径交付实现。
-
-  在此之前 C16 保持 case v2，known-BLOCKED 不变。
+- 维护者选择按建议推进后，先做了预注册对照：普通 netem（历史 v3 时间线）在同一负载下 3 次运行 0 乱序。按规则，**不放宽顺序判据**。
+- 下一步改为真机检查：在真实 CPU 上冻结 SHA 做三模式自检。只有全部通过，才登记 case v3 `netem-fifo`，并在新 SHA 上重做自检、冻结 worker、执行一次 held-out 正式运行。步骤见 PR #75 的真机运行说明。
+- 在此之前 C16 保持 case v2，known-BLOCKED 不变。
 
 远端可继续使用 `/root/zfstack-qa-pr75-20261016-remote23-01` 的冻结输入、worker、缓存和失败记录；本次因没有 SSH 凭据没有执行远端操作。该机有生产服务；继续使用 `qa/isolate-linux.sh` 和公共 QA Lease，不停止现有服务、不清理未知资源。准备 venv 曾间接升级 7 个 Python 3.11 补丁包；最终核对主 PID 未变、7 个容器 healthy，完整事务与局限均在报告中。
 

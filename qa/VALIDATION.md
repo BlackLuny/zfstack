@@ -209,7 +209,8 @@ QueueControl 仍为 known-BLOCKED：须在具备真实 CPU 和所需内核能力
   - cancel 和 overflow 负例 PASS，信息性 full-heavy PASS。
   - full **FAIL**：出口顺序精确且 oracle PASS，但接收端 99 个 UDP 被超越。
   - 预注册的 tracefs 诊断再次出现乱序，并定位到 netem 多 CPU 出队后经 veth 按 CPU 积压投递（32/32 跨 CPU）。
-- 因此 C16 保持 case v2 `fifo-delay-line`，没有冻结或正式运行 `netem-fifo`，也没有放宽判据。远端宿主本次不可达（无凭据）。
+- 预注册对照中，普通 netem（历史 v3 时间线，同一负载）3 次运行 0 乱序，因此不把顺序义务改为止于 eth0 出口。
+- 因此 C16 保持 case v2 `fifo-delay-line`，没有冻结或正式运行 `netem-fifo`，也没有放宽判据。远端宿主本次不可达（无凭据），真机步骤写在 PR #75。
 
 ## 性能与发布资格的限制
 
