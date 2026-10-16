@@ -140,7 +140,7 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 | 工作流 | 范围 |
 |---|---|
 | `ci.yml` | PR、push、merge_group；完整基础 Rust/Python、显式 eager/event-only、永久 replay；唯一聚合 `qa/gate`。 |
-| `qa-nightly.yml` | 完整固定 seeds、已登记重测试、Loom、隔离 L1、指定节点 L2。 |
+| `qa-nightly.yml` | 完整固定 seeds、已登记重测试、Loom、隔离 L1、指定节点 L2。未设置 `QA_L2_ENABLED` 时 L2 job 跳过；evaluate 对缺 L2 仍为 BLOCKED（不能当发布证据），hosted GitHub 检查仅在除此之外全部通过时保持绿色。 |
 | `qa-native.yml` | Linux x86_64/aarch64、macOS aarch64、Windows x86_64 原生可用层。 |
 | `qa-safety.yml` | 固定 nightly 的 Miri、ASan、覆盖引导 fuzz 与局部 Loom。 |
 | `qa-perf.yml` | 受保护默认分支历史上的固定 SHA，指定物理域性能节点，默认 shadow。 |
@@ -150,7 +150,8 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 仓库首次引入 QA 时，旧基线没有可信 reporter，PR 执行仍可开展，聚合会明确 BLOCKED。
 维护者需审查后配置完整提交 SHA `QA_TRUSTED_REF`，并通过仓库规则实际要求 `qa/gate` 和 CODEOWNERS 审查。
 L2/perf 自托管工作流还需要节点环境与 `QA_L2_ENABLED` / `QA_PERF_ENABLED`。
-这些外部设置不会由本地代码悄悄启用。缺少节点或批准的校准时，发布入口保持阻断。
+这些外部设置不会由本地代码悄悄启用。缺少节点或批准的校准时，发布入口保持阻断；
+Nightly 的 hosted 检查可以通过，但 `summary.json` 仍为 BLOCKED，不能代替完整 L2 证据。
 
 ## 方案对应关系
 
