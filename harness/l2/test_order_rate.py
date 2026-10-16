@@ -175,7 +175,8 @@ class OrderRateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             f = unpack_fixture(directory, "full", "F-01")
             path = f.with_suffix("") / "queue-control.json"
-            report = json.loads(path.read_text())
+            original = path.read_text()
+            report = json.loads(original)
             report["cleanup"] = "FAIL"
             path.write_text(json.dumps(report))
             result = rate.assess(f, "F", child(1))
@@ -183,6 +184,12 @@ class OrderRateTests(unittest.TestCase):
             self.assertFalse(result["validity"]["valid"])
             path.unlink()
             self.assertFalse(rate.assess(f, "F", child(1))["cleanup_safe"])
+            path.write_text(original)
+            ledger = f.with_suffix("") / "queue-ledger.bin.gz"
+            ledger.write_bytes(ledger.read_bytes()[:-8])
+            result = rate.assess(f, "F", child(1))
+            self.assertFalse(result["cleanup_safe"])
+            self.assertFalse(result["validity"]["valid"])
 
     def test_host_checks_do_not_accept_restarted_services(self):
         with patch.object(rate.subprocess, "check_output", side_effect=["inactive\n", "active\n", ""]):

@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -242,7 +243,7 @@ def assess(target, arm, lifecycle):
             expected_code = 0 if all(checks.values()) and valid(stats) and not stats["overtaken"] else 1
             checks["exit_status"] = lifecycle.get("exit_code") == expected_code
         reasons.extend(key for key, passed in checks.items() if not passed)
-    except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, EOFError, zlib.error) as error:
         reasons.append("evidence unavailable/malformed: " + repr(error))
         # F has an explicit injector cleanup record; absent or unreadable evidence
         # must not authorize the next measurement, even if containment succeeded.
