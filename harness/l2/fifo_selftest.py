@@ -10,8 +10,8 @@ ledger oracle. Run only inside qa/isolate-linux.sh, never on a shared host:
 
 `--mode cancel` signals the injector mid-load and `--mode overflow` forces the
 minimum 100-packet limit; both must leave a clean kernel and an oracle FAIL.
-`--kind` selects the injector (default `netem-fifo`; `fifo-delay-line` is the
-retained userspace delay line).
+`--kind` selects the injector: the registered case kind `fifo-delay-line` by
+default, or the candidate persistent kernel netem FIFO `netem-fifo`.
 """
 import argparse
 import hashlib
@@ -301,7 +301,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("role", choices=("scenario", "receive", "send"), nargs="?", default="scenario")
     parser.add_argument("--mode", choices=("full", "cancel", "overflow"), default="full")
-    parser.add_argument("--kind", choices=tuple(FIFO_LEDGERS), default=netem_fifo_ledger.KIND)
+    parser.add_argument("--kind", choices=tuple(FIFO_LEDGERS), default=fifo_ledger.KIND)
     parser.add_argument("--output")
     parser.add_argument("--host")
     parser.add_argument("--out")
