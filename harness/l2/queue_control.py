@@ -5,8 +5,10 @@ that an absolute latency contract detects a deep shared egress queue; it does
 not claim to recreate the implementation or historical cause of issue #44.
 
 `netem-delay` is the retained v3 root-qdisc injector. Its show/delete restore
-is not atomic under load, so it can only re-judge archived reports. New runs
-use `fifo-delay-line` (schema 4, `fifo_injector.py`).
+is not atomic under load, so it can only re-judge archived reports.
+`fifo-delay-line` (schema 4, `fifo_injector.py`) failed its formal run and is
+kept to re-judge retained evidence. New runs use `netem-fifo` (schema 5,
+`netem_fifo.py`).
 """
 import gzip
 import json
@@ -21,9 +23,12 @@ import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import fifo_ledger
+import netem_fifo_ledger
 from queue_links import validate as link_errors
 
-KINDS = ("netem-delay", fifo_ledger.KIND)
+FIFO_LEDGERS = {fifo_ledger.KIND: fifo_ledger, netem_fifo_ledger.KIND: netem_fifo_ledger}
+FIFO_INJECTORS = {fifo_ledger.KIND: "fifo_injector.py", netem_fifo_ledger.KIND: "netem_fifo.py"}
+KINDS = ("netem-delay", *FIFO_LEDGERS)
 LEDGER_NAME = "queue-ledger.bin.gz"
 DRAIN_GUARD_SEC = fifo_ledger.DRAIN_GUARD_SEC
 DRAIN_RATE_BPS = 2_000_000_000
@@ -131,10 +136,11 @@ def validate_evidence(report, config, ledger=None):
     errors = []
     try:
         validate_config(config)
-        if config["kind"] == fifo_ledger.KIND:
+        if config["kind"] in FIFO_LEDGERS:
             if not isinstance(report, dict):
                 raise ValueError("missing typed FIFO queue control report")
-            return sorted(set(link_errors(report.get("link_samples")) + fifo_ledger.validate(report, config, ledger)))
+            oracle = FIFO_LEDGERS[config["kind"]].validate(report, config, ledger)
+            return sorted(set(link_errors(report.get("link_samples")) + oracle))
         if (not isinstance(report, dict) or type(report.get("schema_version")) is not int
                 or report["schema_version"] != 3 or report.get("config") != config):
             raise ValueError("queue control configuration differs from frozen case")
@@ -313,14 +319,15 @@ class FifoQueueControl:
     def __init__(self, config, namespace, measurement_start, start, end, measurement_end, output):
         validate_config(config)
         from isolation import verify
-        if (config["kind"] != fifo_ledger.KIND or verify() or not isinstance(namespace, str)
+        if (config["kind"] not in FIFO_LEDGERS or verify() or not isinstance(namespace, str)
                 or not re.fullmatch(r"rig-[a-f0-9]{6}-worker", namespace)):
             raise ValueError("FIFO queue control requires verified QA isolation and the owned worker namespace")
         inject_end = end - config["delay_ms"] / 1000 - DRAIN_GUARD_SEC
         if not measurement_start < start < inject_end < end < measurement_end:
             raise ValueError("loaded phase is too short for the frozen FIFO drain guard")
         self.config, self.namespace, self.output = config, namespace, Path(output)
-        self.ready_by = measurement_start - fifo_ledger.INSTALL_LEAD_NS / 1e9
+        self.ledger = FIFO_LEDGERS[config["kind"]]
+        self.ready_by = measurement_start - self.ledger.INSTALL_LEAD_NS / 1e9
         self.spec = {"config": config, "report": str(self.output / "queue-control.json"),
                      "ledger": str(self.output / LEDGER_NAME),
                      "planned": {"measurement_start_ns": round(measurement_start * 1e9), "start_ns": round(start * 1e9),
@@ -334,7 +341,8 @@ class FifoQueueControl:
         self.log = (self.output / "queue-fifo.log").open("wb")
         try:
             self.process = subprocess.Popen(
-                ["ip", "netns", "exec", self.namespace, sys.executable, str(Path(__file__).with_name("fifo_injector.py")),
+                ["ip", "netns", "exec", self.namespace, sys.executable,
+                 str(Path(__file__).with_name(FIFO_INJECTORS[self.config["kind"]])),
                  "--spec", str(spec)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log)
         except OSError as error:
             self.errors.append("FIFO injector could not start: " + str(error))
@@ -383,11 +391,11 @@ class FifoQueueControl:
         try:
             report = json.loads(path.read_text())
         except (OSError, ValueError):
-            report = {"schema_version": fifo_ledger.SCHEMA_VERSION, "config": self.config, "errors": [],
+            report = {"schema_version": self.ledger.SCHEMA_VERSION, "config": self.config, "errors": [],
                       "cancelled": cancelled, "cleanup": "UNKNOWN"}
             self.errors.append("FIFO injector report is missing")
         if not isinstance(report, dict) or not isinstance(report.get("errors"), list):
-            report = {"schema_version": fifo_ledger.SCHEMA_VERSION, "errors": ["malformed FIFO injector report"]}
+            report = {"schema_version": self.ledger.SCHEMA_VERSION, "errors": ["malformed FIFO injector report"]}
         if self.process is not None and self.process.returncode and not report["errors"]:
             self.errors.append(f"FIFO injector exited {self.process.returncode}")
         report["errors"].extend(self.errors)

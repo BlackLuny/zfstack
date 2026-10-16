@@ -226,11 +226,10 @@ def run(a):
     children, logs, endpoint_pids = [], [], {}
     progress_path = out / "verified-progress.bin"
     progress = Progress(progress_path, a.conns, create=True)
-    from queue_control import FifoQueueControl, QueueControl, configuration as queue_configuration
-    from fifo_ledger import KIND as FIFO_KIND
+    from queue_control import FIFO_LEDGERS, FifoQueueControl, QueueControl, configuration as queue_configuration
     queue_config = queue_configuration()
     queue = None
-    if queue_config and queue_config.get("kind") == FIFO_KIND:
+    if queue_config and queue_config.get("kind") in FIFO_LEDGERS:
         queue = FifoQueueControl(queue_config, os.environ.get("L2_QUEUE_WORKER_NS"), start, start + a.baseline,
                                  start + a.baseline + a.loaded, start + a.baseline + a.loaded + a.recovery, out)
     elif queue_config:

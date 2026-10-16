@@ -8,8 +8,7 @@ from pathlib import Path
 
 from netem import evidence_errors as qdisc_errors
 from path_contract import inspect_path
-from fifo_ledger import KIND as FIFO_KIND
-from queue_control import DRAIN_GUARD_SEC, ledger_blob as queue_ledger, validate_evidence as queue_errors
+from queue_control import DRAIN_GUARD_SEC, FIFO_LEDGERS, ledger_blob as queue_ledger, validate_evidence as queue_errors
 from endpoints import validate_evidence as endpoint_errors
 from open_loop import validate_supply
 from load_contract import BOUNDARY_TOLERANCE_NS, arrivals, counters, worker_resources, worker_schedule
@@ -330,7 +329,7 @@ def inspect_case(path):
                 after_ns=round((result["start_at"] + sum(phase_times.values())) * 1e9)))
         except (TypeError, ValueError, KeyError, OverflowError):
             functional_evidence.append("queue link samples lack the full actual load interval")
-        fifo = isinstance(config["queue_control"], dict) and config["queue_control"].get("kind") == FIFO_KIND
+        fifo = isinstance(config["queue_control"], dict) and config["queue_control"].get("kind") in FIFO_LEDGERS
         try:
             ledger = queue_ledger(path) if fifo else None
         except (OSError, ValueError) as error:

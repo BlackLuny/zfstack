@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Privileged end-to-end check of the FIFO injector on a real Linux kernel.
+"""Privileged end-to-end check of a FIFO injector on a real Linux kernel.
 
 Builds a private worker/target veth pair, drives sequenced UDP datagrams and a
 byte-verified TCP stream from the worker through the real injector, and checks
@@ -10,6 +10,8 @@ ledger oracle. Run only inside qa/isolate-linux.sh, never on a shared host:
 
 `--mode cancel` signals the injector mid-load and `--mode overflow` forces the
 minimum 100-packet limit; both must leave a clean kernel and an oracle FAIL.
+`--kind` selects the injector (default `netem-fifo`; `fifo-delay-line` is the
+retained userspace delay line).
 """
 import argparse
 import hashlib
@@ -26,8 +28,9 @@ import time
 from pathlib import Path
 
 import fifo_ledger
+import netem_fifo_ledger
 from isolation import verify
-from queue_control import FifoQueueControl, LEDGER_NAME, validate_config
+from queue_control import FIFO_LEDGERS, FifoQueueControl, LEDGER_NAME, validate_config
 
 UDP_PORT, TCP_PORT = 19101, 19102
 DATAGRAM = struct.Struct("<QQ")
@@ -144,6 +147,23 @@ def send(a):
     Path(a.out).write_text(json.dumps({"sent": sent, "blocked": blocked, "tcp_bytes": tcp_bytes}))
 
 
+def ledger_facts(kind, blob, size):
+    """Kind-specific ledger facts the receiver-side checks compare against."""
+    if kind == fifo_ledger.KIND:
+        rows = fifo_ledger.decode(blob) if blob else []
+        overflowed = [row for row in rows if row[2] == fifo_ledger.OVERFLOW]
+        return {"frames": len(rows), "delivered": bool(rows) and all(row[2] == fifo_ledger.DELIVERED for row in rows),
+                "gso_frames": sum(1 for row in rows if row[3]), "lost": len(overflowed),
+                "udp_lost": sum(1 for row in overflowed if row[10] == 42 and row[5] == 42 + size),
+                "lost_error": "dropped, failed or left unsent"}
+    in_rows, out_rows = netem_fifo_ledger.decode(blob) if blob else ([], [])
+    _, lost, _ = netem_fifo_ledger.match(in_rows, out_rows)
+    return {"frames": len(in_rows), "delivered": bool(in_rows) and not lost,
+            "gso_frames": sum(1 for row in in_rows if row[3] & netem_fifo_ledger.GSO_TYPE_MASK), "lost": len(lost),
+            "udp_lost": sum(1 for index in lost if in_rows[index][2] == 42 and in_rows[index][1] == 42 + size),
+            "lost_error": "lost or never released"}
+
+
 def scenario(a):
     if verify():
         raise SystemExit("fifo self-test requires the verified QA namespace wrapper")
@@ -160,7 +180,7 @@ def scenario(a):
             run(["ip", "netns", "exec", name, "ip", "addr", "add", address, "dev", "eth0"])
             run(["ip", "netns", "exec", name, "ip", "link", "set", "lo", "up"])
             run(["ip", "netns", "exec", name, "ip", "link", "set", "eth0", "up"])
-        config = validate_config({"kind": fifo_ledger.KIND, "node": "worker", "interface": "eth0", "phase": "loaded",
+        config = validate_config({"kind": a.kind, "node": "worker", "interface": "eth0", "phase": "loaded",
                                   "delay_ms": 500.0, "limit_packets": 100 if a.mode == "overflow" else a.limit})
         t0 = time.monotonic() + a.lead
         phases = (t0, t0 + a.baseline, t0 + a.baseline + a.loaded, t0 + a.baseline + a.loaded + a.recovery)
@@ -195,8 +215,8 @@ def scenario(a):
         (out / "link-counters.json").write_text(json.dumps({"before": link_before, "after": link_after}, indent=2) + "\n")
         (out / "lifecycle.json").write_text(json.dumps(lifecycle, indent=2) + "\n")
         blob = (out / LEDGER_NAME).read_bytes() if (out / LEDGER_NAME).is_file() else None
-        rows = fifo_ledger.decode(blob) if blob else []
-        oracle = fifo_ledger.validate(report, config, blob)
+        facts = ledger_facts(a.kind, blob, a.size)
+        oracle = FIFO_LEDGERS[a.kind].validate(report, config, blob)
         received = json.loads((out / "receiver.json").read_text())
         sent = json.loads((out / "sender.json").read_text())
         planned = report.get("planned", {})
@@ -226,8 +246,8 @@ def scenario(a):
             checks.update({
                 "udp_exactly_once_in_order": sequence == list(range(sent["sent"])),
                 "tcp_stream_intact": received["tcp_bytes"] == sent["tcp_bytes"] and not received["tcp_errors"],
-                "all_frames_delivered": bool(rows) and all(row[2] == fifo_ledger.DELIVERED for row in rows),
-                "gso_frames_preserved": any(row[3] for row in rows),
+                "all_frames_delivered": facts["delivered"],
+                "gso_frames_preserved": facts["gso_frames"] > 0,
             })
         if a.mode == "full":
             checks.update({
@@ -250,16 +270,14 @@ def scenario(a):
                                removed >= max(lifecycle["sender_reaped_ns"], lifecycle["measurement_end_ns"])})
             summary_extra = {"udp_inversions": len(inversions), "udp_missing_after_removal": missing}
         else:
-            overflowed = [row for row in rows if row[2] == fifo_ledger.OVERFLOW]
-            udp_overflowed = sum(1 for row in overflowed if row[10] == 42 and row[5] == 42 + a.size)
-            checks.update({"overflow_recorded": bool(overflowed),
-                           "oracle_rejects_overflow": any("dropped, failed or left unsent" in e for e in oracle),
-                           "udp_loss_equals_ledger_overflow": udp_overflowed > 0
+            checks.update({"overflow_recorded": facts["lost"] > 0,
+                           "oracle_rejects_overflow": any(facts["lost_error"] in e for e in oracle),
+                           "udp_loss_equals_ledger_overflow": facts["udp_lost"] > 0
                                                               and len(set(sequence)) == len(sequence)
-                                                              and sent["sent"] - len(sequence) == udp_overflowed})
-        summary = {"mode": a.mode, "kernel": os.uname().release, "checks": checks, "ok": all(checks.values()),
-                   "oracle_errors": oracle, "sender": sent, "frames": len(rows),
-                   "gso_frames": sum(1 for row in rows if row[3]), "link_drop_deltas": drops,
+                                                              and sent["sent"] - len(sequence) == facts["udp_lost"]})
+        summary = {"mode": a.mode, "kind": a.kind, "kernel": os.uname().release, "checks": checks, "ok": all(checks.values()),
+                   "oracle_errors": oracle, "sender": sent, "frames": facts["frames"],
+                   "gso_frames": facts["gso_frames"], "link_drop_deltas": drops,
                    "udp_received": len(sequence), "udp_mib_delta": received["udp_mib_delta"],
                    "tcp_bytes": received["tcp_bytes"],
                    "latency_ms": {k: {"n": len(v), "min": min(v) / 1e6, "max": max(v) / 1e6} if v else None
@@ -283,6 +301,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("role", choices=("scenario", "receive", "send"), nargs="?", default="scenario")
     parser.add_argument("--mode", choices=("full", "cancel", "overflow"), default="full")
+    parser.add_argument("--kind", choices=tuple(FIFO_LEDGERS), default=netem_fifo_ledger.KIND)
     parser.add_argument("--output")
     parser.add_argument("--host")
     parser.add_argument("--out")
