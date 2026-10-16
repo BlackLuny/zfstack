@@ -7,6 +7,9 @@ receiver order, payload, latency and sender backpressure independently of the
 ledger oracle. Run only inside qa/isolate-linux.sh, never on a shared host:
 
   bash qa/isolate-linux.sh python3 harness/l2/fifo_selftest.py --output /abs/new.json
+
+`--mode cancel` signals the injector mid-load and `--mode overflow` forces the
+minimum 100-packet limit; both must leave a clean kernel and an oracle FAIL.
 """
 import argparse
 import hashlib
@@ -158,7 +161,7 @@ def scenario(a):
             run(["ip", "netns", "exec", name, "ip", "link", "set", "lo", "up"])
             run(["ip", "netns", "exec", name, "ip", "link", "set", "eth0", "up"])
         config = validate_config({"kind": fifo_ledger.KIND, "node": "worker", "interface": "eth0", "phase": "loaded",
-                                  "delay_ms": 500.0, "limit_packets": a.limit})
+                                  "delay_ms": 500.0, "limit_packets": 100 if a.mode == "overflow" else a.limit})
         t0 = time.monotonic() + a.lead
         phases = (t0, t0 + a.baseline, t0 + a.baseline + a.loaded, t0 + a.baseline + a.loaded + a.recovery)
         common = ["--host", "10.44.0.2", "--rate", str(a.rate), "--size", str(a.size), "--tcp-rate", str(a.tcp_rate)]
@@ -201,28 +204,55 @@ def scenario(a):
                 latency["baseline"].append(recv_ns - sent_ns)
         drops = {name: {d: link_after[name][d]["dropped"] - link_before[name][d]["dropped"] for d in ("rx", "tx")}
                  for name in link_before}
+        summary_extra = {}
+        receiver_clean = (not received["udp_mib_delta"].get("RcvbufErrors")
+                          and not received["udp_mib_delta"].get("InErrors"))
         checks = {
-            "udp_exactly_once_in_order": sequence == list(range(sent["sent"])),
             "udp_payload_intact": all(row[3] for row in received["udp"]),
-            "receiver_socket_no_loss": not received["udp_mib_delta"].get("RcvbufErrors")
-                                       and not received["udp_mib_delta"].get("InErrors"),
-            "tcp_stream_intact": received["tcp_bytes"] == sent["tcp_bytes"] and not received["tcp_errors"],
+            "receiver_socket_no_loss": receiver_clean,
             "no_sender_backpressure": sent["blocked"] == 0,
             "link_zero_drops": not any(value for row in drops.values() for value in row.values()),
-            "all_frames_delivered": bool(rows) and all(row[2] == fifo_ledger.DELIVERED for row in rows),
-            "gso_frames_preserved": any(row[3] for row in rows),
             "qdisc_restored": [q.get("kind") for q in report.get("kernel", {}).get("qdisc_restored", [])] == ["noqueue"],
             "cleanup_pass": report.get("cleanup") == "PASS",
         }
+        if a.mode != "overflow":
+            checks.update({
+                "udp_exactly_once_in_order": sequence == list(range(sent["sent"])),
+                "tcp_stream_intact": received["tcp_bytes"] == sent["tcp_bytes"] and not received["tcp_errors"],
+                "all_frames_delivered": bool(rows) and all(row[2] == fifo_ledger.DELIVERED for row in rows),
+                "gso_frames_preserved": any(row[3] for row in rows),
+            })
         if a.mode == "full":
             checks.update({
                 "oracle_pass": oracle == [],
                 "active_delay_applied": bool(latency["active"]) and min(latency["active"]) >= 500_000_000,
                 "recovery_transparent": bool(latency["recovery"]) and max(latency["recovery"]) < 500_000_000 // 4,
             })
-        else:
+        elif a.mode == "cancel":
+            # Traffic keeps flowing here, unlike load.py which reaps clients
+            # before finish(): frames still in the tap ring at filter removal
+            # can be overtaken, and the clsact graft deactivates eth0. Neither
+            # may surface while the FIFO owned the path.
+            removed = report.get("actual", {}).get("removed_ns", 0)
+            by_seq = {row[0]: row for row in received["udp"]}
+            inversions = [row for previous, row in zip(received["udp"], received["udp"][1:]) if row[0] < previous[0]]
+            missing = [seq for seq in range(sent["sent"]) if seq not in by_seq]
+            checks.pop("udp_exactly_once_in_order")
             checks.update({"cancel_recorded": report.get("cancelled") is True,
-                           "oracle_rejects_cancel": any("cancelled" in error for error in oracle)})
+                           "oracle_rejects_cancel": any("cancelled" in error for error in oracle),
+                           "udp_no_duplicates": len(by_seq) == len(sequence),
+                           "udp_anomalies_only_after_redirect_removal": bool(removed)
+                               and all(row[2] >= removed for row in inversions)
+                               and all(by_seq.get(seq + 1, (0, 2**63))[1] >= removed for seq in missing)})
+            summary_extra = {"udp_inversions": len(inversions), "udp_missing_after_removal": missing}
+        else:
+            overflowed = [row for row in rows if row[2] == fifo_ledger.OVERFLOW]
+            udp_overflowed = sum(1 for row in overflowed if row[10] == 42 and row[5] == 42 + a.size)
+            checks.update({"overflow_recorded": bool(overflowed),
+                           "oracle_rejects_overflow": any("dropped, failed or left unsent" in e for e in oracle),
+                           "udp_loss_equals_ledger_overflow": udp_overflowed > 0
+                                                              and len(set(sequence)) == len(sequence)
+                                                              and sent["sent"] - len(sequence) == udp_overflowed})
         summary = {"mode": a.mode, "kernel": os.uname().release, "checks": checks, "ok": all(checks.values()),
                    "oracle_errors": oracle, "sender": sent, "frames": len(rows),
                    "gso_frames": sum(1 for row in rows if row[3]), "link_drop_deltas": drops,
@@ -231,7 +261,8 @@ def scenario(a):
                    "latency_ms": {k: {"n": len(v), "min": min(v) / 1e6, "max": max(v) / 1e6} if v else None
                                   for k, v in latency.items()},
                    "resources": report.get("resources"), "summary": report.get("summary"),
-                   "actual": report.get("actual"), "planned": planned, "report_errors": report.get("errors")}
+                   "actual": report.get("actual"), "planned": planned, "report_errors": report.get("errors"),
+                   **summary_extra}
         Path(a.output).write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps({"ok": summary["ok"], "checks": checks, "oracle_errors": oracle}, indent=2))
         return 0 if summary["ok"] else 1
@@ -247,7 +278,7 @@ def scenario(a):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("role", choices=("scenario", "receive", "send"), nargs="?", default="scenario")
-    parser.add_argument("--mode", choices=("full", "cancel"), default="full")
+    parser.add_argument("--mode", choices=("full", "cancel", "overflow"), default="full")
     parser.add_argument("--output")
     parser.add_argument("--host")
     parser.add_argument("--out")
