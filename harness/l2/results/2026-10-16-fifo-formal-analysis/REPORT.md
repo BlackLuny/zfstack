@@ -26,4 +26,4 @@
 - 每帧经 Python 转发的方案在本负载突发下需要约 1.85×（128.7k / 69.7k）的容量，而且读取端的等待在账本外，所以没有继续给用户态 FIFO 加速或加队列。
 - 新方案 `netem-fifo`（schema 5，见 [`netem_fifo.py`](../../netem_fifo.py)、[`netem_fifo_ledger.py`](../../netem_fifo_ledger.py)）把转发交给内核里**一个**持久 root netem。它始终带 rate，所以 `tts = max(t_in + delay, last.tts) + len/rate`，原地 change 也保持 FIFO 链。测量期间不删除、不替换 qdisc。
 - 证据改为在队列**前**（clsact matchall mirred mirror 到私有 dummy）和队列**后**（eth0 outgoing）各取一份内核时间戳，因此队列前的任何等待都落在两份捕获之间，oracle 可以看见，不再依赖注入器自报。
-- 新方案的自检和审计见 [2026-10-16-netem-fifo](../2026-10-16-netem-fifo/REPORT.md)。它仍需在隔离宿主上冻结 SHA 后做一次新的预注册正式运行；**旧 SHA 的 PASS 不追认**。
+- 新方案的仿真自检见 [2026-10-16-netem-fifo](../2026-10-16-netem-fifo/REPORT.md)：出口 FIFO 精确无误，但 full 自检因 veth 下游跨 CPU 投递导致接收端 UDP 乱序而 FAIL。因此它没有进入 case，也没有冻结或正式运行；**旧 SHA 的 PASS 不追认**。

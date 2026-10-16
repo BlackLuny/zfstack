@@ -1,0 +1,122 @@
+{
+  "cancel": {
+    "oracle_errors": [
+      "netem FIFO execution was cancelled or incomplete",
+      "netem FIFO phase changes are missing, reordered or malformed"
+    ],
+    "order": {
+      "egress_gap_to_overtaker_ns": null,
+      "egress_in_send_order": true,
+      "socket_overtaken": 0,
+      "socket_overtaken_after_egress_ns": null,
+      "socket_overtaken_by_send_phase": {},
+      "udp_frames": 18475
+    },
+    "selftest_failed_checks": [],
+    "selftest_ok": true
+  },
+  "full": {
+    "oracle_errors": [],
+    "order": {
+      "egress_gap_to_overtaker_ns": {
+        "max": 4805250,
+        "n": 99,
+        "p50": 2224230,
+        "p99": 4805250
+      },
+      "egress_in_send_order": true,
+      "socket_overtaken": 99,
+      "socket_overtaken_after_egress_ns": {
+        "max": 14182680,
+        "n": 99,
+        "p50": 10294920,
+        "p99": 14182680
+      },
+      "socket_overtaken_by_send_phase": {
+        "drain-or-guard": 99
+      },
+      "udp_frames": 18475
+    },
+    "selftest_failed_checks": [
+      "udp_exactly_once_in_order"
+    ],
+    "selftest_ok": false
+  },
+  "full-heavy": {
+    "oracle_errors": [],
+    "order": {
+      "egress_gap_to_overtaker_ns": null,
+      "egress_in_send_order": true,
+      "socket_overtaken": 0,
+      "socket_overtaken_after_egress_ns": null,
+      "socket_overtaken_by_send_phase": {},
+      "udp_frames": 147799
+    },
+    "selftest_failed_checks": [],
+    "selftest_ok": true
+  },
+  "order-trace": {
+    "oracle_errors": [],
+    "order": {
+      "egress_gap_to_overtaker_ns": {
+        "max": 1094310,
+        "n": 29,
+        "p50": 647630,
+        "p99": 1094310
+      },
+      "egress_in_send_order": true,
+      "socket_overtaken": 29,
+      "socket_overtaken_after_egress_ns": {
+        "max": 10922070,
+        "n": 29,
+        "p50": 10364910,
+        "p99": 10922070
+      },
+      "socket_overtaken_by_send_phase": {
+        "drain-or-guard": 29
+      },
+      "trace": {
+        "backlog_wait_ns": {
+          "max": 1229000,
+          "n": 32,
+          "p50": 1159000,
+          "p99": 1229000
+        },
+        "handoff_cpu_changes": 57,
+        "handoff_cpus": {
+          "0": 3952,
+          "1": 2219,
+          "2": 11249,
+          "3": 1055
+        },
+        "overtaken": 32,
+        "overtaken_match_socket": false,
+        "overtaker_on_other_handoff_cpu": 32,
+        "processed_on_handoff_cpu": 18475
+      },
+      "trace_frames": 18475,
+      "udp_frames": 18475
+    },
+    "selftest_failed_checks": [
+      "udp_exactly_once_in_order"
+    ],
+    "selftest_ok": false
+  },
+  "overflow": {
+    "oracle_errors": [
+      "netem FIFO captures cannot be paired",
+      "netem FIFO dropped or overlimited frames",
+      "netem FIFO lost or never released 5037 mirrored frames"
+    ],
+    "order": {
+      "egress_gap_to_overtaker_ns": null,
+      "egress_in_send_order": true,
+      "socket_overtaken": 0,
+      "socket_overtaken_after_egress_ns": null,
+      "socket_overtaken_by_send_phase": {},
+      "udp_frames": 13465
+    },
+    "selftest_failed_checks": [],
+    "selftest_ok": true
+  }
+}
