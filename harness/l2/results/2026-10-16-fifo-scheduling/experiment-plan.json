@@ -1,0 +1,62 @@
+{
+  "created_unix_ns": 1792145080199358000,
+  "source_sha": "1b19023df422fc3472d1f52125efece15706219a",
+  "threshold_ns": 20000000,
+  "workload": "all original selftest defaults; case v2, 500ms / 100000 / 8-16-8 unchanged",
+  "source_files": {
+    "harness/l2/fifo_injector.py": "d7bc9dc0600bc6a34d72c76c90cd655c4cee287518ffc70b136bcb4cb675ab58",
+    "harness/l2/fifo_ledger.py": "bcb9d947eac2844fc63bbbe0d93090bad00a77397bc00539b363fabb1261cd68",
+    "harness/l2/fifo_selftest.py": "7fb871889ec33b4764352eedb49539f403a823e58c7ba58eb6673e791c67558f",
+    "harness/l2/queue_control.py": "7f22989f5b8e16e34d25e237884cdee3344676f6c9da48ce56c3fab0dd2e0f43",
+    "qa/policy/cases.json": "36db36e42cab7167bb177c5a5f9419c110cf482a35f09bed7fa962b9afc91ea2",
+    "qa/policy/known-failures.json": "62d0d65ea3d5621075f72ed960c3440341680f55294780bd62b3d1f77cfc703a"
+  },
+  "profiles": [
+    {
+      "id": "A",
+      "runs": [
+        "a-full-1",
+        "a-full-2"
+      ],
+      "VM_vcpus": 10,
+      "container_quota_cpus": 6,
+      "injector": "SCHED_OTHER, unrestricted affinity",
+      "load": "unrestricted affinity",
+      "host": "unchanged"
+    },
+    {
+      "id": "B",
+      "runs": [
+        "b-full-1",
+        "b-full-2"
+      ],
+      "VM_vcpus": 10,
+      "container_quota_cpus": 6,
+      "injector": "CPU 2, SCHED_FIFO priority 10",
+      "load": "CPUs 3-7",
+      "host": "caffeinate -i for experiment duration only"
+    },
+    {
+      "id": "C",
+      "runs": [
+        "c-full-1",
+        "c-full-2"
+      ],
+      "VM_vcpus": 4,
+      "container_quota_cpus": 4,
+      "injector": "CPU 1, SCHED_FIFO priority 10",
+      "load": "CPUs 2-3",
+      "host": "caffeinate -i; Docker VM temporarily reduced 10->4 vCPUs to leave host scheduling headroom; original settings restored after all attempts"
+    }
+  ],
+  "run_policy": "two diagnostic full runs per profile, serial in A/B/C order, all saved regardless of result; no other test/build activity concurrently",
+  "instrumentation": "in-memory >1ms spans, guest CPU IDs, native macOS all-vCPU accounting every requested 1ms, paired 80-roundtrip clock brackets, filtered sched_switch/wakeup own trace instance with 16MiB per CPU ring; no skb event stream",
+  "qualification": [
+    "c-plain-full",
+    "c-plain-cancel",
+    "c-plain-overflow"
+  ],
+  "qualification_policy": "exactly once each after C diagnostics, without trace/host sampler/hot-path wrappers; same CPU policy. Full must pass 20ms plus all functional checks; cancellation and overflow must be oracle negatives with their tightened independent checks passing. Both C diagnostics must also meet oracle timing before claiming environment qualified. No best-of selection.",
+  "formal_policy": "only after every qualification prerequisite passes, frozen worker + lease + maintainer process; otherwise NOT_RUN and known-BLOCKED retained",
+  "limitations": "guest CPU pinning is not physical host affinity or exclusive CPU ownership; C alters two environment factors relative to B (VM CPU count and necessary guest affinity remap), so their effects cannot be separated by this design"
+}

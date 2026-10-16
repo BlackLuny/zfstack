@@ -10,7 +10,9 @@
 - [ ] 冻结跨仓双方 base/head 与工具链，实际执行完整 2×2 四组合并保存 provenance；现有 head-head 不代表完整归因。
 - [ ] 在具备必要能力的隔离宿主完成 QueueControl 原子恢复的 held-out 正式运行。持久 FIFO 注入器（case v2 `fifo-delay-line`）已实现并冻结，需要 worker namespace 内的 `/dev/net/tun`、`sch_ingress`（clsact）、`cls_matchall`、`act_mirred`、AF_PACKET 的 `PACKET_VNET_HDR`/`PACKET_QDISC_BYPASS` 及 iproute2 JSON 输出；不需要 NFQUEUE。先在该宿主的 `qa/isolate-linux.sh` 内跑 `harness/l2/fifo_selftest.py` 三种模式确认能力，再冻结 worker 构建，执行一次正式 C16-l2-queue-control 并保留结果；不择优重跑，失败照实保留。通过前不移除 known-BLOCKED。
 
-  2026-10-16 本机后续诊断和取消修复见 [原始证据与复验](../harness/l2/results/2026-10-16-fifo-diagnosis/REPORT.md)：`1b19023` 保持路径直到父进程回收客户端并结束测量，cancel/overflow 负例通过；正常 full 仍迟到超限。捕获的调度窗口证明 VM vCPU 在宿主上没有及时执行，正式 C16 尚未运行。不能把本机负例通过当作完整时序资格。
+  2026-10-16 本机后续诊断和取消修复见 [原始证据与复验](../harness/l2/results/2026-10-16-fifo-diagnosis/REPORT.md)：`1b19023` 保持路径直到父进程回收客户端并结束测量，cancel/overflow 负例通过；正常 full 仍迟到超限，正式 C16 尚未运行。旧报告使用未经结清的宿主累计计数作为 CPU 上界，相关归因范围以后续同步观测报告中的修订为准。不能把本机负例通过当作完整时序资格。
+
+  修复后增加同步观测的 [CPU 调度对照](../harness/l2/results/2026-10-16-fifo-scheduling/REPORT.md) 保留六轮诊断 full 和一组三模式无插桩复验：154.76 ms 窗口在宿主 CPU 计数结清后仍主要缺少 vCPU 执行时间；guest 绑定、SCHED_FIFO 与 VM 10→4 vCPU 均未消除超限。无插桩 full 最大迟到 24.05 ms，仍高于冻结的 20 ms；cancel/overflow 负例通过，worker 构建与正式 C16 继续 NOT_RUN，known-BLOCKED 保留。VM 资源设置已恢复。
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。
