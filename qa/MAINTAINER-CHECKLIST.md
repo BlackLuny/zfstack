@@ -21,6 +21,8 @@
 
   OVH 物理宿主的 [两轮门禁与正式尝试](../harness/l2/results/2026-10-16-netem-fifo-ovh51/REPORT.md)：`9ba31a7` gate PASS 后单独以 `604a618` 登记 case v3 / netem-fifo，新 SHA gate 也 PASS。冻结 worker 后只执行一次正式 C16：基线 udp-3 请求 186 因生成器调度迟到 23.053 ms 超过原 20 ms 容差被标 missed，故障臂未启动；远端及取回复算为 NOT_RUN/UNKNOWN、汇总 BLOCKED，cleanup PASS。不是注入器释放迟到判失败；没有更改阈值或重跑。用户报告 CPU 0 网卡中断问题，只读核实 IRQ 130 绑定 CPU 0、其 SMT 同胞为 CPU 4；样本没有当时 CPU 归属，因果尚未证明。下一步需另行预登记同步调度/IRQ 诊断。known-BLOCKED 保留。
 
+  OVH 的预登记 [同步 trace 与物理核隔离诊断](../harness/l2/results/2026-10-16-ovh51-sched-trace/REPORT.md) 已各执行一次：3 次 traced baseline、15 次轮换 A/B/C。两次 traced miss 归为晚唤醒，不满足 IRQ 130 支持条件；事后原始事件显示生成器均曾在 CPU 2 睡眠，延迟的定时器执行与 IRQ 132 后约 35 ms 的 NET_RX 区间重叠，具体 NAPI/驱动路径仍待定位。A>B、B>C 的预登记检验分别 p=0.8452、0.1111，均未证明改善；B 排除 core 0 后仍有 miss，A/B/C 也都有 UDP 超时。C 已获用户单独授权，五次配置及有效 IRQ 亲和性均恢复核验通过；服务未变。没有新 gate/formal；正式 NOT_RUN/UNKNOWN、case v3、20 ms、严格顺序及 known-BLOCKED 均保留。资格节点变更和下一次正式尝试仍需维护者决策与另行预登记。
+
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。
