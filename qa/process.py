@@ -6,6 +6,7 @@ reports its detached-descendant limitation. Windows uses a kill-on-close job.
 """
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import json
 import os
@@ -20,8 +21,9 @@ MAX_OUTPUT = 64 * 1024 * 1024
 MIN_DISK = 64 * 1024 * 1024
 
 
-def _budget_error(output):
-    size = output.stat().st_size
+def _budget_error(output, stderr=None):
+    # A separate stderr file shares the one output budget with stdout.
+    size = output.stat().st_size + (stderr.stat().st_size if stderr is not None and stderr.exists() else 0)
     if size > MAX_OUTPUT:
         return f"output byte budget exceeded: {size} > {MAX_OUTPUT}"
     free = shutil.disk_usage(output.parent).free
@@ -30,8 +32,8 @@ def _budget_error(output):
     return ""
 
 
-def _budget(output):
-    return not _budget_error(output)
+def _budget(output, stderr=None):
+    return not _budget_error(output, stderr)
 
 
 def _linux_children():
@@ -49,7 +51,7 @@ def _linux_reap():
             return
 
 
-def _supervise(argv, timeout, status_fd, output):
+def _supervise(argv, timeout, status_fd, output, stderr=None):
     """Runs in a fresh Python process, never in the orchestrator's process."""
     start = time.monotonic_ns()
     status, process, leaked, cleanup = "completed", None, False, "PASS"
@@ -79,9 +81,9 @@ def _supervise(argv, timeout, status_fd, output):
             if time.monotonic() >= deadline:
                 status = "timeout"
                 break
-            if not _budget(output):
+            if not _budget(output, stderr):
                 status = "failed"
-                detail = _budget_error(output)
+                detail = _budget_error(output, stderr)
                 break
             time.sleep(0.025)
         if process is not None and process.poll() is not None:
@@ -109,9 +111,9 @@ def _supervise(argv, timeout, status_fd, output):
                 cleanup = "UNKNOWN"
                 break
             time.sleep(0.025)
-        if status == "completed" and (process is None or process.returncode != 0 or leaked or not _budget(output)):
+        if status == "completed" and (process is None or process.returncode != 0 or leaked or not _budget(output, stderr)):
             status = "failed"
-        detail = detail or _budget_error(output)
+        detail = detail or _budget_error(output, stderr)
     except BaseException as error:
         status, cleanup = "failed", "UNKNOWN"
         detail = f"{type(error).__name__}: {error}"[:1000]
@@ -158,13 +160,14 @@ def _supervise(argv, timeout, status_fd, output):
 # The standalone supervisor imports no candidate package and has no shared
 # state with the parent or other QA tasks. -I ignores interpreter env hooks.
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--supervise":
-    _supervise(json.loads(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]))
+    _supervise(json.loads(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]),
+               Path(sys.argv[6]) if len(sys.argv) > 6 else None)
     raise SystemExit(0)
 
 from .common import EvidenceError
 
 
-def _linux_run(argv, root, output, timeout, env, lease):
+def _linux_run(argv, root, output, timeout, env, lease, stderr=None):
     start = time.monotonic_ns()
     reader, writer = os.pipe()
     process = None
@@ -206,7 +209,7 @@ def _linux_run(argv, root, output, timeout, env, lease):
                 "lifecycle_detail": cancellation + "; " + context}
 
     try:
-        with output.open("xb") as stream:
+        with output.open("xb") as stream, (stderr.open("xb") if stderr else contextlib.nullcontext()) as errors:
             # Already-lost ownership needs no child process and has no cleanup
             # work. This is a real no-start record, not a fabricated reap PASS.
             try:
@@ -218,8 +221,9 @@ def _linux_run(argv, root, output, timeout, env, lease):
                         "cleanup_status": "PASS", "cleanup_limits": [],
                         "lifecycle_detail": repr(error) + "; child supervisor not started: lease preflight rejected"}
             process = subprocess.Popen([sys.executable, "-I", str(Path(__file__).resolve()), "--supervise",
-                                        json.dumps(argv), str(timeout), str(writer), str(output)], cwd=root,
-                                       stdout=stream, stderr=subprocess.STDOUT, env=env,
+                                        json.dumps(argv), str(timeout), str(writer), str(output),
+                                        *([str(stderr)] if stderr else [])], cwd=root,
+                                       stdout=stream, stderr=errors if stderr else subprocess.STDOUT, env=env,
                                        pass_fds=(writer,), start_new_session=True)
             os.close(writer)
             writer = None
@@ -331,15 +335,15 @@ class _WindowsJob:
             self.handle = None
 
 
-def _portable_run(argv, root, output, timeout, env, lease):
+def _portable_run(argv, root, output, timeout, env, lease, stderr=None):
     start = time.monotonic_ns()
     status, cleanup, process, job = "completed", "PASS", None, None
     detail = ""
     windows = os.name == "nt"
     try:
         job = _WindowsJob() if windows else None
-        with output.open("xb") as stream:
-            process = subprocess.Popen(argv, cwd=root, stdout=stream, stderr=subprocess.STDOUT, env=env,
+        with output.open("xb") as stream, (stderr.open("xb") if stderr else contextlib.nullcontext()) as errors:
+            process = subprocess.Popen(argv, cwd=root, stdout=stream, stderr=errors if stderr else subprocess.STDOUT, env=env,
                                        start_new_session=not windows,
                                        creationflags=0x4 if windows else 0)  # CREATE_SUSPENDED
             if job:
@@ -348,9 +352,9 @@ def _portable_run(argv, root, output, timeout, env, lease):
             while process.poll() is None:
                 if lease:
                     lease.check()
-                if not _budget(output):
+                if not _budget(output, stderr):
                     status = "failed"
-                    detail = _budget_error(output)
+                    detail = _budget_error(output, stderr)
                     break
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -387,9 +391,9 @@ def _portable_run(argv, root, output, timeout, env, lease):
                     if status == "completed":
                         status = "failed"
                         detail = "; ".join(filter(None, (detail, "detached/background descendants detected")))
-            if status == "completed" and (process.returncode != 0 or not _budget(output)):
+            if status == "completed" and (process.returncode != 0 or not _budget(output, stderr)):
                 status = "failed"
-            detail = detail or _budget_error(output)
+            detail = detail or _budget_error(output, stderr)
     except (KeyboardInterrupt, EvidenceError):
         status = "cancelled"
         if process is not None and process.poll() is None:
@@ -412,12 +416,18 @@ def _portable_run(argv, root, output, timeout, env, lease):
             "lifecycle_detail": detail}
 
 
-def run_child(argv, root, output, timeout, env, lease=None):
+def run_child(argv, root, output, timeout, env, lease=None, *, stderr=None):
+    """Run argv bounded and contained. stdout and stderr share `output` unless `stderr`
+    names a separate fresh file, for commands whose stdout is parsed as data."""
     if not isinstance(argv, list) or not argv or any(not isinstance(x, str) for x in argv):
         raise EvidenceError("invalid child argv")
     if timeout <= 0:
         raise EvidenceError("child timeout must be positive")
     root, output = Path(root).resolve(), Path(output).resolve()
+    if stderr is not None:
+        stderr = Path(stderr).resolve()
+        if stderr == output:
+            raise EvidenceError("separate stderr log must differ from the stdout log")
     if sys.platform.startswith("linux"):
-        return _linux_run(argv, root, output, timeout, env, lease)
-    return _portable_run(argv, root, output, timeout, env, lease)
+        return _linux_run(argv, root, output, timeout, env, lease, stderr)
+    return _portable_run(argv, root, output, timeout, env, lease, stderr)
