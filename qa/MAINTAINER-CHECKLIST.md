@@ -9,6 +9,8 @@
 - [ ] 在 Linux aarch64 与 Windows 原生环境执行同一发布 SHA 的必要测试与安全能力检查；缺平台/缺能力必须保留 NOT_RUN/BLOCKED。
 - [ ] 冻结跨仓双方 base/head 与工具链，实际执行完整 2×2 四组合并保存 provenance；现有 head-head 不代表完整归因。
 - [ ] 在具备必要能力的隔离宿主完成 QueueControl 原子恢复的 held-out 正式运行。持久 FIFO 注入器（case v2 `fifo-delay-line`）已实现并冻结，需要 worker namespace 内的 `/dev/net/tun`、`sch_ingress`（clsact）、`cls_matchall`、`act_mirred`、AF_PACKET 的 `PACKET_VNET_HDR`/`PACKET_QDISC_BYPASS` 及 iproute2 JSON 输出；不需要 NFQUEUE。先在该宿主的 `qa/isolate-linux.sh` 内跑 `harness/l2/fifo_selftest.py` 三种模式确认能力，再冻结 worker 构建，执行一次正式 C16-l2-queue-control 并保留结果；不择优重跑，失败照实保留。通过前不移除 known-BLOCKED。
+
+  2026-10-16 本机后续诊断和取消修复见 [原始证据与复验](../harness/l2/results/2026-10-16-fifo-diagnosis/REPORT.md)：`1b19023` 保持路径直到父进程回收客户端并结束测量，cancel/overflow 负例通过；正常 full 仍迟到超限。捕获的调度窗口证明 VM vCPU 在宿主上没有及时执行，正式 C16 尚未运行。不能把本机负例通过当作完整时序资格。
 - [ ] 复验完整发布 SHA 的平台、Nightly、安全、集成与性能证据闭包，并按团队策略将本地完整归档上传到受访问控制的持久 artifact 存储；本次只在本机保存 tar.zst。
 
 具体配置与威胁模型见 [README](README.md)、[RELEASE](RELEASE.md)、[PERFORMANCE](PERFORMANCE.md)，实际执行边界见 [VALIDATION](VALIDATION.md)。

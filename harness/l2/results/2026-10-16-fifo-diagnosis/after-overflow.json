@@ -1,0 +1,107 @@
+{
+  "mode": "overflow",
+  "kernel": "7.0.12-linuxkit",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "overflow_recorded": true,
+    "oracle_rejects_overflow": true,
+    "udp_loss_equals_ledger_overflow": true
+  },
+  "ok": true,
+  "oracle_errors": [
+    "FIFO frame was dropped, failed or left unsent: seq 20899"
+  ],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899711
+  },
+  "frames": 43533,
+  "gso_frames": 15916,
+  "link_drop_deltas": {
+    "rig-9e681d-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-9e681d-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 13369,
+  "udp_mib_delta": {
+    "InDatagrams": 13369,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899711,
+  "latency_ms": {
+    "active": {
+      "n": 2649,
+      "min": 500.052959,
+      "max": 519.496875
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.036791,
+      "max": 12.879958
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.027959,
+      "max": 23.953375
+    }
+  },
+  "resources": {
+    "max_frames": 100,
+    "max_bytes": 268488
+  },
+  "summary": {
+    "pre": {
+      "frames": 20799,
+      "max_residence_ns": 14536458,
+      "p99_residence_ns": 327125
+    },
+    "active": {
+      "frames": 3068,
+      "max_residence_ns": 519306542,
+      "p99_residence_ns": 508905125
+    },
+    "drain": {
+      "frames": 99,
+      "max_residence_ns": 498203042,
+      "p99_residence_ns": 498203042
+    },
+    "transparent": {
+      "frames": 14444,
+      "max_residence_ns": 20718083,
+      "p99_residence_ns": 399292
+    }
+  },
+  "actual": {
+    "installed_ns": 1211724707255,
+    "transparent_ns": 1245382125687,
+    "owner_released_ns": 1253593294608,
+    "removed_ns": 1253651885191,
+    "closed_ns": 1253743812066
+  },
+  "planned": {
+    "measurement_start_ns": 1221633226214,
+    "start_ns": 1229633226214,
+    "end_ns": 1244883226214,
+    "recovery_start_ns": 1245633226214,
+    "measurement_end_ns": 1253633226214
+  },
+  "report_errors": []
+}
