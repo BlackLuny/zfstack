@@ -9,7 +9,17 @@ description = "S0 benchmark harness: kernel TCP client <-> userspace link emulat
 name = "zfbench"
 path = "src/main.rs"
 
-[dependencies]
+[[example]]
+name = "pool_idle_probe"
+required-features = ["zfstack"]
+
+[[example]]
+name = "shared_budget_tun"
+required-features = ["zfstack"]
+
+# The real-machine benchmark uses Linux TUN, netns and socket APIs. Other
+# platforms only build the entry point that reports this requirement.
+[target.'cfg(target_os = "linux")'.dependencies]
 smoltcp = { git = "https://github.com/BlackLuny/smoltcp", rev = "8014f8b21e12faf89b3b453ceea32027344721af", default-features = false, features = [
     "std",
     "medium-ip",

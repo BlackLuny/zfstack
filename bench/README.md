@@ -27,6 +27,13 @@ has no netem on this VM, so a userspace link emulator stands in for it.
 
 ## Build
 
+The real-machine `zfbench` runner requires Linux TUN devices, network namespaces,
+and Linux socket APIs. On macOS and Windows, the workspace builds an executable
+that reports this requirement and exits with setup-error status 3. Use
+`zfharness` for portable sans-IO scenarios on those platforms.
+The `pool_idle_probe` and `shared_budget_tun` examples have the same Linux
+requirement and need the `zfstack` feature (enabled by default).
+
 ```sh
 cargo build --release -p zfbench   # kernel, smoltcp and zfstack modes (feature `zfstack` is on by default)
 ```
