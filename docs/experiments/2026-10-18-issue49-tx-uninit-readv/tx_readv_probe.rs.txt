@@ -1,0 +1,219 @@
+//! Cold-block short-read TX probe for the uninitialized readv path.
+//!
+//! The relay reads a (possibly short) upstream response straight into a fresh
+//! 64 KiB TX block. The safe `TxBuf::write_with` zero-fills the whole offered
+//! window first; the unsafe `TxBuf::write_with_uninit` hands out raw capacity
+//! and commits only what the read reported. This probe measures both paths on
+//! the same binary and machine.
+//!
+//! Build: cargo build --release --features tokio --example tx_readv_probe
+//! Run:   taskset -c 2 tx_readv_probe uninit --iterations 200000 --payload 512
+//!        taskset -c 2 tx_readv_probe zero   --iterations 200000 --payload 512
+//!        tx_readv_probe zero --warm ...     # pooled block, no fresh zero fill
+//!
+//! `cold` (default) allocates and releases a 64 KiB block per iteration, the
+//! worst case for many concurrent short responses. `warm` reuses a cached
+//! block, where the zero fill was already paid once.
+
+use std::hint::black_box;
+use std::time::Instant as WallInstant;
+
+use zfstack::budget::{Budget, GlobalBudget};
+use zfstack::buf::{BlockPool, TxBuf};
+use zfstack::PeerId;
+
+mod cpu_clock {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use std::os::raw::{c_int, c_long};
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[repr(C)]
+    struct Timespec {
+        tv_sec: c_long,
+        tv_nsec: c_long,
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    extern "C" {
+        fn clock_gettime(clock_id: c_int, result: *mut Timespec) -> c_int;
+    }
+    #[cfg(target_os = "linux")]
+    const CLOCK_PROCESS_CPUTIME_ID: c_int = 2;
+    #[cfg(target_os = "macos")]
+    const CLOCK_PROCESS_CPUTIME_ID: c_int = 12;
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub fn now_ns() -> u64 {
+        let mut t = Timespec { tv_sec: 0, tv_nsec: 0 };
+        // SAFETY: process CPU clock ID; `t` is a valid writable timespec.
+        assert_eq!(unsafe { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &mut t) }, 0, "CLOCK_PROCESS_CPUTIME_ID unavailable");
+        t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    pub fn now_ns() -> u64 {
+        panic!("tx_readv_probe CPU clock currently requires Linux or macOS")
+    }
+}
+
+mod rss {
+    /// Minor page faults from `/proc/self/stat` field 10 (1-based). `None`
+    /// where the file is unavailable (non-Linux); the probe then prints -1.
+    #[cfg(target_os = "linux")]
+    pub fn minor_faults() -> Option<u64> {
+        let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+        // comm may contain spaces/parentheses; fields start after the last ')'.
+        let rest = &stat[stat.rfind(')')? + 1..];
+        rest.split_whitespace().nth(7)?.parse().ok()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn minor_faults() -> Option<u64> {
+        None
+    }
+}
+
+fn pattern(n: usize) -> Vec<u8> {
+    (0..n).map(|i| (i % 251) as u8).collect()
+}
+
+/// Baseline: a safe `write_with` fill of `k` bytes into a fresh block. The
+/// whole offered 64 KiB window is zeroed before the fill runs.
+#[inline(never)]
+fn write_zero(pool: &mut BlockPool, budget: &mut Budget, tx: &mut TxBuf, max: usize, k: usize, src: &[u8]) -> usize {
+    tx.write_with(pool, budget, PeerId(1), max, |[a, b]| -> Result<usize, ()> {
+        debug_assert!(k <= a.len() + b.len());
+        let na = k.min(a.len());
+        a[..na].copy_from_slice(&src[..na]);
+        if k > na {
+            b[..k - na].copy_from_slice(&src[na..k]);
+        }
+        Ok(k)
+    })
+    .unwrap()
+    .unwrap()
+}
+
+/// Candidate: the same fill into raw capacity, committing only the written
+/// bytes. No zero fill of the offered window.
+#[inline(never)]
+fn write_uninit(pool: &mut BlockPool, budget: &mut Budget, tx: &mut TxBuf, max: usize, k: usize, src: &[u8]) -> usize {
+    // SAFETY: the closure writes exactly `k` bytes starting at `a[0]`, in
+    // window order, and reports `k`; nothing else is read.
+    unsafe {
+        tx.write_with_uninit(pool, budget, PeerId(1), max, |[a, b]| -> Result<usize, ()> {
+            debug_assert!(k <= a.len() + b.len());
+            let na = k.min(a.len());
+            std::ptr::copy_nonoverlapping(src.as_ptr(), a.as_mut_ptr().cast::<u8>(), na);
+            if k > na {
+                std::ptr::copy_nonoverlapping(src[na..].as_ptr(), b.as_mut_ptr().cast::<u8>(), k - na);
+            }
+            Ok(k)
+        })
+    }
+    .unwrap()
+    .unwrap()
+}
+
+struct Args {
+    mode: String,
+    iterations: u64,
+    payload: usize,
+    warm: bool,
+    max: usize,
+}
+
+fn parse() -> Args {
+    let mut argv = std::env::args().skip(1);
+    let mode = argv.next().expect("usage: tx_readv_probe <zero|uninit> [--iterations N] [--payload K] [--max B] [--warm]");
+    let mut a = Args { mode, iterations: 200_000, payload: 512, warm: false, max: 256 * 1024 };
+    while let Some(flag) = argv.next() {
+        let mut value = || argv.next().expect("missing value");
+        match flag.as_str() {
+            "--iterations" => a.iterations = value().parse().unwrap(),
+            "--payload" => a.payload = value().parse().unwrap(),
+            "--max" => a.max = value().parse().unwrap(),
+            "--warm" => a.warm = true,
+            other => panic!("unknown flag {other}"),
+        }
+    }
+    a
+}
+
+fn main() {
+    let a = parse();
+    assert!(a.payload >= 1 && a.payload <= 128 * 1024, "payload out of range");
+    let src = pattern(a.payload);
+    let global = GlobalBudget::new(1 << 31);
+
+    // Warmup outside the timer, exactly like the other Pareto probes.
+    {
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(if a.warm { 32 } else { 0 });
+        let mut tx = TxBuf::default();
+        run(&a, &mut pool, &mut budget, &mut tx, &src);
+        tx.release_all(&mut pool);
+        pool.reclaim();
+    }
+
+    let minor_before = rss::minor_faults();
+    let timer_wall = WallInstant::now();
+    let cpu_before = cpu_clock::now_ns();
+    let mut checksum = 0u64;
+    if a.warm {
+        // One long-lived budget/pool/tx; the block stays cached.
+        let mut budget = Budget::new(global.clone());
+        let mut pool = BlockPool::new(32);
+        let mut tx = TxBuf::default();
+        for _ in 0..a.iterations {
+            let n = run(&a, &mut pool, &mut budget, &mut tx, &src);
+            let [s0, s1] = tx.slices(0, n);
+            checksum = checksum.wrapping_add(s0.first().copied().unwrap_or(0) as u64);
+            checksum = checksum.wrapping_add(s1.first().copied().unwrap_or(0) as u64);
+            tx.consume(&mut pool, n);
+        }
+        tx.release_all(&mut pool);
+    } else {
+        // A fresh cold pool per iteration: allocate + zero + free.
+        for _ in 0..a.iterations {
+            let mut budget = Budget::new(global.clone());
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            let n = run(&a, &mut pool, &mut budget, &mut tx, &src);
+            let [s0, s1] = tx.slices(0, n);
+            checksum = checksum.wrapping_add(s0.first().copied().unwrap_or(0) as u64);
+            checksum = checksum.wrapping_add(s1.first().copied().unwrap_or(0) as u64);
+            tx.release_all(&mut pool);
+        }
+    }
+    let cpu_ns = cpu_clock::now_ns() - cpu_before;
+    let wall_ns = timer_wall.elapsed().as_nanos() as u64;
+    let minor_after = rss::minor_faults();
+    let minor_faults_per_op = match (minor_before, minor_after) {
+        (Some(before), Some(after)) => (after.saturating_sub(before)) as f64 / a.iterations as f64,
+        _ => -1.0,
+    };
+
+    println!(
+        "{{\"mode\":\"{}\",\"warm\":{},\"iterations\":{},\"payload\":{},\"max\":{},\
+         \"wall_ns_per_op\":{:.1},\"cpu_ns_per_op\":{:.1},\
+         \"minor_faults_per_op\":{:.4},\"checksum\":{}}}",
+        a.mode,
+        a.warm,
+        a.iterations,
+        a.payload,
+        a.max,
+        wall_ns as f64 / a.iterations as f64,
+        cpu_ns as f64 / a.iterations as f64,
+        minor_faults_per_op,
+        checksum,
+    );
+}
+
+#[inline(always)]
+fn run(a: &Args, pool: &mut BlockPool, budget: &mut Budget, tx: &mut TxBuf, src: &[u8]) -> usize {
+    match a.mode.as_str() {
+        "zero" => write_zero(pool, budget, tx, black_box(a.max), a.payload, src),
+        "uninit" => write_uninit(pool, budget, tx, black_box(a.max), a.payload, src),
+        other => panic!("unknown mode {other}"),
+    }
+}

@@ -1200,6 +1200,51 @@ impl Conn {
         Ok(WriteResult::Written(filled))
     }
 
+    /// Uninitialized twin of [`Conn::write_with`] for a fill that initializes
+    /// exactly what it reports: a socket `read`/`readv`. See
+    /// [`crate::buf::TxBuf::write_with_uninit`] for the safety contract.
+    ///
+    /// # Safety
+    ///
+    /// `fill` must initialize the first `n` bytes it reports, in window order,
+    /// and must not read bytes it has not itself written.
+    // Only the tokio relay adapter calls this; keep it available to the
+    // non-tokio core without a cfg gate so the reviewed cfg inventory is not
+    // disturbed.
+    #[allow(dead_code)]
+    pub(crate) unsafe fn write_with_uninit<E>(
+        &mut self,
+        max: usize,
+        ctx: &mut Ctx,
+        fill: impl FnOnce([&mut [std::mem::MaybeUninit<u8>]; 2]) -> Result<usize, E>,
+    ) -> Result<WriteResult, E> {
+        let n = match self.admit_write(max, ctx) {
+            Ok(n) => n,
+            Err(r) => return Ok(r),
+        };
+        let filled = match self.tx.write_with_uninit(ctx.pool, ctx.budget, self.peer, n, fill) {
+            Ok(Some(k)) => k,
+            Ok(None) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                self.want_write = true;
+                return Ok(WriteResult::MemoryBlocked);
+            }
+            Err(e) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                return Err(e);
+            }
+        };
+        if filled < n {
+            ctx.budget.cancel_reserve(self.peer, (n - filled) as u64);
+        }
+        self.tx_charged += filled as u64;
+        self.sync_sender(ctx);
+        if filled == n && n < max {
+            self.want_write = true;
+        }
+        Ok(WriteResult::Written(filled))
+    }
+
     pub fn shutdown_write(&mut self) {
         if self.fin_off.is_some() {
             return;
