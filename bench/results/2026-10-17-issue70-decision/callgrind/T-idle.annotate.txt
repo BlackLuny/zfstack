@@ -1,0 +1,61 @@
+--------------------------------------------------------------------------------
+Profile data file '/tmp/zf70-eval/callgrind/T-idle.callgrind' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 138221703
+Trigger: Program termination
+Profiled target:  /tmp/zf70-eval/bin/T-libtest --exact tokio_adapter::tests::qa::issue48_measure_idle_pump --nocapture (PID 16192, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+964,507,291 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+167,000,000 (17.31%)  ???:zfstack::tokio_adapter::Driver<E,I,F>::relay_pump [/tmp/zf70-eval/bin/T-libtest]
+163,797,891 (16.98%)  ???:core::hash::BuildHasher::hash_one [/tmp/zf70-eval/bin/T-libtest]
+122,792,050 (12.73%)  ???:<core::hash::sip::Hasher<S> as core::hash::Hasher>::write [/tmp/zf70-eval/bin/T-libtest]
+ 59,251,539 ( 6.14%)  ???:zfstack::shard::Shard::after_conn_change [/tmp/zf70-eval/bin/T-libtest]
+ 45,751,196 ( 4.74%)  ???:zfstack::shard::Shard::schedule [/tmp/zf70-eval/bin/T-libtest]
+ 36,750,560 ( 3.81%)  ???:zfstack::shard::Shard::sync_share_waiter [/tmp/zf70-eval/bin/T-libtest]
+ 35,250,282 ( 3.65%)  ???:zfstack::conn::Conn::sndbuf_limit [/tmp/zf70-eval/bin/T-libtest]
+ 30,250,249 ( 3.14%)  ???:tokio::runtime::io::registration::Registration::poll_ready [/tmp/zf70-eval/bin/T-libtest]
+ 28,499,886 ( 2.95%)  ???:zfstack::budget::MemoryLease::assign [/tmp/zf70-eval/bin/T-libtest]
+ 25,250,000 ( 2.62%)  ???:zfstack::budget::Budget::try_reserve [/tmp/zf70-eval/bin/T-libtest]
+ 25,000,000 ( 2.59%)  ???:zfstack::budget::MemoryLease::park_cached [/tmp/zf70-eval/bin/T-libtest]
+ 23,750,570 ( 2.46%)  ???:zfstack::budget::Budget::send_share [/tmp/zf70-eval/bin/T-libtest]
+ 23,000,008 ( 2.38%)  ???:zfstack::buf::BlockPool::get [/tmp/zf70-eval/bin/T-libtest]
+ 21,250,346 ( 2.20%)  ???:zfstack::tokio_adapter::Driver<E,I,F>::pump [/tmp/zf70-eval/bin/T-libtest]
+ 18,000,209 ( 1.87%)  ???:zfstack::heap::IndexedHeap::remove [/tmp/zf70-eval/bin/T-libtest]
+ 15,750,263 ( 1.63%)  ???:zfstack::buf::BlockPool::put [/tmp/zf70-eval/bin/T-libtest]
+ 14,000,000 ( 1.45%)  ???:zfstack::budget::Budget::cancel_reserve [/tmp/zf70-eval/bin/T-libtest]
+ 11,250,045 ( 1.17%)  ???:zfstack::conn::Conn::read_chunk_for_adapter [/tmp/zf70-eval/bin/T-libtest]
+ 10,250,000 ( 1.06%)  ???:zfstack::buf::TxBuf::trim_empty_index [/tmp/zf70-eval/bin/T-libtest]
+  7,750,348 ( 0.80%)  ???:std::sys::pal::unix::time::Timespec::sub_timespec [/tmp/zf70-eval/bin/T-libtest]
+  7,500,030 ( 0.78%)  ???:zfstack::buf::RxQueue::read_chunk [/tmp/zf70-eval/bin/T-libtest]
+  7,499,970 ( 0.78%)  ???:zfstack::budget::MemoryLease::prepare_index_peer [/tmp/zf70-eval/bin/T-libtest]
+  6,500,000 ( 0.67%)  ???:alloc::vec::Vec<T,A>::push [/tmp/zf70-eval/bin/T-libtest]
+  6,297,628 ( 0.65%)  ???:zfstack::sim::Side::new [/tmp/zf70-eval/bin/T-libtest]
+  6,250,050 ( 0.65%)  ???:zfstack::conn::Conn::send_space [/tmp/zf70-eval/bin/T-libtest]
+  5,750,299 ( 0.60%)  ???:zfstack::budget::GlobalBudget::wake_waiters [/tmp/zf70-eval/bin/T-libtest]
+  4,750,070 ( 0.49%)  ???:zfstack::buf::TxBuf::prepare_index [/tmp/zf70-eval/bin/T-libtest]
+  4,500,000 ( 0.47%)  ???:tokio::net::tcp::stream::TcpStream::try_read_vectored [/tmp/zf70-eval/bin/T-libtest]
+  4,250,000 ( 0.44%)  ???:zfstack::buf::TxBuf::unwrap_for_growth [/tmp/zf70-eval/bin/T-libtest]
+  4,000,272 ( 0.41%)  ???:std::sys::pal::unix::time::Timespec::now [/tmp/zf70-eval/bin/T-libtest]
+  3,750,015 ( 0.39%)  ???:zfstack::buf::RxQueue::seal_tail [/tmp/zf70-eval/bin/T-libtest]
+  3,250,039 ( 0.34%)  ???:tokio::time::instant::Instant::now [/tmp/zf70-eval/bin/T-libtest]
+  2,750,187 ( 0.29%)  ./time/../sysdeps/unix/sysv/linux/clock_gettime.c:clock_gettime@@GLIBC_2.17 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  2,750,055 ( 0.29%)  ???:__udivti3 [/tmp/zf70-eval/bin/T-libtest]
+  2,750,011 ( 0.29%)  ???:zfstack::buf::RxQueue::seal_charged_tail [/tmp/zf70-eval/bin/T-libtest]
+

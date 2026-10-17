@@ -1,0 +1,37 @@
+{
+  "tag": "splice-aa",
+  "argv": {
+    "baseline": "/tmp/zf70-eval/bin/C-libtest",
+    "candidate": "/tmp/zf70-eval/bin/C2-libtest",
+    "cases": "/tmp/zf70-eval/manifest/cases-splice.json",
+    "outdir": "/tmp/zf70-eval/results/splice-aa",
+    "cpu": 3,
+    "pairs": 12,
+    "timeout": 180,
+    "tag": "splice-aa"
+  },
+  "binary_sha256": {
+    "baseline": "037cdc227b348b0e26e89980b8ca34cf3993840068daa0fb889ada0a93b40f79",
+    "candidate": "037cdc227b348b0e26e89980b8ca34cf3993840068daa0fb889ada0a93b40f79"
+  },
+  "cases": [
+    {
+      "name": "splice_relays_both_directions_and_half_closes",
+      "args": [
+        "--exact",
+        "tokio_adapter::tests::splice_relays_both_directions_and_half_closes",
+        "--nocapture"
+      ]
+    }
+  ],
+  "cpu_metric": "ru_utime+ru_stime seconds of the test process, including setup/teardown",
+  "started_at": "2026-10-17T03:43:45Z",
+  "order": "AB, BA, AB, BA ... pair -1 is warmup discarded",
+  "bootstrap": {
+    "draws": 10000,
+    "seed": 65,
+    "stat": "median of pair percent changes"
+  },
+  "finished_at": "2026-10-17T03:43:50Z",
+  "runs": 26
+}
