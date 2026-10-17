@@ -236,15 +236,46 @@ type Key = (IfaceId, SocketAddr, SocketAddr);
 struct Drr {
     ready_peers: VecDeque<PeerId>,
     peer_q: HashMap<PeerId, VecDeque<(u32, u32)>>,
+    /// Drained per-peer queues kept for reuse. A peer whose ready queue is
+    /// fully served currently frees its `VecDeque` backing and the next ready
+    /// burst re-allocates it. Retaining bounded, small backings avoids that
+    /// malloc/free on every burst without letting stale peers or oversized
+    /// queues accumulate: only empty queues up to `DRR_SPARE_CAP` capacity are
+    /// kept, and the pool itself is capped at `DRR_SPARE_Q` entries.
+    spare_q: Vec<VecDeque<(u32, u32)>>,
 }
+
+/// Hard cap on retained empty per-peer DRR queues (one iface-local pool).
+const DRR_SPARE_Q: usize = 64;
+/// Only retain queues whose backing is small; larger ones are dropped so a
+/// past burst cannot pin a big allocation.
+const DRR_SPARE_CAP: usize = 16;
 
 impl Drr {
     fn push(&mut self, peer: PeerId, e: (u32, u32)) {
-        let q = self.peer_q.entry(peer).or_default();
-        if q.is_empty() {
-            self.ready_peers.push_back(peer);
+        match self.peer_q.entry(peer) {
+            std::collections::hash_map::Entry::Occupied(mut o) => {
+                if o.get().is_empty() {
+                    self.ready_peers.push_back(peer);
+                }
+                o.get_mut().push_back(e);
+            }
+            std::collections::hash_map::Entry::Vacant(v) => {
+                let mut q = self.spare_q.pop().unwrap_or_default();
+                q.clear();
+                self.ready_peers.push_back(peer);
+                v.insert(q).push_back(e);
+            }
         }
-        q.push_back(e);
+    }
+    /// Recycle a drained (empty) per-peer queue instead of dropping its
+    /// backing on the floor. Oversized backings are released as before.
+    fn recycle(&mut self, peer: PeerId) {
+        if let Some(q) = self.peer_q.remove(&peer) {
+            if self.spare_q.len() < DRR_SPARE_Q && q.capacity() <= DRR_SPARE_CAP {
+                self.spare_q.push(q);
+            }
+        }
     }
     fn is_empty(&self) -> bool {
         self.ready_peers.is_empty()
@@ -1849,7 +1880,7 @@ impl Shard {
                 let Some(peer) = ifc.drr.ready_peers.pop_front() else { break };
                 let Some(q) = ifc.drr.peer_q.get_mut(&peer) else { continue };
                 let Some((idx, gen)) = q.pop_front() else {
-                    ifc.drr.peer_q.remove(&peer);
+                    ifc.drr.recycle(peer);
                     continue;
                 };
                 let valid = self.slots[idx as usize].gen == gen && self.slots[idx as usize].conn.is_some();
@@ -1869,7 +1900,7 @@ impl Shard {
                 }
                 let q = ifc.drr.peer_q.get_mut(&peer).unwrap();
                 if q.is_empty() {
-                    ifc.drr.peer_q.remove(&peer);
+                    ifc.drr.recycle(peer);
                 } else {
                     ifc.drr.ready_peers.push_back(peer);
                 }
@@ -4080,5 +4111,83 @@ mod pacing_rate_recovery_tests {
     #[test]
     fn bbr_recovers_after_spaced_requests_and_delayed_replies() {
         replies_across_rate_recovery(false);
+    }
+}
+
+#[cfg(test)]
+mod drr_reuse_tests {
+    use super::{Drr, DRR_SPARE_CAP, DRR_SPARE_Q};
+
+    fn peer(n: u64) -> crate::PeerId {
+        crate::PeerId(n)
+    }
+
+    /// A drained per-peer queue must be recycled so the next ready burst of any
+    /// peer reuses the backing instead of allocating a fresh `VecDeque`.
+    #[test]
+    fn drained_queue_backing_is_reused_across_peers() {
+        let mut drr = Drr::default();
+        drr.push(peer(1), (0, 0));
+        assert_eq!(drr.spare_q.len(), 0);
+        let cap = drr.peer_q[&peer(1)].capacity();
+        assert!(cap > 0, "push must have allocated backing");
+        let first_ptr = &drr.peer_q[&peer(1)][0] as *const (u32, u32);
+
+        // The serve loop pops the peer from `ready_peers` before draining.
+        assert_eq!(drr.ready_peers.pop_front(), Some(peer(1)));
+        drr.recycle(peer(1));
+        assert!(drr.is_empty());
+        assert!(drr.peer_q.is_empty());
+        assert_eq!(drr.spare_q.len(), 1, "drained queue must be retained");
+
+        // Another peer now reuses that backing rather than allocating.
+        drr.push(peer(2), (7, 3));
+        assert_eq!(drr.spare_q.len(), 0, "reuse must consume the spare queue");
+        let q = &drr.peer_q[&peer(2)];
+        assert_eq!(q[0], (7, 3));
+        assert_eq!(&q[0] as *const (u32, u32), first_ptr, "same backing reused");
+        assert_eq!(drr.ready_peers.len(), 1);
+    }
+
+    /// The reuse pool is bounded: an oversized queue is dropped, and no more
+    /// than `DRR_SPARE_Q` small queues are ever retained.
+    #[test]
+    fn reuse_pool_is_bounded_and_drops_oversized_backings() {
+        let mut drr = Drr::default();
+        // One oversized queue: pushed beyond DRR_SPARE_CAP then drained.
+        for i in 0..=(DRR_SPARE_CAP + 4) {
+            drr.push(peer(1), (i as u32, 0));
+        }
+        while let Some(q) = drr.peer_q.get_mut(&peer(1)) {
+            if q.pop_front().is_none() {
+                break;
+            }
+        }
+        drr.recycle(peer(1));
+        assert!(drr.spare_q.is_empty(), "oversized backing must be released, not cached");
+
+        // Many small queues: the spare pool never exceeds its hard cap.
+        for p in 0..(DRR_SPARE_Q as u64 * 2) {
+            drr.push(peer(p + 10), (p as u32, 0));
+        }
+        while let Some(p) = drr.ready_peers.pop_front() {
+            drr.recycle(p);
+        }
+        assert!(drr.spare_q.len() <= DRR_SPARE_Q);
+        assert_eq!(drr.spare_q.len(), DRR_SPARE_Q);
+    }
+
+    /// Recycling a peer that is not present is a no-op, and ready_peers keeps
+    /// at most one entry per peer across reuse.
+    #[test]
+    fn ready_peers_stays_unique_across_push_and_recycle() {
+        let mut drr = Drr::default();
+        drr.recycle(peer(9));
+        assert!(drr.spare_q.is_empty());
+        drr.push(peer(1), (0, 0));
+        drr.push(peer(1), (1, 0));
+        drr.push(peer(2), (2, 0));
+        assert_eq!(drr.ready_peers.len(), 2);
+        assert_eq!(drr.peer_q[&peer(1)].len(), 2);
     }
 }

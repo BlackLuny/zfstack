@@ -1315,21 +1315,39 @@ impl Budget {
         if n == 0 {
             return true;
         }
-        let pu = self.peers.get(&peer).copied().unwrap_or_default();
         let Some(port_used) = self.used.checked_add(n) else {
             self.note_reserve_failure(AllocationKind::Logical);
             return false;
         };
-        let Some(peer_used) = pu.bytes.checked_add(n) else {
-            self.note_reserve_failure(AllocationKind::Logical);
-            return false;
+        // One table probe on the success path. Reading the peer with `get` and
+        // then writing it with `entry` hashed `PeerId` twice per reservation.
+        // The probe result is decided inside the match so the mutable borrow of
+        // `peers` ends before any failure bookkeeping or the `used` commit.
+        let admitted = match self.peers.entry(peer) {
+            std::collections::hash_map::Entry::Occupied(mut o) => {
+                let pu = o.get_mut();
+                match pu.bytes.checked_add(n) {
+                    Some(peer_used) if port_used <= self.port_limit && peer_used <= self.peer_limit => {
+                        pu.bytes = peer_used;
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(v) => {
+                if port_used <= self.port_limit && n <= self.peer_limit {
+                    v.insert(PeerUsage { bytes: n, ..PeerUsage::default() });
+                    true
+                } else {
+                    false
+                }
+            }
         };
-        if port_used > self.port_limit || peer_used > self.peer_limit {
+        if !admitted {
             self.note_reserve_failure(AllocationKind::Logical);
             return false;
         }
         self.used = port_used;
-        self.peers.entry(peer).or_default().bytes = peer_used;
         true
     }
 
