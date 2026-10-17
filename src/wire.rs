@@ -53,7 +53,7 @@ pub fn parse_ip(pkt: &[u8]) -> Result<IpInfo, DropReason> {
             if ihl < 20 || total < ihl || total > pkt.len() {
                 return Err(DropReason::Truncated);
             }
-            if checksum_fold(sum_bytes(0, &pkt[..ihl])) != 0 {
+            if !ipv4_header_checksum_ok(&pkt[..ihl]) {
                 return Err(DropReason::BadIpChecksum);
             }
             let frag = u16::from_be_bytes([pkt[6], pkt[7]]);
@@ -219,6 +219,30 @@ pub fn parse_tcp_with(pkt: &[u8], ip: &IpInfo, verify: bool) -> Result<TcpHeader
 // ---------------------------------------------------------------------------
 // Checksums
 
+#[inline]
+fn fold_u64(acc: u64) -> u16 {
+    let (a, c1) = (acc as u32).overflowing_add((acc >> 32) as u32);
+    let a = a.wrapping_add(c1 as u32);
+    let (b, c2) = (a as u16).overflowing_add((a >> 16) as u16);
+    b.wrapping_add(c2 as u16)
+}
+
+#[inline]
+fn ipv4_header_checksum_ok(hdr: &[u8]) -> bool {
+    debug_assert!(hdr.len() >= 20 && hdr.len() % 4 == 0);
+    let mut s = u32::from_ne_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]) as u64
+        + u32::from_ne_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as u64
+        + u32::from_ne_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as u64
+        + u32::from_ne_bytes([hdr[12], hdr[13], hdr[14], hdr[15]]) as u64
+        + u32::from_ne_bytes([hdr[16], hdr[17], hdr[18], hdr[19]]) as u64;
+    if hdr.len() > 20 {
+        for c in hdr[20..].chunks_exact(4) {
+            s += u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) as u64;
+        }
+    }
+    fold_u64(s) == 0xffff
+}
+
 /// Add `data` (starting at an even offset of the summed byte string) to a
 /// big-endian one's-complement accumulator; fold with [`checksum_fold`].
 #[inline]
@@ -226,28 +250,65 @@ pub fn sum_bytes(mut acc: u64, data: &[u8]) -> u64 {
     let words = data.len() & !3;
     if words >= 64 {
         acc += sum_words(&data[..words]);
-    } else {
-        for c in data[..words].chunks_exact(4) {
-            acc += u32::from_be_bytes([c[0], c[1], c[2], c[3]]) as u64;
-        }
+    } else if words != 0 {
+        acc += sum_small_words(&data[..words]);
     }
-    let rem = &data[words..];
-    match rem.len() {
-        1 => acc += (rem[0] as u64) << 8,
-        2 => acc += u16::from_be_bytes([rem[0], rem[1]]) as u64,
-        3 => acc += (u16::from_be_bytes([rem[0], rem[1]]) as u64) + ((rem[2] as u64) << 8),
-        _ => {}
+    let mut rem = &data[words..];
+    if rem.len() >= 2 {
+        acc += u16::from_be_bytes([rem[0], rem[1]]) as u64;
+        rem = &rem[2..];
+    }
+    if !rem.is_empty() {
+        acc += (rem[0] as u64) << 8;
     }
     acc
+}
+
+#[inline]
+fn sum_small_words(mut d: &[u8]) -> u64 {
+    debug_assert!(d.len() < 64 && d.len() % 4 == 0);
+    let mut s = 0u128;
+    if d.len() >= 32 {
+        let (a, b) = d.split_at(32);
+        let q0 = u64::from_ne_bytes([a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]]) as u128;
+        let q1 = u64::from_ne_bytes([a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]]) as u128;
+        let q2 = u64::from_ne_bytes([a[16], a[17], a[18], a[19], a[20], a[21], a[22], a[23]]) as u128;
+        let q3 = u64::from_ne_bytes([a[24], a[25], a[26], a[27], a[28], a[29], a[30], a[31]]) as u128;
+        s += q0 + q1 + q2 + q3;
+        d = b;
+    }
+    if d.len() >= 16 {
+        let (a, b) = d.split_at(16);
+        let q0 = u64::from_ne_bytes([a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]]) as u128;
+        let q1 = u64::from_ne_bytes([a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]]) as u128;
+        s += q0 + q1;
+        d = b;
+    }
+    if d.len() >= 8 {
+        let (a, b) = d.split_at(8);
+        s += u64::from_ne_bytes([a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]]) as u128;
+        d = b;
+    }
+    if d.len() >= 4 {
+        s += u32::from_ne_bytes([d[0], d[1], d[2], d[3]]) as u128;
+    }
+    let (lo, c) = (s as u64).overflowing_add((s >> 64) as u64);
+    let folded = fold_u64(lo.wrapping_add(c as u64));
+    if cfg!(target_endian = "little") {
+        folded.swap_bytes() as u64
+    } else {
+        folded as u64
+    }
 }
 
 /// One's-complement sum of a multiple of 4 bytes, folded to 16 bits and
 /// returned in the big-endian domain of [`sum_bytes`].
 ///
-/// Native-endian 32-bit words go into independent 64-bit lanes, which the
-/// compiler vectorizes; the one's-complement sum only differs between byte
-/// orders by a final byte swap (RFC 1071 §2(B)). Payload checksums are the
-/// main per-byte cost of TUN-facing hosts, so AVX2 is used when present.
+/// Native-endian 16-bit words are zero-extended and accumulated in 32-bit
+/// lanes in bounded 256 KiB chunks so no lane can overflow `u32::MAX`
+/// (each reduced pair sums at most 65,536 words <= 0xffff_0000 < 2^32);
+/// the one's-complement sum only differs between byte orders by a final
+/// byte swap (RFC 1071 §2(B)).
 #[inline]
 fn sum_words(data: &[u8]) -> u64 {
     #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
@@ -263,40 +324,153 @@ fn sum_words(data: &[u8]) -> u64 {
 #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
 #[target_feature(enable = "avx2")]
 unsafe fn sum_words_avx2(data: &[u8]) -> u64 {
-    sum_words_portable(data)
+    use core::arch::x86_64::*;
+    debug_assert_eq!(data.len() % 4, 0);
+    const MAX_CHUNK: usize = 262_144;
+    let reduce = |acc0: __m256i, acc1: __m256i, acc2: __m256i, acc3: __m256i| -> u64 {
+        let sum01 = _mm256_add_epi32(acc0, acc1);
+        let sum23 = _mm256_add_epi32(acc2, acc3);
+        let sum256 = _mm256_add_epi32(sum01, sum23);
+        let sum128 = _mm_add_epi32(_mm256_castsi256_si128(sum256), _mm256_extracti128_si256::<1>(sum256));
+        let lo64 = _mm_cvtsi128_si64(sum128) as u64;
+        let hi64 = _mm_extract_epi64::<1>(sum128) as u64;
+        let pair = lo64 + hi64;
+        (pair & 0xffff_ffff) + (pair >> 32)
+    };
+    let mut p = data.as_ptr();
+    let mut rem = data.len();
+    let mut total = 0u64;
+    let mask = _mm256_set1_epi32(0x0000_ffff);
+
+    while rem > MAX_CHUNK {
+        let mut acc0 = _mm256_setzero_si256();
+        let mut acc1 = _mm256_setzero_si256();
+        let mut acc2 = _mm256_setzero_si256();
+        let mut acc3 = _mm256_setzero_si256();
+        let end = p.add(MAX_CHUNK);
+        while p < end {
+            let v0 = _mm256_loadu_si256(p.cast());
+            let v1 = _mm256_loadu_si256(p.add(32).cast());
+            acc0 = _mm256_add_epi32(acc0, _mm256_and_si256(v0, mask));
+            acc1 = _mm256_add_epi32(acc1, _mm256_srli_epi32::<16>(v0));
+            acc2 = _mm256_add_epi32(acc2, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(64).cast())));
+            acc3 = _mm256_add_epi32(acc3, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(80).cast())));
+            acc0 = _mm256_add_epi32(acc0, _mm256_and_si256(v1, mask));
+            acc1 = _mm256_add_epi32(acc1, _mm256_srli_epi32::<16>(v1));
+            acc2 = _mm256_add_epi32(acc2, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(96).cast())));
+            acc3 = _mm256_add_epi32(acc3, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(112).cast())));
+            p = p.add(128);
+        }
+        total = (total & 0xffff_ffff) + (total >> 32) + reduce(acc0, acc1, acc2, acc3);
+        rem -= MAX_CHUNK;
+    }
+
+    let mut acc0 = _mm256_setzero_si256();
+    let mut acc1 = _mm256_setzero_si256();
+    let mut acc2 = _mm256_setzero_si256();
+    let mut acc3 = _mm256_setzero_si256();
+    let n128 = rem & !127;
+    if n128 != 0 {
+        let end = p.add(n128);
+        while p < end {
+            let v0 = _mm256_loadu_si256(p.cast());
+            let v1 = _mm256_loadu_si256(p.add(32).cast());
+            acc0 = _mm256_add_epi32(acc0, _mm256_and_si256(v0, mask));
+            acc1 = _mm256_add_epi32(acc1, _mm256_srli_epi32::<16>(v0));
+            acc2 = _mm256_add_epi32(acc2, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(64).cast())));
+            acc3 = _mm256_add_epi32(acc3, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(80).cast())));
+            acc0 = _mm256_add_epi32(acc0, _mm256_and_si256(v1, mask));
+            acc1 = _mm256_add_epi32(acc1, _mm256_srli_epi32::<16>(v1));
+            acc2 = _mm256_add_epi32(acc2, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(96).cast())));
+            acc3 = _mm256_add_epi32(acc3, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(112).cast())));
+            p = p.add(128);
+        }
+    }
+    if rem & 64 != 0 {
+        acc0 = _mm256_add_epi32(acc0, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.cast())));
+        acc1 = _mm256_add_epi32(acc1, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(16).cast())));
+        acc2 = _mm256_add_epi32(acc2, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(32).cast())));
+        acc3 = _mm256_add_epi32(acc3, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(48).cast())));
+        p = p.add(64);
+    }
+    if rem & 32 != 0 {
+        acc0 = _mm256_add_epi32(acc0, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.cast())));
+        acc1 = _mm256_add_epi32(acc1, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.add(16).cast())));
+        p = p.add(32);
+    }
+    if rem & 16 != 0 {
+        acc0 = _mm256_add_epi32(acc0, _mm256_cvtepu16_epi32(_mm_loadu_si128(p.cast())));
+        p = p.add(16);
+    }
+    let mut s = total + reduce(acc0, acc1, acc2, acc3);
+    if rem & 8 != 0 {
+        let w0 = p.cast::<u32>().read_unaligned() as u64;
+        let w1 = p.add(4).cast::<u32>().read_unaligned() as u64;
+        s += w0 + w1;
+        p = p.add(8);
+    }
+    if rem & 4 != 0 {
+        s += p.cast::<u32>().read_unaligned() as u64;
+    }
+    fold_u64(s).swap_bytes() as u64
 }
 
 #[inline(always)]
-fn sum_words_portable(data: &[u8]) -> u64 {
-    debug_assert_eq!(data.len() % 4, 0);
-    let mut lanes = [0u64; 8];
-    let mut blocks = data.chunks_exact(32);
-    for b in &mut blocks {
-        for (i, lane) in lanes.iter_mut().enumerate() {
-            *lane += u32::from_ne_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]) as u64;
+fn sum_portable_chunk(chunk: &[u8]) -> u64 {
+    let mut lanes = [0u32; 16];
+    for b in chunk.chunks_exact(32) {
+        for (lane, pair) in lanes.iter_mut().zip(b.chunks_exact(2)) {
+            *lane = lane.wrapping_add(u16::from_ne_bytes([pair[0], pair[1]]) as u32);
         }
     }
-    // Each lane holds at most 2^16 · 2^32 for a 64 KiB packet; adding with
-    // end-around carry keeps any length exact.
-    let mut s = lanes.iter().fold(0u64, |a, &l| {
-        let (v, c) = a.overflowing_add(l);
-        v + c as u64
-    });
-    for c in blocks.remainder().chunks_exact(4) {
-        let (v, carry) = s.overflowing_add(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) as u64);
-        s = v + carry as u64;
+    let s0 = lanes[0].wrapping_add(lanes[4]).wrapping_add(lanes[8]).wrapping_add(lanes[12]) as u64;
+    let s1 = lanes[1].wrapping_add(lanes[5]).wrapping_add(lanes[9]).wrapping_add(lanes[13]) as u64;
+    let s2 = lanes[2].wrapping_add(lanes[6]).wrapping_add(lanes[10]).wrapping_add(lanes[14]) as u64;
+    let s3 = lanes[3].wrapping_add(lanes[7]).wrapping_add(lanes[11]).wrapping_add(lanes[15]) as u64;
+    (s0 + s1) + (s2 + s3)
+}
+
+#[inline(never)]
+fn sum_words_portable(mut data: &[u8]) -> u64 {
+    debug_assert_eq!(data.len() % 4, 0);
+    const MAX_CHUNK: usize = 262_144;
+    let mut total = 0u64;
+    while data.len() > MAX_CHUNK {
+        let (chunk, rest) = data.split_at(MAX_CHUNK);
+        total = (total & 0xffff_ffff) + (total >> 32) + sum_portable_chunk(chunk);
+        data = rest;
     }
-    while s >> 16 != 0 {
-        s = (s & 0xffff) + (s >> 16);
+    let (bulk, mut rem) = data.split_at(data.len() & !31);
+    total += sum_portable_chunk(bulk);
+    if rem.len() >= 16 {
+        let (a, b) = rem.split_at(16);
+        let w0 = u32::from_ne_bytes([a[0], a[1], a[2], a[3]]) as u64;
+        let w1 = u32::from_ne_bytes([a[4], a[5], a[6], a[7]]) as u64;
+        let w2 = u32::from_ne_bytes([a[8], a[9], a[10], a[11]]) as u64;
+        let w3 = u32::from_ne_bytes([a[12], a[13], a[14], a[15]]) as u64;
+        total += (w0 + w1) + (w2 + w3);
+        rem = b;
     }
+    if rem.len() >= 8 {
+        let (a, b) = rem.split_at(8);
+        let w0 = u32::from_ne_bytes([a[0], a[1], a[2], a[3]]) as u64;
+        let w1 = u32::from_ne_bytes([a[4], a[5], a[6], a[7]]) as u64;
+        total += w0 + w1;
+        rem = b;
+    }
+    if rem.len() >= 4 {
+        total += u32::from_ne_bytes([rem[0], rem[1], rem[2], rem[3]]) as u64;
+    }
+    let folded = fold_u64(total);
     if cfg!(target_endian = "little") {
-        (s as u16).swap_bytes() as u64
+        folded.swap_bytes() as u64
     } else {
-        s
+        folded as u64
     }
 }
 
 /// Sum of possibly-odd-length slices treated as one contiguous byte string.
+#[inline]
 pub fn sum_slices(mut acc: u64, parts: &[&[u8]]) -> u64 {
     let mut odd = false;
     for p in parts {
@@ -318,29 +492,42 @@ pub fn sum_slices(mut acc: u64, parts: &[&[u8]]) -> u64 {
 }
 
 #[inline]
-pub fn checksum_fold(mut acc: u64) -> u16 {
-    while acc >> 16 != 0 {
-        acc = (acc & 0xffff) + (acc >> 16);
-    }
-    !(acc as u16)
+pub fn checksum_fold(acc: u64) -> u16 {
+    !fold_u64(acc)
 }
 
+#[inline]
+fn ipv4_addr_sum(s: Ipv4Addr, d: Ipv4Addr) -> u64 {
+    u32::from(s) as u64 + u32::from(d) as u64
+}
+
+#[inline]
+fn ipv4_pseudo_sum(s: Ipv4Addr, d: Ipv4Addr, l4_len: u32) -> u64 {
+    ipv4_addr_sum(s, d) + l4_len as u64 + PROTO_TCP as u64
+}
+
+#[inline]
+fn ipv6_pseudo_sum(s: Ipv6Addr, d: Ipv6Addr, l4_len: u32) -> u64 {
+    let a = s.octets();
+    let b = d.octets();
+    let addr_sum = u32::from_be_bytes([a[0], a[1], a[2], a[3]]) as u64
+        + u32::from_be_bytes([a[4], a[5], a[6], a[7]]) as u64
+        + u32::from_be_bytes([a[8], a[9], a[10], a[11]]) as u64
+        + u32::from_be_bytes([a[12], a[13], a[14], a[15]]) as u64
+        + u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as u64
+        + u32::from_be_bytes([b[4], b[5], b[6], b[7]]) as u64
+        + u32::from_be_bytes([b[8], b[9], b[10], b[11]]) as u64
+        + u32::from_be_bytes([b[12], b[13], b[14], b[15]]) as u64;
+    addr_sum + l4_len as u64 + PROTO_TCP as u64
+}
+
+#[inline]
 pub fn pseudo_sum(src: IpAddr, dst: IpAddr, l4_len: u32) -> u64 {
-    let mut acc = 0u64;
     match (src, dst) {
-        (IpAddr::V4(s), IpAddr::V4(d)) => {
-            acc = sum_bytes(acc, &s.octets());
-            acc = sum_bytes(acc, &d.octets());
-            acc += PROTO_TCP as u64 + l4_len as u64;
-        }
-        (IpAddr::V6(s), IpAddr::V6(d)) => {
-            acc = sum_bytes(acc, &s.octets());
-            acc = sum_bytes(acc, &d.octets());
-            acc += l4_len as u64 + PROTO_TCP as u64;
-        }
-        _ => {}
+        (IpAddr::V4(s), IpAddr::V4(d)) => ipv4_pseudo_sum(s, d, l4_len),
+        (IpAddr::V6(s), IpAddr::V6(d)) => ipv6_pseudo_sum(s, d, l4_len),
+        _ => 0,
     }
-    acc
 }
 
 // ---------------------------------------------------------------------------
@@ -417,26 +604,23 @@ pub fn emit(buf: &mut [u8; MAX_HEADER], p: &EmitParams) -> usize {
     let payload_len: usize = p.payload.iter().map(|s| s.len()).sum();
     let olen = options_len(p.opts);
     let tcp_hlen = 20 + olen;
-    let ip_hlen = match p.src {
-        IpAddr::V4(_) => 20,
-        IpAddr::V6(_) => 40,
-    };
     let l4_len = tcp_hlen + payload_len;
-    match (p.src, p.dst) {
+    let (ip_hlen, mut acc) = match (p.src, p.dst) {
         (IpAddr::V4(s), IpAddr::V4(d)) => {
+            let total_len = (20 + l4_len) as u16;
+            let addr_sum = ipv4_addr_sum(s, d);
+            let c = checksum_fold(addr_sum + total_len as u64 + ((p.ttl as u64) << 8) + (0x4500 + 0x4000 + PROTO_TCP as u64));
             let h = &mut buf[..20];
             h[0] = 0x45;
             h[1] = 0;
-            h[2..4].copy_from_slice(&((20 + l4_len) as u16).to_be_bytes());
-            h[4..6].copy_from_slice(&[0, 0]);
-            h[6..8].copy_from_slice(&[0x40, 0]); // DF
+            h[2..4].copy_from_slice(&total_len.to_be_bytes());
+            h[4..8].copy_from_slice(&[0, 0, 0x40, 0]); // DF
             h[8] = p.ttl;
             h[9] = PROTO_TCP;
-            h[10..12].copy_from_slice(&[0, 0]);
+            h[10..12].copy_from_slice(&c.to_be_bytes());
             h[12..16].copy_from_slice(&s.octets());
             h[16..20].copy_from_slice(&d.octets());
-            let c = checksum_fold(sum_bytes(0, h));
-            h[10..12].copy_from_slice(&c.to_be_bytes());
+            (20, addr_sum + l4_len as u32 as u64 + PROTO_TCP as u64)
         }
         (IpAddr::V6(s), IpAddr::V6(d)) => {
             let h = &mut buf[..40];
@@ -446,69 +630,76 @@ pub fn emit(buf: &mut [u8; MAX_HEADER], p: &EmitParams) -> usize {
             h[7] = p.ttl;
             h[8..24].copy_from_slice(&s.octets());
             h[24..40].copy_from_slice(&d.octets());
+            (40, ipv6_pseudo_sum(s, d, l4_len as u32))
         }
         _ => panic!("mixed address families"),
-    }
+    };
+    let doff_byte = ((tcp_hlen / 4) as u8) << 4;
+    let doff_flags = ((doff_byte as u16) << 8) | (p.flags as u16);
     let t = &mut buf[ip_hlen..ip_hlen + tcp_hlen];
     t[0..2].copy_from_slice(&p.src_port.to_be_bytes());
     t[2..4].copy_from_slice(&p.dst_port.to_be_bytes());
     t[4..8].copy_from_slice(&p.seq.0.to_be_bytes());
     t[8..12].copy_from_slice(&p.ack.0.to_be_bytes());
-    t[12] = ((tcp_hlen / 4) as u8) << 4;
+    t[12] = doff_byte;
     t[13] = p.flags;
     t[14..16].copy_from_slice(&p.window.to_be_bytes());
     t[16..20].copy_from_slice(&[0, 0, 0, 0]);
+    let mut tcp_sum = p.src_port as u64 + p.dst_port as u64 + p.seq.0 as u64 + p.ack.0 as u64 + doff_flags as u64 + p.window as u64;
     let mut i = 20;
     let o = p.opts;
     if let Some(m) = o.mss {
         t[i..i + 4].copy_from_slice(&[2, 4, (m >> 8) as u8, m as u8]);
+        tcp_sum += 0x0204 + m as u64;
         i += 4;
     }
     if let Some(ws) = o.wscale {
         t[i..i + 4].copy_from_slice(&[1, 3, 3, ws]);
+        tcp_sum += 0x0403 + ws as u64;
         i += 4;
     }
     match (o.sack_perm, o.ts) {
         (true, Some((v, e))) => {
-            t[i..i + 2].copy_from_slice(&[4, 2]);
-            t[i + 2..i + 4].copy_from_slice(&[8, 10]);
+            t[i..i + 4].copy_from_slice(&[4, 2, 8, 10]);
             t[i + 4..i + 8].copy_from_slice(&v.to_be_bytes());
             t[i + 8..i + 12].copy_from_slice(&e.to_be_bytes());
+            tcp_sum += 0x0c0c + v as u64 + e as u64;
             i += 12;
         }
         (true, None) => {
             t[i..i + 4].copy_from_slice(&[1, 1, 4, 2]);
+            tcp_sum += 0x0503;
             i += 4;
         }
         (false, Some((v, e))) => {
             t[i..i + 4].copy_from_slice(&[1, 1, 8, 10]);
             t[i + 4..i + 8].copy_from_slice(&v.to_be_bytes());
             t[i + 8..i + 12].copy_from_slice(&e.to_be_bytes());
+            tcp_sum += 0x090b + v as u64 + e as u64;
             i += 12;
         }
         (false, None) => {}
     }
     if o.sack_n > 0 {
-        t[i..i + 4].copy_from_slice(&[1, 1, 5, 2 + 8 * o.sack_n]);
+        let sack_len = 2 + 8 * o.sack_n;
+        t[i..i + 4].copy_from_slice(&[1, 1, 5, sack_len]);
+        tcp_sum += 0x0601 + sack_len as u64;
         i += 4;
         for &(l, r) in &o.sack[..o.sack_n as usize] {
             t[i..i + 4].copy_from_slice(&l.0.to_be_bytes());
             t[i + 4..i + 8].copy_from_slice(&r.0.to_be_bytes());
+            tcp_sum += l.0 as u64 + r.0 as u64;
             i += 8;
         }
     }
-    while i < tcp_hlen {
-        t[i] = 0; // EOL padding
-        i += 1;
-    }
-    let mut acc = pseudo_sum(p.src, p.dst, l4_len as u32);
+    debug_assert_eq!(i, tcp_hlen);
     if p.csum_partial {
         // Not inverted: the device adds the segment and complements.
         let c = !checksum_fold(acc);
         t[16..18].copy_from_slice(&c.to_be_bytes());
         return ip_hlen + tcp_hlen;
     }
-    acc = sum_bytes(acc, t);
+    acc += tcp_sum;
     // TCP header length is a multiple of 4, so payload starts at an even offset.
     acc = sum_slices(acc, p.payload);
     let c = checksum_fold(acc);
@@ -660,5 +851,212 @@ mod tests {
         let (a, rest) = whole.split_at(3);
         let (b, c) = rest.split_at(5);
         assert_eq!(checksum_fold(sum_slices(0, &[a, b, c])), s);
+    }
+
+    fn scalar_reference_sum(mut acc: u64, data: &[u8]) -> u64 {
+        for c in data.chunks(2) {
+            acc += if c.len() == 2 { u16::from_be_bytes([c[0], c[1]]) as u64 } else { (c[0] as u64) << 8 };
+            acc = (acc & 0xffff) + (acc >> 16);
+        }
+        acc
+    }
+
+    fn scalar_reference_fold(mut acc: u64) -> u16 {
+        while acc >> 16 != 0 {
+            acc = (acc & 0xffff) + (acc >> 16);
+        }
+        !(acc as u16)
+    }
+
+    #[test]
+    fn checksum_fold_and_long_chunk_differential() {
+        for &acc in &[
+            0u64,
+            1,
+            0xfffe,
+            0xffff,
+            0x1_0000,
+            0x1_fffe,
+            0x1_ffff,
+            0x2_0000,
+            0x2_fffe,
+            0xffff_fffe,
+            0xffff_ffff,
+            0x1_0000_0000,
+            0x1_ffff_fffe,
+            0x1_ffff_ffff,
+            0x2_0000_0004,
+            0xffff_ffff_0000_0000,
+            0xffff_ffff_0000_0001,
+            0xffff_ffff_ffff_fffe,
+            u64::MAX,
+        ] {
+            assert_eq!(checksum_fold(acc), scalar_reference_fold(acc), "acc {acc:#x}");
+        }
+
+        let mut x = 0x243f_6a88u32;
+        let random_buf: Vec<u8> = (0..600_032)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                (x >> 3) as u8
+            })
+            .collect();
+        let ff_buf = vec![0xffu8; 600_032];
+        let zero_buf = vec![0u8; 600_032];
+
+        for (label, buf) in [("random", &random_buf), ("ff", &ff_buf), ("zero", &zero_buf)] {
+            for &len in &[
+                0usize, 1, 2, 3, 4, 7, 8, 12, 15, 16, 19, 20, 28, 31, 32, 33, 48, 60, 63, 64, 65, 96, 127, 128, 129, 192, 255, 256, 257, 511, 512, 1459, 1460,
+                4096, 65532, 65535, 262_140, 262_143, 262_144, 262_145, 262_148, 524_284, 524_288, 524_303, 600_000,
+            ] {
+                for off in [0usize, 1, 2, 3, 7, 15] {
+                    let slice = &buf[off..off + len];
+                    let expected = scalar_reference_fold(scalar_reference_sum(0, slice));
+                    assert_eq!(checksum_fold(sum_bytes(0, slice)), expected, "{label} len={len} off={off}");
+                    let words = len & !3;
+                    let wslice = &slice[..words];
+                    let expected_w = scalar_reference_fold(scalar_reference_sum(0, wslice));
+                    assert_eq!(checksum_fold(sum_words_portable(wslice)), expected_w, "portable {label} words={words} off={off}");
+                    assert_eq!(checksum_fold(sum_words(wslice)), expected_w, "dispatch {label} words={words} off={off}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn emit_and_parse_differential_matrix() {
+        let mut x = 0x1319_8a2eu32;
+        let data: Vec<u8> = (0..65_475)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect();
+
+        // IPv4 header with options (IHL = 24..=60) and single-bit corruption detection.
+        for ihl in (20..=60).step_by(4) {
+            let total = ihl + 20;
+            let mut pkt = vec![0u8; total];
+            pkt[0] = 0x40 | ((ihl / 4) as u8);
+            pkt[2..4].copy_from_slice(&(total as u16).to_be_bytes());
+            pkt[6..8].copy_from_slice(&0x4000u16.to_be_bytes());
+            pkt[8] = 64;
+            pkt[9] = PROTO_TCP;
+            pkt[12..16].copy_from_slice(&[192, 0, 2, 1]);
+            pkt[16..20].copy_from_slice(&[198, 51, 100, 2]);
+            for (idx, b) in pkt[20..ihl].iter_mut().enumerate() {
+                *b = (idx as u8).wrapping_mul(29).wrapping_add(1);
+            }
+            let csum = scalar_reference_fold(scalar_reference_sum(0, &pkt[..ihl]));
+            pkt[10..12].copy_from_slice(&csum.to_be_bytes());
+            pkt[ihl + 12] = 5 << 4;
+            let ip = parse_ip(&pkt).unwrap();
+            assert_eq!(ip.l4_off, ihl);
+            assert_eq!(ip.l4_len, 20);
+            for byte_idx in 0..ihl {
+                pkt[byte_idx] ^= 0x01;
+                if byte_idx <= 3 {
+                    assert!(matches!(parse_ip(&pkt), Err(DropReason::Truncated | DropReason::BadIpChecksum)));
+                } else {
+                    assert_eq!(parse_ip(&pkt).unwrap_err(), DropReason::BadIpChecksum);
+                }
+                pkt[byte_idx] ^= 0x01;
+            }
+        }
+
+        let option_cases = [
+            EmitOptions::default(),
+            EmitOptions { mss: Some(1460), ..Default::default() },
+            EmitOptions { wscale: Some(8), ..Default::default() },
+            EmitOptions { sack_perm: true, ..Default::default() },
+            EmitOptions { ts: Some((0x1122_3344, 0x5566_7788)), ..Default::default() },
+            EmitOptions { sack_perm: true, ts: Some((0xdead_beef, 0x0102_0304)), ..Default::default() },
+            EmitOptions { mss: Some(1200), wscale: Some(14), sack_perm: true, ts: Some((1, 2)), ..Default::default() },
+            EmitOptions {
+                ts: Some((1, 2)),
+                sack: [(Seq(10), Seq(20)), (Seq(30), Seq(40)), (Seq(50), Seq(60)), (Seq(0), Seq(0))],
+                sack_n: 3,
+                ..Default::default()
+            },
+            EmitOptions { sack: [(Seq(1), Seq(2)), (Seq(3), Seq(4)), (Seq(5), Seq(6)), (Seq(7), Seq(8))], sack_n: 4, ..Default::default() },
+        ];
+
+        let split_cases: &[&[usize]] = &[&[], &[1], &[64], &[1, 1], &[1, 2, 3], &[33, 1, 99, 2], &[701, 759], &[32_769, 32_666]];
+
+        for (src, dst) in [
+            ("10.20.30.40".parse::<IpAddr>().unwrap(), "172.16.0.99".parse::<IpAddr>().unwrap()),
+            ("2001:db8::1".parse::<IpAddr>().unwrap(), "2001:db8::2".parse::<IpAddr>().unwrap()),
+        ] {
+            for opts in &option_cases {
+                for &splits in split_cases {
+                    let mut slices: Vec<&[u8]> = Vec::with_capacity(splits.len());
+                    let mut pos = 0;
+                    for &len in splits {
+                        slices.push(&data[pos..pos + len]);
+                        pos += len;
+                    }
+                    let mut hdr_full = [0u8; MAX_HEADER];
+                    let mut hdr_part = [0u8; MAX_HEADER];
+                    let hl_full = emit(
+                        &mut hdr_full,
+                        &EmitParams {
+                            src,
+                            dst,
+                            src_port: 0x8001,
+                            dst_port: 0x01bb,
+                            seq: Seq(0xfedc_ba98),
+                            ack: Seq(0x0123_4567),
+                            flags: ACK | PSH,
+                            window: 0xfffe,
+                            opts,
+                            payload: &slices,
+                            ttl: 57,
+                            csum_partial: false,
+                        },
+                    );
+                    let hl_part = emit(
+                        &mut hdr_part,
+                        &EmitParams {
+                            src,
+                            dst,
+                            src_port: 0x8001,
+                            dst_port: 0x01bb,
+                            seq: Seq(0xfedc_ba98),
+                            ack: Seq(0x0123_4567),
+                            flags: ACK | PSH,
+                            window: 0xfffe,
+                            opts,
+                            payload: &slices,
+                            ttl: 57,
+                            csum_partial: true,
+                        },
+                    );
+                    assert_eq!(hl_full, hl_part);
+                    let ip_hlen = ip_header_len(src);
+                    assert_eq!(&hdr_full[..ip_hlen + 16], &hdr_part[..ip_hlen + 16]);
+                    assert_eq!(&hdr_full[ip_hlen + 18..hl_full], &hdr_part[ip_hlen + 18..hl_part]);
+
+                    let mut pkt = hdr_full[..hl_full].to_vec();
+                    for s in &slices {
+                        pkt.extend_from_slice(s);
+                    }
+                    if src.is_ipv4() {
+                        assert_eq!(scalar_reference_fold(scalar_reference_sum(0, &pkt[..20])), 0);
+                    }
+                    let ip = parse_ip(&pkt).unwrap();
+                    let tcp = parse_tcp(&pkt, &ip).unwrap();
+                    assert_eq!(tcp.src_port, 0x8001);
+                    assert_eq!(tcp.dst_port, 0x01bb);
+                    assert_eq!(tcp.seq, Seq(0xfedc_ba98));
+                    assert_eq!(tcp.ack, Seq(0x0123_4567));
+                    assert_eq!(tcp.window, 0xfffe);
+                    assert_eq!(&pkt[ip.l4_off + tcp.data_off..], &data[..pos]);
+                }
+            }
+        }
     }
 }
