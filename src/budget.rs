@@ -73,8 +73,11 @@ impl LevelUse {
         Arc::new(Self { peer_id, ..Self::default() })
     }
 
+    #[inline]
     fn limit(&self, global: &GlobalBudget, limit: u64, tier: Tier) -> u64 {
-        global.level_limit(limit, tier, self.drain.load(Ordering::Acquire), self.debt.load(Ordering::Acquire))
+        let debt = self.debt.load(Ordering::Acquire);
+        let drain = if debt != 0 && matches!(tier, Tier::Block) { self.drain.load(Ordering::Acquire) } else { 0 };
+        global.level_limit(limit, tier, drain, debt)
     }
 }
 
@@ -240,21 +243,23 @@ impl GlobalBudget {
     /// Bytes a `tier` allocation must leave free below a level's `limit`
     /// Small levels keep one complete admission rather than disabling all
     /// progress tiers when a four-connection burst no longer fits (§0010).
+    #[inline]
     pub fn headroom(&self, limit: u64, tier: Tier) -> u64 {
+        if matches!(tier, Tier::Egress) {
+            return 0;
+        }
         let egress = self.egress_reserve.load(Ordering::Relaxed);
         let drain = egress.saturating_add(META_RESERVE);
         let block = drain.saturating_add(crate::buf::TX_FIRST_WRITE_CHARGE);
-        let burst = self.admit_reserve.load(Ordering::Relaxed);
         if limit / 2 < block.saturating_add(self.admit_minimum.load(Ordering::Relaxed)) {
             return 0;
         }
-        let admit = block.saturating_add(burst).min(limit / 2);
         match tier {
             Tier::Egress => 0,
             Tier::Drain => egress,
             Tier::Block => drain,
             Tier::Admit => block,
-            Tier::Bulk => admit,
+            Tier::Bulk => block.saturating_add(self.admit_reserve.load(Ordering::Relaxed)).min(limit / 2),
         }
     }
 
@@ -267,8 +272,14 @@ impl GlobalBudget {
     /// plus the one block they may otherwise use above the admission line,
     /// as far as TX blocks and send records at the level can release it
     /// (docs/design/0006 §2, §3).
+    #[inline]
     fn level_limit(&self, limit: u64, tier: Tier, drain: u64, debt: u64) -> u64 {
         let headroom = self.headroom(limit, tier);
+        Self::level_limit_with_headroom(limit, tier, headroom, drain, debt)
+    }
+
+    #[inline(always)]
+    fn level_limit_with_headroom(limit: u64, tier: Tier, headroom: u64, drain: u64, debt: u64) -> u64 {
         let owed = if headroom == 0 || debt == 0 {
             0
         } else {
@@ -281,8 +292,11 @@ impl GlobalBudget {
         limit.saturating_sub(headroom.saturating_add(owed))
     }
 
+    #[inline]
     fn global_limit(&self, tier: Tier) -> u64 {
-        self.level_limit(self.high, tier, self.drain.load(Ordering::Acquire), self.admit_debt.load(Ordering::Acquire))
+        let debt = self.admit_debt.load(Ordering::Acquire);
+        let drain = if debt != 0 && matches!(tier, Tier::Block) { self.drain.load(Ordering::Acquire) } else { 0 };
+        self.level_limit(self.high, tier, drain, debt)
     }
 
     /// Admission state owed by the global level.
@@ -605,6 +619,46 @@ fn reserve_amount(count: &AtomicU64, limit: u64, amount: u64) -> bool {
     }
 }
 
+#[derive(Clone, Copy)]
+struct HeadroomSnapshot {
+    egress: u64,
+    drain: u64,
+    block: u64,
+    min_active: u64,
+    burst: u64,
+}
+
+impl GlobalBudget {
+    #[inline(always)]
+    fn snapshot_headroom(&self, tier: Tier) -> HeadroomSnapshot {
+        if matches!(tier, Tier::Egress) {
+            return HeadroomSnapshot { egress: 0, drain: 0, block: 0, min_active: 0, burst: 0 };
+        }
+        let egress = self.egress_reserve.load(Ordering::Relaxed);
+        let drain = egress.saturating_add(META_RESERVE);
+        let block = drain.saturating_add(crate::buf::TX_FIRST_WRITE_CHARGE);
+        let min_active = block.saturating_add(self.admit_minimum.load(Ordering::Relaxed));
+        let burst = if matches!(tier, Tier::Bulk) { self.admit_reserve.load(Ordering::Relaxed) } else { 0 };
+        HeadroomSnapshot { egress, drain, block, min_active, burst }
+    }
+
+    #[inline(always)]
+    fn limit_from_snapshot(snap: HeadroomSnapshot, limit: u64, tier: Tier, drain: u64, debt: u64) -> u64 {
+        let headroom = if matches!(tier, Tier::Egress) || limit / 2 < snap.min_active {
+            0
+        } else {
+            match tier {
+                Tier::Egress => 0,
+                Tier::Drain => snap.egress,
+                Tier::Block => snap.drain,
+                Tier::Admit => snap.block,
+                Tier::Bulk => snap.block.saturating_add(snap.burst).min(limit / 2),
+            }
+        };
+        Self::level_limit_with_headroom(limit, tier, headroom, drain, debt)
+    }
+}
+
 /// Hierarchical physical reserve used by both a retained [`MemoryHandle`] and a
 /// temporary core allocation. Returns the level that refused, if any. Forced
 /// inline so each caller keeps the body it had before the two shared it (#19:
@@ -620,15 +674,22 @@ fn reserve_physical(
     kind: AllocationKind,
 ) -> Option<Level> {
     let tier = kind.tier();
+    let snap = global.snapshot_headroom(tier);
     let _allocation = global.allocation_lock.lock().unwrap();
-    if !global.try_reserve(bytes, tier) {
+    let global_debt = global.admit_debt.load(Ordering::Acquire);
+    let global_drain = if global_debt != 0 && matches!(tier, Tier::Block) { global.drain.load(Ordering::Acquire) } else { 0 };
+    if !reserve_amount(&global.reserved, GlobalBudget::limit_from_snapshot(snap, global.high, tier, global_drain, global_debt), bytes) {
         return Some(Level::Global);
     }
-    if !reserve_amount(&port.used, port.limit(global, port_limit, tier), bytes) {
+    let port_debt = port.debt.load(Ordering::Acquire);
+    let port_drain = if port_debt != 0 && matches!(tier, Tier::Block) { port.drain.load(Ordering::Acquire) } else { 0 };
+    if !reserve_amount(&port.used, GlobalBudget::limit_from_snapshot(snap, port_limit, tier, port_drain, port_debt), bytes) {
         global.release_uncommitted(bytes);
         return Some(Level::Port);
     }
-    if !reserve_amount(&peer.used, peer.limit(global, peer_limit, tier), bytes) {
+    let peer_debt = peer.debt.load(Ordering::Acquire);
+    let peer_drain = if peer_debt != 0 && matches!(tier, Tier::Block) { peer.drain.load(Ordering::Acquire) } else { 0 };
+    if !reserve_amount(&peer.used, GlobalBudget::limit_from_snapshot(snap, peer_limit, tier, peer_drain, peer_debt), bytes) {
         port.used.fetch_sub(bytes, Ordering::AcqRel);
         global.release_uncommitted(bytes);
         return Some(Level::Peer);
@@ -1018,11 +1079,20 @@ impl PortStats {
     }
 }
 
+const PEER_CACHE_SLOTS: usize = 8;
+
+#[derive(Default)]
+struct PeerCacheSlot {
+    counter: Option<Arc<LevelUse>>,
+    spares: [Option<Arc<LevelUse>>; 2],
+}
+
 /// Shard-local accounting.
 pub struct Budget {
     global: Arc<GlobalBudget>,
     physical_port: Arc<LevelUse>,
     physical_peers: HashMap<PeerId, Arc<LevelUse>>,
+    peer_cache: [PeerCacheSlot; PEER_CACHE_SLOTS],
     /// Logical TCP payload retained by the core, distinct from physical backing.
     pub used: u64,
     pub port_limit: u64,
@@ -1046,6 +1116,7 @@ impl Budget {
             global,
             physical_port: Arc::default(),
             physical_peers: HashMap::new(),
+            peer_cache: Default::default(),
             used: 0,
             port_limit,
             peers: HashMap::new(),
@@ -1054,6 +1125,48 @@ impl Budget {
             senders: 0,
             share_epoch: 0,
             stats: Arc::default(),
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn physical_peer(&mut self, peer: PeerId) -> &Arc<LevelUse> {
+        let idx = (peer.0 as usize) & (PEER_CACHE_SLOTS - 1);
+        if self.peer_cache[idx].counter.as_ref().is_some_and(|c| c.peer_id == peer) {
+            return self.peer_cache[idx].counter.as_ref().unwrap();
+        }
+        let counter = self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer));
+        self.peer_cache[idx] = PeerCacheSlot { counter: Some(Arc::clone(counter)), spares: [Some(Arc::clone(counter)), Some(Arc::clone(counter))] };
+        self.peer_cache[idx].counter.as_ref().unwrap()
+    }
+
+    #[inline(always)]
+    pub(crate) fn take_peer_arc(&mut self, peer: PeerId) -> Arc<LevelUse> {
+        let idx = (peer.0 as usize) & (PEER_CACHE_SLOTS - 1);
+        if self.peer_cache[idx].counter.as_ref().is_none_or(|c| c.peer_id != peer) {
+            let _ = self.physical_peer(peer);
+        }
+        let slot = &mut self.peer_cache[idx];
+        if let Some(arc) = slot.spares[0].take() {
+            return arc;
+        }
+        if let Some(arc) = slot.spares[1].take() {
+            return arc;
+        }
+        Arc::clone(slot.counter.as_ref().unwrap())
+    }
+
+    #[inline(always)]
+    pub(crate) fn put_peer_arc(&mut self, arc: Arc<LevelUse>) {
+        let idx = (arc.peer_id.0 as usize) & (PEER_CACHE_SLOTS - 1);
+        let slot = &mut self.peer_cache[idx];
+        if slot.counter.as_ref().is_some_and(|c| c.peer_id == arc.peer_id) {
+            if slot.spares[0].is_none() {
+                slot.spares[0] = Some(arc);
+                return;
+            }
+            if slot.spares[1].is_none() {
+                slot.spares[1] = Some(arc);
+            }
         }
     }
 
@@ -1084,21 +1197,32 @@ impl Budget {
         // cloned `stats` and then dropped it on success. Reserve in place and
         // clone only the three counter owners the lease keeps. The retained
         // handle path (`MemoryHandle::try_allocate_level`) is unchanged.
-        let peer = self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer));
-        if let Some(level) = reserve_physical(&self.global, &self.physical_port, peer, self.port_limit, self.peer_limit, bytes, kind) {
-            self.stats.note(kind, Some(level));
-            self.global.request_cache_reclaim();
+        let global = &self.global;
+        let port = &self.physical_port;
+        let port_limit = self.port_limit;
+        let peer_limit = self.peer_limit;
+        let stats = &self.stats;
+        let idx = (peer.0 as usize) & (PEER_CACHE_SLOTS - 1);
+        if self.peer_cache[idx].counter.as_ref().is_none_or(|c| c.peer_id != peer) {
+            let counter = self.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer));
+            self.peer_cache[idx] = PeerCacheSlot { counter: Some(Arc::clone(counter)), spares: [Some(Arc::clone(counter)), Some(Arc::clone(counter))] };
+        }
+        let peer_counter = self.peer_cache[idx].counter.as_ref().unwrap();
+        if let Some(level) = reserve_physical(global, port, peer_counter, port_limit, peer_limit, bytes, kind) {
+            stats.note(kind, Some(level));
+            global.request_cache_reclaim();
             return None;
         }
         Some(MemoryLease {
-            global: Arc::clone(&self.global),
-            port: Arc::clone(&self.physical_port),
-            peer: Some(Arc::clone(peer)),
+            global: Arc::clone(global),
+            port: Arc::clone(port),
+            peer: Some(Arc::clone(peer_counter)),
             bytes,
-            peer_limit: self.peer_limit,
+            peer_limit,
             cached: false,
             peer_parked: false,
             drain: kind.drains(),
+            released: false,
         })
     }
 
@@ -1169,6 +1293,7 @@ impl Budget {
             port: Arc::clone(&self.physical_port),
             port_limit: self.port_limit,
             stats: Arc::clone(&self.stats),
+            recycled: None,
         }
     }
 
@@ -1381,6 +1506,7 @@ pub(crate) struct PortMemoryHandle {
     port: Arc<LevelUse>,
     port_limit: u64,
     stats: Arc<PortStats>,
+    recycled: Option<MemoryLease>,
 }
 
 impl PortMemoryHandle {
@@ -1390,6 +1516,45 @@ impl PortMemoryHandle {
 
     pub(crate) fn owns(&self, lease: &MemoryLease) -> bool {
         Arc::ptr_eq(&self.global, &lease.global) && Arc::ptr_eq(&self.port, &lease.port)
+    }
+
+    #[inline]
+    pub(crate) fn recycle_lease(&mut self, mut lease: MemoryLease) {
+        if self.recycled.is_none() {
+            lease.release_in_place();
+            self.recycled = Some(lease);
+        }
+    }
+
+    pub(crate) fn clear_recycled(&mut self) {
+        self.recycled = None;
+    }
+
+    #[inline]
+    pub(crate) fn try_allocate_tx_block(&mut self, budget: &mut Budget, peer: PeerId, bytes: u64) -> Option<MemoryLease> {
+        if let Some(mut lease) = self.recycled.take() {
+            if lease.peer.as_ref().is_none_or(|owner| owner.peer_id != peer) {
+                if let Some(old) = lease.peer.take() {
+                    budget.put_peer_arc(old);
+                }
+                lease.peer = Some(budget.take_peer_arc(peer));
+            }
+            let peer_ref = lease.peer.as_ref().unwrap();
+            if let Some(level) = reserve_physical(&lease.global, &lease.port, peer_ref, budget.port_limit, budget.peer_limit, bytes, AllocationKind::TxBlock) {
+                budget.stats.note(AllocationKind::TxBlock, Some(level));
+                lease.global.request_cache_reclaim();
+                self.recycled = Some(lease);
+                return None;
+            }
+            lease.bytes = bytes;
+            lease.peer_limit = budget.peer_limit;
+            lease.cached = false;
+            lease.peer_parked = false;
+            lease.drain = true;
+            lease.released = false;
+            return Some(lease);
+        }
+        budget.try_allocate_kind(peer, bytes, AllocationKind::TxBlock)
     }
 
     pub(crate) fn try_allocate_cached_index(&self, bytes: u64) -> Option<MemoryLease> {
@@ -1421,6 +1586,7 @@ impl PortMemoryHandle {
             cached: false,
             peer_parked: false,
             drain: false,
+            released: false,
         };
         if !self.global.try_cache(bytes) {
             return None;
@@ -1481,6 +1647,7 @@ impl MemoryHandle {
             cached: false,
             peer_parked: false,
             drain: kind.drains(),
+            released: false,
         })
     }
 
@@ -1547,6 +1714,7 @@ impl MemoryScope<'_> {
             cached: false,
             peer_parked: false,
             drain: kind.drains(),
+            released: false,
         })
     }
 }
@@ -1579,6 +1747,7 @@ pub struct MemoryLease {
     peer_parked: bool,
     /// Counted in each level's `drain` (a TX block or send record in use).
     drain: bool,
+    released: bool,
 }
 
 /// A peer-only reservation keeps the old index owner until the write commits.
@@ -1622,25 +1791,28 @@ impl MemoryLease {
         if !empty {
             return Err(());
         }
-        let counter = budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)).clone();
+        let peer_limit = budget.peer_limit;
         let reserved = {
+            let counter = budget.physical_peer(peer);
             let _allocation = self.global.allocation_lock.lock().unwrap();
-            reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes)
+            reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes)
         };
         if !reserved {
             budget.stats.note(AllocationKind::TxIndex, Some(Level::Peer));
             self.global.request_cache_reclaim();
             return Err(());
         }
-        Ok(Some(IndexPeerReservation { global: Arc::clone(&self.global), peer: Some(counter), bytes: self.bytes, peer_limit: budget.peer_limit }))
+        let counter = budget.take_peer_arc(peer);
+        Ok(Some(IndexPeerReservation { global: Arc::clone(&self.global), peer: Some(counter), bytes: self.bytes, peer_limit }))
     }
 
-    pub(crate) fn commit_index_peer(&mut self, mut reservation: IndexPeerReservation) {
+    pub(crate) fn commit_index_peer(&mut self, budget: &mut Budget, mut reservation: IndexPeerReservation) {
         debug_assert!(Arc::ptr_eq(&self.global, &reservation.global) && self.bytes == reservation.bytes);
         let old = self.peer.replace(reservation.peer.take().expect("prepared index peer")).expect("TX index has a peer");
         self.peer_limit = reservation.peer_limit;
         old.used.fetch_sub(self.bytes, Ordering::AcqRel);
         self.global.wake_waiters();
+        budget.put_peer_arc(old);
     }
 
     /// Empty TX indexes remain peer-owned; only their reclaimability is cached.
@@ -1703,6 +1875,26 @@ impl MemoryLease {
         true
     }
 
+    #[inline]
+    pub(crate) fn park_cached_with_index(&mut self, index: &mut MemoryLease) -> bool {
+        debug_assert!(!self.peer_parked);
+        debug_assert!(!index.drain && !index.peer_parked && index.peer.is_some());
+        let cache_bytes = if index.cached { self.bytes } else { self.bytes + index.bytes };
+        let owed = self.global.admit_debt.load(Ordering::Acquire) != 0 || self.port.debt.load(Ordering::Acquire) != 0;
+        if owed || self.global.has_waiters() || !self.global.try_cache(cache_bytes) {
+            return false;
+        }
+        self.stop_draining();
+        if let Some(peer) = &self.peer {
+            peer.used.fetch_sub(self.bytes, Ordering::AcqRel);
+            self.global.wake_waiters();
+        }
+        self.peer_parked = true;
+        self.cached = true;
+        index.cached = true;
+        true
+    }
+
     /// Reacquire the peer share even when the cached counter still matches.
     /// A refusal leaves the remembered counter uncharged and reusable.
     pub fn assign(&mut self, budget: &mut Budget, peer: PeerId) -> bool {
@@ -1711,24 +1903,138 @@ impl MemoryLease {
             return false;
         }
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
-        let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)) };
-        if !reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes) {
-            budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
-            self.global.request_cache_reclaim();
-            return false;
-        }
-        for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
-            drain.fetch_add(self.bytes, Ordering::AcqRel);
-        }
+        let peer_limit = budget.peer_limit;
+        let reserved = {
+            let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peer(peer) };
+            if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
+                budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+                self.global.request_cache_reclaim();
+                return false;
+            }
+            for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
+                drain.fetch_add(self.bytes, Ordering::AcqRel);
+            }
+            true
+        };
+        debug_assert!(reserved);
         self.drain = true;
-        self.peer_limit = budget.peer_limit;
+        self.peer_limit = peer_limit;
         if !same_peer {
-            self.peer = Some(Arc::clone(counter));
+            let new_peer = budget.take_peer_arc(peer);
+            if let Some(old) = self.peer.replace(new_peer) {
+                budget.put_peer_arc(old);
+            }
         }
         self.peer_parked = false;
         if self.cached {
             self.cached = false;
             self.global.release_cache(self.bytes);
+        }
+        true
+    }
+
+    #[inline]
+    pub(crate) fn assign_with_index(&mut self, budget: &mut Budget, peer: PeerId, index: &mut MemoryLease) -> bool {
+        debug_assert!(self.peer_parked || self.peer.is_none());
+        debug_assert!(!index.drain && !index.peer_parked && index.peer.is_some());
+        debug_assert!(self.belongs_to(budget) && index.belongs_to(budget));
+        let peer_limit = budget.peer_limit;
+        let index_same_peer = index.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        let block_same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        if index_same_peer && block_same_peer {
+            let counter = self.peer.as_ref().unwrap();
+            if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
+                budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+                self.global.request_cache_reclaim();
+                return false;
+            }
+            for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
+                drain.fetch_add(self.bytes, Ordering::AcqRel);
+            }
+            self.drain = true;
+            self.peer_limit = peer_limit;
+            self.peer_parked = false;
+            let released_cache = if self.cached {
+                self.cached = false;
+                self.bytes
+            } else {
+                0
+            } + if index.cached {
+                index.cached = false;
+                index.bytes
+            } else {
+                0
+            };
+            if released_cache != 0 {
+                self.global.release_cache(released_cache);
+            }
+            return true;
+        }
+        let idx = (peer.0 as usize) & (PEER_CACHE_SLOTS - 1);
+        if budget.peer_cache[idx].counter.as_ref().is_none_or(|c| c.peer_id != peer) {
+            let _ = budget.physical_peer(peer);
+        }
+        let counter = budget.peer_cache[idx].counter.as_ref().unwrap();
+        let limit = counter.limit(&self.global, peer_limit, Tier::Block);
+        if index_same_peer {
+            if !reserve_amount(&counter.used, limit, self.bytes) {
+                budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+                self.global.request_cache_reclaim();
+                return false;
+            }
+        } else if !reserve_amount(&counter.used, limit, self.bytes + index.bytes) {
+            let index_ok = {
+                let _allocation = self.global.allocation_lock.lock().unwrap();
+                reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), index.bytes)
+            };
+            if !index_ok {
+                budget.stats.note(AllocationKind::TxIndex, Some(Level::Peer));
+                self.global.request_cache_reclaim();
+                return false;
+            }
+            if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
+                counter.used.fetch_sub(index.bytes, Ordering::AcqRel);
+                self.global.wake_waiters();
+                budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+                self.global.request_cache_reclaim();
+                return false;
+            }
+        }
+        for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
+            drain.fetch_add(self.bytes, Ordering::AcqRel);
+        }
+        self.drain = true;
+        self.peer_limit = peer_limit;
+        if !block_same_peer {
+            let slot = &mut budget.peer_cache[idx];
+            let new_peer = slot.spares[0].take().or_else(|| slot.spares[1].take()).unwrap_or_else(|| Arc::clone(slot.counter.as_ref().unwrap()));
+            if let Some(old) = self.peer.replace(new_peer) {
+                budget.put_peer_arc(old);
+            }
+        }
+        self.peer_parked = false;
+        if !index_same_peer {
+            let slot = &mut budget.peer_cache[idx];
+            let new_peer = slot.spares[1].take().or_else(|| slot.spares[0].take()).unwrap_or_else(|| Arc::clone(slot.counter.as_ref().unwrap()));
+            let old = index.peer.replace(new_peer).expect("TX index has a peer");
+            index.peer_limit = peer_limit;
+            old.used.fetch_sub(index.bytes, Ordering::AcqRel);
+            self.global.wake_waiters();
+            budget.put_peer_arc(old);
+        }
+        let released_cache = if self.cached {
+            self.cached = false;
+            self.bytes
+        } else {
+            0
+        } + if index.cached {
+            index.cached = false;
+            index.bytes
+        } else {
+            0
+        };
+        if released_cache != 0 {
+            self.global.release_cache(released_cache);
         }
         true
     }
@@ -1745,12 +2051,13 @@ impl MemoryLease {
             }
         }
     }
-}
 
-impl Drop for MemoryLease {
-    fn drop(&mut self) {
+    #[inline]
+    fn release_in_place(&mut self) {
+        debug_assert!(!self.released);
         self.stop_draining();
         if self.cached {
+            self.cached = false;
             self.global.release_cache(self.bytes);
         }
         if !self.peer_parked {
@@ -1760,6 +2067,16 @@ impl Drop for MemoryLease {
         }
         self.port.used.fetch_sub(self.bytes, Ordering::AcqRel);
         self.global.release(self.bytes);
+        self.peer_parked = true;
+        self.released = true;
+    }
+}
+
+impl Drop for MemoryLease {
+    fn drop(&mut self) {
+        if !self.released {
+            self.release_in_place();
+        }
     }
 }
 
@@ -2690,5 +3007,68 @@ mod tests {
         global.remove_waiter(admit_id);
         global.remove_waiter(block_id);
         drop(held);
+    }
+
+    #[test]
+    fn issue65_peer_cache_slot_collisions_keep_distinct_counters_and_spares() {
+        let global = GlobalBudget::new(8 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(8 << 20, 64 << 10, 8);
+        let peers = [PeerId(0), PeerId(8), PeerId(16), PeerId(u64::MAX), PeerId(u64::MAX - 8)];
+        let handles: Vec<_> = peers.iter().map(|&peer| budget.memory_handle(peer)).collect();
+        let mut leases = Vec::new();
+        for (i, &peer) in peers.iter().enumerate() {
+            let bytes = ((i + 1) * 1024) as u64;
+            leases.push(budget.try_allocate_kind(peer, bytes, AllocationKind::TxBlock).unwrap());
+        }
+        for (i, handle) in handles.iter().enumerate() {
+            assert_eq!(handle.peer_physical_used(), ((i + 1) * 1024) as u64);
+        }
+        // Exhaust and return spare Arcs across colliding slots.
+        for &peer in &peers {
+            let a = budget.take_peer_arc(peer);
+            let b = budget.take_peer_arc(peer);
+            let c = budget.take_peer_arc(peer);
+            assert_eq!((a.peer_id, b.peer_id, c.peer_id), (peer, peer, peer));
+            budget.put_peer_arc(a);
+            budget.put_peer_arc(b);
+            budget.put_peer_arc(c);
+        }
+        drop(leases);
+        for handle in &handles {
+            assert_eq!(handle.peer_physical_used(), 0);
+        }
+        assert_eq!(budget.physical_used(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn issue65_recycled_lease_releases_immediately_and_survives_refusal() {
+        let global = GlobalBudget::new(512 << 10);
+        let mut budget = Budget::new(global.clone());
+        let peer_limit = 128 << 10;
+        budget.set_limits(256 << 10, peer_limit, 8);
+        let mut port_handle = budget.port_memory_handle();
+        let h1 = budget.memory_handle(PeerId(1));
+        let h9 = budget.memory_handle(PeerId(9));
+
+        let lease1 = port_handle.try_allocate_tx_block(&mut budget, PeerId(1), 2048).unwrap();
+        assert_eq!((global.reserved(), budget.physical_used(), h1.peer_physical_used()), (2048, 2048, 2048));
+        port_handle.recycle_lease(lease1);
+        assert_eq!((global.reserved(), budget.physical_used(), h1.peer_physical_used()), (0, 0, 0), "recycled shell must release all counters immediately");
+
+        let ceiling = peer_limit - global.headroom(peer_limit, Tier::Block);
+        let blocker = budget.try_allocate_kind(PeerId(9), ceiling - 1024, AllocationKind::TxIndex).unwrap();
+        assert!(port_handle.try_allocate_tx_block(&mut budget, PeerId(9), 2048).is_none());
+        assert_eq!(budget.stats().failures().tx_block, 1);
+        assert_eq!(budget.stats().failures_by_level()[Level::Peer as usize], 1);
+        assert_eq!(h9.peer_physical_used(), ceiling - 1024);
+        drop(blocker);
+
+        let lease2 = port_handle.try_allocate_tx_block(&mut budget, PeerId(9), 4096).unwrap();
+        assert_eq!((global.reserved(), budget.physical_used(), h9.peer_physical_used()), (4096, 4096, 4096));
+        port_handle.recycle_lease(lease2);
+        drop(port_handle);
+        assert_eq!((global.reserved(), budget.physical_used(), h1.peer_physical_used(), h9.peer_physical_used()), (0, 0, 0, 0));
     }
 }
