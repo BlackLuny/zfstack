@@ -49,6 +49,8 @@ def sample_schedule(start, phases):
 def _proc_text(root, name, files):
     if files is None:
         return (root / name).read_text()
+    # The 65,536-character bound applies only to prepared streams; the
+    # ordinary pathname fallback retains its existing read_text behavior.
     # Seeking invalidates the text buffer and restarts procfs generation. Read
     # through EOF (including short reads), never reuse a previous counter value.
     stream = files[name]
@@ -98,14 +100,19 @@ class _ProcReader:
     def __init__(self, pids, *, proc=Path("/proc")):
         self.proc = proc
         self.files = {}
+        self.fallbacks = []
+        seen = set()
         for pid in pids.values():
-            if type(pid) is not int or pid <= 0 or pid in self.files:
+            if type(pid) is not int or pid <= 0 or pid in seen:
                 continue
+            seen.add(pid)
             files = {}
             try:
                 # Pin one procfs PID directory for both counters and links.
                 # If the PID exits/recycles, none of these descriptors follows
                 # the replacement /proc/<pid> pathname into a different task.
+                # This is not an atomic cross-file snapshot: each live read
+                # still checks every identity field (including exe and netns).
                 files["directory"] = os.open(Path(proc) / str(pid), os.O_RDONLY | os.O_DIRECTORY)
                 for name in ("stat", "status", "comm"):
                     fd = os.open(name, os.O_RDONLY, dir_fd=files["directory"])
@@ -114,7 +121,10 @@ class _ProcReader:
                     except BaseException:
                         os.close(fd)
                         raise
-            except OSError:
+            except OSError as error:
+                # One path-free diagnostic per PID, not a sampling error. A
+                # later successful fallback remains valid evidence.
+                self.fallbacks.append({"pid": pid, "reason": "open_failed", "errno": error.errno})
                 try:
                     self._close(files)
                 except BaseException:
@@ -171,7 +181,17 @@ class EndpointSampler:
             # across the serial endpoint batch without adding sampler threads.
             reader = self.reader
             if reader is read_snapshot:
-                prepared = reader = _ProcReader({name: self.pids.get(name) for name in self.report["endpoints"]})
+                preparation = self.report["preparation"] = {"started_ns": time.monotonic_ns()}
+                try:
+                    prepared = reader = _ProcReader({name: self.pids.get(name) for name in self.report["endpoints"]})
+                    preparation.update(prepared_pid_count=len(prepared.files), fallbacks=prepared.fallbacks)
+                finally:
+                    ended = time.monotonic_ns()
+                    preparation.update(ended_ns=ended, duration_ns=ended - preparation["started_ns"],
+                                       first_boundary_margin_ns=round(self.start * 1e9) - ended)
+                # The frozen origin is set by load before process spawning
+                # (currently +3 seconds). Preparation consumes what remains;
+                # a negative margin never shifts the schedule or tolerance.
             for scheduled in sample_schedule(self.start, self.config["phases_sec"]):
                 if self.stop.wait(max(0, (scheduled - time.monotonic_ns()) / 1e9)):
                     self.report["errors"].append("endpoint sampler cancelled before all phase boundaries")

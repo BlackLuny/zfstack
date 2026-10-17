@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 import os
+import select
 from pathlib import Path
 import subprocess
 import sys
@@ -55,15 +56,19 @@ class EndpointTests(unittest.TestCase):
     def _check_repeated_open_cost_is_outside_the_frozen_sampling_window(self):
         # Inject only 0.2 ms per open. Reopening 3 files for 9/11 endpoints
         # costs 5.4/6.6 ms per round; this is not a real-host qualification.
-        for outbound, count in (("direct", 9), ("relay", 11)):
-            with self.subTest(outbound=outbound):
+        for outbound, count, late in (("direct", 9, False), ("relay", 11, False),
+                                       ("direct", 9, True), ("relay", 11, True)):
+            with self.subTest(outbound=outbound, late=late):
                 config = {**self.config, "outbound": outbound, "udp_enabled": True,
                           "phases_sec": {"baseline": 1, "loaded": 1, "recovery": 1}}
                 pids = dict(zip(expected_endpoints(config), range(100, 100 + count)))
                 for pid in pids.values():
                     if not (self.root / "proc" / str(pid)).exists():
                         self.make_proc(pid)
-                clock = [0]
+                # Simulate spawning having already consumed almost all of
+                # load's +3-second lead, without moving the frozen origin.
+                clock = [999_000_000 if late else 0]
+                preparation_start = clock[0]
                 path_open, fd_open = Path.open, os.open
                 prepared_reader = getattr(endpoints, "_ProcReader", None)
 
@@ -86,6 +91,26 @@ class EndpointTests(unittest.TestCase):
                 report = sampler.report
                 self.assertFalse(report["errors"], report["errors"])
                 rows = [row for record in report["endpoints"].values() for row in record["samples"]]
+                preparation = report["preparation"]
+                self.assertEqual(preparation["started_ns"], preparation_start)
+                self.assertEqual(preparation["duration_ns"], count * 4 * 200_000)
+                self.assertEqual(preparation["ended_ns"], preparation_start + preparation["duration_ns"])
+                self.assertEqual(preparation["first_boundary_margin_ns"], 1_000_000_000 - preparation["ended_ns"])
+                self.assertEqual(preparation["prepared_pid_count"], count)
+                self.assertEqual(preparation["fallbacks"], [])
+                if late:
+                    self.assertLess(preparation["first_boundary_margin_ns"], -5_000_000)
+                    self.assertEqual(config["boundary_tolerance_ns"], 5_000_000)
+                    self.assertEqual(report["planned_boundaries"], boundaries(1, config["phases_sec"]))
+                    for record in report["endpoints"].values():
+                        first = record["samples"][0]
+                        self.assertEqual(first["scheduled_ns"], 1_000_000_000)
+                        self.assertEqual(first["at_ns"], preparation["ended_ns"])
+                        self.assertEqual(first["boundary_error_ns"], -preparation["first_boundary_margin_ns"])
+                    errors, _ = validate_evidence(report, self.result, config)
+                    self.assertTrue(errors)
+                    self.assertTrue(all("sampling precision insufficient" in error for error in errors), errors)
+                    continue
                 self.assertEqual(max(row["boundary_error_ns"] for row in rows), 0)
                 for record in report["endpoints"].values():
                     self.assertEqual([row["scheduled_ns"] for row in record["samples"]], sample_schedule(1, config["phases_sec"]))
@@ -134,9 +159,11 @@ class EndpointTests(unittest.TestCase):
             fd = open_fd(*args, **kwargs); opened.append(fd); return fd
 
         with patch("endpoints.os.open", side_effect=tracked_open):
-            reader = endpoints._ProcReader({"missing": 43, "partial": 42, "invalid": None}, proc=proc)
+            reader = endpoints._ProcReader({"missing": 43, "partial": 42, "duplicate": 42, "invalid": None}, proc=proc)
         self.addCleanup(reader.close)
         self.assertFalse(reader.files)
+        self.assertEqual(reader.fallbacks, [{"pid": pid, "reason": "open_failed", "errno": 2} for pid in (43, 42)])
+        self.assertNotIn(str(proc), json.dumps(reader.fallbacks))
         for fd in opened:
             with self.assertRaises(OSError):
                 os.fstat(fd)
@@ -216,6 +243,16 @@ class EndpointTests(unittest.TestCase):
         with io.TextIOWrapper(ShortReads(value.encode())) as stream:
             for _ in range(2):
                 self.assertEqual(endpoints._proc_text(Path("/unused"), "status", {"status": stream}), value)
+        # Negative control: a text wrapper may retain read-ahead data even
+        # after its underlying file changes. Rewinding the raw buffer alone
+        # does not discard that decoded text; _proc_text must seek the wrapper.
+        old, new = "old-counter\n", "new-counter\n"
+        raw = io.BytesIO(old.encode())
+        with io.TextIOWrapper(raw) as stream:
+            self.assertEqual(stream.read(1), old[0])
+            raw.seek(0); raw.write(new.encode()); raw.seek(0)
+            self.assertEqual(stream.read(len(old) - 1), old[1:])
+            self.assertEqual(endpoints._proc_text(Path("/unused"), "stat", {"stat": stream}), new)
 
     def _check_prepared_reader_rejects_oversized_or_invalid_text_and_closes_on_cancel(self):
         proc, target, _ = self.make_proc()
@@ -225,6 +262,8 @@ class EndpointTests(unittest.TestCase):
         (target / "comm").write_text("x" * 65_537)
         with self.assertRaisesRegex(ValueError, "snapshot limit"):
             reader(42, 0, None)
+        # The fallback remains the original unbounded pathname reader.
+        self.assertEqual(len(read_snapshot(42, 0, proc=proc)[0]["comm"]), 65_537)
         (target / "comm").write_bytes(b"\xff")
         with self.assertRaises(UnicodeError):
             reader(42, 0, None)
@@ -238,13 +277,107 @@ class EndpointTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 os.fstat(fd)
 
+    def _check_preparation_fallback_does_not_invalidate_successful_samples(self):
+        config = {**self.config, "phases_sec": {"baseline": 1, "loaded": 1, "recovery": 1}}
+        pids = dict(zip(expected_endpoints(config), range(100, 100 + len(expected_endpoints(config)))))
+        for pid in pids.values():
+            self.make_proc(pid)
+        target = self.root / "proc" / "100" / "status"
+        status = target.read_text()
+        target.unlink()
+        prepared = endpoints._ProcReader(pids, proc=self.root / "proc")
+        target.write_text(status)
+        clock = [0]
+
+        def wait(delay):
+            clock[0] += round(delay * 1e9)
+            return False
+
+        sampler = EndpointSampler(config, 1, pids, self.root / "fallback.json")
+        with patch("endpoints._ProcReader", return_value=prepared), \
+             patch("endpoints.time.monotonic_ns", side_effect=lambda: clock[0]), \
+             patch.object(sampler.stop, "wait", side_effect=wait):
+            sampler._run()
+        report = json.loads(sampler.output.read_text())
+        self.assertEqual(report["preparation"]["fallbacks"], [{"pid": 100, "reason": "open_failed", "errno": 2}])
+        self.assertEqual(report["preparation"]["prepared_pid_count"], len(pids) - 1)
+        self.assertFalse(report["errors"])
+        self.assertFalse(validate_evidence(report, self.result, config)[0])
+        self.assertFalse(prepared.files)
+
+    def _check_real_prepared_reader_observes_cpu_growth(self):
+        # The child announces readiness, burns a measured amount of process CPU,
+        # then acknowledges completion and blocks on its pipe. No sleep guesses
+        # whether a scheduler tick happened. Deadlines only bound test failures.
+        code = """import os, sys, time
+print('ready', flush=True)
+sys.stdin.readline()
+end = time.process_time() + max(.05, 4 / os.sysconf('SC_CLK_TCK'))
+while time.process_time() < end:
+    pass
+print('done', flush=True)
+sys.stdin.readline()
+"""
+        child = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        reader = None
+        try:
+            def receive(expected):
+                deadline, received = time.monotonic() + 10, b""
+                while not received.endswith(b"\n"):
+                    remaining = deadline - time.monotonic()
+                    self.assertGreater(remaining, 0, "child handshake timed out")
+                    self.assertTrue(select.select([child.stdout], [], [], remaining)[0], "child handshake timed out")
+                    chunk = os.read(child.stdout.fileno(), 64)
+                    self.assertTrue(chunk, "child exited before handshake")
+                    received += chunk
+                    self.assertLessEqual(len(received), len(expected), "unexpected child output")
+                self.assertEqual(received, expected)
+
+            receive(b"ready\n")
+            reader = endpoints._ProcReader({"endpoint": child.pid})
+            self.assertEqual(reader.fallbacks, [])
+            held = dict(reader.files[child.pid])
+            fds = [value if name == "directory" else value.fileno() for name, value in held.items()]
+            identity, first = reader(child.pid, time.monotonic_ns(), None)
+            child.stdin.write(b"go\n"); child.stdin.flush()
+            receive(b"done\n")
+            before = time.monotonic_ns()
+            same, second = reader(child.pid, before, identity)
+            after = time.monotonic_ns()
+            self.assertEqual(same, identity)
+            self.assertEqual(reader.files[child.pid], held)
+            self.assertGreater(second["cpu_ticks"], first["cpu_ticks"])
+            self.assertGreater(second["cpu_sec"], first["cpu_sec"])
+            self.assertLessEqual(before, second["at_ns"])
+            self.assertLessEqual(second["at_ns"], after)
+            self.assertEqual(second["boundary_error_ns"], second["at_ns"] - before)
+            reader.close()
+            for fd in fds:
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+        finally:
+            try:
+                if reader is not None:
+                    reader.close()
+            finally:
+                try:
+                    if child.poll() is None:
+                        child.kill()
+                    child.wait(timeout=5)
+                finally:
+                    child.stdin.close(); child.stdout.close()
+
     def _check_prepared_reader_preserves_zombie_and_rejects_reaped_pid(self):
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-        reader = endpoints._ProcReader({"endpoint": child.pid})
+        reader = None
         try:
+            reader = endpoints._ProcReader({"endpoint": child.pid})
             identity, _ = reader(child.pid, time.monotonic_ns(), None)
             child.terminate()
-            os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)
+            deadline = time.monotonic() + 5
+            while os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG) is None:
+                self.assertLess(time.monotonic(), deadline, "child did not exit")
+                time.sleep(.005)  # Poll exit only; never used to infer CPU growth.
             same, row = reader(child.pid, time.monotonic_ns(), identity)
             self.assertEqual(same, identity)
             self.assertEqual(row["identity_observation"], "retained-zombie")
@@ -253,9 +386,13 @@ class EndpointTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 reader(child.pid, time.monotonic_ns(), identity)
         finally:
-            reader.close()
-            if child.poll() is None:
-                child.kill(); child.wait(timeout=5)
+            try:
+                if reader is not None:
+                    reader.close()
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=5)
 
     def test_missing_endpoint_reset_identity_and_phase_are_invalid(self):
         report = endpoint_fixture(self.config)
@@ -325,6 +462,7 @@ class EndpointTests(unittest.TestCase):
         for check in (self._check_repeated_open_cost_is_outside_the_frozen_sampling_window,
                       self._check_prepared_reader_refreshes_values_and_checks_every_identity_field,
                       self._check_prepared_reader_closes_partial_preparation_and_retries_missing_process,
+                      self._check_preparation_fallback_does_not_invalidate_successful_samples,
                       self._check_unexpected_preparation_failure_releases_all_owned_descriptors,
                       self._check_preparation_and_cleanup_failure_also_close_previous_endpoints,
                       self._check_prepared_reader_rejects_oversized_or_invalid_text_and_closes_on_cancel):
@@ -358,6 +496,7 @@ class EndpointTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "linux", "actual endpoint /proc CPU sampling requires Linux")
     def test_real_sampler_file_survives_freeze_and_independent_inspection(self):
+        self._check_real_prepared_reader_observes_cpu_growth()
         self._check_prepared_reader_preserves_zombie_and_rejects_reaped_pid()
         from evidence import inspect_case, load_case
         repository = Path(__file__).resolve().parents[2]
