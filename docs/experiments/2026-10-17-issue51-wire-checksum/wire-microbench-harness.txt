@@ -1,0 +1,343 @@
+use std::hint::black_box;
+use std::net::IpAddr;
+
+#[repr(C)]
+struct Timespec { tv_sec: i64, tv_nsec: i64 }
+extern "C" { fn clock_gettime(clk_id: i32, tp: *mut Timespec) -> i32; }
+fn cpu_ns() -> u64 {
+    let mut ts = Timespec { tv_sec: 0, tv_nsec: 0 };
+    unsafe { clock_gettime(2, &mut ts); }
+    (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
+}
+
+#[no_mangle] #[inline(never)]
+pub extern "C" fn gdb_warmup_done() {
+    unsafe { std::arch::asm!("nop"); }
+}
+
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_sum_bytes_base(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len) };
+    base_lib::checksum_fold(base_lib::sum_bytes(0, s))
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_sum_bytes_aa(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len) };
+    base_aa_lib::checksum_fold(base_aa_lib::sum_bytes(0, s))
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_sum_bytes_cand(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len) };
+    cand_lib::checksum_fold(cand_lib::sum_bytes(0, s))
+}
+
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_portable_base(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len & !3) };
+    base_lib::checksum_fold(base_lib::sum_words_portable(s))
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_portable_aa(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len & !3) };
+    base_aa_lib::checksum_fold(base_aa_lib::sum_words_portable(s))
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_portable_cand(ptr: *const u8, len: usize) -> u16 {
+    let s = unsafe { std::slice::from_raw_parts(ptr, len & !3) };
+    cand_lib::checksum_fold(cand_lib::sum_words_portable(s))
+}
+
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_emit_base(buf: &mut [u8; 100], p: &base_lib::EmitParams) -> usize { base_lib::emit(buf, p) }
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_emit_aa(buf: &mut [u8; 100], p: &base_aa_lib::EmitParams) -> usize { base_aa_lib::emit(buf, p) }
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_emit_cand(buf: &mut [u8; 100], p: &cand_lib::EmitParams) -> usize { cand_lib::emit(buf, p) }
+
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_parse_base(ptr: *const u8, len: usize) -> usize {
+    let pkt = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let ip = base_lib::parse_ip(pkt).unwrap();
+    base_lib::parse_tcp_with(pkt, &ip, true).unwrap().data_off
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_parse_aa(ptr: *const u8, len: usize) -> usize {
+    let pkt = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let ip = base_aa_lib::parse_ip(pkt).unwrap();
+    base_aa_lib::parse_tcp_with(pkt, &ip, true).unwrap().data_off
+}
+#[no_mangle] #[inline(never)]
+pub extern "C" fn mb_parse_cand(ptr: *const u8, len: usize) -> usize {
+    let pkt = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let ip = cand_lib::parse_ip(pkt).unwrap();
+    cand_lib::parse_tcp_with(pkt, &ip, true).unwrap().data_off
+}
+
+fn main() {
+    let src: IpAddr = "10.0.0.1".parse().unwrap();
+    let dst: IpAddr = "10.0.0.2".parse().unwrap();
+    let mut x = 0x9e37_79b9u32;
+    let buf: Vec<u8> = (0..524_288).map(|_| {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        (x >> 7) as u8
+    }).collect();
+
+    // Pre-warm CPU feature detection and all paths before any measurement
+    black_box(mb_sum_bytes_base(black_box(buf.as_ptr()), black_box(64)));
+    black_box(mb_sum_bytes_aa(black_box(buf.as_ptr()), black_box(64)));
+    black_box(mb_sum_bytes_cand(black_box(buf.as_ptr()), black_box(64)));
+
+    if std::env::args().any(|a| a == "--gdb-once") {
+        gdb_warmup_done();
+        let mut h = [0u8; 100];
+        let b_opts = base_lib::EmitOptions { ts: Some((100, 200)), ..Default::default() };
+        let c_opts = cand_lib::EmitOptions { ts: Some((100, 200)), ..Default::default() };
+        for &sz in &[20usize, 32, 64, 512, 1460, 4096, 16384, 65495] {
+            black_box(mb_sum_bytes_base(black_box(buf.as_ptr()), black_box(sz)));
+            black_box(mb_sum_bytes_cand(black_box(buf.as_ptr()), black_box(sz)));
+            if sz >= 64 {
+                black_box(mb_portable_base(black_box(buf.as_ptr()), black_box(sz & !3)));
+                black_box(mb_portable_cand(black_box(buf.as_ptr()), black_box(sz & !3)));
+            }
+        }
+        for &(plen, partial) in &[(0usize, true), (0usize, false), (64usize, false), (512usize, false), (1460usize, false), (65483usize, false)] {
+            let pay: &[&[u8]] = if plen == 0 { &[] } else { &[&buf[..plen]] };
+            let bp = base_lib::EmitParams {
+                src, dst, src_port: 443, dst_port: 50000, seq: base_lib::Seq(12345), ack: base_lib::Seq(67890),
+                flags: base_lib::ACK | base_lib::PSH, window: 4096, opts: &b_opts, payload: pay, ttl: 64, csum_partial: partial,
+            };
+            let cp = cand_lib::EmitParams {
+                src, dst, src_port: 443, dst_port: 50000, seq: cand_lib::Seq(12345), ack: cand_lib::Seq(67890),
+                flags: cand_lib::ACK | cand_lib::PSH, window: 4096, opts: &c_opts, payload: pay, ttl: 64, csum_partial: partial,
+            };
+            let hl = mb_emit_base(black_box(&mut h), black_box(&bp));
+            black_box(mb_emit_cand(black_box(&mut h), black_box(&cp)));
+            if !partial {
+                let mut pkt = h[..hl].to_vec();
+                let parse_plen = if plen == 1460 { 1448 } else { plen };
+                pkt.extend_from_slice(&buf[..parse_plen]);
+                let total_len = (20 + hl - 20 + parse_plen) as u16;
+                pkt[2..4].copy_from_slice(&total_len.to_be_bytes());
+                let mut hdr_buf = [0u8; 100];
+                let pay_p: &[&[u8]] = if parse_plen == 0 { &[] } else { &[&buf[..parse_plen]] };
+                let bp_p = base_lib::EmitParams {
+                    src, dst, src_port: 443, dst_port: 50000, seq: base_lib::Seq(12345), ack: base_lib::Seq(67890),
+                    flags: base_lib::ACK | base_lib::PSH, window: 4096, opts: &b_opts, payload: pay_p, ttl: 64, csum_partial: false,
+                };
+                let hl_p = base_lib::emit(&mut hdr_buf, &bp_p);
+                let mut pkt_p = hdr_buf[..hl_p].to_vec();
+                pkt_p.extend_from_slice(&buf[..parse_plen]);
+                black_box(mb_parse_base(black_box(pkt_p.as_ptr()), black_box(pkt_p.len())));
+                black_box(mb_parse_cand(black_box(pkt_p.as_ptr()), black_box(pkt_p.len())));
+            }
+        }
+        return;
+    }
+
+    let mut rows = Vec::new();
+    let orders = ["ABBA", "BAAB"];
+
+    // 1. sum_bytes + checksum_fold
+    for &sz in &[20usize, 32, 64, 512, 1460, 4096, 16384, 65495, 524288] {
+        let iters = (32 * 1024 * 1024 / sz).clamp(200, 500_000);
+        assert_eq!(mb_sum_bytes_base(buf.as_ptr(), sz), mb_sum_bytes_cand(buf.as_ptr(), sz));
+        for block in 0..13 {
+            let order = orders[block % 2];
+            let run_b = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_sum_bytes_base(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_aa = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_sum_bytes_aa(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_c = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_sum_bytes_cand(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let (b0, c0, b1, c1, aa0, aa1) = if order == "ABBA" {
+                let a1 = run_b(); let b1 = run_c(); let aa_1 = run_aa();
+                let aa_2 = run_aa(); let b2 = run_c(); let a2 = run_b();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            } else {
+                let b1 = run_c(); let aa_1 = run_aa(); let a1 = run_b();
+                let a2 = run_b(); let aa_2 = run_aa(); let b2 = run_c();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            };
+            if block > 0 {
+                rows.push(format!(
+                    "{{\"case\":\"sum_bytes_{sz}B\",\"block\":{},\"base_ns\":{:.4},\"cand_ns\":{:.4},\"aa_ns\":{:.4}}}",
+                    block - 1, 0.5 * (b0 + b1), 0.5 * (c0 + c1), 0.5 * (aa0 + aa1)
+                ));
+            }
+        }
+    }
+
+    // 2. sum_words_portable + checksum_fold
+    for &sz in &[64usize, 512, 1460, 4096, 16384, 65492, 524288] {
+        let iters = (32 * 1024 * 1024 / sz).clamp(200, 500_000);
+        assert_eq!(mb_portable_base(buf.as_ptr(), sz), mb_portable_cand(buf.as_ptr(), sz));
+        for block in 0..13 {
+            let order = orders[block % 2];
+            let run_b = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_portable_base(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_aa = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_portable_aa(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_c = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_portable_cand(black_box(buf.as_ptr()), black_box(sz))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let (b0, c0, b1, c1, aa0, aa1) = if order == "ABBA" {
+                let a1 = run_b(); let b1 = run_c(); let aa_1 = run_aa();
+                let aa_2 = run_aa(); let b2 = run_c(); let a2 = run_b();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            } else {
+                let b1 = run_c(); let aa_1 = run_aa(); let a1 = run_b();
+                let a2 = run_b(); let aa_2 = run_aa(); let b2 = run_c();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            };
+            if block > 0 {
+                rows.push(format!(
+                    "{{\"case\":\"portable_{sz}B\",\"block\":{},\"base_ns\":{:.4},\"cand_ns\":{:.4},\"aa_ns\":{:.4}}}",
+                    block - 1, 0.5 * (b0 + b1), 0.5 * (c0 + c1), 0.5 * (aa0 + aa1)
+                ));
+            }
+        }
+    }
+
+    // 3. emit & parse_ip+tcp
+    let b_opts = base_lib::EmitOptions { ts: Some((100, 200)), ..Default::default() };
+    let a_opts = base_aa_lib::EmitOptions { ts: Some((100, 200)), ..Default::default() };
+    let c_opts = cand_lib::EmitOptions { ts: Some((100, 200)), ..Default::default() };
+    for &(label, plen, partial) in &[
+        ("emit_ack_offload_52B", 0usize, true),
+        ("emit_ack_softcsum_52B", 0usize, false),
+        ("emit_data_softcsum_64B", 64usize, false),
+        ("emit_data_softcsum_512B", 512usize, false),
+        ("emit_data_softcsum_1460B", 1460usize, false),
+        ("emit_data_softcsum_65483B", 65483usize, false),
+    ] {
+        let pay: &[&[u8]] = if plen == 0 { &[] } else { &[&buf[..plen]] };
+        let iters = if plen <= 64 { 200_000 } else if plen <= 1460 { 100_000 } else { 5_000 };
+        let mut h = [0u8; 100];
+        for block in 0..13 {
+            let order = orders[block % 2];
+            let run_b = |h: &mut [u8; 100]| -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters {
+                    let p = base_lib::EmitParams {
+                        src: black_box(src), dst: black_box(dst), src_port: 443, dst_port: 50000,
+                        seq: base_lib::Seq(12345), ack: base_lib::Seq(67890), flags: base_lib::ACK | base_lib::PSH,
+                        window: 4096, opts: &b_opts, payload: black_box(pay), ttl: 64, csum_partial: partial,
+                    };
+                    black_box(mb_emit_base(black_box(h), &p));
+                }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_aa = |h: &mut [u8; 100]| -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters {
+                    let p = base_aa_lib::EmitParams {
+                        src: black_box(src), dst: black_box(dst), src_port: 443, dst_port: 50000,
+                        seq: base_aa_lib::Seq(12345), ack: base_aa_lib::Seq(67890), flags: base_aa_lib::ACK | base_aa_lib::PSH,
+                        window: 4096, opts: &a_opts, payload: black_box(pay), ttl: 64, csum_partial: partial,
+                    };
+                    black_box(mb_emit_aa(black_box(h), &p));
+                }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_c = |h: &mut [u8; 100]| -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters {
+                    let p = cand_lib::EmitParams {
+                        src: black_box(src), dst: black_box(dst), src_port: 443, dst_port: 50000,
+                        seq: cand_lib::Seq(12345), ack: cand_lib::Seq(67890), flags: cand_lib::ACK | cand_lib::PSH,
+                        window: 4096, opts: &c_opts, payload: black_box(pay), ttl: 64, csum_partial: partial,
+                    };
+                    black_box(mb_emit_cand(black_box(h), &p));
+                }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let (b0, c0, b1, c1, aa0, aa1) = if order == "ABBA" {
+                let a1 = run_b(&mut h); let b1 = run_c(&mut h); let aa_1 = run_aa(&mut h);
+                let aa_2 = run_aa(&mut h); let b2 = run_c(&mut h); let a2 = run_b(&mut h);
+                (a1, b1, a2, b2, aa_1, aa_2)
+            } else {
+                let b1 = run_c(&mut h); let aa_1 = run_aa(&mut h); let a1 = run_b(&mut h);
+                let a2 = run_b(&mut h); let aa_2 = run_aa(&mut h); let b2 = run_c(&mut h);
+                (a1, b1, a2, b2, aa_1, aa_2)
+            };
+            if block > 0 {
+                rows.push(format!(
+                    "{{\"case\":\"{label}\",\"block\":{},\"base_ns\":{:.4},\"cand_ns\":{:.4},\"aa_ns\":{:.4}}}",
+                    block - 1, 0.5 * (b0 + b1), 0.5 * (c0 + c1), 0.5 * (aa0 + aa1)
+                ));
+            }
+        }
+    }
+
+    for &(label, plen) in &[
+        ("parse_ip_tcp_softcsum_52B", 0usize),
+        ("parse_ip_tcp_softcsum_64B", 64usize),
+        ("parse_ip_tcp_softcsum_512B", 512usize),
+        ("parse_ip_tcp_softcsum_1448B", 1448usize),
+        ("parse_ip_tcp_softcsum_65483B", 65483usize),
+    ] {
+        let pay: &[&[u8]] = if plen == 0 { &[] } else { &[&buf[..plen]] };
+        let mut h = [0u8; 100];
+        let hl = base_lib::emit(&mut h, &base_lib::EmitParams {
+            src, dst, src_port: 443, dst_port: 50000, seq: base_lib::Seq(12345), ack: base_lib::Seq(67890),
+            flags: base_lib::ACK | base_lib::PSH, window: 4096, opts: &b_opts, payload: pay, ttl: 64, csum_partial: false,
+        });
+        let mut pkt = h[..hl].to_vec();
+        pkt.extend_from_slice(&buf[..plen]);
+        let iters = if plen <= 64 { 200_000 } else if plen <= 1460 { 100_000 } else { 5_000 };
+        for block in 0..13 {
+            let order = orders[block % 2];
+            let run_b = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_parse_base(black_box(pkt.as_ptr()), black_box(pkt.len()))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_aa = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_parse_aa(black_box(pkt.as_ptr()), black_box(pkt.len()))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let run_c = || -> f64 {
+                let t0 = cpu_ns();
+                for _ in 0..iters { black_box(mb_parse_cand(black_box(pkt.as_ptr()), black_box(pkt.len()))); }
+                (cpu_ns() - t0) as f64 / (iters as f64)
+            };
+            let (b0, c0, b1, c1, aa0, aa1) = if order == "ABBA" {
+                let a1 = run_b(); let b1 = run_c(); let aa_1 = run_aa();
+                let aa_2 = run_aa(); let b2 = run_c(); let a2 = run_b();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            } else {
+                let b1 = run_c(); let aa_1 = run_aa(); let a1 = run_b();
+                let a2 = run_b(); let aa_2 = run_aa(); let b2 = run_c();
+                (a1, b1, a2, b2, aa_1, aa_2)
+            };
+            if block > 0 {
+                rows.push(format!(
+                    "{{\"case\":\"{label}\",\"block\":{},\"base_ns\":{:.4},\"cand_ns\":{:.4},\"aa_ns\":{:.4}}}",
+                    block - 1, 0.5 * (b0 + b1), 0.5 * (c0 + c1), 0.5 * (aa0 + aa1)
+                ));
+            }
+        }
+    }
+
+    println!("{}", rows.join("\n"));
+}
