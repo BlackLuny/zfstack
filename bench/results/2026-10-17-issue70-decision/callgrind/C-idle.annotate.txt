@@ -1,0 +1,44 @@
+--------------------------------------------------------------------------------
+Profile data file '/tmp/zf70-eval/callgrind/C-idle.callgrind' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 54656023
+Trigger: Program termination
+Profiled target:  /tmp/zf70-eval/bin/C-libtest --exact tokio_adapter::tests::qa::issue48_measure_idle_pump --nocapture (PID 16216, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+330,191,005 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+57,250,000 (17.34%)  ???:zfstack::tokio_adapter::Driver<E,I,F>::relay_pump [/tmp/zf70-eval/bin/C-libtest]
+45,547,709 (13.79%)  ???:core::hash::BuildHasher::hash_one [/tmp/zf70-eval/bin/C-libtest]
+39,501,539 (11.96%)  ???:zfstack::shard::Shard::after_conn_change [/tmp/zf70-eval/bin/C-libtest]
+30,501,196 ( 9.24%)  ???:zfstack::shard::Shard::schedule [/tmp/zf70-eval/bin/C-libtest]
+30,250,249 ( 9.16%)  ???:tokio::runtime::io::registration::Registration::poll_ready [/tmp/zf70-eval/bin/C-libtest]
+28,041,938 ( 8.49%)  ???:<core::hash::sip::Hasher<S> as core::hash::Hasher>::write [/tmp/zf70-eval/bin/C-libtest]
+21,250,346 ( 6.44%)  ???:zfstack::tokio_adapter::Driver<E,I,F>::pump [/tmp/zf70-eval/bin/C-libtest]
+14,000,560 ( 4.24%)  ???:zfstack::shard::Shard::sync_share_waiter [/tmp/zf70-eval/bin/C-libtest]
+12,000,209 ( 3.63%)  ???:zfstack::heap::IndexedHeap::remove [/tmp/zf70-eval/bin/C-libtest]
+11,250,045 ( 3.41%)  ???:zfstack::conn::Conn::read_chunk_for_adapter [/tmp/zf70-eval/bin/C-libtest]
+ 7,750,348 ( 2.35%)  ???:std::sys::pal::unix::time::Timespec::sub_timespec [/tmp/zf70-eval/bin/C-libtest]
+ 7,500,030 ( 2.27%)  ???:zfstack::buf::RxQueue::read_chunk [/tmp/zf70-eval/bin/C-libtest]
+ 6,297,628 ( 1.91%)  ???:zfstack::sim::Side::new [/tmp/zf70-eval/bin/C-libtest]
+ 4,000,272 ( 1.21%)  ???:std::sys::pal::unix::time::Timespec::now [/tmp/zf70-eval/bin/C-libtest]
+ 3,750,015 ( 1.14%)  ???:zfstack::buf::RxQueue::seal_tail [/tmp/zf70-eval/bin/C-libtest]
+ 3,250,039 ( 0.98%)  ???:tokio::time::instant::Instant::now [/tmp/zf70-eval/bin/C-libtest]
+ 2,750,187 ( 0.83%)  ./time/../sysdeps/unix/sysv/linux/clock_gettime.c:clock_gettime@@GLIBC_2.17 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 2,750,011 ( 0.83%)  ???:zfstack::buf::RxQueue::seal_charged_tail [/tmp/zf70-eval/bin/C-libtest]
+

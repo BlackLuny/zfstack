@@ -1,0 +1,168 @@
+{
+  "T": {
+    "process_ir": 964507291,
+    "relay_pump_self_ir": 167000000,
+    "top": [
+      {
+        "ir": 167000000,
+        "fn": "zfstack::tokio_adapter::Driver<E,I,F>::relay_pump"
+      },
+      {
+        "ir": 163797891,
+        "fn": "core::hash::BuildHasher::hash_one"
+      },
+      {
+        "ir": 122792050,
+        "fn": "<core::hash::sip::Hasher<S> as core::hash::Hasher>::write"
+      },
+      {
+        "ir": 59251539,
+        "fn": "zfstack::shard::Shard::after_conn_change"
+      },
+      {
+        "ir": 45751196,
+        "fn": "zfstack::shard::Shard::schedule"
+      },
+      {
+        "ir": 36750560,
+        "fn": "zfstack::shard::Shard::sync_share_waiter"
+      },
+      {
+        "ir": 35250282,
+        "fn": "zfstack::conn::Conn::sndbuf_limit"
+      },
+      {
+        "ir": 30250249,
+        "fn": "tokio::runtime::io::registration::Registration::poll_ready"
+      },
+      {
+        "ir": 28499886,
+        "fn": "zfstack::budget::MemoryLease::assign"
+      },
+      {
+        "ir": 25250000,
+        "fn": "zfstack::budget::Budget::try_reserve"
+      },
+      {
+        "ir": 25000000,
+        "fn": "zfstack::budget::MemoryLease::park_cached"
+      },
+      {
+        "ir": 23750570,
+        "fn": "zfstack::budget::Budget::send_share"
+      },
+      {
+        "ir": 23000008,
+        "fn": "zfstack::buf::BlockPool::get"
+      },
+      {
+        "ir": 21250346,
+        "fn": "zfstack::tokio_adapter::Driver<E,I,F>::pump"
+      },
+      {
+        "ir": 18000209,
+        "fn": "zfstack::heap::IndexedHeap::remove"
+      },
+      {
+        "ir": 15750263,
+        "fn": "zfstack::buf::BlockPool::put"
+      },
+      {
+        "ir": 14000000,
+        "fn": "zfstack::budget::Budget::cancel_reserve"
+      },
+      {
+        "ir": 11250045,
+        "fn": "zfstack::conn::Conn::read_chunk_for_adapter"
+      },
+      {
+        "ir": 10250000,
+        "fn": "zfstack::buf::TxBuf::trim_empty_index"
+      },
+      {
+        "ir": 7750348,
+        "fn": "std::sys::pal::unix::time::Timespec::sub_timespec"
+      }
+    ]
+  },
+  "C": {
+    "process_ir": 330191005,
+    "relay_pump_self_ir": 57250000,
+    "top": [
+      {
+        "ir": 57250000,
+        "fn": "zfstack::tokio_adapter::Driver<E,I,F>::relay_pump"
+      },
+      {
+        "ir": 45547709,
+        "fn": "core::hash::BuildHasher::hash_one"
+      },
+      {
+        "ir": 39501539,
+        "fn": "zfstack::shard::Shard::after_conn_change"
+      },
+      {
+        "ir": 30501196,
+        "fn": "zfstack::shard::Shard::schedule"
+      },
+      {
+        "ir": 30250249,
+        "fn": "tokio::runtime::io::registration::Registration::poll_ready"
+      },
+      {
+        "ir": 28041938,
+        "fn": "<core::hash::sip::Hasher<S> as core::hash::Hasher>::write"
+      },
+      {
+        "ir": 21250346,
+        "fn": "zfstack::tokio_adapter::Driver<E,I,F>::pump"
+      },
+      {
+        "ir": 14000560,
+        "fn": "zfstack::shard::Shard::sync_share_waiter"
+      },
+      {
+        "ir": 12000209,
+        "fn": "zfstack::heap::IndexedHeap::remove"
+      },
+      {
+        "ir": 11250045,
+        "fn": "zfstack::conn::Conn::read_chunk_for_adapter"
+      },
+      {
+        "ir": 7750348,
+        "fn": "std::sys::pal::unix::time::Timespec::sub_timespec"
+      },
+      {
+        "ir": 7500030,
+        "fn": "zfstack::buf::RxQueue::read_chunk"
+      },
+      {
+        "ir": 6297628,
+        "fn": "zfstack::sim::Side::new"
+      },
+      {
+        "ir": 4000272,
+        "fn": "std::sys::pal::unix::time::Timespec::now"
+      },
+      {
+        "ir": 3750015,
+        "fn": "zfstack::buf::RxQueue::seal_tail"
+      },
+      {
+        "ir": 3250039,
+        "fn": "tokio::time::instant::Instant::now"
+      },
+      {
+        "ir": 2750011,
+        "fn": "zfstack::buf::RxQueue::seal_charged_tail"
+      }
+    ]
+  },
+  "C_over_T_process_pct": -65.76583628956725,
+  "C_over_T_relay_pump_pct": -65.71856287425149,
+  "per_pump": {
+    "T_relay_pump_ir": 668.0,
+    "C_relay_pump_ir": 229.0
+  }
+}

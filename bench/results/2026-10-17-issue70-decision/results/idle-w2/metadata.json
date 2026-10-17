@@ -1,0 +1,37 @@
+{
+  "tag": "idle-w2",
+  "argv": {
+    "baseline": "/tmp/zf70-eval/bin/T-libtest",
+    "candidate": "/tmp/zf70-eval/bin/C-libtest",
+    "cases": "/tmp/zf70-eval/manifest/cases-idle.json",
+    "outdir": "/tmp/zf70-eval/results/idle-w2",
+    "cpu": 3,
+    "pairs": 12,
+    "timeout": 180,
+    "tag": "idle-w2"
+  },
+  "binary_sha256": {
+    "baseline": "8c40297d9dedc68006932b06b7b8e4ed54e8278ac69ed9d157cfad4be7eef55a",
+    "candidate": "037cdc227b348b0e26e89980b8ca34cf3993840068daa0fb889ada0a93b40f79"
+  },
+  "cases": [
+    {
+      "name": "issue48_measure_idle_pump",
+      "args": [
+        "--exact",
+        "tokio_adapter::tests::qa::issue48_measure_idle_pump",
+        "--nocapture"
+      ]
+    }
+  ],
+  "cpu_metric": "ru_utime+ru_stime seconds of the test process, including setup/teardown",
+  "started_at": "2026-10-17T03:43:31Z",
+  "order": "AB, BA, AB, BA ... pair -1 is warmup discarded",
+  "bootstrap": {
+    "draws": 10000,
+    "seed": 65,
+    "stat": "median of pair percent changes"
+  },
+  "finished_at": "2026-10-17T03:43:33Z",
+  "runs": 26
+}
