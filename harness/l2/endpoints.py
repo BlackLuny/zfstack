@@ -3,6 +3,7 @@
 Only numeric /proc counters and PID/starttime/comm/exe/netns identity are read.
 No command lines, environments, keys or runtime configurations are collected.
 """
+from contextlib import ExitStack
 import math
 import os
 from pathlib import Path
@@ -45,17 +46,32 @@ def sample_schedule(start, phases):
                    *(round((start + index * .5) * 1e9) for index in range(math.ceil(duration / .5)))})
 
 
-def read_snapshot(pid, scheduled_ns, identity=None, *, proc=Path("/proc"), ticks=None):
+def _proc_text(root, name, files):
+    if files is None:
+        return (root / name).read_text()
+    # The 65,536-character bound applies only to prepared streams; the
+    # ordinary pathname fallback retains its existing read_text behavior.
+    # Seeking invalidates the text buffer and restarts procfs generation. Read
+    # through EOF (including short reads), never reuse a previous counter value.
+    stream = files[name]
+    stream.seek(0)
+    data = stream.read(65_537)
+    if len(data) > 65_536:
+        raise ValueError("endpoint /proc " + name + " exceeds snapshot limit")
+    return data
+
+
+def read_snapshot(pid, scheduled_ns, identity=None, *, proc=Path("/proc"), ticks=None, files=None):
     """A zombie retains CPU counters, but has no observable resident memory."""
     if type(pid) is not int or pid <= 0:
         raise ValueError("endpoint PID is missing")
     ticks = os.sysconf("SC_CLK_TCK") if ticks is None else ticks
     begin = time.monotonic_ns()
     root = Path(proc) / str(pid)
-    fields = (root / "stat").read_text().rsplit(")", 1)[1].split()
+    fields = _proc_text(root, "stat", files).rsplit(")", 1)[1].split()
     state, starttime = fields[0], int(fields[19])
     total = int(fields[11]) + int(fields[12])
-    status = dict(line.split(":", 1) for line in (root / "status").read_text().splitlines())
+    status = dict(line.split(":", 1) for line in _proc_text(root, "status", files).splitlines())
     zombie = state in ("Z", "X")
     if zombie:
         if not identity:
@@ -64,8 +80,9 @@ def read_snapshot(pid, scheduled_ns, identity=None, *, proc=Path("/proc"), ticks
         rss = peak = None
         source = "retained-zombie"
     else:
-        observed = {"pid": pid, "starttime_ticks": starttime, "comm": (root / "comm").read_text().strip(),
-                    "exe": os.readlink(root / "exe"), "netns": os.readlink(root / "ns/net")}
+        observed = {"pid": pid, "starttime_ticks": starttime, "comm": _proc_text(root, "comm", files).strip(),
+                    "exe": os.readlink(root / "exe") if files is None else os.readlink("exe", dir_fd=files["directory"]),
+                    "netns": os.readlink(root / "ns/net") if files is None else os.readlink("ns/net", dir_fd=files["directory"])}
         rss, peak = int(status["VmRSS"].split()[0]), int(status["VmHWM"].split()[0])
         source = "live"
     if identity and observed != identity:
@@ -76,6 +93,71 @@ def read_snapshot(pid, scheduled_ns, identity=None, *, proc=Path("/proc"), ticks
                       "identity_observation": source, "state": state, "cpu_ticks": total,
                       "ticks_per_sec": ticks, "cpu_sec": total / ticks,
                       "cpu_resolution_ns": math.ceil(1e9 / ticks), "rss_kib": rss, "peak_rss_kib": peak}
+
+
+class _ProcReader:
+    """Own only reusable descriptors, never cached counter or identity values."""
+    def __init__(self, pids, *, proc=Path("/proc")):
+        self.proc = proc
+        self.files = {}
+        self.fallbacks = []
+        seen = set()
+        for pid in pids.values():
+            if type(pid) is not int or pid <= 0 or pid in seen:
+                continue
+            seen.add(pid)
+            files = {}
+            try:
+                # Pin one procfs PID directory for both counters and links.
+                # If the PID exits/recycles, none of these descriptors follows
+                # the replacement /proc/<pid> pathname into a different task.
+                # This is not an atomic cross-file snapshot: each live read
+                # still checks every identity field (including exe and netns).
+                files["directory"] = os.open(Path(proc) / str(pid), os.O_RDONLY | os.O_DIRECTORY)
+                for name in ("stat", "status", "comm"):
+                    fd = os.open(name, os.O_RDONLY, dir_fd=files["directory"])
+                    try:
+                        files[name] = os.fdopen(fd)
+                    except BaseException:
+                        os.close(fd)
+                        raise
+            except OSError as error:
+                # One path-free diagnostic per PID, not a sampling error. A
+                # later successful fallback remains valid evidence.
+                self.fallbacks.append({"pid": pid, "reason": "open_failed", "errno": error.errno})
+                try:
+                    self._close(files)
+                except BaseException:
+                    self.close()
+                    raise
+                # A process not ready during preparation may become readable.
+                # Preserve the ordinary per-sample error/retry path in that case.
+            except BaseException:
+                try:
+                    self._close(files)
+                finally:
+                    self.close()
+                raise
+            else:
+                self.files[pid] = files
+
+    def __call__(self, pid, scheduled, identity):
+        return read_snapshot(pid, scheduled, identity, proc=self.proc, files=self.files.get(pid))
+
+    def close(self):
+        held, self.files = self.files, {}
+        with ExitStack() as cleanup:
+            for files in held.values():
+                cleanup.callback(self._close, files)
+
+    @staticmethod
+    def _close(files):
+        with ExitStack() as cleanup:
+            for name, file in files.items():
+                if name == "directory":
+                    cleanup.callback(os.close, file)
+                else:
+                    cleanup.callback(file.close)
 
 
 class EndpointSampler:
@@ -92,14 +174,31 @@ class EndpointSampler:
 
     def _run(self):
         import json
+        prepared = None
         try:
+            # Prepare before waiting for the first boundary. Reusing three
+            # procfs streams avoids repeated open/close work
+            # across the serial endpoint batch without adding sampler threads.
+            reader = self.reader
+            if reader is read_snapshot:
+                preparation = self.report["preparation"] = {"started_ns": time.monotonic_ns()}
+                try:
+                    prepared = reader = _ProcReader({name: self.pids.get(name) for name in self.report["endpoints"]})
+                    preparation.update(prepared_pid_count=len(prepared.files), fallbacks=prepared.fallbacks)
+                finally:
+                    ended = time.monotonic_ns()
+                    preparation.update(ended_ns=ended, duration_ns=ended - preparation["started_ns"],
+                                       first_boundary_margin_ns=round(self.start * 1e9) - ended)
+                # The frozen origin is set by load before process spawning
+                # (currently +3 seconds). Preparation consumes what remains;
+                # a negative margin never shifts the schedule or tolerance.
             for scheduled in sample_schedule(self.start, self.config["phases_sec"]):
                 if self.stop.wait(max(0, (scheduled - time.monotonic_ns()) / 1e9)):
                     self.report["errors"].append("endpoint sampler cancelled before all phase boundaries")
                     break
                 for name, record in self.report["endpoints"].items():
                     try:
-                        identity, row = self.reader(self.pids.get(name), scheduled, record["identity"])
+                        identity, row = reader(self.pids.get(name), scheduled, record["identity"])
                         record["identity"] = identity
                     except (OSError, ValueError, KeyError, IndexError) as error:
                         row = {"scheduled_ns": scheduled, "at_ns": time.monotonic_ns(), "error": str(error)}
@@ -107,6 +206,11 @@ class EndpointSampler:
         except Exception as error:
             self.report["errors"].append("endpoint sampler failed: " + str(error))
         finally:
+            if prepared is not None:
+                try:
+                    prepared.close()
+                except Exception as error:
+                    self.report["errors"].append("endpoint sampler cleanup failed: " + str(error))
             self.output.write_text(json.dumps(self.report, indent=2, allow_nan=False) + "\n")
 
     def begin(self):
