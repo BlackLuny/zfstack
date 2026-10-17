@@ -20,6 +20,7 @@ use bytes::Bytes;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::io;
+use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -347,6 +348,31 @@ fn track_tx_wait(shard: &mut Shard, sh: &Shared, result: WriteResult, observed: 
             sh.memory.global().register_physical_waiter(sh.driver_waiter, observed, &sh.driver_wake, &sh.memory, charge, AllocationKind::TxBlock);
         }
         _ => clear_tx_wait(sh),
+    }
+}
+
+/// Read directly into the raw TX windows in `readv` order: fill the first
+/// window, then the second only once the first is full. `TcpStream::try_read_buf`
+/// takes a `BufMut`, and `&mut [MaybeUninit<u8>]` implements it, so the kernel
+/// writes into untouched block capacity without a user-space zero fill. Every
+/// byte the socket reports is therefore initialized; a short first window, an
+/// EOF (`Ok(0)`) or a `WouldBlock` before the first byte all pass through
+/// unchanged. If the first window fills exactly and the socket then has
+/// nothing more, the successful prefix is kept rather than turned into an
+/// error.
+fn read_into_uninit(sock: &tokio::net::TcpStream, mut a: &mut [MaybeUninit<u8>], mut b: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
+    let a_len = a.len();
+    let first = sock.try_read_buf(&mut a)?;
+    if first < a_len || b.is_empty() {
+        return Ok(first);
+    }
+    // The first window is full, so those bytes are already accepted. A second
+    // syscall is only needed for the trailing window; whatever it reports must
+    // never discard `first`. `WouldBlock` (readiness cleared), `Interrupted`
+    // and any other error stop here and surface on a later pump instead.
+    match sock.try_read_buf(&mut b) {
+        Ok(second) => Ok(first + second),
+        Err(_) => Ok(first),
     }
 }
 
@@ -1660,10 +1686,10 @@ where
         while socket_read_ready && failure.is_none() && !relay.sock_eof {
             let sock = &relay.sock;
             let observed = sh.memory.global().release_epoch();
-            let r = self.shard.write_with_for_adapter(id, RELAY_DOWN_READ, |[a, b]| {
-                let mut iov = [std::io::IoSliceMut::new(a), std::io::IoSliceMut::new(b)];
-                sock.try_read_vectored(&mut iov)
-            });
+            // SAFETY: `read_into_uninit` reports only bytes `try_read_buf`
+            // initialized, in window order; `write_with_uninit` turns exactly
+            // that range into visible TX bytes.
+            let r = unsafe { self.shard.write_with_uninit_for_adapter(id, RELAY_DOWN_READ, |[a, b]| read_into_uninit(sock, a, b)) };
             match &r {
                 Ok(result) => track_tx_wait(&mut self.shard, sh, *result, observed, RELAY_DOWN_READ),
                 Err(_) => clear_tx_wait(sh),
