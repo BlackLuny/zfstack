@@ -1,0 +1,129 @@
+import json, math, os, random, statistics, subprocess, time
+
+BASE_BIN = '/root/data/issue51-verify/bin-base/zfbench'
+CAND_BIN = '/root/data/issue51-verify/bin-cand/zfbench'
+OUT_DIR = '/root/data/issue51-verify/tmp/tun-clean'
+os.makedirs(OUT_DIR, exist_ok=True)
+
+SCENARIOS = [
+    ('soft_mtu1500_down8', ['--client-proxy', 'zfstack', '--tun-mtu', '1500', '--test', 'down', '--flows', '8', '--secs', '3', '--warmup', '1']),
+    ('soft_mtu1500_up8', ['--client-proxy', 'zfstack', '--tun-mtu', '1500', '--test', 'up', '--flows', '8', '--secs', '3', '--warmup', '1']),
+    ('soft_mtu1500_mixed8', ['--client-proxy', 'zfstack', '--tun-mtu', '1500', '--test', 'mixed', '--flows', '8', '--secs', '3', '--warmup', '1', '--idle-rr-secs', '1', '--rr-interval-ms', '20']),
+    ('soft_mtu65535_down8', ['--client-proxy', 'zfstack', '--tun-mtu', '65535', '--test', 'down', '--flows', '8', '--secs', '3', '--warmup', '1']),
+    ('offload_mtu1500_down8', ['--client-proxy', 'zfstack', '--tun-mtu', '1500', '--vnet-hdr', '--tso', '--test', 'down', '--flows', '8', '--secs', '3', '--warmup', '1']),
+    ('offload_mtu1500_mixed8', ['--client-proxy', 'zfstack', '--tun-mtu', '1500', '--vnet-hdr', '--tso', '--test', 'mixed', '--flows', '8', '--secs', '3', '--warmup', '1', '--idle-rr-secs', '1', '--rr-interval-ms', '20']),
+]
+
+def pct(sorted_vals, q):
+    if not sorted_vals:
+        return None
+    idx = (len(sorted_vals) - 1) * q
+    lo = int(math.floor(idx))
+    hi = int(math.ceil(idx))
+    if lo == hi:
+        return sorted_vals[lo]
+    return sorted_vals[lo] * (hi - idx) + sorted_vals[hi] * (idx - lo)
+
+def extract(d):
+    r = d['results']
+    p = d['proxy']
+    c = d['cpu']
+    gb = c['window_effective_bytes'] / 1e9 if c.get('window_effective_bytes') else 0.0
+    m = {
+        'goodput_gbps': r['goodput_mbps_window'] / 1000.0,
+        'proxy_cpu_s_per_gb': p['cpu_sec_per_GB'],
+        'proxy_cpu_util': p['cpu_util'],
+        'harness_s_per_gb': (c['harness_process_sec'] / gb) if gb > 0 else 0.0,
+        'system_cpu_s_per_gb': c['system_busy_sec_per_GB'],
+        'rss_kb_end': p['rss_kb_end'],
+        'hwm_kb': p['hwm_kb'],
+        'agg_mbps_per_sec': r.get('agg_mbps_per_sec', []),
+    }
+    if 'rr_loaded_series' in r and r['rr_loaded_series']:
+        lat = sorted(pt[1] for pt in r['rr_loaded_series'])
+        m['rr_p50_ms'] = pct(lat, 0.50)
+        m['rr_p90_ms'] = pct(lat, 0.90)
+        m['rr_p95_ms'] = pct(lat, 0.95)
+        m['rr_p99_ms'] = pct(lat, 0.99)
+        m['rr_p999_ms'] = pct(lat, 0.999)
+        m['rr_max_ms'] = lat[-1]
+        m['rr_mean_ms'] = sum(lat) / len(lat)
+    return m
+
+def run_one(bin_path, args, out_file):
+    cmd = ['taskset', '-c', '0,1,2', bin_path] + args + ['--json', out_file]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    return extract(json.load(open(out_file)))
+
+rows = []
+rows_path = '/root/data/issue51-verify/tun-clean-rows.jsonl'
+with open(rows_path, 'w') as rf:
+    for sc_name, sc_args in SCENARIOS:
+        print(f'=== Scenario: {sc_name} ===', flush=True)
+        for blk in range(6):
+            # Interleaved order across base, cand, aa
+            if blk % 2 == 0:
+                order = [('base', BASE_BIN), ('cand', CAND_BIN), ('aa', BASE_BIN)]
+            else:
+                order = [('cand', CAND_BIN), ('base', BASE_BIN), ('aa', BASE_BIN)]
+            slot_res = {}
+            for tag, bin_p in order:
+                out_f = f'{OUT_DIR}/{sc_name}__b{blk}__{tag}.json'
+                slot_res[tag] = run_one(bin_p, sc_args, out_f)
+            row = {
+                'scenario': sc_name,
+                'block': blk,
+                'base': slot_res['base'],
+                'cand': slot_res['cand'],
+                'aa': slot_res['aa'],
+            }
+            rows.append(row)
+            rf.write(json.dumps(row) + '\n')
+            rf.flush()
+            b_g = slot_res['base']['goodput_gbps']
+            c_g = slot_res['cand']['goodput_gbps']
+            b_c = slot_res['base']['proxy_cpu_s_per_gb']
+            c_c = slot_res['cand']['proxy_cpu_s_per_gb']
+            extra = ''
+            if 'rr_p95_ms' in slot_res['base']:
+                extra = f' | p95: {slot_res["base"]["rr_p95_ms"]:.2f}->{slot_res["cand"]["rr_p95_ms"]:.2f}ms p99: {slot_res["base"]["rr_p99_ms"]:.2f}->{slot_res["cand"]["rr_p99_ms"]:.2f}ms'
+            print(f'  blk {blk}: goodput {b_g:.3f}->{c_g:.3f} Gbps | cpu/GB {b_c:.4f}->{c_c:.4f} ({(c_c-b_c)/b_c*100:+.2f}%){extra}', flush=True)
+
+rng = random.Random(42)
+def boot_ci(vals):
+    n = len(vals)
+    meds = []
+    for _ in range(2000):
+        sample = [vals[rng.randrange(n)] for _ in range(n)]
+        meds.append(statistics.median(sample))
+    meds.sort()
+    return [meds[int(0.025 * 2000)], meds[int(0.975 * 2000)]]
+
+summary = {}
+for sc_name, _ in SCENARIOS:
+    sc_rows = [r for r in rows if r['scenario'] == sc_name]
+    metrics = ['goodput_gbps', 'proxy_cpu_s_per_gb', 'harness_s_per_gb', 'system_cpu_s_per_gb', 'rss_kb_end']
+    if 'rr_p50_ms' in sc_rows[0]['base']:
+        metrics += ['rr_p50_ms', 'rr_p90_ms', 'rr_p95_ms', 'rr_p99_ms', 'rr_p999_ms', 'rr_max_ms']
+    sc_sum = {}
+    for m in metrics:
+        b_vals = [r['base'][m] for r in sc_rows]
+        c_vals = [r['cand'][m] for r in sc_rows]
+        a_vals = [r['aa'][m] for r in sc_rows]
+        ab_pcts = [(c - b) / b * 100.0 for b, c in zip(b_vals, c_vals)]
+        aa_pcts = [(a - b) / b * 100.0 for b, a in zip(b_vals, a_vals)]
+        sc_sum[m] = {
+            'base_median': statistics.median(b_vals),
+            'cand_median': statistics.median(c_vals),
+            'aa_median': statistics.median(a_vals),
+            'ab_median_pct': statistics.median(ab_pcts),
+            'ab_ci95_pct': boot_ci(ab_pcts),
+            'aa_median_pct': statistics.median(aa_pcts),
+            'aa_ci95_pct': boot_ci(aa_pcts),
+            'cand_wins': sum(1 for b, c in zip(b_vals, c_vals) if (c > b if m == 'goodput_gbps' else c < b)),
+        }
+    summary[sc_name] = sc_sum
+
+with open('/root/data/issue51-verify/tun-clean-summary.json', 'w') as sf:
+    json.dump(summary, sf, indent=2)
+print('DONE TUN CLEAN SUITE', flush=True)

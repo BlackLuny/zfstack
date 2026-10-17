@@ -1,0 +1,45 @@
+import gdb, json
+
+gdb.execute("set pagination off")
+gdb.execute("set confirm off")
+gdb.execute("break *gdb_warmup_done")
+gdb.execute("run --gdb-once")
+gdb.execute("delete breakpoints")
+
+targets = [
+    "mb_sum_bytes_base", "mb_sum_bytes_cand",
+    "mb_portable_base", "mb_portable_cand",
+    "mb_emit_base", "mb_emit_cand",
+    "mb_parse_base", "mb_parse_cand",
+]
+for t in targets:
+    gdb.execute(f"break *{t}")
+
+gdb.execute("continue")
+
+results = []
+while True:
+    try:
+        frame = gdb.selected_frame()
+    except gdb.error:
+        break
+    name = frame.name()
+    if not name or not any(name.startswith(t) for t in targets):
+        break
+    gdb.execute("disable breakpoints")
+    caller = frame.older()
+    caller_pc = caller.pc() if caller else None
+    count = 0
+    while True:
+        gdb.execute("stepi")
+        count += 1
+        cur = gdb.selected_frame()
+        if caller_pc is not None and cur.pc() == caller_pc:
+            break
+    results.append({"fn": name, "instructions": count})
+    gdb.execute("enable breakpoints")
+    gdb.execute("continue")
+
+with open("/root/data/issue51-verify/instruction-counts-warm.json", "w") as f:
+    json.dump(results, f, indent=2)
+gdb.execute("quit")
