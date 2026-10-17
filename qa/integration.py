@@ -263,7 +263,12 @@ def queue_negative_evidence(case, baseline_output, fault_output, worker):
     if not fault_observed:
         return ("FAIL" if base_status == "FAIL" else "NOT_RUN"), [*base_details, *fault_details], {"baseline": base_observed, "fault": {}}
     inspected = _l2_module("evidence").inspect_case(Path(fault_output) / "rig")
-    control_errors = _l2_module("queue_control").validate_evidence(inspected["result"].get("queue_control"), config["queue_control"])
+    queue = _l2_module("queue_control")
+    try:
+        ledger = queue.ledger_blob(Path(fault_output) / "rig")
+    except (OSError, ValueError):
+        ledger = None
+    control_errors = queue.validate_evidence(inspected["result"].get("queue_control"), config["queue_control"], ledger)
     fault_config = {key: value for key, value in fault_observed.get("effective_config", {}).items() if key != "queue_control"}
     if base_observed.get("effective_config") != fault_config:
         control_errors.append("baseline/fault full runtime configuration differs beyond the frozen injection")
@@ -339,8 +344,10 @@ def l2_environment(config):
     # explicitly cancel inherited injection settings, not merely omit keys.
     result["L2_QUEUE_DELAY_MS"] = ""
     result["L2_QUEUE_LIMIT_PACKETS"] = ""
+    result["L2_QUEUE_KIND"] = ""
     if config.get("queue_control") is not None:
         from_queue = _l2_module("queue_control").validate_config(config["queue_control"])
         result["L2_QUEUE_DELAY_MS"] = str(from_queue["delay_ms"])
         result["L2_QUEUE_LIMIT_PACKETS"] = str(from_queue["limit_packets"])
+        result["L2_QUEUE_KIND"] = from_queue["kind"]
     return result

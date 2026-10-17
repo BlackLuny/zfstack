@@ -1,0 +1,21 @@
+{
+  "written_before_execution_unix_ns": 1792159120118793090,
+  "tested_sha": "8fa27dfded25f25ed795b26641fef93f6d232afb",
+  "kernel": "6.8.0-147-generic",
+  "boot_id": "ebf15686-9010-4a6f-a969-bf5233cd9534",
+  "domain": "local-tcg-smoke",
+  "run_id": "driver-smoke-2",
+  "order": [
+    "capabilities",
+    "full",
+    "cancel",
+    "overflow"
+  ],
+  "runs_each": 1,
+  "kind": "netem-fifo",
+  "lateness_limit_ns": 20000000,
+  "conditional": "only if any mode's receiver shows an overtaken UDP datagram: exactly 3 plain-netem controls; order analysis is always recomputed",
+  "per_step_evidence": "/proc/stat (per-CPU steal) and /proc/softirqs before and after every step",
+  "gate": "PASS only if capabilities and all three modes pass and recomputed oracle verdicts match",
+  "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"
+}

@@ -1,0 +1,130 @@
+[
+  {
+    "name": "unpack-rustc",
+    "argv": [
+      "tar",
+      "-xJf",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/rustc-1.98.1-linux.tar.xz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161404191019122,
+    "end_unix_ns": 1792161407260389982
+  },
+  {
+    "name": "install-rustc",
+    "argv": [
+      "bash",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack/rustc-1.98.1-x86_64-unknown-linux-gnu/install.sh",
+      "--prefix=/root/zfstack-qa-pr75-20261016-ovh51-01/rustup/toolchains/1.98.1-x86_64-unknown-linux-gnu",
+      "--disable-ldconfig"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161407260652945,
+    "end_unix_ns": 1792161408077118491
+  },
+  {
+    "name": "unpack-cargo",
+    "argv": [
+      "tar",
+      "-xJf",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/cargo-1.98.1-linux.tar.xz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161408078140110,
+    "end_unix_ns": 1792161408492975120
+  },
+  {
+    "name": "install-cargo",
+    "argv": [
+      "bash",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack/cargo-1.98.1-x86_64-unknown-linux-gnu/install.sh",
+      "--prefix=/root/zfstack-qa-pr75-20261016-ovh51-01/rustup/toolchains/1.98.1-x86_64-unknown-linux-gnu",
+      "--disable-ldconfig"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161408493525856,
+    "end_unix_ns": 1792161409259591455
+  },
+  {
+    "name": "unpack-rust-std",
+    "argv": [
+      "tar",
+      "-xJf",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/rust-std-1.98.1-linux.tar.xz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161409260300334,
+    "end_unix_ns": 1792161410477366233
+  },
+  {
+    "name": "install-rust-std",
+    "argv": [
+      "bash",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/tool-unpack/rust-std-1.98.1-x86_64-unknown-linux-gnu/install.sh",
+      "--prefix=/root/zfstack-qa-pr75-20261016-ovh51-01/rustup/toolchains/1.98.1-x86_64-unknown-linux-gnu",
+      "--disable-ldconfig"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161410477865025,
+    "end_unix_ns": 1792161411243414274
+  },
+  {
+    "name": "create-qa-venv",
+    "argv": [
+      "python3",
+      "-m",
+      "venv",
+      "--without-pip",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161411243994640,
+    "end_unix_ns": 1792161411308519440
+  },
+  {
+    "name": "install-qa-wheels",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--no-index",
+      "--find-links",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/wheels",
+      "-r",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/source3/qa/requirements.lock",
+      "pip==25.2"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161411308752934,
+    "end_unix_ns": 1792161413076108767
+  },
+  {
+    "name": "rustc-version",
+    "argv": [
+      "/root/.cargo/bin/rustc",
+      "+1.98.1",
+      "-Vv"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161413076343142,
+    "end_unix_ns": 1792161413092203387
+  },
+  {
+    "name": "cargo-version",
+    "argv": [
+      "/root/.cargo/bin/cargo",
+      "+1.98.1",
+      "-Vv"
+    ],
+    "returncode": 0,
+    "start_unix_ns": 1792161413092429890,
+    "end_unix_ns": 1792161413124395341
+  }
+]

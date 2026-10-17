@@ -124,15 +124,54 @@ python3 -m qa.crossrepo build --archive /absolute/frozen-source-matrix \
 `l2-queue-control` 是测试侧诊断 case：同一租约先执行健康基线，再执行带 `queue_control` 的相同负载，验证绝对服务延迟合同确实能抓住深出口排队。它不声明复现历史 #44 的具体实现或根因，也不进入干净性能比较。推荐冻结 closed-loop、churn 0，并使用如下唯一受支持的注入形状：
 
 ```json
-{"kind":"netem-delay","node":"worker","interface":"eth0","phase":"loaded","delay_ms":500.0,"limit_packets":100000}
+{"kind":"fifo-delay-line","node":"worker","interface":"eth0","phase":"loaded","delay_ms":500.0,"limit_packets":100000}
 ```
 
-只有经过验证的 QA namespace 隔离模式允许注入。负载脚本在自己的 worker eth0 上从空 `noqueue` 添加带唯一 handle 的 netem，记录 JSON/text 原始计数和单调时钟。注入从 loaded 开始，提前 `delay_ms / 1000 + 0.25` 秒结束，必须在 recovery 前恢复原根队列。全部 loaded 请求和统计窗口照常保留，实际注入 start/end/restored 时间也必须吻合预先冻结的窗口。发生器不会删掉未完成请求或缩短服务样本窗口。
+只有经过验证的 QA namespace 隔离模式允许注入。`fifo-delay-line`（schema 4，`fifo_injector.py`）在测量开始至少 0.5 秒前，于 worker eth0 原有 `noqueue` 根旁挂 `clsact`，用唯一的共享 `tc` mirred 动作（index 44）与 matchall 过滤器（pref 44）把全部出口帧重定向到私有 tap `qa44fifo`（tap 根为 `noqueue`、关闭 IPv6/ARP）。单线程进程逐帧读入同一个有界 FIFO，再经绕过 qdisc 的 AF_PACKET 把原样的 vnet 头与帧字节写回 eth0。从 baseline 到 recovery 结束，所有包始终经过这一条路径，测量中不替换、不重置任何队列：
 
-v3 证据明确区分持续注入与收尾：持续阶段仍为原 delay-only 配置；收尾在同一个 netem 上改为 `delay 0ms rate 2000000000bit`，保留现有积压，再等待 backlog 清空并删除自己的 qdisc。非零 rate 给新包分配顺序的序列化时间，避免直接清零 delay 时越过旧积压；有限的 2 Gbit/s 排空速率同时约束集中排出。它来自预注册的 2/3/4 Gbit/s 台架容量对照中最低合格候选；最终 `8bf5bb8` 独立完整复验因读空后重新积压而被严格拒绝（NOT_RUN），不能作为已完成的台架。它不是产品带宽承诺、性能通过阈值或任意负载的排空保证。旧 v2 的 100 Gbit/s 排空在完整负载下产生链路丢包，已拒绝，不能作为 v3 成功证据。
+- baseline：到达即释放（`due = t_in`）；
+- 注入（loaded 开始至提前 `delay_ms / 1000 + 0.25` 秒）：`due = max(t_in + 500 ms, 上一帧 due)`；
+- 收尾（注入结束且 FIFO 非空）：新帧排在积压之后，`due = max(t_in, 上一帧 due) + len·8 / 2 Gbit/s`；
+- 透明：注入结束后，同一线程在 FIFO 为空时切换（在帧入队时判断，或在 emit 之后读时钟判断），之后 `due = t_in`。不保留 2 Gbit/s 整形，不暂停或减少业务输入。
 
-`queue_negative_evidence(case, baseline_output, fault_output, worker)` 独立复算两次原始证据。PASS 要求基线服务 PASS、故障期 payload/路径 PASS、故障期服务合同 FAIL、真实 backlog > 0 且 drops = 0、恢复期相同服务合同 PASS、完整排空及清理证据。基线、数据完整性或恢复失败仍为 FAIL；缺能力、丢包、配置漂移或缺计数为 NOT_RUN。基线会显式清空 `L2_QUEUE_DELAY_MS` 和 `L2_QUEUE_LIMIT_PACKETS`，防止继承故障运行的参数。服务 peer ID 是 `client-1`、`client-2`、`client-3`，延迟包含 scheduled 到 started 的发生器排队及请求本身耗时。
+过滤器只在 `measurement_end` 之后删除，随后排空 tap 环与 FIFO，读取最终 action/tap 计数，再删除动作和 `clsact`，并核对 eth0 只剩原 `noqueue`。挂载或删除 `clsact` 会让内核对 eth0 执行 `dev_deactivate`，其间出口包被 noop qdisc 静默丢弃且不计入链路计数（`results/2026-10-16-fifo-injector/clsact_probe.py`：30 次挂/删丢 16–18 个包，`tx_dropped` 为 0）。因此安装在负载客户端启动前完成，拆除只在 `load.py` 回收全部客户端且过了 `measurement_end` 之后进行。取消信号只记录取消，路径继续由父进程持有；父进程回收客户端且测量窗口结束后，才按序排空 FIFO 并撤掉重定向。父进程死亡或等待超过有界期限时明确记录失败并清理；取消的运行一律判 FAIL。全部 loaded 请求和统计窗口照常保留，发生器不会删掉未完成请求或缩短服务样本窗口。
+
+选用 tap 而非 NFQUEUE：`tun_net_xmit` 像 netem 处理延迟包一样 orphan skb，而 NFQUEUE 排队项仍计入发送 socket，会增加原注入没有的发送缓冲反压。6.8 内核实验（`results/2026-10-16-fifo-injector/backpressure.py`）中，同样 500 ms 延迟下 NFQUEUE 让非阻塞 UDP 发送方出现 2608 次 EAGAIN，netem 与本 FIFO 均为 0。
+
+`fifo_ledger.validate` 不信任报告摘要，只从 gzip 原始账本（每帧 seq、阶段、结果、GSO 类型/大小、L2–L4 头长、长度、到达、应释放、实际发送和 blake2b-64 摘要）与内核原始计数复算：
+
+- seq 连续、无缺失/重复/乱序，所有帧 `DELIVERED`；溢出、发送失败或未发送一律失败；
+- 每帧阶段与 `due` 按上述冻结策略精确复算，`due ≤ t_out ≤ due + 20 ms`，发送单调；收尾期不能在队列已空后继续整形，透明帧不能排在未完成积压后；
+- 透明切换时刻在注入结束与 recovery 边界之间，且晚于全部非透明帧的实际发送；
+- 占用按到达/发送复算，不超过 100000 包与 256 MiB；必须观测到真实排队的 loaded 流量及 baseline、透明期流量并覆盖到测量结束；
+- tap tx 帧数/字节与账本逐一闭合；mirred 动作按 GSO 段计数（`qdisc_pkt_len`），与账本复算的段数及 `len + (段数 - 1)·头长` 字节精确闭合；任何 action drop/overlimit、tap 丢弃/错误、tap rx 都失败；
+- eth0 在安装前、安装中、恢复后的原始 qdisc 列表，tap 自身无队列；安装早于测量开始 0.5 秒，删除不早于测量结束；取消、执行错误或 cleanup 非 PASS 均失败。
+
+`queue-control.json.send_diagnostics` 另存发送尝试/失败总数、前 1024 个失败的 seq、phase、errno、期望/返回字节数和原始发送起止时刻，以及最长一次 send 的墙钟区间。详情截断时显式记录 `omitted_failures`，逐帧账本不省略失败；没有自动重试。墙钟包含系统调用及失去调度的时间，不能据此单独归因内核阻塞或 CPU 抢占。诊断字段不参与资格判定，SEND_FAILED 和超过 20 ms 仍由原始账本严格拒绝。该新增诊断尚未进行特权自检或正式 C16 复验，不能追认旧 SHA 的通过结果。
+
+这些常量随 schema 4 预注册冻结。`fifo_selftest.py` 是需要 root 的端到端检查，只能在 `bash qa/isolate-linux.sh python3 harness/l2/fifo_selftest.py --output /abs/new.json` 中运行；它用独立的 UDP 序号/载荷、TCP 字节流、接收端 UDP MIB、发送端 EAGAIN 与链路计数核对 oracle，`--mode cancel`、`--mode overflow` 必须得到明确 FAIL。它不能替代 held-out 正式 C16 运行。
+
+候选 `netem-fifo`（schema 5，`netem_fifo.py` / `netem_fifo_ledger.py`）尚未写入任何 case，只能通过 `fifo_selftest.py --kind netem-fifo` 运行。依据 [正式故障臂分析](results/2026-10-16-fifo-formal-analysis/REPORT.md)，旧方案用户态逐帧转发约 70k fps，低于约 129k fps 的突发，而且读取前的等待不在账本内。新方案的路径和证据如下：
+
+- worker eth0 从 baseline 前到 recovery 后只有一个 root netem `44:`，测量期间不删除、不替换。
+- 它始终带 rate，所以 `release = max(t_in + delay, 上一帧 release) + qdisc_pkt_len / rate`。各相位经 netlink `RTM_NEWQDISC` 原地 change：pre 为 0 延迟 / 10 Tbit/s，active 为 500 ms，drain 为 0 / 2 Gbit/s，透明在观测到 `qlen == 0` 时恢复 0 / 10 Tbit/s。
+- 到达时刻来自 clsact matchall mirred **mirror** 到私有 dummy `qa44in`，释放时刻来自 eth0 outgoing。两者都是 TPACKET_V3 加 vnet 头，带内核时间戳。
+
+oracle 自行配对两份捕获，并复算以下内容：
+
+- change 窗口内按相位候选取区间链式上下界；
+- 跨 CPU 到达的偏斜（≤ 2 ms）和逐流严格顺序；
+- 早于或晚于 20 ms 的释放，以及 recovery 帧不得排在积压之后；
+- 相位读回、时钟映射、qdisc、mirror、dummy、ring 计数的闭合，以及安装和拆除时刻。
+
+运行需要 `sch_netem`、`dummy`、clsact/matchall/mirred，以及 AF_PACKET TPACKET_V3 与 `PACKET_VNET_HDR`。
+
+[仿真自检](results/2026-10-16-netem-fifo/REPORT.md) 中，出口 FIFO 精确，cancel 和 overflow 负例按预期被拒。但 full 因接收端 UDP 乱序 FAIL：netem 在多个 CPU 上出队，veth 按 CPU 积压交付，trace 中 32/32 次超越都跨 CPU。该判据是预注册的，没有放宽。预注册对照中，普通 netem（历史 v3 时间线）3 次运行 0 乱序，因此也不把顺序义务改为止于 eth0 出口。真实 CPU 上的三模式自检通过之前，不得用它替换 case v2。
+
+历史 v3（`netem-delay`）只用于复判已归档报告，新运行不再使用。v3 证据明确区分持续注入与收尾：持续阶段仍为原 delay-only 配置；收尾在同一个 netem 上改为 `delay 0ms rate 2000000000bit`，保留现有积压，再等待 backlog 清空并删除自己的 qdisc。非零 rate 给新包分配顺序的序列化时间，避免直接清零 delay 时越过旧积压；有限的 2 Gbit/s 排空速率同时约束集中排出。它来自预注册的 2/3/4 Gbit/s 台架容量对照中最低合格候选；最终 `8bf5bb8` 独立完整复验因读空后重新积压而被严格拒绝（NOT_RUN），不能作为已完成的台架。它不是产品带宽承诺、性能通过阈值或任意负载的排空保证。旧 v2 的 100 Gbit/s 排空在完整负载下产生链路丢包，已拒绝，不能作为 v3 成功证据。
+
+`queue_negative_evidence(case, baseline_output, fault_output, worker)` 独立复算两次原始证据。PASS 要求基线服务 PASS、故障期 payload/路径 PASS、故障期服务合同 FAIL、真实 backlog > 0 且 drops = 0、恢复期相同服务合同 PASS、完整排空及清理证据。基线、数据完整性或恢复失败仍为 FAIL；缺能力、丢包、配置漂移或缺计数为 NOT_RUN。基线会显式清空 `L2_QUEUE_DELAY_MS`、`L2_QUEUE_LIMIT_PACKETS` 和 `L2_QUEUE_KIND`，防止继承故障运行的参数。服务 peer ID 是 `client-1`、`client-2`、`client-3`，延迟包含 scheduled 到 started 的发生器排队及请求本身耗时。
 
 QueueControl 同时归档六个端点全部接口的前后原始计数与身份；任意 drop/error 增量、身份改变、缺样或计数器回退均使延迟注入不合格。独立校验器要求原 500 ms 注入与 250 ms guard、JSON/text 两种实际 tc 参数、零 qdisc 丢包、draining 和 cleanup 均无积压，并在固定 recovery 边界前恢复原 qdisc。TCP/UDP payload 失败不能被预期 SLO 失败或台架不合格覆盖。容量抓包的记录顺序不是严格线上接收顺序的证明；实际交付配对及 UDP 完整性另行保留。
 
-持续负载下，`tc show` 读空与 `tc qdisc del` 之间不存在原子排空保证，甚至同一采样的 JSON 与文本计数也可能不同。缩短间隔、反复读零或重复运行不能修复该竞态；零 link/qdisc drop 也不覆盖删除时的队列 reset。后续需要不会在测量中实时替换 root 的持久注入器或等价原子能力，保留原负载、窗口与合同后重新验收。当前未以该缺口修改生产配置或放宽校验，细节见 [验证记录](../../qa/VALIDATION.md)。
+持续负载下，v3 的 `tc show` 读空与 `tc qdisc del` 之间不存在原子排空保证，甚至同一采样的 JSON 与文本计数也可能不同。缩短间隔、反复读零或重复运行不能修复该竞态；零 link/qdisc drop 也不覆盖删除时的队列 reset。`fifo-delay-line` 以上述持久路径取代实时替换 root；它须先通过 held-out 正式运行，QueueControl 在此之前仍为 known-BLOCKED。未以该缺口修改生产配置或放宽校验，细节见 [验证记录](../../qa/VALIDATION.md)。

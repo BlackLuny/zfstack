@@ -1,0 +1,91 @@
+{
+  "time_ns": 1792165197379475303,
+  "uname -a": {
+    "rc": 0,
+    "stdout": "Linux ns3130732 6.12.57+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.57-1 (2025-11-05) x86_64 GNU/Linux\n",
+    "stderr": ""
+  },
+  "uptime": {
+    "rc": 0,
+    "stdout": " 15:39:57 up 313 days,  2:43,  7 users,  load average: 0.24, 0.10, 0.18\n",
+    "stderr": ""
+  },
+  "free -h": {
+    "rc": 0,
+    "stdout": "               total        used        free      shared  buff/cache   available\nMem:            31Gi       5.4Gi       2.7Gi       832Ki        23Gi        25Gi\nSwap:           48Gi       1.1Gi        47Gi\n",
+    "stderr": ""
+  },
+  "df -h /": {
+    "rc": 0,
+    "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/md3        410G  303G   87G  78% /\n",
+    "stderr": ""
+  },
+  "pgrep -a -x cargo": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "pgrep -a -x rustc": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "pgrep -a -x irqbalance": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "systemctl is-active irqbalance": {
+    "rc": 4,
+    "stdout": "inactive\n",
+    "stderr": ""
+  },
+  "ip netns list": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "ls -la /var/lock/zfstack-qa": {
+    "rc": 0,
+    "stdout": "total 0\ndrwxr-xr-x 2 root root  40 Oct 16 14:51 .\ndrwxrwxrwt 5 root root 100 Oct 16 14:22 ..\n",
+    "stderr": ""
+  },
+  "ls /sys/kernel/tracing/instances": {
+    "rc": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "ps -eo pid,ppid,pcpu,pmem,comm --sort=-pcpu": {
+    "rc": 0,
+    "stdout": "    PID    PPID %CPU %MEM COMMAND\n3821507 3820059 10.2  0.0 python3\n1091117       1  1.5  0.1 caddy\n3371265       1  1.5  0.0 sshd\n2469919  355143  1.0  1.1 node\n1889652       1  0.7  0.3 zf-worker.new\n1886227       1  0.5  0.4 server\n   3725    3703  0.5  9.0 java\n3607030       1  0.5  0.0 agent\n1998142       1  0.2  0.2 systemd-journal\n2781876       1  0.2  0.6 rc-worker\n1596590       1  0.1  0.0 containerd\n     18       2  0.1  0.0 rcu_preempt\n2688454 2688444  0.1  0.0 esbuild\n   3038       1  0.0  0.4 dockerd\n1816663       1  0.0  0.0 ollama\n3795631       2  0.0  0.0 kworker/5:3-mm_percpu_wq\n3795608       2  0.0  0.0 kworker/0:3-mm_percpu_wq\n3795709       2  0.0  0.0 kworker/7:4-mm_percpu_wq\n3795613       2  0.0  0.0 kworker/4:2-events_power_efficient\n3795149       2  0.0  0.0 kworker/3:1-events\n 170324       1  0.0  0.0 smartdns\n3795648       2  0.0  0.0 kworker/6:3-events\n2688444       1  0.0  0.0 node\n3754258       2  0.0  0.0 kworker/1:0-events_power_efficient\n3795617       2  0.0  0.0 kworker/2:2-wg-crypt-wg0\n3795600       2  0.0  0.0 kworker/4:1-wg-crypt-wg0\n3810853       2  0.0  0.0 kworker/u32:1-flush-9:3\n    301       2  0.0  0.0 md3_raid1\n3795605       2  0.0  0.0 kworker/6:1-wg-crypt-wg0\n3795146       2  0.0  0.0 kworker/7:0-events_long\n3750531       2  0.0  0.0 kworker/5:0-events_long\n3637060       2  0.0  0.0 kworker/1:1-wg-crypt-wg0\n3794275       2  0.0  0.0 kworker/u32:5-kvfree_rcu_reclaim\n3624128       2  0.0  0.0 kworker/2:3-mm_percpu_wq\n3816776       2  0.0  0.0 kworker/u32:2-ext4-rsv-conversion\n    935       1  0.0  0.0 unattended-upgr\n    835       1  0.0  0.0 dbus-daemon\n   3703       1  0.0  0.0 containerd-shim\n2520051       1  0.0  0.0 containerd-shim\n3820026 3371265  0.0  0.0 sshd-session\n     80       2  0.0  0.0 kcompactd0\n3819798       2  0.0  0.0 kworker/u32:0-kvfree_rcu_reclaim\n1065800       1  0.0  0.0 bash\n1074828       1  0.0  0.0 bash\n1073761       1  0.0  0.0 bash\n    860       1  0.0  0.0 systemd-logind\n 873997       1  0.0  0.0 bash\n1077160       1  0.0  0.0 bash\n     17       2  0.0  0.0 ksoftirqd/0\n    357       2  0.0  0.0 jbd2/md3-8\n     96       2  0.0  0.0 kswapd0\n     27       2  0.0  0.0 ksoftirqd/1\n 454175       1  0.0  0.0 polkitd\n     33       2  0.0  0.0 ksoftirqd/2\n      1       0  0.0  1.3 systemd\n 454154       1  0.0  0.0 mdadm\n   3634    3038  0.0  0.0 docker-proxy\n     63       2  0.0  0.0 ksoftirqd/7\n     82       2  0.0  0.0 khugepaged\n1998120       1  0.0  0.0 systemd-network\n 355143       1  0.0  0.0 systemd\n     45       2  0.0  0.0 ksoftirqd/4\n     39       2  0.0  0.0 ksoftirqd/3\n     51       2  0.0  0.0 ksoftirqd/5\n3687933       2  0.0  0.0 kworker/0:2H-kblockd\n     57       2  0.0  0.0 ksoftirqd/6\n    236       2  0.0  0.0 kworker/3:1H-kblockd\n    190       2  0.0  0.0 kworker/2:1H-kblockd\n     21       2  0.0  0.0 migration/0\n     62       2  0.0  0.0 migration/7\n    243       2  0.0  0.0 kworker/1:1H-kblockd\n     32       2  0.0  0.0 migration/2\n     26       2  0.0  0.0 migration/1\n    220       2  0.0  0.0 kworker/5:1H-kblockd\n    211       2  0.0  0.0 kworker/6:1H-kblockd\n    117       2  0.0  0.0 kworker/4:1H-kblockd\n1314615       2  0.0  0.0 kworker/7:2H-kblockd\n3365862       1  0.0  0.0 systemd-timesyn\n     50       2  0.0  0.0 migration/5\n     56       2  0.0  0.0 migration/6\n     38       2  0.0  0.0 migration/3\n     44       2  0.0  0.0 migration/4\n3365937       1  0.0  0.0 systemd-udevd\n   3686    3038  0.0  0.0 docker-proxy\n   3679    3038  0.0  0.0 docker-proxy\n   3657    3038  0.0  0.0 docker-proxy\n   3642    3038  0.0  0.0 docker-proxy\n   3665    3038  0.0  0.0 docker-proxy\n 316029       1  0.0  0.0 systemd\n     77       2  0.0  0.0 khungtaskd\n      2       0  0.0  0.0 kthreadd\n     20       2  0.0  0.0 rcu_exp_gp_kthread_worker\n    304       2  0.0  0.0 md2_raid1\n    306       2  0.0  0.0 md1_raid1\n1982928  355143  0.0  0.0 ssh-agent\n     76       2  0.0  0.0 kauditd\n     78       2  0.0  0.0 oom_reaper\n4086216       1  0.0  0.0 tmux: server\n    526       2  0.0  0.0 kipmi0\n3365939       2  0.0  0.0 psimon\n    286       2  0.0  0.0 scsi_eh_4\n    280       2  0.0  0.0 scsi_eh_1\n    288       2  0.0  0.0 scsi_eh_5\n    278       2  0.0  0.0 scsi_eh_0\n 364432  355143  0.0  0.0 dbus-daemon\n2520073 2520051  0.0  0.0 sleep\n    890       1  0.0  0.0 agetty\n    290       2  0.0  0.0 scsi_eh_6\n     23       2  0.0  0.0 cpuhp/0\n    581       2  0.0  0.0 jbd2/md2-8\n    292       2  0.0  0.0 scsi_eh_7\n    282       2  0.0  0.0 scsi_eh_2\n4086217 4086216  0.0  0.0 bash\n    284       2  0.0  0.0 scsi_eh_3\n      3       2  0.0  0.0 pool_workqueue_release\n      4       2  0.0  0.0 kworker/R-kvfree_rcu_reclaim\n      5       2  0.0  0.0 kworker/R-rcu_gp\n      6       2  0.0  0.0 kworker/R-sync_wq\n      7       2  0.0  0.0 kworker/R-slub_flushwq\n      8       2  0.0  0.0 kworker/R-netns\n     11       2  0.0  0.0 kworker/0:0H-events_highpri\n     13       2  0.0  0.0 kworker/R-mm_percpu_wq\n     14       2  0.0  0.0 rcu_tasks_kthread\n     15       2  0.0  0.0 rcu_tasks_rude_kthread\n     16       2  0.0  0.0 rcu_tasks_trace_kthread\n     19       2  0.0  0.0 rcu_exp_par_gp_kthread_worker/0\n     22       2  0.0  0.0 idle_inject/0\n     24       2  0.0  0.0 cpuhp/1\n     25       2  0.0  0.0 idle_inject/1\n     29       2  0.0  0.0 kworker/1:0H-events_highpri\n     30       2  0.0  0.0 cpuhp/2\n     31       2  0.0  0.0 idle_inject/2\n     36       2  0.0  0.0 cpuhp/3\n     37       2  0.0  0.0 idle_inject/3\n     41       2  0.0  0.0 kworker/3:0H-events_highpri\n     42       2  0.0  0.0 cpuhp/4\n     43       2  0.0  0.0 idle_inject/4\n     47       2  0.0  0.0 kworker/4:0H-events_highpri\n     48       2  0.0  0.0 cpuhp/5\n     49       2  0.0  0.0 idle_inject/5\n     53       2  0.0  0.0 kworker/5:0H-events_highpri\n     54       2  0.0  0.0 cpuhp/6\n     55       2  0.0  0.0 idle_inject/6\n     59       2  0.0  0.0 kworker/6:0H-events_highpri\n     60       2  0.0  0.0 cpuhp/7\n     61       2  0.0  0.0 idle_inject/7\n     65       2  0.0  0.0 kworker/7:0H-events_highpri\n     74       2  0.0  0.0 kdevtmpfs\n     75       2  0.0  0.0 kworker/R-inet_frag_wq\n     79       2  0.0  0.0 kworker/R-writeback\n     81       2  0.0  0.0 ksmd\n     83       2  0.0  0.0 kworker/R-kintegrityd\n     84       2  0.0  0.0 kworker/R-kblockd\n     85       2  0.0  0.0 kworker/R-blkcg_punt_bio\n     86       2  0.0  0.0 irq/9-acpi\n     91       2  0.0  0.0 kworker/R-tpm_dev_wq\n     92       2  0.0  0.0 kworker/R-edac-poller\n     93       2  0.0  0.0 kworker/R-devfreq_wq\n     94       2  0.0  0.0 kworker/R-quota_events_unbound\n    103       2  0.0  0.0 kworker/R-kthrotld\n    107       2  0.0  0.0 irq/121-aerdrv\n    108       2  0.0  0.0 irq/122-aerdrv\n    109       2  0.0  0.0 irq/123-aerdrv\n    110       2  0.0  0.0 irq/124-aerdrv\n    111       2  0.0  0.0 irq/125-aerdrv\n    112       2  0.0  0.0 kworker/R-acpi_thermal_pm\n    116       2  0.0  0.0 kworker/R-mld\n    118       2  0.0  0.0 kworker/R-ipv6_addrconf\n    123       2  0.0  0.0 kworker/R-kstrp\n    125       2  0.0  0.0 kworker/u33:0\n    260       2  0.0  0.0 kworker/R-nvme-wq\n    261       2  0.0  0.0 kworker/R-nvme-reset-wq\n    262       2  0.0  0.0 kworker/R-nvme-delete-wq\n    263       2  0.0  0.0 kworker/R-nvme-auth-wq\n    265       2  0.0  0.0 watchdogd\n    266       2  0.0  0.0 kworker/R-ata_sff\n    276       2  0.0  0.0 kworker/R-md\n    277       2  0.0  0.0 kworker/R-md_bitmap\n    279       2  0.0  0.0 kworker/R-scsi_tmf_0\n    281       2  0.0  0.0 kworker/R-scsi_tmf_1\n    283       2  0.0  0.0 kworker/R-scsi_tmf_2\n    285       2  0.0  0.0 kworker/R-scsi_tmf_3\n    287       2  0.0  0.0 kworker/R-scsi_tmf_4\n    289       2  0.0  0.0 kworker/R-scsi_tmf_5\n    291       2  0.0  0.0 kworker/R-scsi_tmf_6\n    293       2  0.0  0.0 kworker/R-scsi_tmf_7\n    321       2  0.0  0.0 kworker/R-raid5wq\n    358       2  0.0  0.0 kworker/R-ext4-rsv-conversion\n    523       2  0.0  0.0 kworker/R-ipmi-msghandler-remove-wq\n    529       2  0.0  0.0 kworker/R-cryptd\n    582       2  0.0  0.0 kworker/R-ext4-rsv-conversion\n    805       2  0.0  0.0 kworker/R-cfg80211\n    903       1  0.0  0.0 agetty\n 316031  316029  0.0  0.0 (sd-pam)\n 355145  355143  0.0  0.0 (sd-pam)\n 917145       2  0.0  0.0 kworker/2:2H\n1998138       2  0.0  0.0 psimon\n2650029       2  0.0  0.0 kworker/R-tls-strp\n2852809  316029  0.0  0.0 dbus-daemon\n3156000       2  0.0  0.0 psimon\n3800961       2  0.0  0.0 kworker/3:0\n3804711       2  0.0  0.0 kworker/0:0\n3820059 3820026  0.0  0.0 sshd-session\n3821426  873997  0.0  0.0 sleep\n3821449 1077160  0.0  0.0 sleep\n3821463 1065800  0.0  0.0 sleep\n3821478 1074828  0.0  0.0 sleep\n3821503 1073761  0.0  0.0 sleep\n3821532 3821507  0.0  0.0 sh\n3821533 3821532  0.0  0.0 ps\n",
+    "stderr": ""
+  },
+  "docker ps --format \"{{.Names}} {{.Status}}\"": {
+    "rc": 0,
+    "stdout": "openclaw-sbx-agent-support-17bc3b9d Up 4 months\nnexus3 Up 10 months\n",
+    "stderr": ""
+  },
+  "irq": {
+    "128": {
+      "smp_affinity_list": "0-7",
+      "effective_affinity_list": "6"
+    },
+    "129": {
+      "smp_affinity_list": "7",
+      "effective_affinity_list": "7"
+    },
+    "130": {
+      "smp_affinity_list": "0",
+      "effective_affinity_list": "0"
+    },
+    "131": {
+      "smp_affinity_list": "1",
+      "effective_affinity_list": "1"
+    },
+    "132": {
+      "smp_affinity_list": "2",
+      "effective_affinity_list": "2"
+    }
+  },
+  "venv": "{\"executable\": \"/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python\", \"prefix\": \"/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv\", \"base_prefix\": \"/usr\"}\n"
+}

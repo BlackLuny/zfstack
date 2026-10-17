@@ -1,0 +1,16 @@
+[
+  {
+    "observed_unix_ns": 1792146189930124000,
+    "step": "pre-archive assertion that every full failed only oracle_pass",
+    "result": "FAIL: b-full-2 also failed recovery_transparent, recovery maximum 377.264917ms exceeds unchanged 125ms selftest limit",
+    "repair": "corrected report and archive assertions to retain both failures; added independent receiver recovery-latency recomputation",
+    "extra_FIFO_runs": 0
+  },
+  {
+    "observed_unix_ns": 1792146264345934000,
+    "step": "git diff --cached --check",
+    "result": "FAIL: raw ps process names include original trailing spaces",
+    "repair": "losslessly gzip all 18 raw host snapshots, record original-byte sizes/SHA-256, and update report link; no raw bytes stripped",
+    "extra_FIFO_runs": 0
+  }
+]

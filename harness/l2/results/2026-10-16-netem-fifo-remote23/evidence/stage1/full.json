@@ -1,0 +1,157 @@
+{
+  "mode": "full",
+  "kind": "netem-fifo",
+  "kernel": "6.1.0-29-amd64",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": false,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "oracle_pass": true,
+    "active_delay_applied": true,
+    "recovery_transparent": true
+  },
+  "ok": false,
+  "oracle_errors": [],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899639
+  },
+  "frames": 60617,
+  "gso_frames": 702,
+  "link_drop_deltas": {
+    "rig-f28364-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-f28364-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18475,
+  "udp_mib_delta": {
+    "InDatagrams": 18475,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899639,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.026466,
+      "max": 521.904201
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.021501,
+      "max": 6.285916
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.006874,
+      "max": 6.045404
+    }
+  },
+  "resources": {
+    "ring_bytes": 134217728,
+    "copied_bytes": 23489728
+  },
+  "summary": {
+    "paired": 60617,
+    "lost": 0,
+    "unpaired_out": 0,
+    "residence_ns": {
+      "p50": 1354,
+      "p99": 500014273,
+      "max": 519691249
+    }
+  },
+  "actual": {
+    "changes": [
+      {
+        "phase": "active",
+        "t0_ns": 37324551903294424,
+        "t1_ns": 37324551905550541,
+        "shown": {
+          "limit": 100000,
+          "delay": {
+            "delay": 0.5,
+            "jitter": 0,
+            "correlation": 0
+          },
+          "rate": {
+            "rate": 1250000000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "ecn": false,
+          "gap": 0
+        }
+      },
+      {
+        "phase": "drain",
+        "t0_ns": 37324567153366516,
+        "t1_ns": 37324567153434209,
+        "shown": {
+          "limit": 100000,
+          "rate": {
+            "rate": 250000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "ecn": false,
+          "gap": 0
+        }
+      },
+      {
+        "phase": "transparent",
+        "t0_ns": 37324567658646343,
+        "t1_ns": 37324567658658391,
+        "reason": "empty",
+        "shown": {
+          "limit": 100000,
+          "rate": {
+            "rate": 1250000000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "ecn": false,
+          "gap": 0
+        }
+      }
+    ],
+    "installed_ns": 37324534059554089,
+    "mirror_installed_ns": 37324534140485904,
+    "owner_released_ns": 37324575896334859,
+    "mirror_remove_ns": 37324575906527876,
+    "mirror_removed_ns": 37324575909223392,
+    "drained_ns": 37324575909316068,
+    "removed_ns": 37324575971909141,
+    "closed_ns": 37324576093024346
+  },
+  "planned": {
+    "measurement_start_ns": 37324543902334112,
+    "start_ns": 37324551902334112,
+    "end_ns": 37324567152334112,
+    "recovery_start_ns": 37324567902334112,
+    "measurement_end_ns": 37324575902334112
+  },
+  "report_errors": []
+}
