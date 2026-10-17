@@ -9,7 +9,7 @@
 //!   charged compact chunks so packet-pool owners return immediately (§5).
 //! * [`OooQueue`]: out-of-order ranges, allocated only when reordering happens (§6.1).
 
-use crate::budget::{Budget, MemoryLease, PortMemoryHandle};
+use crate::budget::{Budget, IndexPeerReservation, MemoryLease, PortMemoryHandle};
 use crate::PeerId;
 use bytes::{Bytes, BytesMut};
 use std::collections::{BTreeMap, VecDeque};
@@ -238,7 +238,32 @@ impl BlockPool {
         self.note_activity(size == SMALL_TX_BLOCK);
         Some(block)
     }
+    #[inline]
+    fn get_for_index(&mut self, budget: &Budget, peer: PeerId, size: usize, index: &MemoryLease, assignment: Option<&IndexPeerReservation>) -> Option<Block> {
+        if self.memory.as_ref().is_some_and(|memory| !memory.matches(budget)) {
+            return None;
+        }
+        if self.memory.is_none() {
+            self.memory = Some(budget.port_memory_handle());
+        }
+        let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
+        let block = if let Some(mut block) = free.pop() {
+            if !block.lease.assign_for_index(budget, peer, index, assignment) {
+                free.push(block);
+                return None;
+            }
+            block
+        } else {
+            let lease = index.allocation_scope(budget, assignment).try_allocate_level(size as u64, crate::budget::AllocationKind::TxBlock).ok()?;
+            Block::new(size, lease)
+        };
+        self.note_activity(size == SMALL_TX_BLOCK);
+        Some(block)
+    }
     fn put(&mut self, mut b: Block) {
+        if self.max_cached == 0 {
+            return;
+        }
         if self.memory.as_ref().is_none_or(|memory| !memory.owns(&b.lease)) {
             return;
         }
@@ -474,7 +499,12 @@ impl TxBuf {
         let mut staged = 0;
         while before + staged < needed {
             let size = if before + staged == 0 { first_size } else { TX_BLOCK };
-            let Some(block) = pool.get(budget, peer, size) else {
+            let block = if index.is_some() {
+                pool.get(budget, peer, size)
+            } else {
+                pool.get_for_index(budget, peer, size, self.index_lease.as_ref().unwrap(), assignment.as_ref())
+            };
+            let Some(block) = block else {
                 if let Some(index) = &mut index {
                     while let Some(block) = index.blocks.pop_back() {
                         pool.put(block);
@@ -557,7 +587,11 @@ impl TxBuf {
                 } else {
                     None
                 };
-                let block = pool.get(budget, peer, size)?;
+                let block = if index.is_some() {
+                    pool.get(budget, peer, size)?
+                } else {
+                    pool.get_for_index(budget, peer, size, self.index_lease.as_ref().unwrap(), assignment.as_ref())?
+                };
                 if let Some(assignment) = assignment {
                     self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
                 }
@@ -1703,6 +1737,120 @@ mod tests {
             assert_eq!(tx.slices(0, 1)[0], &[9]);
             drop((tx, pool));
             assert_eq!((budget.physical_used(), global.reserved()), (0, 0));
+        }
+    }
+
+    #[test]
+    fn tx_cached_payload_uses_current_peer_limit_after_reconfiguration() {
+        for cache in [0, 32] {
+            for write_with in [false, true] {
+                for target in [PeerId(0), PeerId(u64::MAX)] {
+                    let global = crate::budget::GlobalBudget::new(8192);
+                    let mut budget = Budget::new(global.clone());
+                    budget.set_limits(8192, 4096, 8);
+                    let old = budget.memory_handle(PeerId(0));
+                    let next = budget.memory_handle(PeerId(u64::MAX));
+                    let mut pool = BlockPool::new(cache);
+                    let mut tx = TxBuf::default();
+                    assert!(tx.push(&mut pool, &mut budget, PeerId(0), &[7; 64]));
+                    tx.consume(&mut pool, 64);
+                    let backing = tx.descriptor_bytes();
+                    let reserved = global.reserved();
+                    // The backing was admitted at 4 KiB. A retained lease must
+                    // not keep granting that obsolete allowance after a change.
+                    budget.peer_limit = 1024;
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, target, 64, |_| -> Result<usize, ()> { panic!("fill after current peer quota refusal") }),
+                            Ok(None)
+                        );
+                    } else {
+                        assert!(!tx.push(&mut pool, &mut budget, target, &[9; 64]));
+                    }
+                    assert!(tx.is_empty());
+                    assert_eq!((global.reserved(), old.peer_physical_used(), next.peer_physical_used()), (reserved, backing, 0));
+                    assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(0), false));
+                    budget.peer_limit = 4096;
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, target, 64, |[a, _]| -> Result<usize, ()> {
+                                a[..64].fill(9);
+                                Ok(64)
+                            }),
+                            Ok(Some(64))
+                        );
+                    } else {
+                        assert!(tx.push(&mut pool, &mut budget, target, &[9; 64]));
+                    }
+                    assert_eq!(tx.slices(0, 64)[0], &[9; 64]);
+                    drop((tx, pool));
+                    assert_eq!((global.reserved(), global.cached_bytes(), old.peer_physical_used(), next.peer_physical_used()), (0, 0, 0, 0));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tx_resolved_payload_owner_rolls_back_migration_at_each_budget_level() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        const LIMIT: u64 = 512 << 10;
+        for cache in [0, 32] {
+            for write_with in [false, true] {
+                for level in [Level::Global, Level::Port, Level::Peer] {
+                    let global = crate::budget::GlobalBudget::new(if level == Level::Global { LIMIT } else { 2 * LIMIT });
+                    let mut budget = Budget::new(global.clone());
+                    budget.set_limits(if level == Level::Peer { 2 * LIMIT } else { LIMIT }, LIMIT, 8);
+                    let old = budget.memory_handle(PeerId(0));
+                    let next = budget.memory_handle(PeerId(u64::MAX));
+                    let mut pool = BlockPool::new(cache);
+                    let mut tx = TxBuf::default();
+                    assert!(tx.push(&mut pool, &mut budget, PeerId(0), &[7]));
+                    tx.consume(&mut pool, 1);
+                    let backing = tx.descriptor_bytes();
+                    // The next index share fits; its payload does not. Release
+                    // cached payloads for global/port cases to force a physical
+                    // allocation, while peer cases also exercise cached assign.
+                    if level != Level::Peer {
+                        pool.reclaim();
+                    }
+                    let ceiling = LIMIT - global.headroom(LIMIT, Tier::Block);
+                    let occupied = if level == Level::Peer { next.peer_physical_used() } else { budget.physical_used() };
+                    let blocker = budget.try_allocate_kind(PeerId(u64::MAX), ceiling - occupied - backing, AllocationKind::TxIndex).unwrap();
+                    let before = [old.peer_physical_used(), next.peer_physical_used(), global.reserved()];
+                    let failures = budget.stats().failures_by_level()[level as usize];
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, PeerId(u64::MAX), 1, |_| -> Result<usize, ()> { panic!("fill after payload refusal") }),
+                            Ok(None)
+                        );
+                    } else {
+                        assert!(!tx.push(&mut pool, &mut budget, PeerId(u64::MAX), &[9]));
+                    }
+                    assert_eq!([old.peer_physical_used(), next.peer_physical_used(), global.reserved()], before);
+                    assert_eq!(budget.stats().failures_by_level()[level as usize], failures + 1);
+                    assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(0), false));
+                    assert!(tx.is_empty());
+                    drop(blocker);
+                    if write_with {
+                        assert_eq!(
+                            tx.write_with(&mut pool, &mut budget, PeerId(u64::MAX), 1, |[a, _]| -> Result<usize, ()> {
+                                a[0] = 9;
+                                Ok(1)
+                            }),
+                            Ok(Some(1))
+                        );
+                    } else {
+                        assert!(tx.push(&mut pool, &mut budget, PeerId(u64::MAX), &[9]));
+                    }
+                    assert_eq!(tx.slices(0, 1)[0], &[9]);
+                    assert_eq!(old.peer_physical_used(), 0);
+                    assert_eq!(next.peer_physical_used(), backing + SMALL_TX_BLOCK as u64);
+                    tx.consume(&mut pool, 1);
+                    assert_eq!(next.peer_physical_used(), backing);
+                    drop((tx, pool));
+                    assert_eq!((global.reserved(), global.cached_bytes(), old.peer_physical_used(), next.peer_physical_used()), (0, 0, 0, 0));
+                }
+            }
         }
     }
 

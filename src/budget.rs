@@ -1603,6 +1603,24 @@ impl MemoryLease {
         Arc::ptr_eq(&self.global, &budget.global) && Arc::ptr_eq(&self.port, &budget.physical_port)
     }
 
+    /// The index already resolved this write's peer. Borrow its counter (or
+    /// the staged migration counter) for payload admission without another
+    /// map lookup. This scope creates no promise: every payload still reserves
+    /// global, port and peer capacity, or reacquires its cached peer share.
+    #[inline]
+    pub(crate) fn allocation_scope<'a>(&'a self, budget: &'a Budget, assignment: Option<&'a IndexPeerReservation>) -> MemoryScope<'a> {
+        debug_assert!(self.belongs_to(budget) && !self.peer_parked);
+        let peer = assignment.map_or(self.peer.as_ref().unwrap(), |next| next.peer.as_ref().unwrap());
+        MemoryScope {
+            global: &budget.global,
+            port: &budget.physical_port,
+            peer,
+            port_limit: budget.port_limit,
+            peer_limit: budget.peer_limit,
+            stats: &budget.stats,
+        }
+    }
+
     pub(crate) fn can_reuse_index(&self, budget: &Budget, peer: PeerId, empty: bool) -> bool {
         debug_assert!(!self.peer_parked);
         self.belongs_to(budget) && (empty || self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer))
@@ -1712,25 +1730,61 @@ impl MemoryLease {
         }
         let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
         let counter = if same_peer { self.peer.as_ref().unwrap() } else { budget.physical_peers.entry(peer).or_insert_with(|| LevelUse::for_peer(peer)) };
-        if !reserve_amount(&counter.used, counter.limit(&self.global, budget.peer_limit, Tier::Block), self.bytes) {
-            budget.stats.note(AllocationKind::TxBlock, Some(Level::Peer));
+        if !self.reserve_cached_peer(counter, budget.peer_limit, &budget.stats) {
+            return false;
+        }
+        let next = if same_peer { None } else { Some(Arc::clone(counter)) };
+        self.finish_cached_assignment(next, budget.peer_limit);
+        true
+    }
+
+    /// Borrow an owner already resolved by the TX index. Same-peer hits keep
+    /// their existing counter; only a migration consults the prepared token.
+    #[inline]
+    pub(crate) fn assign_for_index(&mut self, budget: &Budget, peer: PeerId, index: &MemoryLease, assignment: Option<&IndexPeerReservation>) -> bool {
+        debug_assert!(self.peer_parked || self.peer.is_none());
+        if !self.belongs_to(budget) {
+            return false;
+        }
+        let same_peer = self.peer.as_ref().is_some_and(|owner| owner.peer_id == peer);
+        let counter = if same_peer { self.peer.as_ref().unwrap() } else { assignment.map_or(index.peer.as_ref().unwrap(), |next| next.peer.as_ref().unwrap()) };
+        debug_assert!(index.belongs_to(budget) && counter.peer_id == peer);
+        if !self.reserve_cached_peer(counter, budget.peer_limit, &budget.stats) {
+            return false;
+        }
+        let next = if same_peer { None } else { Some(Arc::clone(counter)) };
+        self.finish_cached_assignment(next, budget.peer_limit);
+        true
+    }
+
+    // Both public assignment and the TX-index shortcut use the live budget
+    // limit. Keep quota, drain and cache transitions shared so the shortcut
+    // cannot retain an obsolete allowance when a peer limit changes (#67).
+    #[inline(always)]
+    fn reserve_cached_peer(&self, counter: &LevelUse, peer_limit: u64, stats: &Arc<PortStats>) -> bool {
+        if !reserve_amount(&counter.used, counter.limit(&self.global, peer_limit, Tier::Block), self.bytes) {
+            stats.note(AllocationKind::TxBlock, Some(Level::Peer));
             self.global.request_cache_reclaim();
             return false;
         }
         for drain in [&self.global.drain, &self.port.drain, &counter.drain] {
             drain.fetch_add(self.bytes, Ordering::AcqRel);
         }
+        true
+    }
+
+    #[inline(always)]
+    fn finish_cached_assignment(&mut self, next: Option<Arc<LevelUse>>, peer_limit: u64) {
         self.drain = true;
-        self.peer_limit = budget.peer_limit;
-        if !same_peer {
-            self.peer = Some(Arc::clone(counter));
+        self.peer_limit = peer_limit;
+        if let Some(counter) = next {
+            self.peer = Some(counter);
         }
         self.peer_parked = false;
         if self.cached {
             self.cached = false;
             self.global.release_cache(self.bytes);
         }
-        true
     }
 }
 
@@ -2219,6 +2273,33 @@ mod tests {
         drop(second);
         for id in ids {
             global.remove_waiter(id);
+        }
+    }
+
+    #[test]
+    fn borrowed_cached_assignment_rechecks_same_peer_and_rejects_foreign_owners() {
+        for peer in [PeerId(0), PeerId(u64::MAX)] {
+            let global = GlobalBudget::new(8192);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(8192, 1024, 2);
+            let memory = budget.memory_handle(peer);
+            let index = memory.try_allocate_kind(0, AllocationKind::TxIndex).unwrap();
+            let mut lease = memory.try_allocate_kind(512, AllocationKind::TxBlock).unwrap();
+            assert!(lease.park_cached());
+            let blocker = memory.try_allocate(1024).unwrap();
+            assert!(!lease.assign_for_index(&budget, peer, &index, None));
+            assert_eq!((memory.peer_physical_used(), global.cached_bytes()), (1024, 512));
+            for foreign_global in [global.clone(), GlobalBudget::new(8192)] {
+                let foreign = Budget::new(foreign_global);
+                assert!(!lease.assign_for_index(&foreign, peer, &index, None));
+            }
+            drop(blocker);
+            assert!(lease.assign_for_index(&budget, peer, &index, None));
+            assert_eq!((memory.peer_physical_used(), global.cached_bytes()), (512, 0));
+            assert!(lease.park_cached());
+            assert_eq!(memory.peer_physical_used(), 0);
+            drop(lease);
+            assert_eq!((global.reserved(), global.cached_bytes(), memory.peer_physical_used()), (0, 0, 0));
         }
     }
 
