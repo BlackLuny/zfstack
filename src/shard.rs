@@ -272,6 +272,7 @@ impl Drr {
     /// backing on the floor. Oversized backings are released as before.
     fn recycle(&mut self, peer: PeerId) {
         if let Some(q) = self.peer_q.remove(&peer) {
+            debug_assert!(q.is_empty(), "only a drained DRR queue may be recycled");
             if self.spare_q.len() < DRR_SPARE_Q && q.capacity() <= DRR_SPARE_CAP {
                 self.spare_q.push(q);
             }
@@ -4122,31 +4123,94 @@ mod drr_reuse_tests {
         crate::PeerId(n)
     }
 
-    /// A drained per-peer queue must be recycled so the next ready burst of any
-    /// peer reuses the backing instead of allocating a fresh `VecDeque`.
+    /// Thread-local allocation counters for the reuse tests. `Drr` is only
+    /// reachable here, so this binary-level hook is the only way to assert that
+    /// a reuse path allocates nothing. Tests run in parallel, hence per-thread.
+    mod alloc_probe {
+        use std::alloc::{GlobalAlloc, Layout, System};
+        use std::cell::Cell;
+
+        thread_local! {
+            static ALLOCS: Cell<u64> = const { Cell::new(0) };
+        }
+
+        struct Counting;
+        unsafe impl GlobalAlloc for Counting {
+            unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+                ALLOCS.with(|c| c.set(c.get() + 1));
+                System.alloc(l)
+            }
+            unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+                System.dealloc(p, l)
+            }
+            unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
+                ALLOCS.with(|c| c.set(c.get() + 1));
+                System.realloc(p, l, n)
+            }
+        }
+        #[global_allocator]
+        static PROBE_ALLOC: Counting = Counting;
+
+        pub(super) fn allocs() -> u64 {
+            ALLOCS.with(|c| c.get())
+        }
+    }
+
+    /// Drain a peer's queue the way the serve loop does, so the next `recycle`
+    /// sees an empty queue.
+    fn drain(drr: &mut Drr, peer: crate::PeerId) {
+        let q = drr.peer_q.get_mut(&peer).expect("queued peer");
+        while q.pop_front().is_some() {}
+    }
+
+    /// A genuinely drained per-peer queue must be recycled so the next ready
+    /// burst of any peer reuses the backing with no allocation.
     #[test]
-    fn drained_queue_backing_is_reused_across_peers() {
+    fn drained_queue_backing_is_reused_without_allocating() {
         let mut drr = Drr::default();
         drr.push(peer(1), (0, 0));
         assert_eq!(drr.spare_q.len(), 0);
-        let cap = drr.peer_q[&peer(1)].capacity();
-        assert!(cap > 0, "push must have allocated backing");
-        let first_ptr = &drr.peer_q[&peer(1)][0] as *const (u32, u32);
+        assert!(drr.peer_q[&peer(1)].capacity() > 0, "push must have allocated backing");
 
         // The serve loop pops the peer from `ready_peers` before draining.
         assert_eq!(drr.ready_peers.pop_front(), Some(peer(1)));
+        drain(&mut drr, peer(1));
         drr.recycle(peer(1));
         assert!(drr.is_empty());
         assert!(drr.peer_q.is_empty());
         assert_eq!(drr.spare_q.len(), 1, "drained queue must be retained");
 
-        // Another peer now reuses that backing rather than allocating.
+        // The warm map and recycled queue mean the reuse push allocates nothing.
+        let before = alloc_probe::allocs();
         drr.push(peer(2), (7, 3));
+        let after = alloc_probe::allocs();
+        assert_eq!(after - before, 0, "queue reuse must not allocate");
         assert_eq!(drr.spare_q.len(), 0, "reuse must consume the spare queue");
-        let q = &drr.peer_q[&peer(2)];
-        assert_eq!(q[0], (7, 3));
-        assert_eq!(&q[0] as *const (u32, u32), first_ptr, "same backing reused");
+        assert_eq!(drr.peer_q[&peer(2)][0], (7, 3));
         assert_eq!(drr.ready_peers.len(), 1);
+    }
+
+    /// Reuse after the deque head has moved must preserve FIFO order and not
+    /// leave stale tuples behind.
+    #[test]
+    fn reuse_preserves_fifo_after_head_movement() {
+        let mut drr = Drr::default();
+        for i in 0..3u32 {
+            drr.push(peer(1), (i, 0));
+        }
+        assert_eq!(drr.ready_peers.pop_front(), Some(peer(1)));
+        drain(&mut drr, peer(1));
+        drr.recycle(peer(1));
+
+        // The reused ring must serve the new peer's entries in order.
+        drr.push(peer(2), (10, 0));
+        drr.push(peer(2), (11, 0));
+        assert_eq!(drr.ready_peers.len(), 1);
+        assert_eq!(drr.peer_q[&peer(2)].len(), 2);
+        let q = drr.peer_q.get_mut(&peer(2)).unwrap();
+        assert_eq!(q.pop_front(), Some((10, 0)));
+        assert_eq!(q.pop_front(), Some((11, 0)));
+        assert!(q.is_empty());
     }
 
     /// The reuse pool is bounded: an oversized queue is dropped, and no more
@@ -4154,31 +4218,30 @@ mod drr_reuse_tests {
     #[test]
     fn reuse_pool_is_bounded_and_drops_oversized_backings() {
         let mut drr = Drr::default();
-        // One oversized queue: pushed beyond DRR_SPARE_CAP then drained.
+        // One oversized queue: pushed beyond DRR_SPARE_CAP then truly drained.
         for i in 0..=(DRR_SPARE_CAP + 4) {
             drr.push(peer(1), (i as u32, 0));
         }
-        while let Some(q) = drr.peer_q.get_mut(&peer(1)) {
-            if q.pop_front().is_none() {
-                break;
-            }
-        }
+        assert!(drr.peer_q[&peer(1)].capacity() > DRR_SPARE_CAP);
+        assert_eq!(drr.ready_peers.pop_front(), Some(peer(1)));
+        drain(&mut drr, peer(1));
         drr.recycle(peer(1));
         assert!(drr.spare_q.is_empty(), "oversized backing must be released, not cached");
 
-        // Many small queues: the spare pool never exceeds its hard cap.
+        // Many small queues, each genuinely drained: the spare pool never
+        // exceeds its hard cap.
         for p in 0..(DRR_SPARE_Q as u64 * 2) {
             drr.push(peer(p + 10), (p as u32, 0));
         }
         while let Some(p) = drr.ready_peers.pop_front() {
+            drain(&mut drr, p);
             drr.recycle(p);
         }
-        assert!(drr.spare_q.len() <= DRR_SPARE_Q);
         assert_eq!(drr.spare_q.len(), DRR_SPARE_Q);
     }
 
-    /// Recycling a peer that is not present is a no-op, and ready_peers keeps
-    /// at most one entry per peer across reuse.
+    /// Recycling a peer that is not present is a no-op, and `ready_peers`
+    /// keeps at most one entry per peer across a full recycle-and-reuse cycle.
     #[test]
     fn ready_peers_stays_unique_across_push_and_recycle() {
         let mut drr = Drr::default();
@@ -4186,8 +4249,16 @@ mod drr_reuse_tests {
         assert!(drr.spare_q.is_empty());
         drr.push(peer(1), (0, 0));
         drr.push(peer(1), (1, 0));
-        drr.push(peer(2), (2, 0));
-        assert_eq!(drr.ready_peers.len(), 2);
+        assert_eq!(drr.ready_peers.len(), 1, "a peer is queued once");
+        assert_eq!(drr.peer_q[&peer(1)].len(), 2);
+
+        // Drain, recycle, then reuse for the same peer: still one ready entry.
+        assert_eq!(drr.ready_peers.pop_front(), Some(peer(1)));
+        drain(&mut drr, peer(1));
+        drr.recycle(peer(1));
+        drr.push(peer(1), (2, 0));
+        drr.push(peer(1), (3, 0));
+        assert_eq!(drr.ready_peers.len(), 1);
         assert_eq!(drr.peer_q[&peer(1)].len(), 2);
     }
 }

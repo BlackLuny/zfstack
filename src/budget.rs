@@ -1319,6 +1319,15 @@ impl Budget {
             self.note_reserve_failure(AllocationKind::Logical);
             return false;
         };
+        // Reject requests that cannot fit even against an empty peer before
+        // probing the table: `HashMap::entry` on a missing key can reserve
+        // capacity, and a rejected reservation must neither grow an empty map
+        // nor resize an already-full one. Accumulated per-peer limits are still
+        // checked below for peers that already hold bytes.
+        if port_used > self.port_limit || n > self.peer_limit {
+            self.note_reserve_failure(AllocationKind::Logical);
+            return false;
+        }
         // One table probe on the success path. Reading the peer with `get` and
         // then writing it with `entry` hashed `PeerId` twice per reservation.
         // The probe result is decided inside the match so the mutable borrow of
@@ -1327,7 +1336,7 @@ impl Budget {
             std::collections::hash_map::Entry::Occupied(mut o) => {
                 let pu = o.get_mut();
                 match pu.bytes.checked_add(n) {
-                    Some(peer_used) if port_used <= self.port_limit && peer_used <= self.peer_limit => {
+                    Some(peer_used) if peer_used <= self.peer_limit => {
                         pu.bytes = peer_used;
                         true
                     }
@@ -1335,12 +1344,8 @@ impl Budget {
                 }
             }
             std::collections::hash_map::Entry::Vacant(v) => {
-                if port_used <= self.port_limit && n <= self.peer_limit {
-                    v.insert(PeerUsage { bytes: n, ..PeerUsage::default() });
-                    true
-                } else {
-                    false
-                }
+                v.insert(PeerUsage { bytes: n, ..PeerUsage::default() });
+                true
             }
         };
         if !admitted {
@@ -1812,6 +1817,25 @@ impl Drop for AdmitDebt {
 #[cfg(test)]
 mod tests {
     mod qa;
+
+    /// A rejected reservation for a peer that has no entry must not grow the
+    /// table. `HashMap::entry` on a missing key can reserve before the key is
+    /// ever inserted, so the limit pre-check has to happen first.
+    #[test]
+    fn rejected_reserve_for_absent_peer_does_not_grow_the_table() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global);
+        assert_eq!(budget.peers.capacity(), 0);
+        // Above the per-peer limit.
+        assert!(!budget.try_reserve(PeerId(1), budget.peer_limit + 1, false));
+        assert_eq!(budget.peers.capacity(), 0, "missing-peer rejection must not allocate");
+        assert_eq!(budget.peers.len(), 0);
+        // Above the port limit.
+        assert!(!budget.try_reserve(PeerId(2), budget.port_limit + 1, false));
+        assert_eq!(budget.peers.capacity(), 0, "port rejection must not allocate");
+        assert_eq!(budget.peers.len(), 0);
+        assert_eq!(budget.used, 0);
+    }
 
     #[test]
     fn issue37_credit_caps_roll_back_at_every_level_and_return_on_drop() {
