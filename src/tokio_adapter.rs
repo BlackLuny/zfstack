@@ -1419,14 +1419,7 @@ where
                 }
                 Err(QueueGrowError::Quota(bytes)) => {
                     sh.rx_index_waiting.store(true, Ordering::Release);
-                    sh.memory.global().register_physical_waiter(
-                        sh.rx_index_waiter,
-                        observed,
-                        &sh.driver_wake,
-                        &sh.memory,
-                        bytes,
-                        AllocationKind::AdapterRx,
-                    );
+                    sh.memory.global().register_physical_waiter(sh.rx_index_waiter, observed, &sh.driver_wake, &sh.memory, bytes, AllocationKind::AdapterRx);
                     break;
                 }
                 Err(QueueGrowError::Allocation) => {

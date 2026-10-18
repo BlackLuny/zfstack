@@ -1,0 +1,82 @@
+{
+  "manifest_sha256": "a0d261daa0db065c3d3e180d2769bbc5922c79fe908b8177f03212da7736e81b",
+  "mode": "counts",
+  "cpu": 2,
+  "thread_count": 1,
+  "plan": [
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "A-counts",
+      "case": "idle1",
+      "iterations": 1000
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "A-counts",
+      "case": "idle64",
+      "iterations": 64000
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "A-counts",
+      "case": "consumed",
+      "iterations": 1
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "A-counts",
+      "case": "tx",
+      "iterations": 1
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "B-counts",
+      "case": "idle1",
+      "iterations": 1000
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "B-counts",
+      "case": "idle64",
+      "iterations": 64000
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "B-counts",
+      "case": "consumed",
+      "iterations": 1
+    },
+    {
+      "phase": "counts",
+      "pair": null,
+      "label": "B-counts",
+      "case": "tx",
+      "iterations": 1
+    }
+  ],
+  "binaries": {
+    "A-counts": {
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/A-counts/target/release/examples/issue53_pump_probe",
+      "sha256": "358e388ae30c4ac976cb2198e12b4d4f28f6cc92ac65bc7d4ea3687b6fe773ac"
+    },
+    "B-counts": {
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/B-counts/target/release/examples/issue53_pump_probe",
+      "sha256": "68ada3d4f01c9b3a06f69967341769f3de35acb1006d693551b9d48c45a93be3"
+    }
+  },
+  "host": {
+    "utc": "2026-10-18T05:48:03.942276+00:00",
+    "hostname": "ns512147",
+    "loadavg": "5.67 6.01 5.07 1/1347 1738181",
+    "cpu": "cpu  404432009 4980462 170126738 20092900635 394805682 0 13718072 0 116008 0",
+    "compilers": []
+  },
+  "meaning": "Production ordinary Driver::pump on pre-established Sim connections; no network E2E inference."
+}

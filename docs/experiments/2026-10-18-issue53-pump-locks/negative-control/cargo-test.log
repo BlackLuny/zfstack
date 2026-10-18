@@ -1,0 +1,86 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling libc v0.2.189
+   Compiling pin-project-lite v0.2.17
+   Compiling bytes v1.12.1
+   Compiling syn v3.0.6
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling tokio-macros v2.7.2
+   Compiling tokio v1.53.1
+   Compiling zfstack v0.0.1 (/root/work/zfstack-issue53-evidence-20261018/negative-control-pinned/source)
+warning: unused doc comment
+    --> src/tokio_adapter.rs:3757:9
+     |
+3757 | /         /// Sample index at which each connection was opened (the late
+3758 | |         /// connection's earlier samples are placeholders, not stalls).
+     | |_______________________________________________________________________^
+3759 |           let mut conn_since: Vec<usize> = vec![0; total as usize];
+     |           --------------------------------------------------------- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: `zfstack` (lib test) generated 4 warnings
+    Finished `release` profile [optimized] target(s) in 33.27s
+     Running unittests src/lib.rs (/root/work/zfstack-issue53-evidence-20261018/negative-control-pinned/target/release/deps/zfstack-859c02e157aa17ba)
+
+running 1 test
+
+thread 'tokio_adapter::tests::qa::a0_issue53_pump_consumes_refills_drains_and_wakes_outside_queue' (1743735) panicked at src/tokio_adapter/tests/qa.rs:618:9:
+assertion `left == right` failed: callback ran while the stream queue was locked
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tokio_adapter::tests::qa::a0_issue53_pump_consumes_refills_drains_and_wakes_outside_queue ... FAILED
+
+failures:
+
+failures:
+    tokio_adapter::tests::qa::a0_issue53_pump_consumes_refills_drains_and_wakes_outside_queue
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 310 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
