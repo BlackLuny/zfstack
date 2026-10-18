@@ -7,6 +7,10 @@ path or any QA case/threshold. It measures production `Driver::pump` itself,
 using the real simulator handshake and the constructor from
 `src/tokio_adapter/tests/qa.rs::prepared_stream`.
 
+The checked-in Rust input is the documentation template `probe.rs.txt`.
+`prepare.py` materializes its unchanged bytes as a private Rust module only in
+the explicitly requested temporary exports. It contains no test entry points.
+
 ## Frozen source
 
 - A: `ed4655e0798efc6b02883967cf933291dba059c8`

@@ -22,7 +22,7 @@ def main():
     p.add_argument("--candidate", default=CANDIDATE)
     args = p.parse_args()
     source = Path(__file__).resolve().parent
-    probe = (source / "probe.rs").read_text()
+    probe = (source / "probe.rs.txt").read_text()
     args.output.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output / "MANIFEST.json"
     if manifest_path.exists():
