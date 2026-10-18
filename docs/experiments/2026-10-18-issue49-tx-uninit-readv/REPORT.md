@@ -29,14 +29,16 @@ stays out of the reviewed Rust cfg inventory; copy it to
   `Shard::write_with_uninit_for_adapter` mirror the safe paths
   (space/share/budget admission, block allocation, index lease, empty-block
   release, `len` bookkeeping). `write_with` is untouched.
-- The uninitialized variant always grows instead of using the safe path's
-  single-block ring: a wrapped ring keeps free capacity inside its initialized
-  prefix, which cannot be made safe against an uninitializing fill without
-  copying. The relay calls with a window above one block, where the safe
-  `write_with` already takes the same growth path.
-- Both offered blocks are committed even when the fill is short, errors or
-  panics, which drops any stale prefix they carried. A panicking fill is caught
-  with `catch_unwind`, both offered blocks are reset to the logical end, and
+- A write that fits the single-block ring uses initialized `write_with`
+  windows and restores every uncommitted byte to zero after success, error or
+  panic. This preserves the live initialized prefix and reuses ACKed capacity
+  without allocating another block. Conn admission can reduce the relay's
+  256 KiB request below one block, especially at the 64 KiB send-share floor.
+  Larger writes retain the raw growth path.
+- On the growth path, both offered blocks are committed even when the fill is
+  short, errors or panics, which drops any stale prefix they carried. A
+  panicking fill is caught with `catch_unwind`, both offered blocks are reset
+  to the logical end, and
   the panic is resumed. The error path commits nothing.
 - The adapter's `read_into_uninit` uses `TcpStream::try_read_buf`, whose
   `BufMut for &mut [MaybeUninit<u8>]` reads into uninitialized capacity and
@@ -48,21 +50,30 @@ stays out of the reviewed Rust cfg inventory; copy it to
 
 ## Correctness and safety
 
-- Full suite, debug profile: `cargo test --features tokio,test-peer` —
-  `297 passed, 0 failed, 5 ignored` at the lib level, including every
-  splice/relay/half-close test.
-- Linux node (Rust 1.96.0, release): `cargo test --locked --release
-  --features tokio,test-peer --lib` — `297 passed, 0 failed, 6 ignored` on the
-  fixed tree, exact `Cargo.lock`.
-- Miri (`nightly-2026-07-11`, `cargo miri test --lib tx_uninit`): 7 passed.
+- Ring-fallback follow-up on macOS arm64, Rust 1.94.1:
+  `cargo +1.94.1 test --locked --release -p zfstack --features tokio,test-peer`
+  — `299 passed, 0 failed, 5 ignored` at the lib level plus all four enabled
+  integration tests, including splice/relay/half-close cases.
+- Previous Linux-node validation of `9bb825c` (Rust 1.96.0, release):
+  `cargo test --locked --release --features tokio,test-peer --lib` —
+  `297 passed, 0 failed, 6 ignored`, exact `Cargo.lock`.
+- Miri (`nightly-2026-07-11`, `cargo miri test --lib tx_uninit`): 8 passed.
   Miri tracks initialization of every byte and found no exposure of
   uninitialized memory.
 - New buffer tests: only-written bytes are visible; appends stay contiguous;
-  a `readv` crossing a block boundary commits both blocks; the single-block
-  case grows instead of wrapping; a reused block whose fill uninitializes the
-  uncommitted tail is lowered to the committed end so a later safe fill zeroes
+  a `readv` crossing a block boundary commits both blocks; larger writes grow;
+  a reused block whose fill uninitializes the uncommitted tail is lowered to
+  the committed end so a later safe fill zeroes
   it; a panicking fill is reset the same way; an error keeps nothing and
-  returns the fresh block.
+  returns the fresh block. The ring fallback additionally abandons both
+  windows after a short fill, error or panic, preserves live wrapped bytes and
+  verifies that a subsequent safe fill sees initialized zeros.
+- A Conn-level regression requests the relay's full 256 KiB window, reaches
+  the 64 KiB send-share floor, and refills uneven partial ACKs at the global,
+  port and peer physical ceilings. It checks byte order, logical accounting,
+  Writable arming, one-block backing and unchanged physical charge through
+  repeated ring wraps. The test failed with `MemoryBlocked` on `9bb825c` and
+  passes with the ring fallback.
 - New adapter tests: a hard error on the second window is propagated for
   `ConnectionReset`/`ConnectionAborted`/`BrokenPipe`/`Other`, while
   `WouldBlock`/`Interrupted` keep the prefix.
@@ -71,6 +82,15 @@ stays out of the reviewed Rust cfg inventory; copy it to
 - Reverting only `commit_written` to its first (max-based) version reproduces
   the review's Miri failure: `reading memory ... but memory is uninitialized`.
   The committed version passes.
+
+## Measurement revision
+
+The assembly, Linux JSONL and binary hashes below are frozen evidence from
+`9bb825cf81b43836a83dd59740324ace67a1c030`, before the ring-fallback follow-up.
+They measure fresh-block and whole-operation pool reuse, which release the
+block between operations; they do not measure partial-ACK ring refills or the
+cost of restoring an uncommitted ring tail. No new end-to-end performance
+claim is made for the fallback.
 
 ## Assembly evidence
 

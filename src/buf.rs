@@ -82,8 +82,9 @@ const OOO_DESCRIPTOR_BYTES: u64 = 128;
 
 /// A TX block. Storage starts uninitialized: a short write into a fresh 64 KiB
 /// block touches only the pages it writes (no memset, no fault-in of the rest).
-/// `[..init]` is initialized; it only grows, so a recycled block keeps its
-/// prefix and is never zeroed again. Every `&[u8]` / `&mut [u8]` view lies
+/// `[..init]` is initialized. Raw fills can shorten this prefix when they
+/// abandon writable capacity; safe fills initialize it before use. Every
+/// `&[u8]` / `&mut [u8]` view lies
 /// inside `[..init]` (bounds-checked, also in release), so a bad offset panics
 /// instead of reading uninitialized heap.
 struct Block {
@@ -642,14 +643,18 @@ impl TxBuf {
     /// returns, so the fresh tail is handed over uninitialized and only the
     /// written range is committed. Everything else — space checks, block
     /// allocation, index/lease handling, release of an empty fresh block and
-    /// `len` bookkeeping — matches `write_with`, except that this variant always
-    /// grows rather than using the single-block ring (see below).
+    /// `len` bookkeeping — matches `write_with`.
     ///
-    /// After the fill returns, panics or errors, the committed prefix is set to
-    /// exactly the reported write and every uncommitted byte the fill could
-    /// have touched is unclaimed, so a later safe consumer zero-fills it
-    /// instead of observing uninitialized memory. A panicking fill is unwound
-    /// after the same reset, and the error path commits nothing.
+    /// A write that fits the single-block ring reuses its initialized windows
+    /// through the safe path. Uncommitted bytes are restored to zeros before
+    /// returning or unwinding, so the ring's live prefix stays initialized
+    /// without another allocation. Conn admission can shrink a relay request
+    /// to this path even when its original window was larger than one block.
+    ///
+    /// On the growth path, the committed prefix is set to exactly the reported
+    /// write after the fill returns, panics or errors. Uncommitted capacity is
+    /// unclaimed, so a later safe consumer zero-fills it. A panicking fill is
+    /// unwound after the same reset, and the error path commits nothing.
     ///
     /// # Safety
     ///
@@ -657,9 +662,9 @@ impl TxBuf {
     /// initialize the first `n` bytes it reports, in window order like a
     /// `readv`. It must not read any byte it has not itself written and must
     /// not report more bytes than the offered lengths sum to. Bytes past `n`
-    /// may be left untouched or written; they are unclaimed on return and are
-    /// never exposed through `slices`. The callback must not report bytes it
-    /// did not initialize.
+    /// may be left untouched or written; they are unclaimed or reinitialized
+    /// on return and are never exposed through `slices`. The callback must not
+    /// report bytes it did not initialize.
     pub unsafe fn write_with_uninit<E>(
         &mut self,
         pool: &mut BlockPool,
@@ -675,11 +680,32 @@ impl TxBuf {
         if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
             return Ok(None);
         }
-        // Unlike `write_with`, this path deliberately skips the single-block
-        // ring fast path. A wrapped ring keeps free capacity inside its
-        // initialized prefix, so capacity a fill leaves uncommitted could not be
-        // made safe without copying. The relay calls with a window above one
-        // block, where the safe `write_with` takes this same growth path.
+        if self.is_ring() && max <= TX_BLOCK - self.len {
+            // Preserve ACKed-prefix reuse after Conn admission caps a relay
+            // request. A raw fill may uninitialize even previously initialized
+            // free bytes inside the ring's prefix, so restore every offered
+            // byte it does not commit before safe `write_with` sees it again.
+            return self.write_with(pool, budget, peer, max, |[a, b]| {
+                // SAFETY: MaybeUninit<u8> has the same layout as u8. The
+                // callback cannot retain these borrows, and all uncommitted
+                // bytes are reinitialized before returning or unwinding.
+                let a = unsafe { &mut *(a as *mut [u8] as *mut [MaybeUninit<u8>]) };
+                let b = unsafe { &mut *(b as *mut [u8] as *mut [MaybeUninit<u8>]) };
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fill([&mut *a, &mut *b])));
+                let n = match &result {
+                    Ok(Ok(n)) => *n,
+                    _ => 0,
+                };
+                let first = a.len();
+                assert!(n <= first + b.len(), "write_with_uninit filled more than offered");
+                a[n.min(first)..].fill(MaybeUninit::new(0));
+                b[n.saturating_sub(first)..].fill(MaybeUninit::new(0));
+                match result {
+                    Ok(result) => result,
+                    Err(payload) => std::panic::resume_unwind(payload),
+                }
+            });
+        }
         self.unwrap_for_growth();
         let before = self.blocks.len();
         let end = self.head + self.len;
@@ -3341,6 +3367,67 @@ mod tx_uninit_tests {
         assert_eq!(count, 3);
         drop(tx);
         assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn write_with_uninit_ring_restores_abandoned_windows() {
+        // A short result, an error and a panic must all preserve live bytes
+        // and restore both abandoned windows for a later safe fill.
+        for outcome in 0..3 {
+            let (global, mut budget) = budget(1 << 30);
+            let mut pool = BlockPool::new(0);
+            let mut tx = TxBuf::default();
+            let base = pattern(TX_BLOCK - 1000);
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &base));
+            tx.consume(&mut pool, 12_000);
+            let mut expected = base[12_000..].to_vec();
+            let physical = global.reserved();
+            let payload = pattern(1500);
+            // SAFETY: success initializes exactly 1500 bytes in window order;
+            // the error and panic cases report no committed bytes.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                tx.write_with_uninit(&mut pool, &mut budget, PeerId(1), 13_000, |[a, b]| {
+                    assert_eq!((a.len(), b.len()), (1000, 12_000));
+                    a.fill(MaybeUninit::uninit());
+                    b.fill(MaybeUninit::uninit());
+                    match outcome {
+                        0 => {
+                            fill_bytes(a, &payload[..1000]);
+                            fill_bytes(&mut b[..500], &payload[1000..]);
+                            Ok(1500)
+                        }
+                        1 => Err("fill error"),
+                        _ => panic!("fill panic"),
+                    }
+                })
+            }));
+            match outcome {
+                0 => {
+                    assert_eq!(result.unwrap(), Ok(Some(1500)));
+                    expected.extend_from_slice(&payload);
+                }
+                1 => assert_eq!(result.unwrap(), Err("fill error")),
+                _ => assert!(result.is_err()),
+            }
+            assert_eq!(collect(&tx), expected);
+            assert_eq!(global.reserved(), physical, "ring fill must reuse its backing");
+            assert_eq!(tx.allocated(), TX_BLOCK);
+            let free = TX_BLOCK - tx.len();
+            assert_eq!(
+                tx.write_with(&mut pool, &mut budget, PeerId(1), free, |[a, b]| {
+                    assert!(a.iter().chain(b.iter()).all(|&byte| byte == 0), "abandoned ring bytes were exposed");
+                    a[0] = 0xa5;
+                    Ok::<_, ()>(1)
+                }),
+                Ok(Some(1))
+            );
+            expected.push(0xa5);
+            assert_eq!(collect(&tx), expected);
+            assert_eq!(global.reserved(), physical);
+            tx.release_all(&mut pool);
+            drop((tx, pool));
+            assert_eq!(global.reserved(), 0);
+        }
     }
 
     #[test]
