@@ -1035,6 +1035,20 @@ const RELAY_IOV: usize = 64;
 /// Upper bound of one in-place socket read (two TX block slices at most).
 const RELAY_DOWN_READ: usize = 256 * 1024;
 
+/// Let an unknown-length response start in one small TX block. Keep using
+/// its remaining capacity after short reads, including the EOF/WouldBlock
+/// probe, instead of speculatively allocating a full block. Once filled,
+/// the same pump immediately resumes bulk reads; no ACK or timer is needed.
+/// Reuse the cumulative byte counter: this is once per relay, not per pump
+/// or every time TX drains. A bulk response pays one extra initial read.
+fn relay_down_read_max(downloaded: u64) -> usize {
+    if downloaded < crate::buf::SMALL_TX_BLOCK as u64 {
+        crate::buf::SMALL_TX_BLOCK - downloaded as usize
+    } else {
+        RELAY_DOWN_READ
+    }
+}
+
 impl<E, I, F> Driver<E, I, F>
 where
     E: Egress,
@@ -1693,12 +1707,13 @@ where
         while socket_read_ready && failure.is_none() && !relay.sock_eof {
             let sock = &relay.sock;
             let observed = sh.memory.global().release_epoch();
+            let read_max = relay_down_read_max(relay.stats.downloaded);
             // SAFETY: `read_into_uninit` reports only bytes `try_read_buf`
             // initialized, in window order; `write_with_uninit` turns exactly
             // that range into visible TX bytes.
-            let r = unsafe { self.shard.write_with_uninit_for_adapter(id, RELAY_DOWN_READ, |[a, b]| read_into_uninit(sock, a, b)) };
+            let r = unsafe { self.shard.write_with_uninit_for_adapter(id, read_max, |[a, b]| read_into_uninit(sock, a, b)) };
             match &r {
-                Ok(result) => track_tx_wait(&mut self.shard, sh, *result, observed, RELAY_DOWN_READ),
+                Ok(result) => track_tx_wait(&mut self.shard, sh, *result, observed, read_max),
                 Err(_) => clear_tx_wait(sh),
             }
             match r {
@@ -1874,7 +1889,13 @@ mod tests {
     /// Use a real handshake and socket, but drive the owner synchronously so
     /// the exact allocation/release ordering is reproducible without sleeps.
     async fn parked_relay(prefix: &[u8]) -> (TestRelayDriver, TcpStream, tokio::net::TcpStream, crate::sim::Side) {
+        parked_relay_with(prefix, b"socket tail", IfaceConfig::default().mtu).await
+    }
+
+    async fn parked_relay_with(prefix: &[u8], response: &[u8], mtu: u16) -> (TestRelayDriver, TcpStream, tokio::net::TcpStream, crate::sim::Side) {
         let mut sim = crate::sim::Sim::new(3740, StackConfig::default(), StackConfig::default(), Default::default(), Default::default());
+        sim.a.shard.set_iface_mtu(sim.a.iface, mtu);
+        sim.b.shard.set_iface_mtu(sim.b.iface, mtu);
         sim.a.shard.set_budget_limits(1 << 20, 1 << 20, 16);
         sim.a.shard.reserve_stream_state(STREAM_STATE_BYTES);
         sim.connect(43000, Default::default());
@@ -1915,11 +1936,218 @@ mod tests {
         let (done, _) = oneshot::channel();
         stream.sh.q.lock().unwrap().splice = Some(SpliceRequest { upstream: sock.unwrap().0, done });
         assert!(driver.start_relay(id));
-        up.write_all(b"socket tail").await.unwrap();
+        up.write_all(response).await.unwrap();
         driver.relays[&id].sock.readable().await.unwrap();
         driver.ctl.dirty.lock().unwrap().clear();
         assert_eq!(driver.shard.tx_queued(id), Some(0));
         (driver, stream, up, sim.b)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue52_short_relay_uses_small_backing_through_eof() {
+        let response = vec![0x52; 100];
+        let (mut driver, stream, mut up, _peer) = parked_relay_with(&[], &response, 1500).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        let before = driver.shard.budget().physical_used();
+        up.shutdown().await.unwrap();
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(response.len()));
+        assert_eq!(driver.relays[&sh.id].stats.downloaded, response.len() as u64);
+        assert!(driver.relays[&sh.id].sock_eof, "EOF must be read in the same pump");
+        let added = driver.shard.budget().physical_used() - before;
+        assert!(added < 4096, "100-byte response allocated {added} bytes");
+        assert_eq!(driver.shard.tx_cache_snapshot().large_cached, 0, "EOF must not speculatively allocate a large block");
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+        drop((stream, driver, up));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue52_finite_relay_sizes_grow_without_an_ack_and_preserve_fin() {
+        for mtu in [1500, 65535] {
+            for len in [100, 2048, 4096, 65536] {
+                let response: Vec<_> = (0..len as u64).map(pattern_byte).collect();
+                let (mut driver, stream, mut up, mut peer) = parked_relay_with(&[], &response, mtu).await;
+                let sh = &stream.sh;
+                let global = sh.memory.global().clone();
+                up.shutdown().await.unwrap();
+                driver.pump(sh.id);
+                // No core packets or ACKs have run: the small first read must
+                // grow within this pump, rather than imposing one block/RTT.
+                assert_eq!(driver.shard.tx_queued(sh.id), Some(len), "mtu={mtu} len={len}");
+                assert_eq!(driver.relays[&sh.id].stats.downloaded, len as u64);
+                assert!(driver.relays[&sh.id].sock_eof);
+                let peer_id = *peer.conns.keys().next().unwrap();
+                let mut received = Vec::new();
+                let mut eof = false;
+                let mut buf = vec![0; 65536];
+                for tick in 0..200 {
+                    let now = driver.now() + std::time::Duration::from_millis(10 * tick);
+                    driver.shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                        peer.shard.ingress(now, peer.iface, sh.peer, Bytes::from(pkt.to_vec()));
+                        SendResult::Accepted
+                    });
+                    loop {
+                        match peer.shard.read(now, peer_id, &mut buf) {
+                            ReadResult::Data(n) => received.extend_from_slice(&buf[..n]),
+                            ReadResult::Eof => {
+                                eof = true;
+                                break;
+                            }
+                            ReadResult::WouldBlock => break,
+                            other => panic!("unexpected close: {other:?}"),
+                        }
+                    }
+                    peer.shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+                        driver.shard.ingress(now, stream.meta.iface, sh.peer, Bytes::from(pkt.to_vec()));
+                        SendResult::Accepted
+                    });
+                    if eof {
+                        break;
+                    }
+                }
+                assert_eq!(received, response, "mtu={mtu} len={len}");
+                assert!(eof, "FIN missing: mtu={mtu} len={len}");
+                assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+                drop((stream, driver, up));
+                assert_eq!(global.reserved(), 0);
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue52_fragmented_initial_response_resumes_on_socket_readiness() {
+        let first = vec![1; 100];
+        let (mut driver, stream, mut up, mut peer) = parked_relay_with(&[], &first, 1500).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        let before = driver.shard.budget().physical_used();
+        let mut total = first.len();
+        driver.pump(sh.id);
+        // Fully ACK the first fragment before the next socket wake. The
+        // cumulative read allowance must survive an empty TX queue.
+        let now = driver.now();
+        driver.shard.run(now, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            peer.shard.ingress(now, peer.iface, sh.peer, Bytes::from(pkt.to_vec()));
+            SendResult::Accepted
+        });
+        let ack_at = now + std::time::Duration::from_millis(50);
+        peer.shard.run(ack_at, &mut |_: IfaceId, pkt: &OutPacket<'_>| {
+            driver.shard.ingress(ack_at, stream.meta.iface, sh.peer, Bytes::from(pkt.to_vec()));
+            SendResult::Accepted
+        });
+        driver.epoch -= std::time::Duration::from_millis(50);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert_eq!(driver.relays[&sh.id].stats.downloaded, 100);
+        for len in [500, 1448, 4096] {
+            assert_eq!(driver.shard.tx_queued(sh.id), Some(total - first.len()));
+            if total < 2048 {
+                assert!(driver.shard.budget().physical_used() - before < 4096);
+            }
+            assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+            driver.ctl.dirty.lock().unwrap().clear();
+            up.write_all(&vec![2; len]).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    if driver.ctl.dirty.lock().unwrap().contains(&sh.id) {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("socket readiness must wake the relay without an ACK");
+            driver.pump(sh.id);
+            total += len;
+        }
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(total - first.len()));
+        assert_eq!(driver.relays[&sh.id].stats.downloaded, total as u64);
+        up.shutdown().await.unwrap();
+        driver.relays[&sh.id].sock.readable().await.unwrap();
+        driver.pump(sh.id);
+        assert!(driver.relays[&sh.id].sock_eof);
+        drop((stream, driver, up));
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn issue52_initial_read_windows_grow_and_recycle_without_waiting() {
+        use crate::buf::{BlockPool, TxBuf, SMALL_TX_BLOCK, TX_BLOCK};
+        assert_eq!(relay_down_read_max(u64::MAX), RELAY_DOWN_READ);
+        for len in [100, SMALL_TX_BLOCK, 4096, TX_BLOCK] {
+            let global = GlobalBudget::new(1 << 20);
+            let mut budget = crate::budget::Budget::new(global.clone());
+            let mut pool = BlockPool::new(4);
+            for warm in [false, true] {
+                let mut tx = TxBuf::default();
+                let mut downloaded = 0;
+                let mut requests = Vec::new();
+                loop {
+                    let request = relay_down_read_max(downloaded as u64);
+                    requests.push(request);
+                    // SAFETY: initialize exactly the reported prefix, in order.
+                    let n = unsafe {
+                        tx.write_with_uninit(&mut pool, &mut budget, PeerId(1), request, |[a, b]| {
+                            let n = (len - downloaded).min(a.len() + b.len());
+                            for dst in a.iter_mut().chain(b.iter_mut()).take(n) {
+                                dst.write(0x52);
+                            }
+                            Ok::<_, ()>(n)
+                        })
+                    }
+                    .unwrap()
+                    .unwrap();
+                    downloaded += n;
+                    if n == 0 {
+                        break;
+                    }
+                }
+                assert_eq!(tx.slices(0, len).concat(), vec![0x52; len]);
+                assert_eq!(requests[0], SMALL_TX_BLOCK);
+                if len < SMALL_TX_BLOCK {
+                    assert_eq!(requests, [SMALL_TX_BLOCK, SMALL_TX_BLOCK - len]);
+                    assert_eq!(tx.allocated(), SMALL_TX_BLOCK);
+                    assert_eq!(pool.snapshot().large_cached, 0);
+                } else {
+                    assert_eq!(requests[1], RELAY_DOWN_READ, "growth must not wait for an ACK");
+                }
+                eprintln!(
+                    "issue52 backing: bytes={len} warm={warm} active={} cached={} physical={} requests={requests:?}",
+                    tx.allocated(),
+                    pool.snapshot().payload_bytes,
+                    global.reserved()
+                );
+                tx.release_all(&mut pool);
+                drop(tx);
+            }
+            pool.reclaim();
+            assert_eq!(global.reserved(), 0);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn issue52_first_read_waiter_wakes_when_only_a_small_block_fits() {
+        let response = vec![0x52; 100];
+        let (mut driver, stream, mut up, _peer) = parked_relay_with(&[], &response, 1500).await;
+        let sh = &stream.sh;
+        let global = sh.memory.global().clone();
+        up.shutdown().await.unwrap();
+        let ceiling = (1 << 20) - global.headroom(1 << 20, crate::budget::Tier::Block);
+        let held = sh.memory.try_allocate_kind(ceiling - driver.shard.budget().physical_used() - 4096, AllocationKind::TxBlock).unwrap();
+        let released = sh.memory.try_allocate_kind(4096, AllocationKind::TxBlock).unwrap();
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(0));
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 1);
+        driver.ctl.dirty.lock().unwrap().clear();
+        drop(released);
+        assert!(driver.ctl.dirty.lock().unwrap().remove(&sh.id), "the waiter must use the actual small request");
+        driver.pump(sh.id);
+        assert_eq!(driver.shard.tx_queued(sh.id), Some(response.len()));
+        assert!(driver.relays[&sh.id].sock_eof);
+        assert_eq!(driver.shard.budget().physical_waiters().tx_block, 0);
+        drop((held, stream, driver, up));
+        assert_eq!(global.reserved(), 0);
     }
 
     struct ReleaseOnReclaim(Mutex<Option<MemoryLease>>);
