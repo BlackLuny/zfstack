@@ -1,0 +1,231 @@
+// Temporary example source for the issue #23 PacketPool diagnostic.
+// Copy unchanged to examples/issue23_packetpool_probe.rs in an exported tree.
+// This calls the public production API. It installs no allocator or lock probes.
+
+use std::hint::black_box;
+use std::time::Instant;
+use zfstack::budget::{Budget, GlobalBudget};
+use zfstack::pktpool::{PacketBuf, PacketPool};
+use zfstack::PeerId;
+
+const SEED: u64 = 23;
+const CACHE_CAP: usize = 32;
+const OVERFLOW_BATCH: usize = CACHE_CAP + 1;
+const BUDGET_HIGH: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy)]
+enum Case {
+    Cache0,
+    Cache32,
+    Overflow33,
+}
+
+impl Case {
+    fn parse(value: &str) -> Self {
+        match value {
+            "cache0" => Self::Cache0,
+            "cache32" => Self::Cache32,
+            "overflow33" => Self::Overflow33,
+            _ => panic!("case must be cache0, cache32, or overflow33"),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Cache0 => "cache0",
+            Self::Cache32 => "cache32",
+            Self::Overflow33 => "overflow33",
+        }
+    }
+
+    fn max_cached(self) -> usize {
+        match self {
+            Self::Cache0 => 0,
+            Self::Cache32 | Self::Overflow33 => CACHE_CAP,
+        }
+    }
+
+    fn packets_per_iteration(self) -> u64 {
+        match self {
+            Self::Cache0 | Self::Cache32 => 1,
+            Self::Overflow33 => OVERFLOW_BATCH as u64,
+        }
+    }
+}
+
+fn filled_packet(pool: &PacketPool, payload: &[u8]) -> PacketBuf {
+    let mut packet = pool.get().expect("PacketPool::get failed");
+    assert_eq!(packet.capacity(), pool.buf_size());
+    for (slot, value) in packet.spare_capacity_mut().iter_mut().zip(payload) {
+        slot.write(*value);
+    }
+    // SAFETY: payload.len() bytes were just initialized, and every accepted
+    // buffer size is at least payload.len(). Only that prefix becomes readable.
+    unsafe { packet.set_len(payload.len()) };
+    packet
+}
+
+fn checked_drop(packet: PacketBuf, payload: &[u8]) -> u64 {
+    // Keep the checks tied to bytes actually read from the returned allocation.
+    // Both the comparison and checksum are inside the measured workload.
+    let actual = black_box(packet.as_ref());
+    assert_eq!(actual, payload, "packet contents changed");
+    let checksum = actual.iter().map(|byte| u64::from(*byte)).sum();
+    drop(packet);
+    checksum
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    assert_eq!(
+        args.len(),
+        4,
+        "usage: issue23_packetpool_probe CASE BUF_SIZE ITERATIONS"
+    );
+    let case = Case::parse(&args[1]);
+    let buf_size: usize = args[2].parse().expect("BUF_SIZE must be an integer");
+    assert!(
+        matches!(buf_size, 64 | 1500 | 65536),
+        "BUF_SIZE must be 64, 1500, or 65536"
+    );
+    let iterations: u64 = args[3].parse().expect("ITERATIONS must be an integer");
+    assert!(iterations > 0, "ITERATIONS must be positive");
+    let packets_per_iteration = case.packets_per_iteration();
+    let packets = iterations
+        .checked_mul(packets_per_iteration)
+        .expect("packet count overflow");
+    let bytes_per_packet = buf_size.min(64);
+    let bytes = packets
+        .checked_mul(bytes_per_packet as u64)
+        .expect("payload byte count overflow");
+    let capacity_bytes = packets
+        .checked_mul(buf_size as u64)
+        .expect("capacity byte count overflow");
+
+    let mut pattern = [0u8; 64];
+    for (index, byte) in pattern.iter_mut().enumerate() {
+        *byte = (SEED + 37 * index as u64) as u8;
+    }
+    let payload = &pattern[..bytes_per_packet];
+    let packet_checksum: u64 = payload.iter().map(|byte| u64::from(*byte)).sum();
+    let checksum_expected = packet_checksum.wrapping_mul(packets);
+
+    let global = GlobalBudget::new(BUDGET_HIGH);
+    let mut budget = Budget::new(global.clone());
+    let memory = budget.memory_handle(PeerId(SEED));
+    let pool = PacketPool::new(memory.clone(), buf_size, case.max_cached());
+    // Allocate the holding container once. It never grows in the timed loop.
+    let mut held: Vec<PacketBuf> = Vec::with_capacity(OVERFLOW_BATCH);
+    let priming_packets = case.max_cached() as u64;
+    for _ in 0..priming_packets {
+        held.push(filled_packet(&pool, payload));
+    }
+    let mut priming_checksum = 0u64;
+    for packet in held.drain(..) {
+        priming_checksum = priming_checksum.wrapping_add(checked_drop(packet, payload));
+    }
+    assert_eq!(
+        priming_checksum,
+        packet_checksum.wrapping_mul(priming_packets)
+    );
+    assert_eq!(pool.cached(), case.max_cached());
+    assert_eq!(pool.in_use(), 0);
+    assert_eq!(global.reserved(), priming_packets * buf_size as u64);
+
+    let mut checksum = 0u64;
+    let start = Instant::now();
+    match case {
+        Case::Cache0 | Case::Cache32 => {
+            for _ in 0..iterations {
+                let packet = filled_packet(&pool, payload);
+                checksum = checksum.wrapping_add(checked_drop(packet, payload));
+            }
+        }
+        Case::Overflow33 => {
+            for _ in 0..iterations {
+                for _ in 0..OVERFLOW_BATCH {
+                    held.push(filled_packet(&pool, payload));
+                }
+                // All 33 remain borrowed until this loop starts. Each batch
+                // therefore has 32 cached returns and one cache-full discard.
+                for packet in held.drain(..) {
+                    checksum = checksum.wrapping_add(checked_drop(packet, payload));
+                }
+            }
+        }
+    }
+    let loop_wall_ns = start.elapsed().as_nanos();
+
+    assert_eq!(black_box(checksum), checksum_expected);
+    assert!(held.is_empty());
+    let cached = pool.cached();
+    let in_use = pool.in_use();
+    let reserved = global.reserved();
+    let peer_reserved = memory.peer_physical_used();
+    let port_reserved = budget.physical_used();
+    let reserved_expected = case.max_cached() as u64 * buf_size as u64;
+    assert_eq!(cached, case.max_cached());
+    assert_eq!(in_use, 0);
+    assert_eq!(reserved, reserved_expected);
+    assert_eq!(peer_reserved, reserved_expected);
+    assert_eq!(port_reserved, reserved_expected);
+
+    let trimmed = pool.trim_cached_to(0);
+    assert_eq!(trimmed, cached);
+    let post_trim_cached = pool.cached();
+    let post_trim_in_use = pool.in_use();
+    assert_eq!(post_trim_cached, 0);
+    assert_eq!(post_trim_in_use, 0);
+    drop(pool);
+    drop(held);
+    let final_reserved = global.reserved();
+    let final_peer_reserved = memory.peer_physical_used();
+    let final_port_reserved = budget.physical_used();
+    assert_eq!(final_reserved, 0);
+    assert_eq!(final_peer_reserved, 0);
+    assert_eq!(final_port_reserved, 0);
+
+    // A normal release example can use panic=abort. stdout contains exactly
+    // one JSON object on success; failures exit nonzero without a PASS record.
+    println!(
+        concat!(
+            "{{\"schema\":\"zfstack-issue23-packetpool-v1\",",
+            "\"status\":\"PASS\",\"case\":\"{}\",\"buf_size\":{},",
+            "\"iterations\":{},\"seed\":{},\"packets_per_iteration\":{},",
+            "\"packets\":{},\"bytes_per_packet\":{},\"bytes\":{},",
+            "\"capacity_bytes\":{},\"checksum\":{},\"checksum_expected\":{},",
+            "\"priming_packets\":{},\"priming_checksum\":{},\"loop_wall_ns\":{},",
+            "\"max_cached\":{},\"budget_high\":{},\"cached\":{},\"in_use\":{},",
+            "\"reserved\":{},\"peer_reserved\":{},\"port_reserved\":{},",
+            "\"trimmed\":{},\"post_trim_cached\":{},\"post_trim_in_use\":{},",
+            "\"final_reserved\":{},\"final_peer_reserved\":{},\"final_port_reserved\":{}}}"
+        ),
+        case.name(),
+        buf_size,
+        iterations,
+        SEED,
+        packets_per_iteration,
+        packets,
+        bytes_per_packet,
+        bytes,
+        capacity_bytes,
+        checksum,
+        checksum_expected,
+        priming_packets,
+        priming_checksum,
+        loop_wall_ns,
+        case.max_cached(),
+        BUDGET_HIGH,
+        cached,
+        in_use,
+        reserved,
+        peer_reserved,
+        port_reserved,
+        trimmed,
+        post_trim_cached,
+        post_trim_in_use,
+        final_reserved,
+        final_peer_reserved,
+        final_port_reserved
+    );
+}
