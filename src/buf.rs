@@ -189,18 +189,18 @@ impl Block {
         &mut self.data[start..end]
     }
 
-    /// Record that a fill wrote `n` bytes at `start`. A gap before `start` is
-    /// zero-filled so the initialized prefix stays contiguous; bytes past the
-    /// written range are left uninitialized and are never exposed.
+    /// Record the end of the initialized prefix after a fill wrote `n` bytes at
+    /// `start`. This **sets** the prefix end, so capacity the fill could have
+    /// touched but did not commit is no longer claimed initialized; a later
+    /// safe consumer still zero-fills it before use. A gap after the previous
+    /// prefix is zero-filled first.
     #[inline]
     fn commit_written(&mut self, start: usize, n: usize) {
         let end = start + n;
-        if end > self.init {
-            if start > self.init {
-                self.data[self.init..start].fill(MaybeUninit::new(0));
-            }
-            self.init = end;
+        if start > self.init {
+            self.data[self.init..start].fill(MaybeUninit::new(0));
         }
+        self.init = end;
     }
 }
 
@@ -642,7 +642,14 @@ impl TxBuf {
     /// returns, so the fresh tail is handed over uninitialized and only the
     /// written range is committed. Everything else — space checks, block
     /// allocation, index/lease handling, release of an empty fresh block and
-    /// `len` bookkeeping — matches `write_with`.
+    /// `len` bookkeeping — matches `write_with`, except that this variant always
+    /// grows rather than using the single-block ring (see below).
+    ///
+    /// After the fill returns, panics or errors, the committed prefix is set to
+    /// exactly the reported write and every uncommitted byte the fill could
+    /// have touched is unclaimed, so a later safe consumer zero-fills it
+    /// instead of observing uninitialized memory. A panicking fill is unwound
+    /// after the same reset, and the error path commits nothing.
     ///
     /// # Safety
     ///
@@ -650,7 +657,9 @@ impl TxBuf {
     /// initialize the first `n` bytes it reports, in window order like a
     /// `readv`. It must not read any byte it has not itself written and must
     /// not report more bytes than the offered lengths sum to. Bytes past `n`
-    /// stay uninitialized and are never exposed through `slices`.
+    /// may be left untouched or written; they are unclaimed on return and are
+    /// never exposed through `slices`. The callback must not report bytes it
+    /// did not initialize.
     pub unsafe fn write_with_uninit<E>(
         &mut self,
         pool: &mut BlockPool,
@@ -666,26 +675,11 @@ impl TxBuf {
         if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
             return Ok(None);
         }
-        if self.is_ring() && max <= TX_BLOCK - self.len {
-            let offered = max;
-            let pos = (self.head + self.len) % TX_BLOCK;
-            let first = offered.min(TX_BLOCK - pos);
-            let second = offered - first;
-            let end = if second == 0 { pos + first } else { TX_BLOCK };
-            let (prefix, tail) = self.blocks[0].window_uninit(0, end).split_at_mut(pos);
-            let n = fill([&mut tail[..first], &mut prefix[..second]])?;
-            assert!(n <= offered, "write_with_uninit filled more than offered");
-            if n > 0 {
-                if n <= first {
-                    self.blocks[0].commit_written(pos, n);
-                } else {
-                    // The fill wrapped: all of `[pos, TX_BLOCK)` was written.
-                    self.blocks[0].commit_written(pos, TX_BLOCK - pos);
-                }
-            }
-            self.len += n;
-            return Ok(Some(n));
-        }
+        // Unlike `write_with`, this path deliberately skips the single-block
+        // ring fast path. A wrapped ring keeps free capacity inside its
+        // initialized prefix, so capacity a fill leaves uncommitted could not be
+        // made safe without copying. The relay calls with a window above one
+        // block, where the safe `write_with` takes this same growth path.
         self.unwrap_for_growth();
         let before = self.blocks.len();
         let end = self.head + self.len;
@@ -725,9 +719,8 @@ impl TxBuf {
         }
         // `end` lies inside the old tail block, or at the start of the fresh one.
         let (bi, pos) = self.position(end);
-        let result;
         let (la, lb);
-        {
+        let result = {
             let mut it = self.blocks.range_mut(bi..);
             let (a, a_len) = match it.next() {
                 Some(blk) => {
@@ -745,15 +738,30 @@ impl TxBuf {
             };
             la = a_len;
             lb = b_len;
-            result = fill([a, b]);
-        }
+            // A panicking fill must not leave raw capacity claimed as
+            // initialized. Drop both offered tails before resuming the panic.
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fill([a, b])))
+        };
+        let result = match result {
+            Ok(result) => result,
+            Err(payload) => {
+                self.blocks[bi].commit_written(pos, 0);
+                if bi + 1 < self.blocks.len() {
+                    self.blocks[bi + 1].commit_written(0, 0);
+                }
+                std::panic::resume_unwind(payload);
+            }
+        };
         let n = *result.as_ref().unwrap_or(&0);
         assert!(n <= la + lb, "write_with_uninit filled more than offered");
-        if n > 0 {
-            self.blocks[bi].commit_written(pos, n.min(la));
-            if n > la {
-                self.blocks[bi + 1].commit_written(0, n - la);
-            }
+        // Commit exactly what the fill reported and drop every uncommitted byte
+        // it could have touched. `commit_written` sets the prefix end, so a
+        // block reused with a longer initialized prefix cannot keep claiming a
+        // tail the fill may have uninitialized. This also covers the error path
+        // (`n == 0`).
+        self.blocks[bi].commit_written(pos, n.min(la));
+        if bi + 1 < self.blocks.len() {
+            self.blocks[bi + 1].commit_written(0, n.saturating_sub(la));
         }
         self.len += n;
         while self.blocks.len() > before && self.head + self.len <= self.allocated() - self.blocks.back().map_or(0, |b| b.len()) {
@@ -3254,9 +3262,20 @@ mod tx_uninit_tests {
         assert_eq!(block.bytes(10, 14), &[0xa1, 0xb2, 0xc3, 0xd4]);
         // Bytes past the reported write stay out of the initialized prefix.
         assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| block.bytes(0, 15).len())).is_err());
-        // A later write past the committed prefix zero-fills the new gap only.
+        // Committing a shorter prefix lowers the claimed end; a fill that
+        // abandoned the old tail cannot keep it marked initialized.
+        block.commit_written(2, 2);
+        assert_eq!(block.bytes(0, 4), &[0u8; 4][..]);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| block.bytes(0, 5).len())).is_err());
+        // Growing again zero-fills only the new gap.
+        {
+            let w = block.window_uninit(20, 22);
+            w[0].write(0x11);
+            w[1].write(0x22);
+        }
         block.commit_written(20, 2);
-        assert_eq!(block.bytes(14, 20), &[0u8; 6][..]);
+        assert_eq!(block.bytes(4, 20), &[0u8; 16][..]);
+        assert_eq!(block.bytes(20, 22), &[0x11, 0x22]);
     }
 
     #[test]
@@ -3325,7 +3344,7 @@ mod tx_uninit_tests {
     }
 
     #[test]
-    fn write_with_uninit_ring_wrap_commits_the_full_block() {
+    fn write_with_uninit_grows_a_single_block_instead_of_wrapping() {
         let (global, mut budget) = budget(1 << 30);
         let mut pool = BlockPool::new(4);
         let mut tx = TxBuf::default();
@@ -3342,10 +3361,12 @@ mod tx_uninit_tests {
         tx.consume(&mut pool, 1000);
         assert_eq!(tx.len(), 5);
         let mut expected = head[1000..].to_vec();
-        let extra = TX_BLOCK - 5 - 1; // stays a ring, forces the write to wrap
+        // The uninitialized variant always grows: it offers the tail of the
+        // single block and a second block rather than wrapping the old prefix.
+        let extra = 70_000;
         let n = unsafe {
             tx.write_with_uninit(&mut pool, &mut budget, PeerId(1), extra, |[a, b]| {
-                assert!(!a.is_empty() && !b.is_empty(), "the readv windows must wrap");
+                assert!(!a.is_empty() && !b.is_empty(), "growth must offer a second block");
                 let pa = pattern(a.len());
                 let pb = pattern(b.len());
                 fill_bytes(a, &pa);
@@ -3361,7 +3382,80 @@ mod tx_uninit_tests {
         assert_eq!(collect(&tx), expected);
         tx.release_all(&mut pool);
         let (count, _) = pool.reclaim();
-        assert_eq!(count, 1);
+        assert_eq!(count, 2);
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn write_with_uninit_drops_a_reused_blocks_uncommitted_prefix() {
+        let (global, mut budget) = budget(1 << 30);
+        let mut pool = BlockPool::new(4);
+        let mut tx = TxBuf::default();
+        // Seed a 64 KiB block with 4096 initialized bytes, then return it to the
+        // pool so the next fill reuses the block with a stale `init == 4096`.
+        let seed = pattern(4096);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &seed));
+        tx.consume(&mut pool, 4096);
+        let n = unsafe {
+            tx.write_with_uninit(&mut pool, &mut budget, PeerId(1), TX_BLOCK, |[a, _b]| {
+                fill_bytes(&mut a[..10], b"0123456789");
+                // Uninitialize the whole uncommitted tail, including the stale
+                // 100-byte prefix the reused block still carried.
+                a[10..].fill(MaybeUninit::uninit());
+                Ok::<usize, ()>(10)
+            })
+        }
+        .unwrap();
+        assert_eq!(n, Some(10));
+        assert_eq!(tx.len(), 10);
+        // A later safe fill must see fully initialized capacity, not the bytes
+        // the uninitialized fill abandoned.
+        let n = tx
+            .write_with(&mut pool, &mut budget, PeerId(1), 200, |[a, b]| -> Result<usize, ()> {
+                assert!(a.iter().chain(b.iter()).all(|&x| x == 0), "uninitialized tail was exposed");
+                a[..1].copy_from_slice(b"Z");
+                Ok(1)
+            })
+            .unwrap();
+        assert_eq!(n, Some(1));
+        assert_eq!(tx.len(), 11);
+        assert_eq!(tx.slices(10, 1)[0], b"Z");
+        tx.release_all(&mut pool);
+        let (_count, _) = pool.reclaim();
+        drop(tx);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn write_with_uninit_panic_drops_the_offered_windows() {
+        let (global, mut budget) = budget(1 << 30);
+        let mut pool = BlockPool::new(4);
+        let mut tx = TxBuf::default();
+        let seed = pattern(4096);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &seed));
+        tx.consume(&mut pool, 4096);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            tx.write_with_uninit(&mut pool, &mut budget, PeerId(1), TX_BLOCK, |[a, _b]| -> Result<usize, ()> {
+                a.fill(MaybeUninit::uninit());
+                panic!("fill panic");
+            })
+        }));
+        assert!(result.is_err());
+        // The panic path committed nothing and unclaimed the offered capacity,
+        // so a later safe fill can zero it instead of reading uninitialized
+        // bytes.
+        let n = tx
+            .write_with(&mut pool, &mut budget, PeerId(1), 200, |[a, b]| -> Result<usize, ()> {
+                assert!(a.iter().chain(b.iter()).all(|&x| x == 0), "panic left uninitialized capacity claimed");
+                a[..1].copy_from_slice(b"P");
+                Ok(1)
+            })
+            .unwrap();
+        assert_eq!(n, Some(1));
+        assert_eq!(tx.slices(0, 1)[0], b"P");
+        tx.release_all(&mut pool);
+        let (_count, _) = pool.reclaim();
         drop(tx);
         assert_eq!(global.reserved(), 0);
     }

@@ -13,9 +13,7 @@ This change adds an internal, unsafe, `readv`-specific sibling of
 reported. The safe API and all production defaults are unchanged.
 
 Source base: `987708b4246190f7af88f3508681de8a4235bb9d` (origin/main, the merge
-of #83). Candidate is this uncommitted working tree; `git diff --stat`:
-`src/buf.rs +332`, `src/conn.rs +42`, `src/shard.rs +17`, `src/tokio_adapter.rs
-+34`. The probe is kept as `tx_readv_probe.rs.txt` in this directory so it
+of #83). The probe is kept as `tx_readv_probe.rs.txt` in this directory so it
 stays out of the reviewed Rust cfg inventory; copy it to
 `examples/tx_readv_probe.rs` to rebuild it.
 
@@ -23,65 +21,83 @@ stays out of the reviewed Rust cfg inventory; copy it to
 
 - `Block::window_uninit(start, end)` returns raw `[MaybeUninit<u8>]` capacity
   without an initializing fill.
-- `Block::commit_written(start, n)` records exactly the filled bytes. A gap
-  before `start` (only reachable when a block is reused with a shorter
-  initialized prefix) is zero-filled so the initialized prefix stays
-  contiguous; bytes past the reported write stay uninitialized and are never
-  exposed through `TxBuf::slices`.
+- `Block::commit_written(start, n)` **sets** the initialized prefix end to
+  exactly the reported write (zero-filling a gap after the old prefix). Bytes
+  past the committed range become uninitialized again, so capacity the fill
+  could have touched but did not commit cannot stay claimed as initialized.
 - `TxBuf::write_with_uninit`, `Conn::write_with_uninit` and
   `Shard::write_with_uninit_for_adapter` mirror the safe paths
   (space/share/budget admission, block allocation, index lease, empty-block
   release, `len` bookkeeping). `write_with` is untouched.
+- The uninitialized variant always grows instead of using the safe path's
+  single-block ring: a wrapped ring keeps free capacity inside its initialized
+  prefix, which cannot be made safe against an uninitializing fill without
+  copying. The relay calls with a window above one block, where the safe
+  `write_with` already takes the same growth path.
+- Both offered blocks are committed even when the fill is short, errors or
+  panics, which drops any stale prefix they carried. A panicking fill is caught
+  with `catch_unwind`, both offered blocks are reset to the logical end, and
+  the panic is resumed. The error path commits nothing.
 - The adapter's `read_into_uninit` uses `TcpStream::try_read_buf`, whose
   `BufMut for &mut [MaybeUninit<u8>]` reads into uninitialized capacity and
   keeps tokio's readiness/`WouldBlock` contract. It fills the first window then,
-  only if it is exactly full, the second. If the second attempt returns
-  `WouldBlock`, `Interrupted` or any other error, the already-filled prefix is
-  kept and the error resurfaces on a later pump, so no accepted byte is
-  discarded and no data is lost relative to a single `readv`.
+  only if it is exactly full, the second. A `WouldBlock`/`Interrupted` second
+  read keeps the successful prefix; any other error (notably
+  `ConnectionReset`/`ConnectionAborted`) is propagated, so the relay resets the
+  connection instead of treating it as a clean EOF.
 
 ## Correctness and safety
 
 - Full suite, debug profile: `cargo test --features tokio,test-peer` —
-  `293 passed, 0 failed, 5 ignored` at the lib level (298 including the
-  integration targets), including every splice/relay/half-close test.
+  `297 passed, 0 failed, 5 ignored` at the lib level, including every
+  splice/relay/half-close test.
 - Linux node (Rust 1.96.0, release): `cargo test --locked --release
-  --features tokio,test-peer --lib` — `293 passed, 0 failed, 6 ignored`. Exact
-  `Cargo.lock`.
-- Miri (`nightly-2026-07-11`, `cargo miri test --lib tx_uninit`): 5 passed.
+  --features tokio,test-peer --lib` — `297 passed, 0 failed, 6 ignored` on the
+  fixed tree, exact `Cargo.lock`.
+- Miri (`nightly-2026-07-11`, `cargo miri test --lib tx_uninit`): 7 passed.
   Miri tracks initialization of every byte and found no exposure of
-  uninitialized memory in the new buffer logic.
+  uninitialized memory.
 - New buffer tests: only-written bytes are visible; appends stay contiguous;
-  a `readv` crossing a block boundary commits both blocks; a ring-wrapped write
-  commits the whole block; an error keeps nothing and returns the fresh block;
-  `commit_written` zero-fills only the gap before a write.
+  a `readv` crossing a block boundary commits both blocks; the single-block
+  case grows instead of wrapping; a reused block whose fill uninitializes the
+  uncommitted tail is lowered to the committed end so a later safe fill zeroes
+  it; a panicking fill is reset the same way; an error keeps nothing and
+  returns the fresh block.
+- New adapter tests: a hard error on the second window is propagated for
+  `ConnectionReset`/`ConnectionAborted`/`BrokenPipe`/`Other`, while
+  `WouldBlock`/`Interrupted` keep the prefix.
 - The old safe `write_with_never_offers_uninitialized_bytes` contract still
   holds: fresh blocks offered through `write_with` still read as zeros.
+- Reverting only `commit_written` to its first (max-based) version reproduces
+  the review's Miri failure: `reading memory ... but memory is uninitialized`.
+  The committed version passes.
 
 ## Assembly evidence
 
 Server build: `CARGO_PROFILE_RELEASE_LTO=fat`,
 `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`, `CARGO_PROFILE_RELEASE_PANIC=abort`,
 `RUSTFLAGS=-C target-cpu=native`, plus `CARGO_PROFILE_RELEASE_DEBUG=1` for
-source-line attribution. Binary:
-`7afae47fc9b41e31c35b148eb2002d15fa759c6f06b1da85f68118f1da4eca00`.
+source-line attribution. Assembly binary:
+`4135be61d4c2d7a5763999ab50294c7d64a6e3301f2d5c0e92a07a9807d25f7f`.
+Measured binary: `5afffe0e41a84f900c421b9f72f8c49f14368afc44ecaecc5e014df6d50d9f85`
+(identical source, no debug info).
 
 `objdump -dl -C` over the two probe wrappers (`tx_readv_probe::write_zero`
 calls the safe `write_with`; `tx_readv_probe::write_uninit` calls the new
 path):
 
-| inlined symbol | `write_zero` | `write_uninit` |
+| | `write_zero` | `write_uninit` |
 |---|---:|---:|
-| `zfstack::buf::Block::spare_mut` | 10 | 0 |
-| `zfstack::buf::Block::commit_written` | 0 | 12 |
+| `callq memset@GLIBC` | 3 | 1 |
+| inlined `Block::spare_mut` | present | absent |
+| inlined `Block::commit_written` | absent | present |
 
-Every `callq memset@GLIBC` in `write_zero` is inside `Block::spare_mut`
-(`src/buf.rs:176`, the eager `data[init..end].fill(0)`). Every `callq memset`
-in `write_uninit` is inside `Block::commit_written`, whose fill is guarded by
-`if start > self.init` and is skipped on the measured hot path, where a fresh
-block has `start == init == 0`. The `readv` path therefore executes zero
-`memset`s of the offered window; the safe path executes one per fresh block.
-Raw context is in `asm_analysis.txt`.
+Every `memset` in `write_zero` is inside `Block::spare_mut` (`src/buf.rs:176`,
+the eager `data[init..end].fill(0)`). The one `memset` in `write_uninit` is
+inside `Block::commit_written`, whose fill is guarded by `if start > self.init`
+and skipped on the measured hot path where the fill starts at the logical end.
+The `readv` path therefore executes zero memsets of the offered window; the
+safe path executes one per fresh block. Raw context is in `asm_analysis.txt`.
 
 ## Linux A/B measurements
 
@@ -89,30 +105,28 @@ Node: `root@38.207.178.131:22100`, 4 × i7-1265U (KVM), Linux 5.4.0, Rust
 1.96.0. `taskset -c 3`; three alternating rounds per payload; process CPU
 (`CLOCK_PROCESS_CPUTIME_ID`) reported as `cpu_ns_per_op`. Both arms are the
 same binary, so all build and host differences cancel; only the code path
-differs. Measured binary:
-`f723e338c1043cfe6fca0302f5d07349c73f57b6a381ef75ab6ad5ee55d00af9`.
+differs.
 
 `cold` = a fresh 64 KiB block is allocated and freed per operation, the
 worst case when concurrent short responses exceed the 16-block pool cache.
 `warm` = the pooled block is reused, where the one-time zero fill was already
 paid.
 
-`final_cold.jsonl` (median of 3):
+`final_cold.jsonl` (36 valid JSON lines, median of 3):
 
 | payload | zero (ns/op) | uninit (ns/op) | speedup |
 |---:|---:|---:|---:|
-| 64 B | 2308.4 | 568.4 | 4.06× |
-| 512 B | 2282.3 | 576.2 | 3.96× |
-| 1500 B | 2292.7 | 607.3 | 3.78× |
-| 4096 B | 2405.8 | 626.9 | 3.84× |
-| 65535 B | 4591.9 | 2523.2 | 1.82× |
-| 65536 B | 4621.3 | 2571.1 | 1.80× |
+| 64 B | 2294.2 | 574.2 | 4.00× |
+| 512 B | 2269.3 | 575.7 | 3.94× |
+| 1500 B | 2317.0 | 592.9 | 3.91× |
+| 4096 B | 2401.5 | 622.6 | 3.86× |
+| 65535 B | 4613.3 | 2530.4 | 1.82× |
+| 65536 B | 4619.2 | 2517.2 | 1.84× |
 
-`final_warm.jsonl` (median of 5) shows the amortized path is unchanged:
-64 B 155.8 → 157.1 (1.00×), 512 B 167.1 → 166.5 (1.00×), 4096 B 206.1 →
-205.9 (1.00×). An earlier build showed a +1.4–2.3 % warm delta; after removing
-two redundant block-index lookups from the new path it is within run-to-run
-noise. Warm A/A noise on this shared host is of the same order.
+`final_warm.jsonl` (30 valid JSON lines, median of 5) shows the amortized
+path is unchanged: 64 B 156.4 → 159.3 (0.98×), 512 B 165.3 → 166.0 (1.00×),
+4096 B 204.5 → 207.7 (0.98×). This is within the run-to-run noise of the
+shared host.
 
 The same probe on the development Mac (arm64, release) reproduced the effect
 (cold 512 B: 1225 vs 497 ns/op) and the warm parity.
@@ -125,7 +139,7 @@ The win is bounded by fresh-block allocation, not by steady state:
   the safe path was a no-op there and the new path is a no-op too.
 - When short-lived responses exceed the pool, every fresh 64 KiB block was
   zeroed for a possibly tiny read. That is the measured cold case, and it is
-  1.8×–4.1× cheaper per operation, saving ≈ 1.7–2.1 µs of process CPU.
+  1.8×–4.0× cheaper per operation, saving ≈ 1.7–2.1 µs of process CPU.
 - Full-block reads still benefit (≈ 1.8×) because the extra 64 KiB memset was
   never needed.
 

@@ -357,9 +357,9 @@ fn track_tx_wait(shard: &mut Shard, sh: &Shared, result: WriteResult, observed: 
 /// writes into untouched block capacity without a user-space zero fill. Every
 /// byte the socket reports is therefore initialized; a short first window, an
 /// EOF (`Ok(0)`) or a `WouldBlock` before the first byte all pass through
-/// unchanged. If the first window fills exactly and the socket then has
-/// nothing more, the successful prefix is kept rather than turned into an
-/// error.
+/// unchanged. A hard error from the second read is propagated, not turned into
+/// a clean EOF: the connection is reset and the relay reports the error. A
+/// `WouldBlock`/`Interrupted` second read keeps the successful prefix.
 fn read_into_uninit(sock: &tokio::net::TcpStream, mut a: &mut [MaybeUninit<u8>], mut b: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
     let a_len = a.len();
     let first = sock.try_read_buf(&mut a)?;
@@ -367,12 +367,19 @@ fn read_into_uninit(sock: &tokio::net::TcpStream, mut a: &mut [MaybeUninit<u8>],
         return Ok(first);
     }
     // The first window is full, so those bytes are already accepted. A second
-    // syscall is only needed for the trailing window; whatever it reports must
-    // never discard `first`. `WouldBlock` (readiness cleared), `Interrupted`
-    // and any other error stop here and surface on a later pump instead.
-    match sock.try_read_buf(&mut b) {
+    // syscall is only needed for the trailing window.
+    finish_second_window(first, sock.try_read_buf(&mut b))
+}
+
+/// Combine the two window reads. A `WouldBlock`/`Interrupted` second read keeps
+/// the successful prefix; any other error (notably `ConnectionReset` or
+/// `ConnectionAborted`) is propagated so the relay resets the connection
+/// instead of treating it as a clean EOF.
+fn finish_second_window(first: usize, second: io::Result<usize>) -> io::Result<usize> {
+    match second {
         Ok(second) => Ok(first + second),
-        Err(_) => Ok(first),
+        Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => Ok(first),
+        Err(e) => Err(e),
     }
 }
 
@@ -4263,5 +4270,20 @@ mod tests {
         let snap = server.handle.snapshot().await.unwrap();
         assert_eq!(snap.aborts.stream_state, 0);
         server.task.shutdown_and_join().await.unwrap();
+    }
+
+    #[test]
+    fn hard_error_on_the_second_read_window_is_propagated() {
+        for kind in [io::ErrorKind::ConnectionReset, io::ErrorKind::ConnectionAborted, io::ErrorKind::BrokenPipe, io::ErrorKind::Other] {
+            let err = finish_second_window(4096, Err(io::Error::from(kind))).expect_err("hard error must not become EOF");
+            assert_eq!(err.kind(), kind);
+        }
+    }
+
+    #[test]
+    fn blocked_or_interrupted_second_read_window_keeps_the_prefix() {
+        assert_eq!(finish_second_window(4096, Ok(512)).unwrap(), 4608);
+        assert_eq!(finish_second_window(4096, Err(io::Error::from(io::ErrorKind::WouldBlock))).unwrap(), 4096);
+        assert_eq!(finish_second_window(4096, Err(io::Error::from(io::ErrorKind::Interrupted))).unwrap(), 4096);
     }
 }

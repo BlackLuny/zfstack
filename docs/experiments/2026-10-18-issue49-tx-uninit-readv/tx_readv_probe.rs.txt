@@ -116,6 +116,7 @@ fn write_uninit(pool: &mut BlockPool, budget: &mut Budget, tx: &mut TxBuf, max: 
 
 struct Args {
     mode: String,
+    round: u64,
     iterations: u64,
     payload: usize,
     warm: bool,
@@ -125,10 +126,11 @@ struct Args {
 fn parse() -> Args {
     let mut argv = std::env::args().skip(1);
     let mode = argv.next().expect("usage: tx_readv_probe <zero|uninit> [--iterations N] [--payload K] [--max B] [--warm]");
-    let mut a = Args { mode, iterations: 200_000, payload: 512, warm: false, max: 256 * 1024 };
+    let mut a = Args { mode, round: 0, iterations: 200_000, payload: 512, warm: false, max: 256 * 1024 };
     while let Some(flag) = argv.next() {
         let mut value = || argv.next().expect("missing value");
         match flag.as_str() {
+            "--round" => a.round = value().parse().unwrap(),
             "--iterations" => a.iterations = value().parse().unwrap(),
             "--payload" => a.payload = value().parse().unwrap(),
             "--max" => a.max = value().parse().unwrap(),
@@ -194,10 +196,11 @@ fn main() {
     };
 
     println!(
-        "{{\"mode\":\"{}\",\"warm\":{},\"iterations\":{},\"payload\":{},\"max\":{},\
+        "{{\"mode\":\"{}\",\"round\":{},\"warm\":{},\"iterations\":{},\"payload\":{},\"max\":{},\
          \"wall_ns_per_op\":{:.1},\"cpu_ns_per_op\":{:.1},\
          \"minor_faults_per_op\":{:.4},\"checksum\":{}}}",
         a.mode,
+        a.round,
         a.warm,
         a.iterations,
         a.payload,
