@@ -1,0 +1,49 @@
+### write_zero: inlined memset context
+--- memset at line 333 ---
+   12bf2:	mov    %rax,0x8(%rsp)
+_ZN4core5slice5index28get_offset_len_mut_noubcheck17h965e795855ea9492E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/index.rs:101
+   12bf7:	add    %rax,%rdi
+_ZN74_$LT$$u5b$T$u5d$$u20$as$u20$core..slice..specialize..SpecFill$LT$T$GT$$GT$9spec_fill17h8cd6bd2ad66a7ad6E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/specialize.rs:25
+   12bfa:	xor    %esi,%esi
+   12bfc:	callq  *0x4e886(%rip)        # 61488 <memset@GLIBC_2.2.5>
+_ZN7zfstack3buf5Block9spare_mut17h26c2d33e2e09e34fE():
+--- memset at line 721 ---
+   12f86:	ja     1343b <tx_readv_probe::write_zero+0xb2b>
+_ZN4core5slice5index28get_offset_len_mut_noubcheck17h965e795855ea9492E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/index.rs:101
+   12f8c:	add    0x0(%r13),%rdi
+_ZN74_$LT$$u5b$T$u5d$$u20$as$u20$core..slice..specialize..SpecFill$LT$T$GT$$GT$9spec_fill17h8cd6bd2ad66a7ad6E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/specialize.rs:25
+   12f90:	xor    %esi,%esi
+   12f92:	callq  *0x4e4f0(%rip)        # 61488 <memset@GLIBC_2.2.5>
+_ZN7zfstack3buf5Block9spare_mut17h26c2d33e2e09e34fE():
+--- memset at line 794 ---
+_ZN4core5slice5index28get_offset_len_mut_noubcheck17h965e795855ea9492E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/index.rs:101
+   1300f:	add    %rbp,%rdi
+_ZN74_$LT$$u5b$T$u5d$$u20$as$u20$core..slice..specialize..SpecFill$LT$T$GT$$GT$9spec_fill17h8cd6bd2ad66a7ad6E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/specialize.rs:25
+   13012:	xor    %esi,%esi
+   13014:	mov    %r9,%r13
+   13017:	callq  *0x4e46b(%rip)        # 61488 <memset@GLIBC_2.2.5>
+   1301d:	mov    %r13,%r9
+
+### write_uninit: inlined memset context
+--- memset at line 664 ---
+_ZN4core5slice5index28get_offset_len_mut_noubcheck17h965e795855ea9492E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/index.rs:101
+   13ab7:	add    (%r14),%rdi
+_ZN74_$LT$$u5b$T$u5d$$u20$as$u20$core..slice..specialize..SpecFill$LT$T$GT$$GT$9spec_fill17h8cd6bd2ad66a7ad6E():
+/rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library/core/src/slice/specialize.rs:25
+   13aba:	xor    %esi,%esi
+   13abc:	mov    %r8,%rbp
+   13abf:	callq  *0x4d9c3(%rip)        # 61488 <memset@GLIBC_2.2.5>
+   13ac5:	mov    %rbp,%r8
+
+### symbol counts
+write_zero spare_mut: 10
+write_zero commit_written: 0
+write_uninit spare_mut: 0
+write_uninit commit_written: 3

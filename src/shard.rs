@@ -2128,14 +2128,25 @@ impl Shard {
         result
     }
 
+    /// Adapter entry for the uninitialized relay readv path. The fill receives
+    /// raw TX capacity and must initialize exactly the bytes it reports; a
+    /// socket `read`/`readv` satisfies that. See `Conn::write_with_uninit`.
+    ///
+    /// # Safety
+    ///
+    /// `fill` must initialize the first `n` bytes it reports, in window order.
     #[cfg(feature = "tokio")]
-    pub(crate) fn write_with_for_adapter<E>(
+    pub(crate) unsafe fn write_with_uninit_for_adapter<E>(
         &mut self,
         id: ConnId,
         max: usize,
-        fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>,
+        fill: impl FnOnce([&mut [std::mem::MaybeUninit<u8>]; 2]) -> Result<usize, E>,
     ) -> Result<WriteResult, E> {
-        self.write_with(id, max, fill)
+        let result = self.with_conn(id, |c, ctx| c.write_with_uninit(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed));
+        if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
+            self.sync_share_waiter(id.idx() as u32, true);
+        }
+        result
     }
 
     fn write_inner(&mut self, id: ConnId, src: &[u8]) -> WriteResult {

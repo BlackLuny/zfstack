@@ -1200,6 +1200,51 @@ impl Conn {
         Ok(WriteResult::Written(filled))
     }
 
+    /// Uninitialized twin of [`Conn::write_with`] for a fill that initializes
+    /// exactly what it reports: a socket `read`/`readv`. See
+    /// [`crate::buf::TxBuf::write_with_uninit`] for the safety contract.
+    ///
+    /// # Safety
+    ///
+    /// `fill` must initialize the first `n` bytes it reports, in window order,
+    /// and must not read bytes it has not itself written.
+    // Only the tokio relay adapter calls this; keep it available to the
+    // non-tokio core without a cfg gate so the reviewed cfg inventory is not
+    // disturbed.
+    #[allow(dead_code)]
+    pub(crate) unsafe fn write_with_uninit<E>(
+        &mut self,
+        max: usize,
+        ctx: &mut Ctx,
+        fill: impl FnOnce([&mut [std::mem::MaybeUninit<u8>]; 2]) -> Result<usize, E>,
+    ) -> Result<WriteResult, E> {
+        let n = match self.admit_write(max, ctx) {
+            Ok(n) => n,
+            Err(r) => return Ok(r),
+        };
+        let filled = match self.tx.write_with_uninit(ctx.pool, ctx.budget, self.peer, n, fill) {
+            Ok(Some(k)) => k,
+            Ok(None) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                self.want_write = true;
+                return Ok(WriteResult::MemoryBlocked);
+            }
+            Err(e) => {
+                ctx.budget.cancel_reserve(self.peer, n as u64);
+                return Err(e);
+            }
+        };
+        if filled < n {
+            ctx.budget.cancel_reserve(self.peer, (n - filled) as u64);
+        }
+        self.tx_charged += filled as u64;
+        self.sync_sender(ctx);
+        if filled == n && n < max {
+            self.want_write = true;
+        }
+        Ok(WriteResult::Written(filled))
+    }
+
     pub fn shutdown_write(&mut self) {
         if self.fin_off.is_some() {
             return;
@@ -3034,6 +3079,70 @@ mod rx_descriptor_tests {
         assert_eq!(ctx.budget.used, 0);
         assert_eq!(ctx.budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn issue37_uninit_relay_refills_acked_prefix_at_every_budget_ceiling() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        use crate::buf::TX_BLOCK;
+
+        for level in [Level::Global, Level::Port, Level::Peer] {
+            let limit = 1 << 20;
+            let high = if level == Level::Global { limit } else { 2 * limit };
+            let port = if level == Level::Peer { high } else { limit };
+            exercise(high, |conn, ctx| {
+                ctx.budget.set_limits(port, limit, 64);
+                for _ in 0..32 {
+                    ctx.budget.sender_add(conn.peer);
+                }
+                assert_eq!(ctx.budget.send_share(conn.peer), crate::budget::MIN_SEND_SHARE);
+                // Use the same requested window as the relay. Conn admission
+                // reduces it to one block, then to each partial ACK below.
+                let request = 256 * 1024;
+                let seeded = conn
+                    .write_with(request, ctx, |[a, b]| {
+                        a.fill(7);
+                        b.fill(7);
+                        Ok::<_, ()>(a.len() + b.len())
+                    })
+                    .unwrap();
+                assert_eq!(seeded, WriteResult::Written(TX_BLOCK));
+                let mut expected = vec![7; TX_BLOCK];
+                let global = ctx.budget.global().clone();
+                let ceiling = limit - global.headroom(limit, Tier::Block);
+                let owner = if level == Level::Peer { conn.peer } else { PeerId(2) };
+                let held = ctx.budget.try_allocate_kind(owner, ceiling - global.reserved(), AllocationKind::TxBlock).unwrap();
+                let physical = global.reserved();
+
+                // Uneven ACKs also make a later fill span both ring windows.
+                for (round, acked) in [32_768, 17_003, 123, 30_000].into_iter().enumerate() {
+                    conn.tx.consume(ctx.pool, acked);
+                    conn.tx_charged -= acked as u64;
+                    ctx.budget.release(conn.peer, acked as u64);
+                    expected.drain(..acked);
+                    assert_eq!(conn.send_space(ctx.cfg, ctx.budget), acked);
+                    // SAFETY: every offered byte is initialized and reported.
+                    let result = unsafe {
+                        conn.write_with_uninit(request, ctx, |[a, b]| {
+                            assert_eq!(a.len() + b.len(), acked, "Conn must cap the relay window");
+                            for dst in a.iter_mut().chain(b.iter_mut()) {
+                                dst.write(8 + round as u8);
+                            }
+                            Ok::<_, ()>(a.len() + b.len())
+                        })
+                    }
+                    .unwrap();
+                    assert_eq!(result, WriteResult::Written(acked), "partial ACK must refill under {level:?} pressure");
+                    expected.extend(std::iter::repeat_n(8 + round as u8, acked));
+                    assert_eq!(conn.tx.slices(0, TX_BLOCK).concat(), expected);
+                    assert_eq!(conn.tx.allocated(), TX_BLOCK);
+                    assert_eq!(global.reserved(), physical, "refill must reuse backing under {level:?} pressure");
+                    assert_eq!((conn.tx_charged, ctx.budget.used), (TX_BLOCK as u64, TX_BLOCK as u64));
+                    assert!(conn.want_write, "the capped relay write must retain its Writable request");
+                }
+                drop(held);
+            });
+        }
     }
 
     #[test]
