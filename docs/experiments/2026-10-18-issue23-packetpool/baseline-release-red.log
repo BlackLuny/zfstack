@@ -1,0 +1,74 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling libc v0.2.189
+   Compiling bytes v1.12.1
+   Compiling pin-project-lite v0.2.17
+   Compiling syn v3.0.6
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling tokio-macros v2.7.2
+   Compiling tokio v1.53.1
+   Compiling zfstack v0.0.1 (/root/work/zfstack-issue23-20261018)
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: `zfstack` (lib) generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 16.55s
+     Running tests/packet_pool_release.rs (target/release/deps/packet_pool_release-be07114acf0c1cc9)
+
+running 1 test
+
+thread 'packet_backing_is_freed_before_budget_wakes_across_owner_lifecycles' (1811993) panicked at tests/packet_pool_release.rs:287:9:
+assertion `left == right` failed: NoCache: budget wake preceded backing deallocation; all outcomes: [Outcome { lifecycle: NoCache, calls: 1, early_wakes: 1, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }, Outcome { lifecycle: FullCache, calls: 1, early_wakes: 1, callback_error: false, acquired: 2, expected_acquired: 2, backing_freed: true }, Outcome { lifecycle: ClonedSlice, calls: 1, early_wakes: 1, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }, Outcome { lifecycle: ExplicitTrim, calls: 1, early_wakes: 0, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }, Outcome { lifecycle: IdleTrim, calls: 1, early_wakes: 0, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }, Outcome { lifecycle: LastOwner { max_cached: 0 }, calls: 1, early_wakes: 1, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }, Outcome { lifecycle: LastOwner { max_cached: 1 }, calls: 1, early_wakes: 0, callback_error: false, acquired: 1, expected_acquired: 1, backing_freed: true }]
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test packet_backing_is_freed_before_budget_wakes_across_owner_lifecycles ... FAILED
+
+failures:
+
+failures:
+    packet_backing_is_freed_before_budget_wakes_across_owner_lifecycles
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p zfstack --test packet_pool_release`
