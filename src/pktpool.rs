@@ -174,7 +174,11 @@ impl PacketPool {
     /// the allocation failed (the caller should stop reading the device until
     /// memory is released). A buffer's capacity never exceeds its charge.
     pub fn get(&self) -> Option<PacketBuf> {
-        let cached = {
+        // A zero-capacity cache can never hold a returned buffer; avoid
+        // serializing packet ingress on a mutex in this configuration.
+        let cached = if self.inner.max_cached == 0 {
+            None
+        } else {
             let mut free = self.inner.free.lock().unwrap();
             let cached = free.buffers.pop();
             free.note_tail_removal();
@@ -250,11 +254,18 @@ impl Drop for PacketBuf {
     fn drop(&mut self) {
         let (Some(pool), Some(lease)) = (self.pool.take(), self.lease.take()) else { return };
         pool.in_use.fetch_sub(1, Ordering::Relaxed);
-        let mut free = pool.free.lock().unwrap();
-        if free.buffers.len() < pool.max_cached {
-            free.buffers.push((std::mem::take(&mut self.data), lease));
+        if pool.max_cached != 0 {
+            let mut free = pool.free.lock().unwrap();
+            if free.buffers.len() < pool.max_cached {
+                free.buffers.push((std::mem::take(&mut self.data), lease));
+                return;
+            }
         }
-        // Otherwise the buffer and its lease are released here.
+        // Keep the backing charged until it is actually freed. Releasing the
+        // lease can synchronously wake a waiter that allocates another buffer.
+        // Both destruction and the wakeup must happen outside the pool lock.
+        drop(std::mem::take(&mut self.data));
+        drop(lease);
     }
 }
 
