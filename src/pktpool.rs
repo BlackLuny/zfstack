@@ -148,8 +148,20 @@ impl PacketPool {
                     return removed;
                 }
                 let count = window.untouched.min(len.saturating_sub(target)).min(retired.len());
-                for (slot, buffer) in retired.iter_mut().zip(free.buffers.drain(..count)) {
-                    *slot = Some(buffer);
+                let stale_end = window.untouched;
+                if len <= 128 {
+                    // Small pools do not benefit from rearranging the suffix.
+                    for (slot, buffer) in retired.iter_mut().zip(free.buffers.drain(..count)) {
+                        *slot = Some(buffer);
+                    }
+                } else {
+                    // Only [..stale_end] is known unused for the whole window.
+                    // Remove from its end so swap_remove moves a recent buffer
+                    // outside the shrinking untouched prefix. This avoids
+                    // repeatedly shifting large live suffixes under the lock.
+                    for (i, slot) in retired.iter_mut().take(count).enumerate() {
+                        *slot = Some(free.buffers.swap_remove(stale_end - 1 - i));
+                    }
                 }
                 let remaining = free.buffers.len();
                 let window = free.idle.as_mut().unwrap();
@@ -314,6 +326,38 @@ mod idle_trim_tests {
         budget::{Budget, GlobalBudget},
         PeerId,
     };
+
+    #[test]
+    fn batched_idle_trim_preserves_multiple_hot_buffers_across_swaps() {
+        // A cold prefix longer than four retirement batches used to cause
+        // repeated memmoves. The suffix borrowed during the window is never
+        // eligible, even when swap_remove moves it into old prefix slots.
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let pool = PacketPool::new(budget.memory_handle(PeerId(9)), 64, 513);
+        drop((0..513).map(|_| pool.get().unwrap()).collect::<Vec<_>>());
+        assert_eq!(global.reserved(), 513 * 64);
+        let start = Instant::now();
+        let idle = Duration::from_secs(5);
+        assert_eq!(pool.trim_idle(start, idle, 0), 0);
+        let hot = (0..3).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
+        let mut hot_ptrs: Vec<_> = hot.iter().map(|p| p.data.as_ptr() as usize).collect();
+        hot_ptrs.sort_unstable();
+        drop(hot);
+
+        assert_eq!(pool.trim_idle(start + idle, idle, 0), 510);
+        assert_eq!(pool.cached(), 3);
+        assert_eq!(global.reserved(), 3 * 64);
+        let survivors = (0..3).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
+        let mut survivor_ptrs: Vec<_> = survivors.iter().map(|p| p.data.as_ptr() as usize).collect();
+        survivor_ptrs.sort_unstable();
+        assert_eq!(survivor_ptrs, hot_ptrs);
+        assert_eq!(pool.in_use(), 3);
+        drop(survivors);
+        assert_eq!(pool.trim_cached_to(0), 3);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.physical_used(), 0);
+    }
 
     #[test]
     fn low_rate_reclaims_history_but_preserves_hot_tail_and_budget() {
