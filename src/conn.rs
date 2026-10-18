@@ -1073,12 +1073,14 @@ impl Conn {
         ctx.budget.release(self.peer, rel);
         self.rcvq_copied += n;
         self.rcv_space_adjust(now, ctx);
-        // Window update when the free window at least doubled (and by ≥ 2 MSS), or
-        // when it re-opens from (almost) zero.
+        // Announce a reopened zero window as soon as SWS avoidance permits
+        // it. Requiring 2 MSS here can permanently suppress the update when
+        // jumbo MSS exceeds half of the configured receive buffer. For other
+        // window growth, keep the existing >= 2 MSS / doubling threshold.
         let cur = self.rcv_adv.saturating_sub(self.rcv_nxt);
         let new = self.calc_window(ctx);
         let mss = self.rcv_mss as u64;
-        if self.state.can_recv_data() && new > cur && new - cur >= 2 * mss && (new >= 2 * cur || cur < 2 * mss) {
+        if self.state.can_recv_data() && new > cur && (cur == 0 || (new - cur >= 2 * mss && (new >= 2 * cur || cur < 2 * mss))) {
             self.ack_need = AckNeed::Now;
         }
     }
@@ -1624,7 +1626,13 @@ impl Conn {
         // FIN.
         if h.has(FIN) && !fin_dropped {
             let fin_at = (seg_off + seg_len - 1) as u64;
-            if self.fin_rcvd.is_none() && fin_at >= self.rcv_nxt {
+            // FIN consumes a sequence byte too. The segment may overlap our
+            // receive window with data while its FIN falls at (or beyond) the
+            // exclusive advertised right edge. Do not ACK that FIN until a
+            // window update makes it acceptable and the peer retransmits it.
+            // Otherwise RCV.NXT can advance past RCV.ADV, breaking the
+            // non-shrinking-window invariant and underflowing calc_window_l.
+            if self.fin_rcvd.is_none() && fin_at >= self.rcv_nxt && fin_at < self.rcv_adv {
                 self.fin_rcvd = Some(fin_at);
             }
             self.ack_need = AckNeed::Now;
@@ -3079,6 +3087,163 @@ mod rx_descriptor_tests {
         assert_eq!(ctx.budget.used, 0);
         assert_eq!(ctx.budget.physical_used(), 0);
         assert_eq!(global.reserved(), 0);
+    }
+
+    // Exercise the synchronized TCP receive path, including FIN sequence
+    // acceptability, with a full initial window and both normal/jumbo MTUs.
+    fn issue87_window_case(mtu: u16, data_len: usize, scaled: bool, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
+        let cfg = StackConfig { init_rcv_wnd: if scaled { 65536 } else { 65535 }, ..StackConfig::default() };
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(1 << 20, 1 << 20, 8);
+        let mut pool = BlockPool::new(0);
+        let mut events = VecDeque::new();
+        let mut conn = Conn::new_from_cookie(
+            ConnId(87),
+            IfaceId(1),
+            PeerId(1),
+            "10.0.0.1:80".parse().unwrap(),
+            "10.0.0.2:40000".parse().unwrap(),
+            Seq(1),
+            0,
+            mtu,
+            Seq(1),
+            &SynParams { mss: Some(65535), wscale: scaled.then_some(7), sack: true, ts: None },
+            &cfg,
+            Instant::ZERO,
+        );
+        if scaled {
+            // Cookie establishment starts with the unscaled SYN window; the
+            // first ACK advertises the full 64 KiB once scaling is negotiated.
+            conn.ack_need = AckNeed::Now;
+            let plan = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+            assert_eq!(plan.kind, PlanKind::Ack);
+            conn.commit(&plan, Instant::ZERO, &cfg);
+        }
+        assert_eq!(conn.rcv_adv - conn.rcv_nxt, if scaled { 65536 } else { 65535 });
+        let mut ctx = Ctx { cfg: &cfg, pool: &mut pool, budget: &mut budget, events: &mut events };
+        let data = vec![0x5a; data_len];
+        let mut offset = 0;
+        let segment_size = if mtu == 1500 { 1460 } else { 32768 };
+        while offset < data_len {
+            let end = (offset + segment_size).min(data_len);
+            let header = TcpHeader {
+                src_port: 40000,
+                dst_port: 80,
+                seq: Seq(2 + offset as u32),
+                ack: Seq(2),
+                flags: ACK | if end == data_len { FIN } else { 0 },
+                window: 65535,
+                opts: crate::wire::TcpOptions::default(),
+                data_off: 20,
+            };
+            conn.input_sync(Instant::ZERO, &header, IngressPayload::Borrowed(&data[offset..end]), &mut ctx, false);
+            offset = end;
+        }
+        run(&mut conn, &mut ctx);
+        conn.destroy(&mut ctx);
+        drop(conn);
+        assert_eq!(ctx.budget.used, 0);
+        assert_eq!(ctx.budget.physical_used(), 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    #[test]
+    fn issue87_fin_outside_full_receive_window_is_deferred_until_retransmitted() {
+        for (mtu, scaled) in [(1500, false), (65535, false), (1500, true), (65535, true)] {
+            // The last payload byte is inside the receive window, but the
+            // following FIN byte is exactly at its exclusive right edge.
+            let full = if scaled { 65536 } else { 65535 };
+            let edge = full as u64 + 1;
+            issue87_window_case(mtu, full, scaled, |conn, ctx| {
+                assert_eq!(conn.rcv_adv, edge);
+                assert_eq!(conn.rx.len(), full);
+
+                // The receiver sends its zero-window ACK before the app
+                // drains data. Later reads must independently trigger a window
+                // update so the retransmitted FIN is not stalled indefinitely.
+                let zero = conn.plan(Instant::ZERO, Pressure::Free).expect("ACK full receive window");
+                assert_eq!(zero.kind, PlanKind::Ack);
+                assert_eq!(zero.window, 0);
+                conn.commit(&zero, Instant::ZERO, ctx.cfg);
+                assert_eq!(conn.ack_need, AckNeed::None);
+
+                // The former implementation consumed the out-of-window FIN,
+                // advancing RCV.NXT beyond RCV.ADV. A 1 KiB application read
+                // then hit the SWS branch and panicked on unsigned subtraction.
+                let first = conn.read_chunk(1024, ctx, Instant::ZERO).unwrap();
+                assert_eq!(first.as_ref(), &[0x5a; 1024]);
+                assert_eq!((conn.rcv_nxt, conn.rcv_adv), (edge, edge));
+                assert_eq!(conn.state, State::Established, "out-of-window FIN at MTU {mtu}, scaled {scaled}");
+                assert_eq!(conn.fin_rcvd, None);
+                for level in [Pressure::Free, Pressure::Low, Pressure::Pressure, Pressure::High] {
+                    assert_eq!(conn.calc_window_l(level), 0);
+                }
+
+                // Free enough space to advance the advertised right edge,
+                // send the window update, then accept the retransmitted FIN.
+                let mut read = 1024;
+                while read < 33792 {
+                    let block = conn.read_chunk(16384, ctx, Instant::ZERO).unwrap();
+                    assert!(block.iter().all(|b| *b == 0x5a));
+                    read += block.len();
+                }
+                assert!(conn.calc_window_l(Pressure::Free) >= 32767);
+                assert_eq!(conn.ack_need, AckNeed::Now, "zero-window reopening must send an ACK at MTU {mtu}");
+                let plan = conn.plan(Instant::ZERO, Pressure::Free).expect("ACK with reopened receive window");
+                assert_eq!(plan.kind, PlanKind::Ack);
+                assert!(plan.window > 0);
+                conn.commit(&plan, Instant::ZERO, ctx.cfg);
+                assert!(conn.rcv_adv > edge);
+
+                let fin = TcpHeader {
+                    src_port: 40000,
+                    dst_port: 80,
+                    seq: Seq(2 + full as u32),
+                    ack: Seq(2),
+                    flags: ACK | FIN,
+                    window: 65535,
+                    opts: crate::wire::TcpOptions::default(),
+                    data_off: 20,
+                };
+                conn.input_sync(Instant::ZERO, &fin, IngressPayload::Borrowed(&[]), ctx, false);
+                assert_eq!(conn.state, State::CloseWait);
+                assert_eq!(conn.rcv_nxt, edge + 1);
+                assert!(conn.rcv_adv >= conn.rcv_nxt);
+
+                while !conn.rx.is_empty() {
+                    let block = conn.read_chunk(1024, ctx, Instant::ZERO).unwrap();
+                    assert!(block.iter().all(|b| *b == 0x5a));
+                    read += block.len();
+                }
+                assert_eq!(read, full, "FIN must not truncate data at MTU {mtu}, scaled {scaled}");
+                assert_eq!(conn.read(&mut [0; 1], ctx, Instant::ZERO), ReadResult::Eof);
+                assert_eq!(conn.rcv_charged, 0);
+                conn.check_invariants();
+            });
+        }
+    }
+
+    #[test]
+    fn issue87_fin_at_last_advertised_byte_still_completes_immediately() {
+        for (mtu, scaled) in [(1500, false), (65535, false), (1500, true), (65535, true)] {
+            let full = if scaled { 65536 } else { 65535 };
+            issue87_window_case(mtu, full - 1, scaled, |conn, ctx| {
+                assert_eq!(conn.state, State::CloseWait, "in-window FIN at MTU {mtu}, scaled {scaled}");
+                assert_eq!(conn.rcv_nxt, conn.rcv_adv);
+                assert_eq!(conn.fin_rcvd, Some(full as u64));
+                let mut read = 0;
+                while !conn.rx.is_empty() {
+                    let block = conn.read_chunk(1024, ctx, Instant::ZERO).unwrap();
+                    assert!(block.iter().all(|b| *b == 0x5a));
+                    read += block.len();
+                    conn.check_invariants();
+                }
+                assert_eq!(read, full - 1);
+                assert_eq!(conn.read(&mut [0; 1], ctx, Instant::ZERO), ReadResult::Eof);
+                assert_eq!(conn.rcv_charged, 0);
+            });
+        }
     }
 
     #[test]
