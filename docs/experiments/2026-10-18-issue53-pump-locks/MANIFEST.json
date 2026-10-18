@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "baseline": "ed4655e0798efc6b02883967cf933291dba059c8",
+  "candidate": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+  "probe_sha256": "f7a039667ca2a03c96c197e9eee9668583f3849ffa46d177034135e05f652063",
+  "overlays": [
+    {
+      "label": "A1",
+      "commit": "ed4655e0798efc6b02883967cf933291dba059c8",
+      "git_tree": "f74529d1565c81823a78b4611392a427e6541a4d",
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/A1",
+      "counted": false,
+      "production_lock_sites": 3,
+      "adapter_original_sha256": "12cb34472f7761f8e594a926637942dfa911dab7b4a29a1fad929e710a23ee32",
+      "adapter_overlay_sha256": "010c26cf1675d572d49bad5efbfcb8408e64201b5c01799187768cfcfb3c0c10",
+      "build": [
+        "cargo",
+        "+1.94.1",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--example",
+        "issue53_pump_probe",
+        "--features",
+        "tokio,test-peer"
+      ]
+    },
+    {
+      "label": "A2",
+      "commit": "ed4655e0798efc6b02883967cf933291dba059c8",
+      "git_tree": "f74529d1565c81823a78b4611392a427e6541a4d",
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/A2",
+      "counted": false,
+      "production_lock_sites": 3,
+      "adapter_original_sha256": "12cb34472f7761f8e594a926637942dfa911dab7b4a29a1fad929e710a23ee32",
+      "adapter_overlay_sha256": "010c26cf1675d572d49bad5efbfcb8408e64201b5c01799187768cfcfb3c0c10",
+      "build": [
+        "cargo",
+        "+1.94.1",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--example",
+        "issue53_pump_probe",
+        "--features",
+        "tokio,test-peer"
+      ]
+    },
+    {
+      "label": "B",
+      "commit": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+      "git_tree": "210467df9f0f295147992f2d060c1e0368a6af23",
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/B",
+      "counted": false,
+      "production_lock_sites": 3,
+      "adapter_original_sha256": "a8ccc7b4a869092d2ef63e95262df53919e704a4415c2dfc51356616b7241a7a",
+      "adapter_overlay_sha256": "b4350afe7af62959538840098be33937b848656ea030006a9c079477b74415a6",
+      "build": [
+        "cargo",
+        "+1.94.1",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--example",
+        "issue53_pump_probe",
+        "--features",
+        "tokio,test-peer"
+      ]
+    },
+    {
+      "label": "A-counts",
+      "commit": "ed4655e0798efc6b02883967cf933291dba059c8",
+      "git_tree": "f74529d1565c81823a78b4611392a427e6541a4d",
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/A-counts",
+      "counted": true,
+      "production_lock_sites": 3,
+      "adapter_original_sha256": "12cb34472f7761f8e594a926637942dfa911dab7b4a29a1fad929e710a23ee32",
+      "adapter_overlay_sha256": "d6736ccd94580d7927d57d9e368a223cd857d5d3d8566e08464acff4a0216feb",
+      "build": [
+        "cargo",
+        "+1.94.1",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--example",
+        "issue53_pump_probe",
+        "--features",
+        "tokio,test-peer,issue53-pump-counts"
+      ]
+    },
+    {
+      "label": "B-counts",
+      "commit": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+      "git_tree": "210467df9f0f295147992f2d060c1e0368a6af23",
+      "path": "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/B-counts",
+      "counted": true,
+      "production_lock_sites": 3,
+      "adapter_original_sha256": "a8ccc7b4a869092d2ef63e95262df53919e704a4415c2dfc51356616b7241a7a",
+      "adapter_overlay_sha256": "7be03b0811bdf8839a2d3960ffd2ee6bc148697b96226799665a53ec24c0426e",
+      "build": [
+        "cargo",
+        "+1.94.1",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "zfstack",
+        "--example",
+        "issue53_pump_probe",
+        "--features",
+        "tokio,test-peer,issue53-pump-counts"
+      ]
+    }
+  ],
+  "build_env": {
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_RELEASE_LTO": "fat",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "1",
+    "CARGO_PROFILE_RELEASE_PANIC": "abort"
+  }
+}

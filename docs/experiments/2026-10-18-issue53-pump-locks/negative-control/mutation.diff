@@ -1,0 +1,18 @@
+--- candidate/src/tokio_adapter.rs
++++ negative-control/src/tokio_adapter.rs
+@@ -1510,7 +1510,6 @@
+         }
+         let app_closed = q.closed_by_app;
+         // Application callbacks and stream removal may re-enter the queue.
+-        drop(q);
+         if shutdown {
+             self.shard.shutdown_write(id);
+         }
+@@ -1523,6 +1522,7 @@
+         if let Some(w) = wake_flush {
+             w.wake();
+         }
++        drop(q);
+         if app_closed {
+             self.release_if_done(id);
+         }

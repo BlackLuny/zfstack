@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "kind": "expected-failure-negative-control",
+  "repo": "/root/work/zfstack-issue53-20261018",
+  "candidate_commit": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+  "candidate_tree": "210467df9f0f295147992f2d060c1e0368a6af23",
+  "rustc_version": "rustc 1.94.1 (e408947bf 2026-03-25)\nbinary: rustc\ncommit-hash: e408947bfd200af42db322daf0fadfe7e26d3bd1\ncommit-date: 2026-03-25\nhost: x86_64-unknown-linux-gnu\nrelease: 1.94.1\nLLVM version: 21.1.8\n",
+  "archive_sha256": "b5bf433ea70b8a2bfa5d8286fca20a09835166785bb5af28370eb7986dab5336",
+  "script_sha256": "66d0c053c1df8d7ea766116e32e09cf73d69c905e2b87a2dd89ba5224374d854",
+  "adapter_original_sha256": "a8ccc7b4a869092d2ef63e95262df53919e704a4415c2dfc51356616b7241a7a",
+  "adapter_mutated_sha256": "32d103aa741532d159d5b5003f7434481b209c5ad889a6ec6851f64f8103fca1",
+  "qa_source": "/root/work/zfstack-issue53-20261018/src/tokio_adapter/tests/qa.rs",
+  "qa_archived_sha256": "72328e250c8f49364145fc68e4f78fdbde1fb103b5b765beb9b652e3c006ae69",
+  "qa_copied_sha256": "b59e3b7c644a7375d0f1d34f6ac05d618643ee80a7cd60a0e244ec1945c1c9f5",
+  "mutation_diff_sha256": "dd53d446bf61f89e624e61c2a1a0c5dd36a8a7c0a2026a5e3678bb244a9f1091",
+  "command": [
+    "cargo",
+    "+1.94.1",
+    "test",
+    "--lib",
+    "--release",
+    "--locked",
+    "--features",
+    "tokio,test-peer",
+    "a0_issue53_pump_consumes_refills_drains_and_wakes_outside_queue",
+    "--",
+    "--nocapture"
+  ],
+  "cwd": "/root/work/zfstack-issue53-evidence-20261018/negative-control-pinned/source",
+  "environment": {
+    "CARGO_TARGET_DIR": "/root/work/zfstack-issue53-evidence-20261018/negative-control-pinned/target",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_BUILD_JOBS": "4"
+  },
+  "expected_failure": "callback ran while the stream queue was locked",
+  "criterion": "Nonzero cargo exit, exactly one selected test, named test failed, and exact lock-boundary assertion text present."
+}

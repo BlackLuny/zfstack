@@ -1,0 +1,51 @@
+{
+  "command": [
+    "env",
+    "CARGO_INCREMENTAL=0",
+    "CARGO_PROFILE_RELEASE_LTO=fat",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1",
+    "CARGO_PROFILE_RELEASE_PANIC=abort",
+    "CARGO_TARGET_DIR=/root/work/zfstack-issue53-evidence-20261018/overlays-v2/B-counts/target",
+    "cargo",
+    "+1.94.1",
+    "build",
+    "--manifest-path",
+    "/root/work/zfstack-issue53-evidence-20261018/overlays-v2/B-counts/Cargo.toml",
+    "--locked",
+    "--release",
+    "-p",
+    "zfstack",
+    "--example",
+    "issue53_pump_probe",
+    "--features",
+    "tokio,test-peer,issue53-pump-counts"
+  ],
+  "cwd": "/root/work/zfstack-issue53-20261018",
+  "started_ns": 1792302240376367955,
+  "source_before": {
+    "head": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+    "files": {
+      "src/tokio_adapter.rs": "dadc538c365d9e9bc37fc7219a6856b7d03f3223fd03e898b566563cefada41e",
+      "src/tokio_adapter/tests/qa.rs": "b59e3b7c644a7375d0f1d34f6ac05d618643ee80a7cd60a0e244ec1945c1c9f5"
+    }
+  },
+  "lease": {
+    "domain": "ns512147",
+    "run_id": "probe-build-b-counts-first",
+    "generation": "dev-20261018",
+    "owner": "25a0029a-39e0-4169-afd4-be39067359ec",
+    "pid": 1725636,
+    "created_ns": 1792302240378538164
+  },
+  "exit_code": 0,
+  "lease_released": true,
+  "finished_ns": 1792302262156592934,
+  "source_after": {
+    "head": "e0cd89ab745f025cbc5ccb89c69aba0681a2a13e",
+    "files": {
+      "src/tokio_adapter.rs": "dadc538c365d9e9bc37fc7219a6856b7d03f3223fd03e898b566563cefada41e",
+      "src/tokio_adapter/tests/qa.rs": "b59e3b7c644a7375d0f1d34f6ac05d618643ee80a7cd60a0e244ec1945c1c9f5"
+    }
+  },
+  "log_sha256": "f02c992284d186eda4d42a9b6dc5654870a1c4239fecd5f52b5956c148418eeb"
+}

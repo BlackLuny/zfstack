@@ -557,3 +557,270 @@ async fn issue48_stale_readiness_parks_then_observes_eof() {
     drop((stream, driver, up));
     assert_eq!(global.reserved(), 0);
 }
+
+/// Leave two adapter-sized batches in the real TCP receive buffer, so a
+/// single owner pump can consume the first and refill from the second.
+fn issue53_prepared_rx() -> (TestRelayDriver, TcpStream) {
+    let mut sim = crate::sim::Sim::new(0xA053, StackConfig::default(), StackConfig::default(), Default::default(), Default::default());
+    sim.a.shard.set_budget_limits(1 << 20, 1 << 20, 16);
+    sim.a.shard.reserve_stream_state(STREAM_STATE_BYTES);
+    sim.a.accept_template.read_paused_until = sim.now + Duration::from_secs(1);
+    sim.connect(44053, crate::sim::AppConn { to_send: 8192, ..Default::default() });
+    sim.run_until(sim.now + Duration::from_millis(100));
+    let id = sim.a.accepted[0];
+    while sim.a.shard.poll_event().is_some() {}
+    let global = sim.a.shard.budget().global().clone();
+    let (_, cmd_rx) = mpsc::channel(1);
+    let (accept_tx, mut accept_rx) = mpsc::channel(1);
+    let ctl = Arc::new(Ctl { dirty: Mutex::new(HashSet::new()), pending: Mutex::new(PendingControl::default()), notify: Notify::new() });
+    let mut driver = Driver {
+        shard: sim.a.shard,
+        egress: (|_, _, _| SendResult::Accepted) as fn(IfaceId, PeerId, &OutPacket<'_>) -> SendResult,
+        input: None::<InputSource<(), NoInput>>,
+        cmd_rx,
+        accept_tx,
+        ctl: ctl.clone(),
+        stop: Arc::new(AtomicBool::new(false)),
+        budget_waiter: global.new_waiter_id(),
+        budget_waiting: false,
+        budget_wake: Waker::from(Arc::new(BudgetWake { ctl })),
+        streams: HashMap::new(),
+        orphans: BTreeSet::new(),
+        stream_cfg: StreamConfig { rx_cap: 4096, tx_cap: 1024, tx_low_watermark: 1 },
+        epoch: tokio::time::Instant::now() - Duration::from_nanos(sim.now.as_nanos()),
+        closes: CloseCounts::default(),
+        aborts: AbortCounts::default(),
+        relays: HashMap::new(),
+    };
+    driver.on_event(Event::Accepted(id));
+    let stream = accept_rx.try_recv().unwrap();
+    assert_eq!(stream.sh.q.lock().unwrap().rx_len, 4096);
+    (driver, stream)
+}
+
+/// Synchronous callbacks probe the same queue an application poll would
+/// acquire. Record contention instead of blocking or panicking under the
+/// owner's guard, so a lock-boundary regression fails without a deadlock.
+struct Issue53QueueWake {
+    shared: std::sync::Weak<Shared>,
+    calls: AtomicUsize,
+    locked: AtomicUsize,
+    observed: Mutex<Option<(usize, usize, usize)>>,
+}
+
+impl Issue53QueueWake {
+    fn new(shared: &Arc<Shared>) -> Arc<Self> {
+        Arc::new(Self { shared: Arc::downgrade(shared), calls: AtomicUsize::new(0), locked: AtomicUsize::new(0), observed: Mutex::new(None) })
+    }
+
+    fn assert_once_unlocked(&self, expected: (usize, usize, usize)) {
+        assert_eq!(self.calls.load(Ordering::Relaxed), 1, "expected exactly one synchronous notification");
+        assert_eq!(self.locked.load(Ordering::Relaxed), 0, "callback ran while the stream queue was locked");
+        assert_eq!(*self.observed.lock().unwrap(), Some(expected), "callback observed the wrong pump phase");
+    }
+}
+
+impl Wake for Issue53QueueWake {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        let Some(shared) = self.shared.upgrade() else { return };
+        match shared.q.try_lock() {
+            Ok(q) => *self.observed.lock().unwrap() = Some((q.rx_consumed_pending, q.rx_len, q.tx.len())),
+            Err(_) => {
+                self.locked.fetch_add(1, Ordering::Relaxed);
+            }
+        };
+    }
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a0_issue53_pump_consumes_refills_drains_and_wakes_outside_queue() {
+    let (mut driver, mut stream) = issue53_prepared_rx();
+    let id = stream.sh.id;
+    let global = stream.sh.memory.global().clone();
+    let mut first = [0u8; 4096];
+    stream.read_exact(&mut first).await.unwrap();
+    assert!(first.iter().enumerate().all(|(i, &b)| b == pattern_byte(i as u64)));
+    stream.write_all(&[91u8; 1024]).await.unwrap();
+
+    let read = Issue53QueueWake::new(&stream.sh);
+    let write = Issue53QueueWake::new(&stream.sh);
+    let flush = Issue53QueueWake::new(&stream.sh);
+    let release = Issue53QueueWake::new(&stream.sh);
+    let (read_wake, write_wake, flush_wake) = (Waker::from(read.clone()), Waker::from(write.clone()), Waker::from(flush.clone()));
+    let mut next = [0u8; 1];
+    assert!(Pin::new(&mut stream).poll_read(&mut Context::from_waker(&read_wake), &mut ReadBuf::new(&mut next)).is_pending());
+    assert!(Pin::new(&mut stream).poll_write(&mut Context::from_waker(&write_wake), b"x").is_pending());
+    assert!(Pin::new(&mut stream).poll_flush(&mut Context::from_waker(&flush_wake)).is_pending());
+    assert_eq!(driver.shard.tx_queued(id), Some(0));
+    let waiter = global.new_waiter_id();
+    global.register_waiter(waiter, global.release_epoch(), &Waker::from(release.clone()));
+    assert_eq!(release.calls.load(Ordering::Relaxed), 0, "no release may precede the tested pump");
+
+    driver.pump(id);
+
+    // The first release is the core's consume_adapter accounting, before
+    // either queue is transferred. Later task wakes see the completed pump.
+    release.assert_once_unlocked((0, 0, 1024));
+    for wake in [&read, &write, &flush] {
+        wake.assert_once_unlocked((0, 4096, 0));
+    }
+    assert_eq!(driver.shard.tx_queued(id), Some(1024));
+    assert!(matches!(Pin::new(&mut stream).poll_flush(&mut Context::from_waker(&flush_wake)), Poll::Ready(Ok(()))));
+    assert!(matches!(Pin::new(&mut stream).poll_write(&mut Context::from_waker(&write_wake), b"x"), Poll::Ready(Ok(1))));
+    let mut second = [0u8; 4096];
+    stream.read_exact(&mut second).await.unwrap();
+    assert!(second.iter().enumerate().all(|(i, &b)| b == pattern_byte((i + first.len()) as u64)));
+    driver.pump(id);
+    assert_eq!(stream.sh.q.lock().unwrap().rx_consumed_pending, 0);
+    assert_eq!(driver.shard.tx_queued(id), Some(1025));
+    global.remove_waiter(waiter);
+    drop((stream, driver));
+    assert_eq!(global.reserved(), 0);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a0_issue53_dropped_unread_stream_releases_budget_outside_queue() {
+    let (mut driver, stream) = issue53_prepared_rx();
+    let shared = stream.sh.clone();
+    let id = shared.id;
+    let global = shared.memory.global().clone();
+    let release = Issue53QueueWake::new(&shared);
+    let waiter = global.new_waiter_id();
+    global.register_waiter(waiter, global.release_epoch(), &Waker::from(release.clone()));
+    drop(stream);
+    assert_eq!(release.calls.load(Ordering::Relaxed), 0);
+    driver.pump(id);
+    release.assert_once_unlocked((0, 4096, 0));
+    assert!(!driver.streams.contains_key(&id), "dropped stream was not removed");
+    assert_eq!(driver.aborts.unread_drop, 1);
+    global.remove_waiter(waiter);
+    drop((shared, driver));
+    assert_eq!(global.reserved(), 0);
+}
+
+async fn issue53_ordinary_lane(global: Arc<GlobalBudget>, barrier: Arc<tokio::sync::Barrier>, salt: u8) {
+    const UPLOAD: usize = 64 * 1024 + 37;
+    const PREFIX: usize = 16 * 1024 + 7;
+    const DOWNLOAD: usize = 48 * 1024 + 29;
+    let (to_peer, from_stack) = mpsc::unbounded_channel();
+    let (input_tx, input_rx) = mpsc::channel::<()>(1);
+    let (handle, mut acceptor, ifaces, task, memory) = spawn_with_source_factory(
+        StackConfig::default(),
+        StreamConfig { rx_cap: 4096, tx_cap: 4096, tx_low_watermark: 512 },
+        vec![IfaceConfig::default()],
+        move |shard| {
+            let memory = shard.memory_handle(PeerId(9));
+            let egress = move |_: IfaceId, _: PeerId, packet: &OutPacket<'_>| {
+                to_peer.send(packet.to_vec()).unwrap();
+                SendResult::Accepted
+            };
+            (egress, memory)
+        },
+        global,
+        ResourceLimits { port_bytes: 2 << 20, peer_bytes: 2 << 20, peer_max_connections: 4 },
+        input_rx,
+        |_, _, ()| {},
+    );
+    let application = tokio::spawn(async move {
+        let stream = acceptor.accept().await.unwrap();
+        let weak = Arc::downgrade(&stream.sh);
+        let (mut read, mut write) = tokio::io::split(stream);
+        // Both ordinary API halves run independently from the owner and each
+        // other. Small queue caps force repeated consumption and refill.
+        let reader = tokio::spawn(async move {
+            let mut payload = Vec::new();
+            read.read_to_end(&mut payload).await.unwrap();
+            assert_eq!(payload.len(), UPLOAD);
+            for (i, b) in payload.iter().enumerate() {
+                assert_eq!(*b, byte(salt, i), "ordinary upload lane {salt} at {i}");
+            }
+        });
+        let writer = tokio::spawn(async move {
+            let response: Vec<_> = (0..DOWNLOAD).map(|i| byte(salt ^ 0x80, i)).collect();
+            for chunk in response.chunks(3073) {
+                write.write_all(chunk).await.unwrap();
+            }
+            write.flush().await.unwrap();
+            write.shutdown().await.unwrap();
+        });
+        let (read_result, write_result) = tokio::join!(reader, writer);
+        read_result.unwrap();
+        write_result.unwrap();
+        weak
+    });
+
+    let mut peer = TunPeer::new(1500, from_stack);
+    let id = peer.c.connect(peer.now(), peer.ci, PeerId(9), "10.0.0.2:5555".parse().unwrap(), "10.0.0.1:80".parse().unwrap());
+    let payload: Vec<_> = (0..UPLOAD).map(|i| byte(salt, i)).collect();
+    let (mut sent, mut received, mut fin, mut download_eof) = (0, Vec::new(), false, false);
+    let mut buffer = [0u8; 2053];
+    barrier.wait().await;
+    loop {
+        peer.step(&handle, ifaces[0]).await;
+        while peer.c.poll_event().is_some() {}
+        // The rest of the upload is withheld until the other direction has
+        // reached EOF. Its successful delivery proves shutdown is a half-close.
+        let limit = if download_eof { UPLOAD } else { PREFIX };
+        if sent < limit {
+            if let WriteResult::Written(n) = peer.c.write(id, &payload[sent..limit]) {
+                sent += n;
+            }
+        }
+        if sent == UPLOAD && !fin {
+            peer.c.shutdown_write(id);
+            fin = true;
+        }
+        if !download_eof {
+            match peer.c.read(peer.now(), id, &mut buffer) {
+                ReadResult::Data(n) => received.extend_from_slice(&buffer[..n]),
+                ReadResult::Eof => {
+                    assert!(!fin && sent < UPLOAD, "upload must remain open across the remote FIN");
+                    download_eof = true;
+                }
+                ReadResult::WouldBlock => {}
+                ReadResult::Closed(reason) => panic!("ordinary lane {salt} closed: {reason:?}"),
+            }
+        }
+        if fin && download_eof && application.is_finished() {
+            break;
+        }
+    }
+    let expected: Vec<_> = (0..DOWNLOAD).map(|i| byte(salt ^ 0x80, i)).collect();
+    assert_eq!(received, expected, "ordinary response lane {salt}");
+    let weak = application.await.unwrap();
+    task.shutdown_and_join().await.unwrap();
+    assert!(weak.upgrade().is_none(), "completed ordinary stream retained its queues");
+    assert!(handle.snapshot().await.is_none());
+    assert!(input_tx.is_closed());
+    assert_eq!(memory.peer_physical_used(), 0);
+    drop((memory, handle, input_tx, peer));
+}
+
+async fn issue53_ordinary_concurrent_half_close() {
+    let global = GlobalBudget::new(32 << 20);
+    let barrier = Arc::new(tokio::sync::Barrier::new(4));
+    let mut lanes = Vec::new();
+    for salt in [5, 61, 137, 211] {
+        lanes.push(tokio::spawn(issue53_ordinary_lane(global.clone(), barrier.clone(), salt)));
+    }
+    for lane in lanes {
+        lane.await.unwrap();
+    }
+    assert_eq!(global.reserved(), 0);
+    assert_eq!(global.connection_counts(), (0, 0));
+}
+
+#[test]
+fn a1_issue53_ordinary_two_workers_bidirectional_half_close() {
+    on_runtime(2, issue53_ordinary_concurrent_half_close());
+}
+
+#[test]
+fn a1_issue53_ordinary_four_workers_bidirectional_half_close() {
+    on_runtime(4, issue53_ordinary_concurrent_half_close());
+}
