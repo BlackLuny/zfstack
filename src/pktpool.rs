@@ -13,6 +13,7 @@
 //! straight back, so a buffer is never pinned by a few bytes.
 
 use crate::budget::{AllocationKind, MemoryHandle, MemoryLease};
+use std::collections::VecDeque;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,7 +22,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Default)]
 struct FreeCache {
-    buffers: Vec<(Vec<u8>, MemoryLease)>,
+    buffers: VecDeque<(Vec<u8>, MemoryLease)>,
     idle: Option<IdleWindow>,
 }
 
@@ -79,7 +80,7 @@ impl PacketPool {
     }
 
     /// Release only free packet buffers; payloads and leases drop outside the lock.
-    /// Concurrent returns may refill the cache. Nonzero targets retain Vec capacity.
+    /// Concurrent returns may refill the cache. Nonzero targets retain free-list capacity.
     /// Zero also frees free-list backing, which has no lease in the existing model.
     pub fn trim_cached_to(&self, target: usize) -> usize {
         if target == 0 {
@@ -101,7 +102,7 @@ impl PacketPool {
                 let mut free = self.inner.free.lock().unwrap();
                 let count = remaining.min(free.buffers.len().saturating_sub(target)).min(retired.len());
                 for slot in &mut retired[..count] {
-                    *slot = free.buffers.pop();
+                    *slot = free.buffers.pop_back();
                 }
                 free.note_tail_removal();
                 count
@@ -148,20 +149,12 @@ impl PacketPool {
                     return removed;
                 }
                 let count = window.untouched.min(len.saturating_sub(target)).min(retired.len());
-                let stale_end = window.untouched;
-                if len <= 128 {
-                    // Small pools do not benefit from rearranging the suffix.
-                    for (slot, buffer) in retired.iter_mut().zip(free.buffers.drain(..count)) {
-                        *slot = Some(buffer);
-                    }
-                } else {
-                    // Only [..stale_end] is known unused for the whole window.
-                    // Remove from its end so swap_remove moves a recent buffer
-                    // outside the shrinking untouched prefix. This avoids
-                    // repeatedly shifting large live suffixes under the lock.
-                    for (i, slot) in retired.iter_mut().take(count).enumerate() {
-                        *slot = Some(free.buffers.swap_remove(stale_end - 1 - i));
-                    }
+                // Oldest free buffers are at the front. Retiring there keeps
+                // the recently borrowed suffix and its exact LIFO order, even
+                // across multiple lock-free drop batches. pop_front is O(1)
+                // and never shifts the surviving free-list elements.
+                for slot in &mut retired[..count] {
+                    *slot = free.buffers.pop_front();
                 }
                 let remaining = free.buffers.len();
                 let window = free.idle.as_mut().unwrap();
@@ -192,7 +185,7 @@ impl PacketPool {
             None
         } else {
             let mut free = self.inner.free.lock().unwrap();
-            let cached = free.buffers.pop();
+            let cached = free.buffers.pop_back();
             free.note_tail_removal();
             cached
         };
@@ -269,7 +262,7 @@ impl Drop for PacketBuf {
         if pool.max_cached != 0 {
             let mut free = pool.free.lock().unwrap();
             if free.buffers.len() < pool.max_cached {
-                free.buffers.push((std::mem::take(&mut self.data), lease));
+                free.buffers.push_back((std::mem::take(&mut self.data), lease));
                 return;
             }
         }
@@ -328,10 +321,9 @@ mod idle_trim_tests {
     };
 
     #[test]
-    fn batched_idle_trim_preserves_multiple_hot_buffers_across_swaps() {
-        // A cold prefix longer than four retirement batches used to cause
-        // repeated memmoves. The suffix borrowed during the window is never
-        // eligible, even when swap_remove moves it into old prefix slots.
+    fn batched_idle_trim_preserves_multiple_hot_buffers_across_batches() {
+        // A cold prefix longer than four retirement batches must be removed
+        // without moving/reordering any of the recently reused tail buffers.
         let global = GlobalBudget::new(1 << 20);
         let mut budget = Budget::new(global.clone());
         let pool = PacketPool::new(budget.memory_handle(PeerId(9)), 64, 513);
@@ -342,19 +334,96 @@ mod idle_trim_tests {
         assert_eq!(pool.trim_idle(start, idle, 0), 0);
         let hot = (0..3).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
         let mut hot_ptrs: Vec<_> = hot.iter().map(|p| p.data.as_ptr() as usize).collect();
-        hot_ptrs.sort_unstable();
         drop(hot);
+        // Dropping the borrow vector returns in its iteration order, so the
+        // reverse of that order must be seen by subsequent LIFO borrows.
+        hot_ptrs.reverse();
 
         assert_eq!(pool.trim_idle(start + idle, idle, 0), 510);
         assert_eq!(pool.cached(), 3);
         assert_eq!(global.reserved(), 3 * 64);
         let survivors = (0..3).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
-        let mut survivor_ptrs: Vec<_> = survivors.iter().map(|p| p.data.as_ptr() as usize).collect();
-        survivor_ptrs.sort_unstable();
-        assert_eq!(survivor_ptrs, hot_ptrs);
+        let survivor_ptrs: Vec<_> = survivors.iter().map(|p| p.data.as_ptr() as usize).collect();
+        assert_eq!(survivor_ptrs, hot_ptrs, "idle trim must preserve LIFO order, not merely the set");
         assert_eq!(pool.in_use(), 3);
         drop(survivors);
         assert_eq!(pool.trim_cached_to(0), 3);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.physical_used(), 0);
+    }
+
+    #[test]
+    fn idle_trim_retains_newest_free_buffers_and_lifo_order_across_batch_boundary() {
+        // Cases that cross 128, stop before 128, or have recently borrowed
+        // suffixes of lengths that are not multiples of the retirement batch.
+        // Snapshot the exact expected LIFO tail BEFORE trimming: testing only
+        // which allocations survive misses both this regression's defects.
+        for (capacity, reused, floor) in [
+            (200usize, 0usize, 10usize),
+            (200, 0, 150),
+            (200, 1, 2),
+            (129, 3, 10),
+            (160, 0, 10),
+            (513, 3, 0),
+            (200, 40, 10),
+            (128, 3, 10),
+            (128, 0, 10),
+            (129, 3, 2),
+        ] {
+            let global = GlobalBudget::new(1 << 20);
+            let mut budget = Budget::new(global.clone());
+            budget.set_limits(global.high(), global.high(), u32::MAX);
+            let pool = PacketPool::new(budget.memory_handle(PeerId(19)), 64, capacity);
+            let bufs = (0..capacity).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
+            drop(bufs);
+            let start = Instant::now();
+            let idle = Duration::from_secs(2);
+            assert_eq!(pool.trim_idle(start, idle, floor), 0);
+
+            let recent = (0..reused).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
+            drop(recent);
+            let survivors_expected = floor.max(reused);
+            let expected: Vec<_> =
+                pool.inner.free.lock().unwrap().buffers.iter().rev().take(survivors_expected).map(|(bytes, _)| bytes.as_ptr() as usize).collect();
+
+            let trimmed = pool.trim_idle(start + idle, idle, floor);
+            assert_eq!(trimmed, capacity - survivors_expected, "case ({capacity}, {reused}, {floor})");
+            assert_eq!(pool.cached(), survivors_expected);
+            assert_eq!(global.reserved(), (survivors_expected * 64) as u64);
+            let actual: Vec<_> = (0..survivors_expected).map(|_| pool.get().unwrap()).collect();
+            let actual_ptrs: Vec<_> = actual.iter().map(|p| p.data.as_ptr() as usize).collect();
+            assert_eq!(actual_ptrs, expected, "must preserve newest-first borrow order: case ({capacity}, {reused}, {floor})");
+            assert_eq!(pool.in_use(), survivors_expected);
+            drop(actual);
+            assert_eq!(pool.trim_cached_to(0), survivors_expected);
+            assert_eq!(global.reserved(), 0);
+            assert_eq!(budget.physical_used(), 0);
+        }
+    }
+
+    #[test]
+    fn next_idle_window_keeps_the_latest_hot_buffer_after_partial_trim() {
+        let global = GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        let pool = PacketPool::new(budget.memory_handle(PeerId(21)), 64, 129);
+        drop((0..129).map(|_| pool.get().unwrap()).collect::<Vec<_>>());
+        let now = Instant::now();
+        let window = Duration::from_secs(5);
+        pool.trim_idle(now, window, 0);
+
+        let recent = (0..3).map(|_| pool.get().unwrap()).collect::<Vec<_>>();
+        drop(recent);
+        let latest = pool.inner.free.lock().unwrap().buffers.back().unwrap().0.as_ptr() as usize;
+        assert_eq!(pool.trim_idle(now + window, window, 0), 126);
+        assert_eq!(pool.cached(), 3);
+
+        let borrowed = pool.get().unwrap();
+        assert_eq!(borrowed.data.as_ptr() as usize, latest, "first reuse must be the actual LIFO tail");
+        drop(borrowed);
+        assert_eq!(pool.trim_idle(now + window * 2, window, 0), 2);
+        assert_eq!(pool.cached(), 1);
+        assert_eq!(pool.get().unwrap().data.as_ptr() as usize, latest, "the next window must protect the newest return");
+        assert_eq!(pool.trim_cached_to(0), 1);
         assert_eq!(global.reserved(), 0);
         assert_eq!(budget.physical_used(), 0);
     }
@@ -455,15 +524,15 @@ mod idle_trim_tests {
         let g = GlobalBudget::new(1 << 20);
         let mut b = Budget::new(g.clone());
         b.set_limits(1 << 20, 1 << 20, u32::MAX);
-        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 128);
-        drop((0..128).map(|_| p.get().unwrap()).collect::<Vec<_>>());
+        let p = PacketPool::new(b.memory_handle(PeerId(1)), 4096, 193);
+        drop((0..193).map(|_| p.get().unwrap()).collect::<Vec<_>>());
         let now = Instant::now();
         p.trim_idle(now, Duration::from_secs(1), 0);
         let wake = Arc::new(UnlockWake { pool: p.clone(), calls: AtomicUsize::new(0) });
         let w = std::task::Waker::from(wake.clone());
         let waiter = g.new_waiter_id();
         g.register_waiter(waiter, g.release_epoch(), &w);
-        assert_eq!(p.trim_idle(now + Duration::from_secs(1), Duration::from_secs(1), 0), 128);
+        assert_eq!(p.trim_idle(now + Duration::from_secs(1), Duration::from_secs(1), 0), 193);
         assert_eq!(wake.calls.load(Ordering::Relaxed), 1);
         g.remove_waiter(waiter);
         assert_eq!(g.reserved(), 0);
@@ -597,6 +666,59 @@ mod idle_trim_tests {
         g.remove_waiter(c);
         assert_eq!(g.reserved(), 0);
     }
+    #[test]
+    fn large_pool_concurrent_get_drop_idle_and_explicit_trim_releases_all_charges() {
+        let global = GlobalBudget::new(4 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(global.high(), global.high(), u32::MAX);
+        let pool = PacketPool::new(budget.memory_handle(PeerId(33)), 4096, 400);
+        drop((0..400).map(|_| pool.get().unwrap()).collect::<Vec<_>>());
+        assert_eq!(global.reserved(), 400 * 4096);
+        let barrier = Arc::new(std::sync::Barrier::new(7));
+        let mut workers = Vec::new();
+        for worker in 0..4u8 {
+            let pool = pool.clone();
+            let barrier = Arc::clone(&barrier);
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                for i in 0..6000u32 {
+                    let mut pkt = pool.get().expect("allocator must have headroom");
+                    pkt.spare_capacity_mut()[0].write(worker.wrapping_add(i as u8));
+                    // SAFETY: byte 0 is initialized immediately above.
+                    unsafe { pkt.set_len(1) };
+                    assert_eq!(pkt[0], worker.wrapping_add(i as u8));
+                    drop(pkt);
+                }
+            }));
+        }
+        for lane in 0..2usize {
+            let pool = pool.clone();
+            let barrier = Arc::clone(&barrier);
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                for i in 0..3000usize {
+                    if lane == 0 {
+                        pool.trim_idle(Instant::now(), Duration::ZERO, i % 200);
+                    } else {
+                        pool.trim_cached_to(i % 128);
+                    }
+                }
+            }));
+        }
+        barrier.wait();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(pool.in_use(), 0);
+        assert!(pool.cached() <= 400);
+        assert_eq!(global.reserved(), pool.cached() as u64 * 4096);
+        assert_eq!(budget.physical_used(), global.reserved());
+        pool.trim_cached_to(0);
+        assert_eq!(global.reserved(), 0);
+        assert_eq!(budget.physical_used(), 0);
+        assert_eq!(pool.inner.free.lock().unwrap().buffers.capacity(), 0);
+    }
+
     #[test]
     fn concurrent_trim_get_drop_and_bytes_validation() {
         let g = GlobalBudget::new(1 << 20);
