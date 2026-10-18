@@ -1,0 +1,132 @@
+{
+  "host": {
+    "system": "Linux",
+    "release": "6.1.0-41-amd64",
+    "version": "#1 SMP PREEMPT_DYNAMIC Debian 6.1.158-1 (2025-11-09)",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "logical_cpus": 8,
+  "baseline_sha": "ed4655e0798efc6b02883967cf933291dba059c8",
+  "toolchain": "rustc 1.95.0",
+  "profile": "release",
+  "features": "tokio,test-peer",
+  "concurrency": 64,
+  "per_connection_payload_bytes": 4194304,
+  "configured_ack_delay_ms": 50,
+  "port_budget_bytes": 8388608,
+  "peer_budget_bytes": 8388608,
+  "global_budget_bytes": 16777216,
+  "cpu_scope": "whole test process, including peer/harness, not proxy-only",
+  "results": [
+    {
+      "label": "AA1",
+      "arm": "baseline",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/baseline-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.7281754314899445,
+      "user_seconds": 2.607597,
+      "system_seconds": 0.261552,
+      "max_rss_kib": 15032,
+      "payload_bytes": 268435456,
+      "binary_sha256": "c00e34f2daf8249a00dd762750885896b4cf0aff9da98ff97be29f197bba396b"
+    },
+    {
+      "label": "AA2",
+      "arm": "baseline",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/baseline-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.873742967844009,
+      "user_seconds": 2.826184,
+      "system_seconds": 0.30780199999999996,
+      "max_rss_kib": 21764,
+      "payload_bytes": 268435456,
+      "binary_sha256": "c00e34f2daf8249a00dd762750885896b4cf0aff9da98ff97be29f197bba396b"
+    },
+    {
+      "label": "AB1A",
+      "arm": "baseline",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/baseline-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.324141651391983,
+      "user_seconds": 2.595587,
+      "system_seconds": 0.2794,
+      "max_rss_kib": 21860,
+      "payload_bytes": 268435456,
+      "binary_sha256": "c00e34f2daf8249a00dd762750885896b4cf0aff9da98ff97be29f197bba396b"
+    },
+    {
+      "label": "AB1B",
+      "arm": "candidate",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/candidate-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.697200290858746,
+      "user_seconds": 2.692506,
+      "system_seconds": 0.23862599999999998,
+      "max_rss_kib": 21860,
+      "payload_bytes": 268435456,
+      "binary_sha256": "b6842b2bcb33c6d8a1c3e1c239b5cf9bcd0d1c49d5276400875a554a71e2e012"
+    },
+    {
+      "label": "AB2B",
+      "arm": "candidate",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/candidate-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.157632742077112,
+      "user_seconds": 2.505099,
+      "system_seconds": 0.210079,
+      "max_rss_kib": 21860,
+      "payload_bytes": 268435456,
+      "binary_sha256": "b6842b2bcb33c6d8a1c3e1c239b5cf9bcd0d1c49d5276400875a554a71e2e012"
+    },
+    {
+      "label": "AB2A",
+      "arm": "baseline",
+      "command": [
+        "/root/work/zfstack-issue52-evidence-20261018/final-comparison/baseline-tests",
+        "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.439946416765451,
+      "user_seconds": 2.730851,
+      "system_seconds": 0.310958,
+      "max_rss_kib": 21860,
+      "payload_bytes": 268435456,
+      "binary_sha256": "c00e34f2daf8249a00dd762750885896b4cf0aff9da98ff97be29f197bba396b"
+    }
+  ],
+  "environment_note": "Hostname omitted; measurements otherwise unchanged."
+}

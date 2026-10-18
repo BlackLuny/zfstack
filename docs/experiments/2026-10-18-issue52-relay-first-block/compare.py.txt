@@ -1,0 +1,37 @@
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import subprocess
+import time
+
+root = Path(__file__).resolve().parent
+test = "tokio_adapter::tests::issue37_splice_streams_keep_progressing_with_delayed_acks"
+rows = []
+for label, arm in [("AA1", "baseline"), ("AA2", "baseline"), ("AB1A", "baseline"), ("AB1B", "candidate"), ("AB2B", "candidate"), ("AB2A", "baseline")]:
+    binary = root / (arm + "-tests")
+    cmd = [str(binary), test, "--exact", "--nocapture", "--test-threads=1"]
+    with (root / (label + ".log")).open("w") as output:
+        begin = time.perf_counter()
+        process = subprocess.Popen(cmd, stdout=output, stderr=subprocess.STDOUT)
+        _, status, usage = os.wait4(process.pid, 0)
+        process.returncode = os.waitstatus_to_exitcode(status)
+        row = dict(label=label, arm=arm, command=cmd, exit_code=process.returncode,
+                   wall_seconds=time.perf_counter()-begin,
+                   user_seconds=usage.ru_utime, system_seconds=usage.ru_stime,
+                   max_rss_kib=usage.ru_maxrss, payload_bytes=64*(4<<20),
+                   binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
+    rows.append(row)
+    print(json.dumps(row), flush=True)
+    (root / "bulk-comparison.json").write_text(json.dumps(dict(
+        host=platform.uname()._asdict(), logical_cpus=os.cpu_count(),
+        baseline_sha="ed4655e0798efc6b02883967cf933291dba059c8",
+        toolchain="rustc 1.95.0", profile="release", features="tokio,test-peer",
+        concurrency=64, per_connection_payload_bytes=4<<20,
+        configured_ack_delay_ms=50, port_budget_bytes=64*(128<<10),
+        peer_budget_bytes=64*(128<<10), global_budget_bytes=2*64*(128<<10),
+        cpu_scope="whole test process, including peer/harness, not proxy-only",
+        results=rows), indent=2) + "\n")
+    if process.returncode:
+        raise SystemExit(process.returncode)

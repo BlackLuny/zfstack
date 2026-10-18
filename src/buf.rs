@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 pub const TX_BLOCK: usize = 64 * 1024;
-const SMALL_TX_BLOCK: usize = 2048;
+pub(crate) const SMALL_TX_BLOCK: usize = 2048;
 // Payload and descriptor backing have separate leases.
 pub(crate) const TX_BLOCK_CHARGE: u64 = TX_BLOCK as u64;
 pub(crate) const TX_FIRST_WRITE_CHARGE: u64 = TX_BLOCK_CHARGE + 8 * std::mem::size_of::<Block>() as u64;
