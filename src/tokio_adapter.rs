@@ -1388,128 +1388,129 @@ where
             return;
         }
         let cfg = &self.stream_cfg;
-        let consumed = {
-            let mut q = sh.q.lock().unwrap();
-            if q.splice.is_some() {
-                drop(q);
-                if self.start_relay(id) {
-                    self.relay_pump(id, &sh, self.now());
-                }
-                return;
+        let mut q = sh.q.lock().unwrap();
+        if q.splice.is_some() {
+            drop(q);
+            if self.start_relay(id) {
+                self.relay_pump(id, &sh, self.now());
             }
-            std::mem::take(&mut q.rx_consumed_pending)
-        };
+            return;
+        }
+        let consumed = std::mem::take(&mut q.rx_consumed_pending);
         if consumed > 0 {
+            // Releasing RX memory can synchronously wake an application task.
+            // Preserve the lock-free consume boundary before reusing the
+            // queue guard for the normal RX and TX phases.
+            drop(q);
             self.shard.consume_adapter(now, id, consumed);
+            q = sh.q.lock().unwrap();
         }
         // rx: shard → stream queue (zero-copy chunks), bounded by rx_cap.
         let mut wake_reader = None;
         let mut abort_rx = false;
-        {
-            let mut q = sh.q.lock().unwrap();
-            let was_empty = q.rx.is_empty() && !q.rx_eof;
-            while q.rx_len < cfg.rx_cap && !q.rx_eof && q.error.is_none() {
-                let observed = sh.memory.global().release_epoch();
-                match q.rx.reserve_one(&sh.memory, AllocationKind::AdapterRx) {
-                    Ok(()) => {
-                        if sh.rx_index_waiting.load(Ordering::Relaxed) && sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
-                            sh.memory.global().remove_waiter(sh.rx_index_waiter);
-                        }
-                    }
-                    Err(QueueGrowError::Quota(bytes)) => {
-                        sh.rx_index_waiting.store(true, Ordering::Release);
-                        sh.memory.global().register_physical_waiter(
-                            sh.rx_index_waiter,
-                            observed,
-                            &sh.driver_wake,
-                            &sh.memory,
-                            bytes,
-                            AllocationKind::AdapterRx,
-                        );
-                        break;
-                    }
-                    Err(QueueGrowError::Allocation) => {
-                        q.error = Some(CloseReason::Aborted);
-                        abort_rx = true;
-                        break;
+        let was_empty = q.rx.is_empty() && !q.rx_eof;
+        while q.rx_len < cfg.rx_cap && !q.rx_eof && q.error.is_none() {
+            let observed = sh.memory.global().release_epoch();
+            match q.rx.reserve_one(&sh.memory, AllocationKind::AdapterRx) {
+                Ok(()) => {
+                    if sh.rx_index_waiting.load(Ordering::Relaxed) && sh.rx_index_waiting.swap(false, Ordering::AcqRel) {
+                        sh.memory.global().remove_waiter(sh.rx_index_waiter);
                     }
                 }
-                match self.shard.read_chunk_for_adapter(now, id, cfg.rx_cap - q.rx_len) {
-                    Ok(b) => {
-                        q.rx_len += b.len();
-                        q.rx.push_back_reserved(b);
-                    }
-                    Err(ReadResult::Eof) => q.rx_eof = true,
-                    Err(ReadResult::Closed(r)) => q.error = Some(r),
-                    Err(_) => break,
+                Err(QueueGrowError::Quota(bytes)) => {
+                    sh.rx_index_waiting.store(true, Ordering::Release);
+                    sh.memory.global().register_physical_waiter(
+                        sh.rx_index_waiter,
+                        observed,
+                        &sh.driver_wake,
+                        &sh.memory,
+                        bytes,
+                        AllocationKind::AdapterRx,
+                    );
+                    break;
+                }
+                Err(QueueGrowError::Allocation) => {
+                    q.error = Some(CloseReason::Aborted);
+                    abort_rx = true;
+                    break;
                 }
             }
-            if was_empty && (!q.rx.is_empty() || q.rx_eof || q.error.is_some()) {
-                wake_reader = q.read_waker.take();
+            match self.shard.read_chunk_for_adapter(now, id, cfg.rx_cap - q.rx_len) {
+                Ok(b) => {
+                    q.rx_len += b.len();
+                    q.rx.push_back_reserved(b);
+                }
+                Err(ReadResult::Eof) => q.rx_eof = true,
+                Err(ReadResult::Closed(r)) => q.error = Some(r),
+                Err(_) => break,
             }
         }
+        if was_empty && (!q.rx.is_empty() || q.rx_eof || q.error.is_some()) {
+            wake_reader = q.read_waker.take();
+        }
         if abort_rx {
+            // Abort releases connection-owned memory and may wake waiters.
+            drop(q);
             self.aborts.rx_index_alloc += 1;
             self.shard.abort(id);
+            q = sh.q.lock().unwrap();
         }
         // tx: stream queue → shard.
         let mut wake_writer = None;
         let mut wake_flush = None;
         let mut shutdown = false;
-        let app_closed;
-        {
-            let mut q = sh.q.lock().unwrap();
-            while !q.tx.is_empty() {
-                let n = q.tx.front().len().min(64 * 1024);
-                let observed = sh.memory.global().release_epoch();
-                let result = self.shard.write_for_adapter(id, &q.tx.front()[..n]);
-                track_tx_wait(&mut self.shard, &sh, result, observed, n);
-                match result {
-                    WriteResult::Written(w) => {
-                        q.tx.consume(w);
-                        if w < n {
-                            break;
-                        }
-                    }
-                    WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => break,
-                    WriteResult::Closed => {
-                        q.error.get_or_insert(CloseReason::Aborted);
-                        q.tx.clear();
+        while !q.tx.is_empty() {
+            let n = q.tx.front().len().min(64 * 1024);
+            let observed = sh.memory.global().release_epoch();
+            let result = self.shard.write_for_adapter(id, &q.tx.front()[..n]);
+            track_tx_wait(&mut self.shard, &sh, result, observed, n);
+            match result {
+                WriteResult::Written(w) => {
+                    q.tx.consume(w);
+                    if w < n {
                         break;
                     }
                 }
+                WriteResult::WouldBlock | WriteResult::QuotaBlocked | WriteResult::MemoryBlocked => break,
+                WriteResult::Closed => {
+                    q.error.get_or_insert(CloseReason::Aborted);
+                    q.tx.clear();
+                    break;
+                }
             }
-            if q.tx.is_empty() {
-                clear_tx_wait(&sh);
-            }
-            // Publish the share-aware room: one accounting across the adapter
-            // queue and the core send buffer (docs/design/0007 §2.1, §2.4).
-            self.shard.set_adapter_tx(id, q.tx.len() as u32);
-            let share = self.shard.send_share(sh.peer);
-            let core_tx = self.shard.tx_queued(id).unwrap_or(0) as u64;
-            q.send_limit = share.min(cfg.tx_cap as u64) as usize;
-            q.send_room = share.saturating_sub(core_tx + q.tx.len() as u64).min(usize::MAX as u64) as usize;
-            let min_free = q.write_need.min(q.send_limit).max(1);
-            let wakeable = q.write_parked && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= min_free;
-            if wakeable {
-                q.write_parked = false;
-                wake_writer = q.write_waker.take();
-            }
-            // A writer parked on the share may have an empty queue, so no
-            // core write will block to set want_write: mark it here, or a
-            // later drain of the core buffer never re-runs this pump
-            // (docs/design/0007 §2.4).
-            if q.write_parked {
-                self.shard.note_write_parked(id);
-            }
-            if q.tx.is_empty() {
-                wake_flush = q.flush_waker.take();
-            }
-            if q.tx.is_empty() && q.tx_shutdown {
-                shutdown = true;
-            }
-            app_closed = q.closed_by_app;
         }
+        if q.tx.is_empty() {
+            clear_tx_wait(&sh);
+        }
+        // Publish the share-aware room: one accounting across the adapter
+        // queue and the core send buffer (docs/design/0007 §2.1, §2.4).
+        self.shard.set_adapter_tx(id, q.tx.len() as u32);
+        let share = self.shard.send_share(sh.peer);
+        let core_tx = self.shard.tx_queued(id).unwrap_or(0) as u64;
+        q.send_limit = share.min(cfg.tx_cap as u64) as usize;
+        q.send_room = share.saturating_sub(core_tx + q.tx.len() as u64).min(usize::MAX as u64) as usize;
+        let min_free = q.write_need.min(q.send_limit).max(1);
+        let wakeable = q.write_parked && cfg.tx_cap.saturating_sub(q.tx.len()).min(q.send_room) >= min_free;
+        if wakeable {
+            q.write_parked = false;
+            wake_writer = q.write_waker.take();
+        }
+        // A writer parked on the share may have an empty queue, so no
+        // core write will block to set want_write: mark it here, or a
+        // later drain of the core buffer never re-runs this pump
+        // (docs/design/0007 §2.4).
+        if q.write_parked {
+            self.shard.note_write_parked(id);
+        }
+        if q.tx.is_empty() {
+            wake_flush = q.flush_waker.take();
+        }
+        if q.tx.is_empty() && q.tx_shutdown {
+            shutdown = true;
+        }
+        let app_closed = q.closed_by_app;
+        // Application callbacks and stream removal may re-enter the queue.
+        drop(q);
         if shutdown {
             self.shard.shutdown_write(id);
         }
