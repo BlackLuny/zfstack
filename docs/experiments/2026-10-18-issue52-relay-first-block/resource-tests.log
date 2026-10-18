@@ -1,0 +1,17 @@
+
+running 5 tests
+test tokio_adapter::tests::issue52_finite_relay_sizes_grow_without_an_ack_and_preserve_fin ... ok
+test tokio_adapter::tests::issue52_first_read_waiter_wakes_when_only_a_small_block_fits ... ok
+test tokio_adapter::tests::issue52_fragmented_initial_response_resumes_on_socket_readiness ... ok
+test tokio_adapter::tests::issue52_initial_read_windows_grow_and_recycle_without_waiting ... issue52 backing: bytes=100 warm=false active=2048 cached=0 physical=2336 requests=[2048, 1948]
+issue52 backing: bytes=100 warm=true active=2048 cached=0 physical=2624 requests=[2048, 1948]
+issue52 backing: bytes=2048 warm=false active=2048 cached=65536 physical=68160 requests=[2048, 262144]
+issue52 backing: bytes=2048 warm=true active=2048 cached=65536 physical=68448 requests=[2048, 262144]
+issue52 backing: bytes=4096 warm=false active=67584 cached=65536 physical=133696 requests=[2048, 262144, 262144]
+issue52 backing: bytes=4096 warm=true active=67584 cached=65536 physical=133984 requests=[2048, 262144, 262144]
+issue52 backing: bytes=65536 warm=false active=67584 cached=65536 physical=133696 requests=[2048, 262144, 262144]
+issue52 backing: bytes=65536 warm=true active=67584 cached=65536 physical=133984 requests=[2048, 262144, 262144]
+ok
+test tokio_adapter::tests::issue52_short_relay_uses_small_backing_through_eof ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 307 filtered out; finished in 0.01s
