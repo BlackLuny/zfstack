@@ -128,16 +128,17 @@ impl Emu {
             self.c.random_drop_bytes += len as u64;
             return;
         }
-        if let Some(q)=self.fair.as_mut() {
-            q.advance(now,&mut self.line);
+        if let Some(q) = self.fair.as_mut() {
+            q.advance(now, &mut self.line);
             crate::tail_trace::packet("link_arrive", &pkt, q.bytes, 0);
-            for p in q.enqueue(pkt,self.p.queue_limit) {
-                crate::tail_trace::packet("queue_drop",&p,q.bytes,0);
-                self.c.bottleneck_drops+=1;self.c.bottleneck_drop_bytes+=p.len() as u64;
+            for p in q.enqueue(pkt, self.p.queue_limit) {
+                crate::tail_trace::packet("queue_drop", &p, q.bytes, 0);
+                self.c.bottleneck_drops += 1;
+                self.c.bottleneck_drop_bytes += p.len() as u64;
             }
-            self.c.max_queue_bytes=self.c.max_queue_bytes.max(q.bytes);
-            q.advance(now,&mut self.line);
-            self.c.max_delay_line_pkts=self.c.max_delay_line_pkts.max(self.line.len());
+            self.c.max_queue_bytes = self.c.max_queue_bytes.max(q.bytes);
+            q.advance(now, &mut self.line);
+            self.c.max_delay_line_pkts = self.c.max_delay_line_pkts.max(self.line.len());
             return;
         }
         let deliver_at = if self.p.rate_bps > 0 {
@@ -172,14 +173,16 @@ impl Emu {
 
     /// Pop every packet due at `now`.
     fn due(&mut self, now: Instant, out: &mut Batch) {
-        if let Some(q)=self.fair.as_mut() {q.advance(now,&mut self.line);}
-        self.c.max_delay_line_pkts=self.c.max_delay_line_pkts.max(self.line.len());
+        if let Some(q) = self.fair.as_mut() {
+            q.advance(now, &mut self.line);
+        }
+        self.c.max_delay_line_pkts = self.c.max_delay_line_pkts.max(self.line.len());
         while let Some((at, _)) = self.line.front() {
             if *at > now {
                 break;
             }
             let (at, pkt) = self.line.pop_front().unwrap();
-            let queued=self.fair.as_ref().map_or(self.bn_bytes,|q|q.bytes);
+            let queued = self.fair.as_ref().map_or(self.bn_bytes, |q| q.bytes);
             crate::tail_trace::packet("link_deliver", &pkt, queued, 0);
             let late = (now - at).as_nanos() as u64;
             self.c.late_sum_ns += late as u128;
@@ -202,12 +205,25 @@ pub fn run_direction(p: DirParams, source: Source, sink: Sink, stop: Arc<AtomicB
     let cpu0 = util::thread_cpu_now();
     let ns_per_byte = if p.rate_bps > 0 { 8e9 / p.rate_bps as f64 } else { 0.0 };
     let now = Instant::now();
-    let discipline=std::env::var("ZFBENCH_QUEUE_DISCIPLINE").unwrap_or_default();
-    assert!(matches!(discipline.as_str(),""|"fifo"|"peer"));
-    let fair=if discipline.is_empty() || p.rate_bps==0 {None} else {Some(crate::link_queue::Queue::new(discipline=="peer",p.rate_bps,p.delay))};
-    let mut emu =
-        Emu { fair, rng: util::Rng::new(p.seed), p, bn: VecDeque::new(), bn_bytes: 0, last_dep: now, ns_per_byte, line: VecDeque::new(), c: DirCounters::default() };
-    emu.c.discipline=match discipline.as_str() {"peer"=>"peer-drr-pushout", "fifo"=>"fifo-service", _=>"legacy-fifo"};
+    let discipline = std::env::var("ZFBENCH_QUEUE_DISCIPLINE").unwrap_or_default();
+    assert!(matches!(discipline.as_str(), "" | "fifo" | "peer"));
+    let fair = if discipline.is_empty() || p.rate_bps == 0 { None } else { Some(crate::link_queue::Queue::new(discipline == "peer", p.rate_bps, p.delay)) };
+    let mut emu = Emu {
+        fair,
+        rng: util::Rng::new(p.seed),
+        p,
+        bn: VecDeque::new(),
+        bn_bytes: 0,
+        last_dep: now,
+        ns_per_byte,
+        line: VecDeque::new(),
+        c: DirCounters::default(),
+    };
+    emu.c.discipline = match discipline.as_str() {
+        "peer" => "peer-drr-pushout",
+        "fifo" => "fifo-service",
+        _ => "legacy-fifo",
+    };
     let mut rbuf = vec![0u8; 65536];
     let mut out: Batch = Vec::with_capacity(256);
     loop {
@@ -239,7 +255,9 @@ pub fn run_direction(p: DirParams, source: Source, sink: Sink, stop: Arc<AtomicB
             Some((at, _)) => (*at).min(now + IDLE_WAIT),
             None => now + IDLE_WAIT,
         };
-        if let Some(d)=emu.fair.as_ref().and_then(|q|q.deadline()) {deadline=deadline.min(d);}
+        if let Some(d) = emu.fair.as_ref().and_then(|q| q.deadline()) {
+            deadline = deadline.min(d);
+        }
         match &source {
             Source::Tun(fd) => {
                 let mut pfd = libc::pollfd { fd: *fd, events: libc::POLLIN, revents: 0 };

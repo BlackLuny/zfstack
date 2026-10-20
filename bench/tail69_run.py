@@ -28,7 +28,8 @@ def main():
     dest.mkdir(exist_ok=False)
     binary = ROOT / a.binary
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-    env = list(a.env)
+    # tail69_summary.py recomputes every percentile from raw samples.
+    env = list(a.env) + ["ZFBENCH_RR_RAW=1"]
     if a.open_hz:
         env += ["ZFBENCH_RR_OPEN_HZ="+str(a.open_hz),"ZFBENCH_RR_ARRIVALS=/work/"+str((dest/"arrivals.json").relative_to(ROOT))]
     if a.trace:

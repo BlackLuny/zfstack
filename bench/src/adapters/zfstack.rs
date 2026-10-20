@@ -25,9 +25,13 @@ use crate::stack::UserStack;
 use crate::tun;
 
 fn trace_stream(stage: &str, shard: &zfstack::Shard, id: zfstack::ConnId, bytes: usize) {
-    if !crate::tail_trace::enabled() { return; }
+    if !crate::tail_trace::enabled() {
+        return;
+    }
     let Some(i) = shard.info(id) else { return };
-    if i.peer.0 < 2 { return; }
+    if i.peer.0 < 2 {
+        return;
+    }
     crate::tail_trace::row(serde_json::json!({"kind":"core","stage":stage,"peer":i.peer.0,"port":i.remote.port(),"bytes":bytes,
         "cwnd":i.cwnd,"pipe":i.pipe,"snd_wnd":i.snd_wnd,"tx_unsent":i.tx_unsent,"srtt_us":i.srtt.as_micros(),
         "pacing_rate":i.pacing_rate,"rto":i.stats.rto_count,"tlp":i.stats.tlp_count,"bytes_retrans":i.stats.bytes_retrans,
