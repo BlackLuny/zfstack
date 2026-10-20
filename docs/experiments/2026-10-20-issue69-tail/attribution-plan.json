@@ -1,0 +1,37 @@
+{
+  "purpose": "Distinguish loss amplification from app/scheduler latency; small quantum and deep queue are diagnostic controls, not product defaults. Trace memory writes only after measurement.",
+  "plan": [
+    [
+      "trace-memory-bbr-200",
+      [
+        "--trace"
+      ]
+    ],
+    [
+      "trace-memory-cubic-200",
+      [
+        "--stack",
+        "zfstack-cubic",
+        "--trace"
+      ]
+    ],
+    [
+      "small-quantum-bbr-200",
+      [
+        "--env",
+        "ZFBENCH_QUANTUM=2740",
+        "--env",
+        "ZFBENCH_ROUND_CAP=32768",
+        "--trace"
+      ]
+    ],
+    [
+      "deep-queue-bbr-200",
+      [
+        "--queue-bytes",
+        "4000000",
+        "--trace"
+      ]
+    ]
+  ]
+}

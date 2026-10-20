@@ -1,0 +1,66 @@
+{
+  "rust-version": {
+    "argv": [
+      "rustc",
+      "-Vv"
+    ],
+    "returncode": 0,
+    "stdout": "rustc 1.92.0 (ded5c06cf 2025-12-08)\nbinary: rustc\ncommit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234\ncommit-date: 2025-12-08\nhost: aarch64-apple-darwin\nrelease: 1.92.0\nLLVM version: 21.1.3\n",
+    "stderr": ""
+  },
+  "fmt": {
+    "argv": [
+      "cargo",
+      "fmt",
+      "--all",
+      "--",
+      "--check"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "evidence": {
+    "argv": [
+      "python3",
+      "bench/tail69_verify.py"
+    ],
+    "returncode": 0,
+    "stdout": "verified 152 archived original files; 3 local-only executables explicitly omitted\n",
+    "stderr": ""
+  },
+  "python": {
+    "argv": [
+      "python3",
+      "-m",
+      "py_compile",
+      "bench/tail69_analyze.py",
+      "bench/tail69_exec.py",
+      "bench/tail69_plot.py",
+      "bench/tail69_report.py",
+      "bench/tail69_run.py",
+      "bench/tail69_summary.py",
+      "bench/tail69_verify.py"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "diff": {
+    "argv": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "attribution_recompute": {
+    "cases": [
+      "trace-memory-cubic-200",
+      "trace-memory-bbr-200"
+    ],
+    "result": "both gzip trace cases reproduce archived attribution.json byte-for-byte in temporary directories"
+  }
+}

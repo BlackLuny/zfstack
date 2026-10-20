@@ -1,0 +1,56 @@
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated items `new_active`, `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:705:19
+    |
+457 | impl Conn {
+    | --------- associated items in this implementation
+...
+705 |     pub(crate) fn new_active(
+    |                   ^^^^^^^^^^
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: `zfstack` (lib) generated 3 warnings
+   Compiling zfbench v0.1.0 (/Users/lulin/code/github/zfstack/bench)
+warning: use of deprecated type alias `libc::time_t`: This type is changed to 64-bit in musl 1.2.0, we'll follow that change in the future release. See #1848 for more info.
+  --> bench/src/util.rs:46:51
+   |
+46 |     libc::timespec { tv_sec: d.as_secs() as libc::time_t, tv_nsec: d.subsec_nanos() as libc::c_long }
+   |                                                   ^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: `zfbench` (bin "zfbench") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 5.79s

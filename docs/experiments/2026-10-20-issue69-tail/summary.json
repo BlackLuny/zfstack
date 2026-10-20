@@ -1,0 +1,1468 @@
+{
+  "cases": [
+    {
+      "case": "deep-queue-bbr-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "9ad536e859b9172686e0b589413d559f7d77d3412452836a95b919fc06a46a2b",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 4000000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 38,
+          "p50": 319.78875,
+          "p95": 330.03754200000003,
+          "p99": null,
+          "max": 330.14187499999997
+        },
+        {
+          "peer": 3,
+          "n": 38,
+          "p50": 320.21062500000005,
+          "p95": 330.02250100000003,
+          "p99": null,
+          "max": 330.18475
+        },
+        {
+          "peer": 4,
+          "n": 38,
+          "p50": 320.16166699999997,
+          "p95": 330.108875,
+          "p99": null,
+          "max": 668.089875
+        }
+      ],
+      "mbps": 86.55580608667508,
+      "bytes": 133649072,
+      "seconds": 12.352638089,
+      "worst_p99_ms": null,
+      "worst_max_ms": 668.089875,
+      "stack_cpu_per_GB": 12.277305082971324,
+      "process_cpu_per_GB": 46.318847907900135,
+      "link_cpu_per_GB": 28.083518649497233,
+      "max_rss_kib": null,
+      "light_requests": 114,
+      "max_queue_bytes": 4000000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fifo-service-pilot",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 362,
+          "p50": 29.95875,
+          "p95": 30.203500000000002,
+          "p99": 90.09854200000001,
+          "max": 290.01020900000003
+        },
+        {
+          "peer": 3,
+          "n": 371,
+          "p50": 29.958333,
+          "p95": 30.196042,
+          "p99": 89.997333,
+          "max": 290.108834
+        },
+        {
+          "peer": 4,
+          "n": 360,
+          "p50": 29.96075,
+          "p95": 30.303708,
+          "p99": 90.073792,
+          "max": 290.054875
+        }
+      ],
+      "mbps": 95.89640021818903,
+      "bytes": 144166168,
+      "seconds": 12.026826172,
+      "worst_p99_ms": 90.09854200000001,
+      "worst_max_ms": 290.108834,
+      "stack_cpu_per_GB": 14.150193206217422,
+      "process_cpu_per_GB": 50.62132739770123,
+      "link_cpu_per_GB": 31.09799994128997,
+      "max_rss_kib": null,
+      "light_requests": 1093,
+      "max_queue_bytes": 249996,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fixed-bbr-abba-0-A",
+      "ok": false,
+      "returncode": 1,
+      "binary_sha256": "56c9fe26cc7652a84a653b8024cc46432f728e17d0cbff37e4336af05eb50266",
+      "arrivals": {
+        "valid": false,
+        "failures": [
+          "generator lag",
+          "missed"
+        ],
+        "completed": 1124,
+        "scheduled": 1125,
+        "max_generator_lag_ms": 20.2655
+      },
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 30.317461,
+          "p95": 224.776003,
+          "p99": 349.862045,
+          "max": 434.389628
+        },
+        {
+          "peer": 3,
+          "n": 300,
+          "p50": 30.230836,
+          "p95": 210.262212,
+          "p99": 304.687792,
+          "max": 379.59641700000003
+        },
+        {
+          "peer": 4,
+          "n": 300,
+          "p50": 30.225544,
+          "p95": 209.48746200000002,
+          "p99": 260.128417,
+          "max": 380.1175
+        }
+      ],
+      "mbps": 95.70956812102017,
+      "bytes": 143564760,
+      "seconds": 12.000034005,
+      "worst_p99_ms": 349.862045,
+      "worst_max_ms": 434.389628,
+      "stack_cpu_per_GB": 13.046244503177517,
+      "process_cpu_per_GB": 46.90296837469027,
+      "link_cpu_per_GB": 28.762457562705492,
+      "max_rss_kib": 109488,
+      "light_requests": 900,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fixed2-bbr-abba-0-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "56c9fe26cc7652a84a653b8024cc46432f728e17d0cbff37e4336af05eb50266",
+      "arrivals": {
+        "valid": true,
+        "failures": [],
+        "completed": 1125,
+        "scheduled": 1125,
+        "max_generator_lag_ms": 18.822084
+      },
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 30.203086,
+          "p95": 190.22067,
+          "p99": 275.657545,
+          "max": 379.82825199999996
+        },
+        {
+          "peer": 3,
+          "n": 300,
+          "p50": 30.218004999999998,
+          "p95": 180.02517,
+          "p99": 220.057667,
+          "max": 230.19363
+        },
+        {
+          "peer": 4,
+          "n": 300,
+          "p50": 30.187755,
+          "p95": 174.797586,
+          "p99": 260.097794,
+          "max": 340.090627
+        }
+      ],
+      "mbps": 95.76397322939611,
+      "bytes": 144552328,
+      "seconds": 12.075716588,
+      "worst_p99_ms": 275.657545,
+      "worst_max_ms": 379.82825199999996,
+      "stack_cpu_per_GB": 13.004292293376281,
+      "process_cpu_per_GB": 46.755236096924015,
+      "link_cpu_per_GB": 28.68227798448185,
+      "max_rss_kib": 111656,
+      "light_requests": 900,
+      "max_queue_bytes": 249996,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fixed2-bbr-abba-1-B",
+      "ok": false,
+      "returncode": 1,
+      "binary_sha256": "56c9fe26cc7652a84a653b8024cc46432f728e17d0cbff37e4336af05eb50266",
+      "arrivals": {
+        "valid": false,
+        "failures": [
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed"
+        ],
+        "completed": 1120,
+        "scheduled": 1125,
+        "max_generator_lag_ms": 32.890501
+      },
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 10.491878,
+          "p95": 10.661458,
+          "p99": 14.202086,
+          "max": 20.175337000000003
+        },
+        {
+          "peer": 3,
+          "n": 300,
+          "p50": 10.504750999999999,
+          "p95": 10.667126000000001,
+          "p99": 14.827877999999998,
+          "max": 18.768046000000002
+        },
+        {
+          "peer": 4,
+          "n": 300,
+          "p50": 10.494751,
+          "p95": 10.620835,
+          "p99": 15.571337,
+          "max": 20.095004
+        }
+      ],
+      "mbps": 95.75341381666672,
+      "bytes": 143630424,
+      "seconds": 12.000025213,
+      "worst_p99_ms": 15.571337,
+      "worst_max_ms": 20.175337000000003,
+      "stack_cpu_per_GB": 13.157765822650498,
+      "process_cpu_per_GB": 46.842793355535875,
+      "link_cpu_per_GB": 28.55551938633836,
+      "max_rss_kib": 135968,
+      "light_requests": 900,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fixed2-bbr-abba-2-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "56c9fe26cc7652a84a653b8024cc46432f728e17d0cbff37e4336af05eb50266",
+      "arrivals": {
+        "valid": true,
+        "failures": [],
+        "completed": 1125,
+        "scheduled": 1125,
+        "max_generator_lag_ms": 19.533833
+      },
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 10.526295999999999,
+          "p95": 10.657917,
+          "p99": 15.074087,
+          "max": 22.315171000000003
+        },
+        {
+          "peer": 3,
+          "n": 300,
+          "p50": 10.504295,
+          "p95": 10.62063,
+          "p99": 13.653712,
+          "max": 22.238588
+        },
+        {
+          "peer": 4,
+          "n": 300,
+          "p50": 10.500292,
+          "p95": 10.620792999999999,
+          "p99": 13.980087000000001,
+          "max": 22.225171
+        }
+      ],
+      "mbps": 95.8027828235295,
+      "bytes": 143705536,
+      "seconds": 12.000113422,
+      "worst_p99_ms": 15.074087,
+      "worst_max_ms": 22.315171000000003,
+      "stack_cpu_per_GB": 12.914976859346602,
+      "process_cpu_per_GB": 46.29534168398356,
+      "link_cpu_per_GB": 28.31412219916149,
+      "max_rss_kib": 115652,
+      "light_requests": 900,
+      "max_queue_bytes": 249992,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "fixed2-bbr-abba-3-A",
+      "ok": false,
+      "returncode": 1,
+      "binary_sha256": "56c9fe26cc7652a84a653b8024cc46432f728e17d0cbff37e4336af05eb50266",
+      "arrivals": {
+        "valid": false,
+        "failures": [
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed",
+          "generator lag",
+          "missed"
+        ],
+        "completed": 1121,
+        "scheduled": 1125,
+        "max_generator_lag_ms": 22.598042
+      },
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 59.922879,
+          "p95": 229.953002,
+          "p99": 269.275963,
+          "max": 379.912168
+        },
+        {
+          "peer": 3,
+          "n": 300,
+          "p50": 30.228754,
+          "p95": 180.206961,
+          "p99": 230.16571,
+          "max": 282.031253
+        },
+        {
+          "peer": 4,
+          "n": 300,
+          "p50": 30.211128,
+          "p95": 180.17516899999998,
+          "p99": 230.10783500000002,
+          "max": 320.47821300000004
+        }
+      ],
+      "mbps": 95.69643277169968,
+      "bytes": 143545352,
+      "seconds": 12.000058381,
+      "worst_p99_ms": 269.275963,
+      "worst_max_ms": 379.912168,
+      "stack_cpu_per_GB": 13.008675355785815,
+      "process_cpu_per_GB": 46.793735230103444,
+      "link_cpu_per_GB": 28.65781950222952,
+      "max_rss_kib": 113696,
+      "light_requests": 900,
+      "max_queue_bytes": 249992,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "legacy-aa-bbr",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 339,
+          "p50": 29.977583,
+          "p95": 31.102583,
+          "p99": 289.98762500000004,
+          "max": 290.291583
+        },
+        {
+          "peer": 3,
+          "n": 352,
+          "p50": 29.97525,
+          "p95": 30.421625000000002,
+          "p99": 290.032667,
+          "max": 290.27750000000003
+        },
+        {
+          "peer": 4,
+          "n": 320,
+          "p50": 29.993958000000003,
+          "p95": 30.87025,
+          "p99": 289.871542,
+          "max": 689.424584
+        }
+      ],
+      "mbps": 95.70893966283359,
+      "bytes": 143869568,
+      "seconds": 12.025590506,
+      "worst_p99_ms": 290.032667,
+      "worst_max_ms": 689.424584,
+      "stack_cpu_per_GB": 14.4653717803615,
+      "process_cpu_per_GB": 48.14480625951419,
+      "link_cpu_per_GB": 28.100756686778965,
+      "max_rss_kib": 260988,
+      "light_requests": 1011,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-abba-0-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 378,
+          "p50": 29.972208000000002,
+          "p95": 30.486,
+          "p99": 89.944917,
+          "max": 296.89137500000004
+        },
+        {
+          "peer": 3,
+          "n": 380,
+          "p50": 29.970667,
+          "p95": 33.598749999999995,
+          "p99": 92.63675,
+          "max": 290.128
+        },
+        {
+          "peer": 4,
+          "n": 384,
+          "p50": 29.981375,
+          "p95": 30.297542,
+          "p99": 90.040583,
+          "max": 290.042876
+        }
+      ],
+      "mbps": 95.69529081117442,
+      "bytes": 144579560,
+      "seconds": 12.08666013,
+      "worst_p99_ms": 92.63675,
+      "worst_max_ms": 296.89137500000004,
+      "stack_cpu_per_GB": 14.279160325290793,
+      "process_cpu_per_GB": 50.777483580666605,
+      "link_cpu_per_GB": 30.83999671184502,
+      "max_rss_kib": 115844,
+      "light_requests": 1142,
+      "max_queue_bytes": 249996,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-abba-1-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1110,
+          "p50": 10.436959000000002,
+          "p95": 12.129292,
+          "p99": 12.24725,
+          "max": 23.699375000000003
+        },
+        {
+          "peer": 3,
+          "n": 1110,
+          "p50": 10.438208,
+          "p95": 12.12275,
+          "p99": 12.233542,
+          "max": 23.669083
+        },
+        {
+          "peer": 4,
+          "n": 1110,
+          "p50": 10.434666,
+          "p95": 12.125709,
+          "p99": 12.240083,
+          "max": 23.94125
+        }
+      ],
+      "mbps": 95.3134865913957,
+      "bytes": 143027008,
+      "seconds": 12.004765298,
+      "worst_p99_ms": 12.24725,
+      "worst_max_ms": 23.94125,
+      "stack_cpu_per_GB": 14.88720726787489,
+      "process_cpu_per_GB": 53.57783727811743,
+      "link_cpu_per_GB": 32.825300106956014,
+      "max_rss_kib": 112208,
+      "light_requests": 3330,
+      "max_queue_bytes": 249988,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-abba-2-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1110,
+          "p50": 10.433708,
+          "p95": 12.128417,
+          "p99": 12.334,
+          "max": 19.457666
+        },
+        {
+          "peer": 3,
+          "n": 1110,
+          "p50": 10.433834,
+          "p95": 12.1285,
+          "p99": 12.385833,
+          "max": 19.640333
+        },
+        {
+          "peer": 4,
+          "n": 1110,
+          "p50": 10.436083,
+          "p95": 12.126332999999999,
+          "p99": 12.268958,
+          "max": 20.331084
+        }
+      ],
+      "mbps": 95.39964894309409,
+      "bytes": 143138800,
+      "seconds": 12.003297464,
+      "worst_p99_ms": 12.385833,
+      "worst_max_ms": 20.331084,
+      "stack_cpu_per_GB": 14.957276699259737,
+      "process_cpu_per_GB": 53.908315530100836,
+      "link_cpu_per_GB": 33.06594353871906,
+      "max_rss_kib": 125064,
+      "light_requests": 3330,
+      "max_queue_bytes": 249992,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-abba-3-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 365,
+          "p50": 29.968583,
+          "p95": 30.419208,
+          "p99": 90.552834,
+          "max": 293.303041
+        },
+        {
+          "peer": 3,
+          "n": 375,
+          "p50": 29.962125,
+          "p95": 30.208375,
+          "p99": 90.065791,
+          "max": 289.918501
+        },
+        {
+          "peer": 4,
+          "n": 360,
+          "p50": 29.973125,
+          "p95": 30.40125,
+          "p99": 95.017458,
+          "max": 299.18141599999996
+        }
+      ],
+      "mbps": 95.78076758857722,
+      "bytes": 143917320,
+      "seconds": 12.020560839,
+      "worst_p99_ms": 95.017458,
+      "worst_max_ms": 299.18141599999996,
+      "stack_cpu_per_GB": 14.419526225196526,
+      "process_cpu_per_GB": 50.8969335935383,
+      "link_cpu_per_GB": 30.860014944691855,
+      "max_rss_kib": 111724,
+      "light_requests": 1100,
+      "max_queue_bytes": 249996,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-baab-0-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1110,
+          "p50": 10.427957999999999,
+          "p95": 12.128084000000001,
+          "p99": 12.263,
+          "max": 15.239958
+        },
+        {
+          "peer": 3,
+          "n": 1110,
+          "p50": 10.431083000000001,
+          "p95": 12.134292,
+          "p99": 12.327207999999999,
+          "max": 17.022665999999997
+        },
+        {
+          "peer": 4,
+          "n": 1110,
+          "p50": 10.433583,
+          "p95": 12.130040999999999,
+          "p99": 12.252291,
+          "max": 17.129625
+        }
+      ],
+      "mbps": 95.30966428700118,
+      "bytes": 143050992,
+      "seconds": 12.007259838,
+      "worst_p99_ms": 12.327207999999999,
+      "worst_max_ms": 17.129625,
+      "stack_cpu_per_GB": 14.901431309193578,
+      "process_cpu_per_GB": 53.73419845980516,
+      "link_cpu_per_GB": 32.89856271671293,
+      "max_rss_kib": 110276,
+      "light_requests": 3330,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-baab-1-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 359,
+          "p50": 29.9835,
+          "p95": 30.730583,
+          "p99": 90.07720900000001,
+          "max": 290.095125
+        },
+        {
+          "peer": 3,
+          "n": 360,
+          "p50": 29.965542000000003,
+          "p95": 30.332541000000003,
+          "p99": 94.220958,
+          "max": 289.920792
+        },
+        {
+          "peer": 4,
+          "n": 345,
+          "p50": 30.0285,
+          "p95": 34.92,
+          "p99": 90.042417,
+          "max": 689.806
+        }
+      ],
+      "mbps": 95.73148967135597,
+      "bytes": 143732384,
+      "seconds": 12.011293714,
+      "worst_p99_ms": 94.220958,
+      "worst_max_ms": 689.806,
+      "stack_cpu_per_GB": 14.364299481736838,
+      "process_cpu_per_GB": 50.67973999512872,
+      "link_cpu_per_GB": 30.691926128491687,
+      "max_rss_kib": 117128,
+      "light_requests": 1064,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-baab-2-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 258,
+          "p50": 29.962417000000002,
+          "p95": 30.504832999999998,
+          "p99": 289.87045900000004,
+          "max": 3090.024543
+        },
+        {
+          "peer": 3,
+          "n": 314,
+          "p50": 29.98275,
+          "p95": 89.968958,
+          "p99": 290.3345,
+          "max": 690.035
+        },
+        {
+          "peer": 4,
+          "n": 307,
+          "p50": 30.010459,
+          "p95": 90.028333,
+          "p99": 290.159083,
+          "max": 690.026292
+        }
+      ],
+      "mbps": 95.86615251493492,
+      "bytes": 144139320,
+      "seconds": 12.02838038,
+      "worst_p99_ms": 290.3345,
+      "worst_max_ms": 3090.024543,
+      "stack_cpu_per_GB": 14.215733611064627,
+      "process_cpu_per_GB": 50.4405554015379,
+      "link_cpu_per_GB": 30.7077541645125,
+      "max_rss_kib": 121928,
+      "light_requests": 879,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-bbr-baab-3-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1109,
+          "p50": 10.441832999999999,
+          "p95": 12.136209000000001,
+          "p99": 12.560084,
+          "max": 20.972375000000003
+        },
+        {
+          "peer": 3,
+          "n": 1109,
+          "p50": 10.444,
+          "p95": 12.142458,
+          "p99": 12.4995,
+          "max": 20.963708
+        },
+        {
+          "peer": 4,
+          "n": 1109,
+          "p50": 10.436084,
+          "p95": 12.140540999999999,
+          "p99": 12.660708999999999,
+          "max": 20.853375
+        }
+      ],
+      "mbps": 95.31011609797523,
+      "bytes": 143038080,
+      "seconds": 12.006119256,
+      "worst_p99_ms": 12.660708999999999,
+      "worst_max_ms": 20.972375000000003,
+      "stack_cpu_per_GB": 15.51714268675866,
+      "process_cpu_per_GB": 55.76826136089073,
+      "link_cpu_per_GB": 33.91722441324716,
+      "max_rss_kib": 116188,
+      "light_requests": 3327,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-cubic-abba-0-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 376,
+          "p50": 29.964083,
+          "p95": 30.288959000000002,
+          "p99": 90.767375,
+          "max": 290.321416
+        },
+        {
+          "peer": 3,
+          "n": 328,
+          "p50": 30.023666000000002,
+          "p95": 89.930125,
+          "p99": 289.66858299999996,
+          "max": 290.73125
+        },
+        {
+          "peer": 4,
+          "n": 376,
+          "p50": 29.9595,
+          "p95": 30.28175,
+          "p99": 90.831208,
+          "max": 290.357417
+        }
+      ],
+      "mbps": 96.11496380779226,
+      "bytes": 144469008,
+      "seconds": 12.024683755,
+      "worst_p99_ms": 289.66858299999996,
+      "worst_max_ms": 290.73125,
+      "stack_cpu_per_GB": 9.973313992714615,
+      "process_cpu_per_GB": 45.056643290580354,
+      "link_cpu_per_GB": 28.467572304504227,
+      "max_rss_kib": 104804,
+      "light_requests": 1080,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-cubic-abba-1-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1146,
+          "p50": 10.426042,
+          "p95": 10.642584,
+          "p99": 11.142291,
+          "max": 14.231458
+        },
+        {
+          "peer": 3,
+          "n": 1146,
+          "p50": 10.424833,
+          "p95": 10.640917,
+          "p99": 11.13925,
+          "max": 14.441291999999999
+        },
+        {
+          "peer": 4,
+          "n": 1146,
+          "p50": 10.424833,
+          "p95": 10.638290999999999,
+          "p99": 11.091875,
+          "max": 14.337417
+        }
+      ],
+      "mbps": 95.66582870266818,
+      "bytes": 143601696,
+      "seconds": 12.008608923,
+      "worst_p99_ms": 11.142291,
+      "worst_max_ms": 14.441291999999999,
+      "stack_cpu_per_GB": 10.589617883064557,
+      "process_cpu_per_GB": 48.136612049484434,
+      "link_cpu_per_GB": 30.777911759482286,
+      "max_rss_kib": 103032,
+      "light_requests": 3438,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-cubic-abba-2-B",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1149,
+          "p50": 10.411458999999999,
+          "p95": 10.518958,
+          "p99": 10.671458999999999,
+          "max": 21.669082999999997
+        },
+        {
+          "peer": 3,
+          "n": 1149,
+          "p50": 10.410584,
+          "p95": 10.518583,
+          "p99": 10.81475,
+          "max": 21.63175
+        },
+        {
+          "peer": 4,
+          "n": 1149,
+          "p50": 10.411,
+          "p95": 10.514375,
+          "p99": 10.812708,
+          "max": 21.675957999999998
+        }
+      ],
+      "mbps": 95.63479570365955,
+      "bytes": 143471736,
+      "seconds": 12.001634464,
+      "worst_p99_ms": 10.81475,
+      "worst_max_ms": 21.675957999999998,
+      "stack_cpu_per_GB": 9.55693501192458,
+      "process_cpu_per_GB": 44.058682701100096,
+      "link_cpu_per_GB": 28.400825609303283,
+      "max_rss_kib": 146080,
+      "light_requests": 3447,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "pair-cubic-abba-3-A",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "fifo-service",
+      "users": [
+        {
+          "peer": 2,
+          "n": 384,
+          "p50": 29.933208,
+          "p95": 30.136792,
+          "p99": 34.513374999999996,
+          "max": 289.756375
+        },
+        {
+          "peer": 3,
+          "n": 380,
+          "p50": 29.930875,
+          "p95": 30.111167000000002,
+          "p99": 112.737376,
+          "max": 312.694667
+        },
+        {
+          "peer": 4,
+          "n": 383,
+          "p50": 29.926875,
+          "p95": 30.096583,
+          "p99": 31.018875,
+          "max": 312.960458
+        }
+      ],
+      "mbps": 96.12184187659497,
+      "bytes": 144444384,
+      "seconds": 12.02177388,
+      "worst_p99_ms": 112.737376,
+      "worst_max_ms": 312.960458,
+      "stack_cpu_per_GB": 9.349535555497956,
+      "process_cpu_per_GB": 41.556774446834844,
+      "link_cpu_per_GB": 26.331597751837826,
+      "max_rss_kib": 105948,
+      "light_requests": 1147,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "peer-queue-pilot",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "peer-drr-pushout",
+      "users": [
+        {
+          "peer": 2,
+          "n": 1091,
+          "p50": 10.484667,
+          "p95": 12.209209,
+          "p99": 17.734208000000002,
+          "max": 55.044792
+        },
+        {
+          "peer": 3,
+          "n": 1090,
+          "p50": 10.488417,
+          "p95": 12.165459,
+          "p99": 17.142917,
+          "max": 83.826084
+        },
+        {
+          "peer": 4,
+          "n": 1091,
+          "p50": 10.495666,
+          "p95": 12.197833,
+          "p99": 17.304333000000003,
+          "max": 55.924875
+        }
+      ],
+      "mbps": 94.72897987483422,
+      "bytes": 142111944,
+      "seconds": 12.001559881,
+      "worst_p99_ms": 17.734208000000002,
+      "worst_max_ms": 83.826084,
+      "stack_cpu_per_GB": 15.196884893784858,
+      "process_cpu_per_GB": 54.64127704142869,
+      "link_cpu_per_GB": 32.98452994915051,
+      "max_rss_kib": null,
+      "light_requests": 3272,
+      "max_queue_bytes": 249996,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "small-quantum-bbr-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "9ad536e859b9172686e0b589413d559f7d77d3412452836a95b919fc06a46a2b",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 371,
+          "p50": 30.060458,
+          "p95": 32.27025,
+          "p99": 98.12333299999999,
+          "max": 290.513666
+        },
+        {
+          "peer": 3,
+          "n": 370,
+          "p50": 30.066709,
+          "p95": 32.212625,
+          "p99": 93.252125,
+          "max": 291.278042
+        },
+        {
+          "peer": 4,
+          "n": 371,
+          "p50": 30.072042,
+          "p95": 32.279042000000004,
+          "p99": 94.126375,
+          "max": 290.767542
+        }
+      ],
+      "mbps": 95.69662302911544,
+      "bytes": 143864352,
+      "seconds": 12.026702256,
+      "worst_p99_ms": 98.12333299999999,
+      "worst_max_ms": 291.278042,
+      "stack_cpu_per_GB": 16.414549311006525,
+      "process_cpu_per_GB": 54.20503967515178,
+      "link_cpu_per_GB": 31.175095544169277,
+      "max_rss_kib": null,
+      "light_requests": 1112,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "trace-bbr-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "aaaa49b4ad9d76cb710012907a2bb7a8d9469a15897a25fe35487f53c4a34a5e",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 300,
+          "p50": 30.069708000000002,
+          "p95": 35.537042,
+          "p99": 187.680625,
+          "max": 1611.033292
+        },
+        {
+          "peer": 3,
+          "n": 288,
+          "p50": 30.074875000000002,
+          "p95": 89.979792,
+          "p99": 290.9035,
+          "max": 1621.1334590000001
+        },
+        {
+          "peer": 4,
+          "n": 304,
+          "p50": 30.06775,
+          "p95": 43.098208,
+          "p99": 167.834417,
+          "max": 1621.114792
+        }
+      ],
+      "mbps": 91.48034854683658,
+      "bytes": 137396320,
+      "seconds": 12.015363089,
+      "worst_p99_ms": 290.9035,
+      "worst_max_ms": 1621.1334590000001,
+      "stack_cpu_per_GB": 19.24589374737257,
+      "process_cpu_per_GB": 64.08489637131474,
+      "link_cpu_per_GB": 34.468186222163745,
+      "max_rss_kib": null,
+      "light_requests": 892,
+      "max_queue_bytes": 250000,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "trace-cubic-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "aaaa49b4ad9d76cb710012907a2bb7a8d9469a15897a25fe35487f53c4a34a5e",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 381,
+          "p50": 29.968167,
+          "p95": 30.364458,
+          "p99": 89.830584,
+          "max": 429.817876
+        },
+        {
+          "peer": 3,
+          "n": 385,
+          "p50": 29.963333000000002,
+          "p95": 30.409665999999998,
+          "p99": 33.418959,
+          "max": 291.536708
+        },
+        {
+          "peer": 4,
+          "n": 387,
+          "p50": 29.9685,
+          "p95": 30.385167000000003,
+          "p99": 31.267542000000002,
+          "max": 231.17595799999998
+        }
+      ],
+      "mbps": 96.07484099048818,
+      "bytes": 144407448,
+      "seconds": 12.024579423,
+      "worst_p99_ms": 89.830584,
+      "worst_max_ms": 429.817876,
+      "stack_cpu_per_GB": 11.962930104546963,
+      "process_cpu_per_GB": 49.80721835760161,
+      "link_cpu_per_GB": 30.180087823447998,
+      "max_rss_kib": null,
+      "light_requests": 1153,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "trace-memory-bbr-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "9ad536e859b9172686e0b589413d559f7d77d3412452836a95b919fc06a46a2b",
+      "arrivals": null,
+      "stack": "zfstack-bbr",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 362,
+          "p50": 30.056167000000002,
+          "p95": 35.175875000000005,
+          "p99": 123.682875,
+          "max": 290.104417
+        },
+        {
+          "peer": 3,
+          "n": 351,
+          "p50": 30.075457999999998,
+          "p95": 34.94325,
+          "p99": 166.85625000000002,
+          "max": 295.069167
+        },
+        {
+          "peer": 4,
+          "n": 353,
+          "p50": 30.045167000000003,
+          "p95": 30.841334,
+          "p99": 166.48195800000002,
+          "max": 433.514001
+        }
+      ],
+      "mbps": 93.39320702980744,
+      "bytes": 140841928,
+      "seconds": 12.06442563,
+      "worst_p99_ms": 166.85625000000002,
+      "worst_max_ms": 433.514001,
+      "stack_cpu_per_GB": 17.41807302581089,
+      "process_cpu_per_GB": 62.3217180114149,
+      "link_cpu_per_GB": 34.37078967706263,
+      "max_rss_kib": null,
+      "light_requests": 1066,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    },
+    {
+      "case": "trace-memory-cubic-200",
+      "ok": true,
+      "returncode": 0,
+      "binary_sha256": "9ad536e859b9172686e0b589413d559f7d77d3412452836a95b919fc06a46a2b",
+      "arrivals": null,
+      "stack": "zfstack-cubic",
+      "queue_bytes": 250000,
+      "discipline": "legacy-fifo",
+      "users": [
+        {
+          "peer": 2,
+          "n": 365,
+          "p50": 30.010333,
+          "p95": 33.088792,
+          "p99": 93.674333,
+          "max": 290.03299999999996
+        },
+        {
+          "peer": 3,
+          "n": 366,
+          "p50": 30.034667000000002,
+          "p95": 32.07575,
+          "p99": 120.839875,
+          "max": 290.05425
+        },
+        {
+          "peer": 4,
+          "n": 377,
+          "p50": 30.026375,
+          "p95": 32.91825,
+          "p99": 91.944542,
+          "max": 233.3335
+        }
+      ],
+      "mbps": 96.01609559921255,
+      "bytes": 144289800,
+      "seconds": 12.022133797,
+      "worst_p99_ms": 120.839875,
+      "worst_max_ms": 290.05425,
+      "stack_cpu_per_GB": 12.537268212999118,
+      "process_cpu_per_GB": 51.7513251040614,
+      "link_cpu_per_GB": 30.926762979780968,
+      "max_rss_kib": null,
+      "light_requests": 1108,
+      "max_queue_bytes": 249984,
+      "sink_errors": 0,
+      "live_connections_end": 0
+    }
+  ],
+  "comparisons": [
+    {
+      "block": "bbr-abba",
+      "A": {
+        "mbps": 95.73791367191909,
+        "p99_range_ms": [
+          92.63675,
+          95.017458
+        ],
+        "max_ms": 299.18141599999996,
+        "stack_cpu_per_GB": 14.34918217139818,
+        "process_cpu_per_GB": 50.8370714893,
+        "link_cpu_per_GB": 30.849982852500865,
+        "peak_rss_kib": 115844,
+        "light_requests": 2242
+      },
+      "B": {
+        "mbps": 95.35656777870264,
+        "p99_range_ms": [
+          12.24725,
+          12.385833
+        ],
+        "max_ms": 23.94125,
+        "stack_cpu_per_GB": 14.922255670041473,
+        "process_cpu_per_GB": 53.74314095554,
+        "link_cpu_per_GB": 32.945668827073845,
+        "peak_rss_kib": 125064,
+        "light_requests": 6660
+      },
+      "throughput_ratio": 0.996016772471946,
+      "throughput_gate_pass": true,
+      "process_cpu_ratio": 1.0571643759387608
+    },
+    {
+      "block": "bbr-baab",
+      "A": {
+        "mbps": 95.79887077482442,
+        "p99_range_ms": [
+          94.220958,
+          290.3345
+        ],
+        "max_ms": 3090.024543,
+        "stack_cpu_per_GB": 14.289911539899038,
+        "process_cpu_per_GB": 50.55997864243024,
+        "link_cpu_per_GB": 30.699851333773324,
+        "peak_rss_kib": 121928,
+        "light_requests": 1943
+      },
+      "B": {
+        "mbps": 95.3098923329728,
+        "p99_range_ms": [
+          12.327207999999999,
+          12.660708999999999
+        ],
+        "max_ms": 20.972375000000003,
+        "stack_cpu_per_GB": 15.209273103587822,
+        "process_cpu_per_GB": 54.75118400887398,
+        "link_cpu_per_GB": 33.40787057745428,
+        "peak_rss_kib": 116188,
+        "light_requests": 6657
+      },
+      "throughput_ratio": 0.9948957807341907,
+      "throughput_gate_pass": true,
+      "process_cpu_ratio": 1.0828957107771888
+    },
+    {
+      "block": "cubic-abba",
+      "A": {
+        "mbps": 96.11840426075298,
+        "p99_range_ms": [
+          112.737376,
+          289.66858299999996
+        ],
+        "max_ms": 312.960458,
+        "stack_cpu_per_GB": 9.661451356328959,
+        "process_cpu_per_GB": 43.306858015082945,
+        "link_cpu_per_GB": 27.399676052399812,
+        "peak_rss_kib": 105948,
+        "light_requests": 2227
+      },
+      "B": {
+        "mbps": 95.65031969827737,
+        "p99_range_ms": [
+          10.81475,
+          11.142291
+        ],
+        "max_ms": 21.675957999999998,
+        "stack_cpu_per_GB": 10.073510198603122,
+        "process_cpu_per_GB": 46.09857042779215,
+        "link_cpu_per_GB": 29.58990674553262,
+        "peak_rss_kib": 146080,
+        "light_requests": 6885
+      },
+      "throughput_ratio": 0.9951301255355242,
+      "throughput_gate_pass": true,
+      "process_cpu_ratio": 1.0644635178044295
+    }
+  ],
+  "paired_done": 13,
+  "paired_planned": 13,
+  "fixed_comparisons": [
+    {
+      "block": "fixed2-bbr-abba",
+      "A": {
+        "mbps": 95.73031160856254,
+        "p99_range_ms": [
+          269.275963,
+          275.657545
+        ],
+        "max_ms": 379.912168,
+        "stack_cpu_per_GB": 13.006476164611948,
+        "process_cpu_per_GB": 46.77441838129346,
+        "link_cpu_per_GB": 28.670091487720416,
+        "peak_rss_kib": 113696,
+        "light_requests": 1800
+      },
+      "B": {
+        "mbps": 95.778100075129,
+        "p99_range_ms": [
+          15.074087,
+          15.571337
+        ],
+        "max_ms": 22.315171000000003,
+        "stack_cpu_per_GB": 13.036339607475513,
+        "process_cpu_per_GB": 46.56899596555892,
+        "link_cpu_per_GB": 28.434789241137793,
+        "peak_rss_kib": 135968,
+        "light_requests": 1800
+      },
+      "valid": false,
+      "throughput_ratio": 1.0004991989032885,
+      "throughput_gate_pass": true,
+      "process_cpu_ratio": 0.9956082315324589
+    }
+  ],
+  "paired_complete": true,
+  "scope": "Test-side bottleneck queue causal prototype, not a production ZFC/TCP fix."
+}

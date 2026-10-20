@@ -1,0 +1,89 @@
+{
+  "at_unix": 1792469035.131872,
+  "netns": {
+    "argv": [
+      "docker",
+      "exec",
+      "zfstack-issue69-tail",
+      "ip",
+      "netns",
+      "list"
+    ],
+    "code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "links": {
+    "argv": [
+      "docker",
+      "exec",
+      "zfstack-issue69-tail",
+      "ip",
+      "-j",
+      "link",
+      "show"
+    ],
+    "code": 0,
+    "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":2,\"link\":null,\"ifname\":\"tunl0\",\"flags\":[\"NOARP\"],\"mtu\":1480,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ipip\",\"address\":\"0.0.0.0\",\"broadcast\":\"0.0.0.0\"},{\"ifindex\":3,\"link\":null,\"ifname\":\"gre0\",\"flags\":[\"NOARP\"],\"mtu\":1476,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"gre\",\"address\":\"0.0.0.0\",\"broadcast\":\"0.0.0.0\"},{\"ifindex\":4,\"link\":null,\"ifname\":\"gretap0\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1462,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":5,\"link\":null,\"ifname\":\"erspan0\",\"flags\":[\"BROADCAST\",\"MULTICAST\"],\"mtu\":1450,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":6,\"link\":null,\"ifname\":\"ip_vti0\",\"flags\":[\"NOARP\"],\"mtu\":1480,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ipip\",\"address\":\"0.0.0.0\",\"broadcast\":\"0.0.0.0\"},{\"ifindex\":7,\"link\":null,\"ifname\":\"ip6_vti0\",\"flags\":[\"NOARP\"],\"mtu\":1428,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"tunnel6\",\"address\":\"::\",\"broadcast\":\"::\",\"permaddr\":\"25c:d91:bbb3::\"},{\"ifindex\":8,\"link\":null,\"ifname\":\"sit0\",\"flags\":[\"NOARP\"],\"mtu\":1480,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"sit\",\"address\":\"0.0.0.0\",\"broadcast\":\"0.0.0.0\"},{\"ifindex\":9,\"link\":null,\"ifname\":\"ip6tnl0\",\"flags\":[\"NOARP\"],\"mtu\":1452,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"tunnel6\",\"address\":\"::\",\"broadcast\":\"::\",\"permaddr\":\"4ed7:868c:82f::\"},{\"ifindex\":10,\"link\":null,\"ifname\":\"ip6gre0\",\"flags\":[\"NOARP\"],\"mtu\":1448,\"qdisc\":\"noop\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"gre6\",\"address\":\"::\",\"broadcast\":\"::\",\"permaddr\":\"22fd:b28c:b5b9::\"},{\"ifindex\":11,\"link_index\":19,\"ifname\":\"eth0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":65535,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"2a:47:41:b6:52:5d\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0}]\n",
+    "stderr": ""
+  },
+  "processes": {
+    "argv": [
+      "docker",
+      "exec",
+      "zfstack-issue69-tail",
+      "ps",
+      "-eo",
+      "pid,comm,args"
+    ],
+    "code": 0,
+    "stdout": "    PID COMMAND         COMMAND\n      1 sleep           sleep infinity\n   6227 ps              ps -eo pid,comm,args\n",
+    "stderr": ""
+  },
+  "background_stats": {
+    "argv": [
+      "docker",
+      "stats",
+      "--no-stream",
+      "--format",
+      "{{json .}}"
+    ],
+    "code": 0,
+    "stdout": "{\"BlockIO\":\"0B / 0B\",\"CPUPerc\":\"0.00%\",\"Container\":\"edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad\",\"ID\":\"edd8d2bf7dc4\",\"MemPerc\":\"0.11%\",\"MemUsage\":\"8.945MiB / 7.748GiB\",\"Name\":\"zfstack-issue69-tail\",\"NetIO\":\"872B / 126B\",\"PIDs\":\"1\"}\n{\"BlockIO\":\"47.4MB / 178MB\",\"CPUPerc\":\"0.00%\",\"Container\":\"084ff9a8e2d9b6212b964047694d9c9b88100a4e0b516f9f40b9da421ee90907\",\"ID\":\"084ff9a8e2d9\",\"MemPerc\":\"1.64%\",\"MemUsage\":\"130.1MiB / 7.748GiB\",\"Name\":\"zfc-gslb-ui-runtime-acb00e24df\",\"NetIO\":\"54.2MB / 160kB\",\"PIDs\":\"1\"}\n{\"BlockIO\":\"86.6MB / 131MB\",\"CPUPerc\":\"0.01%\",\"Container\":\"94c29eadf7eee420e753c4c5ae564c205c0a418937dfc6ac719a0710a8a87440\",\"ID\":\"94c29eadf7ee\",\"MemPerc\":\"1.74%\",\"MemUsage\":\"137.7MiB / 7.748GiB\",\"Name\":\"zfc-gslb-ui-pg-f790968926\",\"NetIO\":\"54.2MB / 160kB\",\"PIDs\":\"6\"}\n",
+    "stderr": ""
+  },
+  "remove_container": {
+    "argv": [
+      "docker",
+      "rm",
+      "-f",
+      "zfstack-issue69-tail"
+    ],
+    "code": 0,
+    "stdout": "zfstack-issue69-tail\n",
+    "stderr": ""
+  },
+  "remove_image": {
+    "argv": [
+      "docker",
+      "image",
+      "rm",
+      "zfstack-issue69-tail-tools:local"
+    ],
+    "code": 0,
+    "stdout": "Untagged: zfstack-issue69-tail-tools:local\nDeleted: sha256:024db5602d8e7edcbc9d82645d3c81d06e6abcba3412e7376f1d9404c0c0c50b\n",
+    "stderr": ""
+  },
+  "remaining": {
+    "argv": [
+      "docker",
+      "ps",
+      "-a",
+      "--format",
+      "{{json .}}"
+    ],
+    "code": 0,
+    "stdout": "{\"Command\":\"\\\"sleep 3600\\\"\",\"CreatedAt\":\"2026-10-20 10:18:57 +0700 +07\",\"HealthStatus\":\"none\",\"ID\":\"084ff9a8e2d9\",\"Image\":\"ubuntu:24.04\",\"Labels\":\"desktop.docker.io/binds/0/Source=/Users/lulin/.codex/worktrees/gslb-ui-redesign/zfc/tasks/gslb-ui-redesign/evidence,desktop.docker.io/binds/0/SourceKind=hostFile,desktop.docker.io/binds/0/Target=/evidence,desktop.docker.io/ports.scheme=v2,org.opencontainers.image.version=24.04\",\"LocalVolumes\":\"0\",\"Mounts\":\"/host_mnt/User\u2026\",\"Names\":\"zfc-gslb-ui-runtime-acb00e24df\",\"Networks\":\"\",\"Platform\":{\"architecture\":\"amd64\",\"os\":\"linux\"},\"Ports\":\"\",\"RunningFor\":\"45 minutes ago\",\"Size\":\"122MB (virtual 210MB)\",\"State\":\"running\",\"Status\":\"Up 44 minutes\"}\n{\"Command\":\"\\\"docker-entrypoint.s\u2026\\\"\",\"CreatedAt\":\"2026-10-20 10:16:40 +0700 +07\",\"HealthStatus\":\"none\",\"ID\":\"94c29eadf7ee\",\"Image\":\"postgres:16\",\"Labels\":\"desktop.docker.io/ports.scheme=v2\",\"LocalVolumes\":\"1\",\"Mounts\":\"546c9c360cc7fe\u2026\",\"Names\":\"zfc-gslb-ui-pg-f790968926\",\"Networks\":\"bridge\",\"Platform\":{\"architecture\":\"arm64\",\"os\":\"linux\",\"variant\":\"v8\"},\"Ports\":\"5432/tcp\",\"RunningFor\":\"47 minutes ago\",\"Size\":\"20.5kB (virtual 499MB)\",\"State\":\"running\",\"Status\":\"Up 47 minutes\"}\n{\"Command\":\"\\\"sleep infinity\\\"\",\"CreatedAt\":\"2026-10-13 08:26:35 +0700 +07\",\"HealthStatus\":\"none\",\"ID\":\"4f7f6eb42634\",\"Image\":\"debian:bookworm-slim\",\"Labels\":\"desktop.docker.io/binds/0/Source=/Users/lulin/code/github/zfstack,desktop.docker.io/binds/0/SourceKind=hostFile,desktop.docker.io/binds/0/Target=/work,desktop.docker.io/ports.scheme=v2\",\"LocalVolumes\":\"0\",\"Mounts\":\"/host_mnt/User\u2026\",\"Names\":\"zfstack-issue29\",\"Networks\":\"bridge\",\"Platform\":{\"architecture\":\"arm64\",\"os\":\"linux\",\"variant\":\"v8\"},\"Ports\":\"\",\"RunningFor\":\"7 days ago\",\"Size\":\"220MB (virtual 328MB)\",\"State\":\"exited\",\"Status\":\"Exited (137) 6 days ago\"}\n{\"Command\":\"\\\"uvicorn main:app --\u2026\\\"\",\"CreatedAt\":\"2026-06-20 13:59:26 +0700 +07\",\"HealthStatus\":\"starting\",\"ID\":\"544eddac2393\",\"Image\":\"news-platforma-python-extractor\",\"Labels\":\"com.docker.compose.config-hash=15af9f85204be37ee3ab9f43df683a6ee6a0928ecc277c2c4999624ae056327a,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:f35654e3fb7225b3451db7a1f44f75bf589577ba8b40d015fa890d320c0ebac7,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/Users/lulin/code/github/news-platforma/docker-compose.yml,com.docker.compose.project.working_dir=/Users/lulin/code/github/news-platforma,com.docker.compose.project=news-platforma,com.docker.compose.service=python-extractor,com.docker.compose.version=5.1.4,desktop.docker.io/ports.scheme=v2,desktop.docker.io/ports/8081/tcp=:8081\",\"LocalVolumes\":\"0\",\"Mounts\":\"\",\"Names\":\"news-platforma-python-extractor-1\",\"Networks\":\"news-platforma_default\",\"Platform\":{\"architecture\":\"arm64\",\"os\":\"linux\"},\"Ports\":\"0.0.0.0:8081-\\u003e8081/tcp\",\"RunningFor\":\"4 months ago\",\"Size\":\"1.7MB (virtual 598MB)\",\"State\":\"exited\",\"Status\":\"Exited (255) 6 weeks ago\"}\n{\"Command\":\"\\\"docker-entrypoint.s\u2026\\\"\",\"CreatedAt\":\"2026-06-19 22:12:24 +0700 +07\",\"HealthStatus\":\"starting\",\"ID\":\"74adfaa0cb3b\",\"Image\":\"pgvector/pgvector:pg16\",\"Labels\":\"com.docker.compose.config-hash=52bd9a0483ea96a2f55a91aef26d92190cac079f2d08ecba7b82c73a7ad17ed4,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:131dcf7ff6a900545df8e7e092c270aa8c6db2f2c818e408cb45ec21316b74e6,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/Users/lulin/code/github/news-platforma/docker-compose.yml,com.docker.compose.project.working_dir=/Users/lulin/code/github/news-platforma,com.docker.compose.project=news-platforma,com.docker.compose.service=postgres,com.docker.compose.version=5.1.4,desktop.docker.io/ports.scheme=v2,desktop.docker.io/ports/5432/tcp=:5432\",\"LocalVolumes\":\"1\",\"Mounts\":\"news-platforma\u2026\",\"Names\":\"news-platforma-postgres-1\",\"Networks\":\"news-platforma_default\",\"Platform\":{\"architecture\":\"arm64\",\"os\":\"linux\"},\"Ports\":\"0.0.0.0:5432-\\u003e5432/tcp\",\"RunningFor\":\"4 months ago\",\"Size\":\"20.5kB (virtual 486MB)\",\"State\":\"exited\",\"Status\":\"Exited (255) 6 weeks ago\"}\n",
+    "stderr": ""
+  }
+}
