@@ -10,6 +10,7 @@ use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
+use std::sync::{mpsc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,15 @@ use crate::tun;
 use crate::util;
 
 pub const PORTS_MAX: u16 = 128;
+static ARRIVALS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+/// Test-side observations are written only after all benchmark threads stop.
+pub fn flush_arrivals() {
+    if let Some(path) = std::env::var_os("ZFBENCH_RR_ARRIVALS") {
+        let file = std::fs::OpenOptions::new().write(true).create_new(true).open(path).expect("fresh arrival output");
+        serde_json::to_writer(file, &*ARRIVALS.lock().unwrap()).unwrap();
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Placement {
@@ -281,6 +291,7 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     });
     let results = json!({
         "test": "isolate",
+        "open_loop_hz": std::env::var("ZFBENCH_RR_OPEN_HZ").ok().map(|s|s.parse::<u32>().expect("RR Hz")),
         "layer": "L1",
         "wireguard": false,
         "clock": "wall",
@@ -460,6 +471,9 @@ fn light_until(s: TcpStream, msg: &[u8], interval: Duration, end: Instant) -> (V
 }
 
 fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, end: Instant, warmup_until: Instant) -> (Vec<f64>, Vec<String>) {
+    if let Ok(hz) = std::env::var("ZFBENCH_RR_OPEN_HZ") {
+        return light_open_loop(s, msg, end, hz.parse().expect("RR Hz"), Duration::from_millis(20));
+    }
     let mut rbuf = vec![0u8; msg.len()];
     let mut samples = Vec::new();
     let mut errors = Vec::new();
@@ -486,13 +500,95 @@ fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, end: Instant, wa
     (samples, errors)
 }
 
+/// Fixed absolute arrival times, independent sender/reader, and unique echo
+/// frames. A missed/failed/timed-out arrival stays in the saved denominator.
+fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag: Duration) -> (Vec<f64>, Vec<String>) {
+    assert!((1..=1000).contains(&hz) && msg.len() >= 8);
+    let local = s.local_addr().unwrap();
+    let origin = Instant::now();
+    let base = origin + Duration::from_millis(5);
+    let period = Duration::from_nanos(1_000_000_000 / u64::from(hz));
+    let count = (end.saturating_duration_since(base).as_secs_f64() * hz as f64).ceil() as usize;
+    let (tx, rx) = mpsc::channel();
+    let mut writer = s.try_clone().unwrap();
+    let template = msg.to_vec();
+    let sender = std::thread::spawn(move || {
+        let mut broken = false;
+        for i in 0..count {
+            let planned = base + period * (i as u32);
+            if broken {
+                let _ = tx.send((i, planned, None, "cancelled"));
+                continue;
+            }
+            std::thread::sleep(planned.saturating_duration_since(Instant::now()));
+            let started = Instant::now();
+            if started.saturating_duration_since(planned) > max_lag {
+                let _ = tx.send((i, planned, Some(started), "missed"));
+                continue;
+            }
+            let mut frame = template.clone();
+            frame[..8].copy_from_slice(&(i as u64).to_le_bytes());
+            writer.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
+            let status = if writer.write_all(&frame).is_ok() {
+                "sent"
+            } else {
+                broken = true;
+                "failed"
+            };
+            if tx.send((i, planned, Some(started), status)).is_err() {
+                break;
+            }
+        }
+    });
+    let mut raw = Vec::new();
+    let mut errors = Vec::new();
+    let mut observations = Vec::new();
+    let mut broken = false;
+    for (i, planned, started, status) in rx {
+        let mut outcome = status;
+        let mut completed = None;
+        if status == "sent" && !broken {
+            let remaining = (planned + Duration::from_secs(3)).saturating_duration_since(Instant::now());
+            let mut frame = vec![0u8; msg.len()];
+            if remaining.is_zero() || s.set_read_timeout(Some(remaining)).is_err() || s.read_exact(&mut frame).is_err() {
+                outcome = "timed_out";
+                broken = true;
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            } else if frame[..8] != (i as u64).to_le_bytes() || frame[8..] != msg[8..] {
+                outcome = "payload_mismatch";
+                broken = true;
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            } else {
+                let at = Instant::now();
+                raw.push(at.saturating_duration_since(planned).as_secs_f64() * 1000.0);
+                completed = Some(at);
+                outcome = "completed";
+            }
+        } else if status == "sent" {
+            outcome = "unfinished";
+        }
+        if outcome != "completed" {
+            errors.push(format!("open-loop arrival {i}: {outcome}"));
+        }
+        observations.push(json!({"seq":i,"planned_ns":planned.saturating_duration_since(origin).as_nanos(),
+            "started_ns":started.map(|t|t.saturating_duration_since(origin).as_nanos()),
+            "completed_ns":completed.map(|t|t.saturating_duration_since(origin).as_nanos()),"outcome":outcome}));
+    }
+    sender.join().unwrap();
+    assert_eq!(observations.len(), count);
+    ARRIVALS.lock().unwrap().push(json!({"local":local.to_string(),"hz":hz,"count":count,"period_ns":period.as_nanos(),"arrivals":observations}));
+    (raw, errors)
+}
+
 fn rr_once(s: &mut TcpStream, msg: &[u8], rbuf: &mut [u8]) -> io::Result<f64> {
+    crate::tail_trace::client("rr_start", s);
     let t = Instant::now();
     s.write_all(msg)?;
     s.read_exact(rbuf)?;
     if rbuf != msg {
         return Err(io::Error::other("echo mismatch"));
     }
+    crate::tail_trace::client("rr_end", s);
     Ok(t.elapsed().as_secs_f64() * 1e3)
 }
 
@@ -538,6 +634,12 @@ fn pct(samples: &[f64], p: f64) -> Option<f64> {
 fn lat_json(samples: &[f64]) -> Value {
     let mut v = util::lat_summary(samples);
     if let Some(obj) = v.as_object_mut() {
+        obj.insert("p95_ms".into(), json!(pct(samples, 95.0)));
+        // Opt-in: preserve observations so issue #69 tails can be independently
+        // recomputed without growing every default result file.
+        if std::env::var("ZFBENCH_RR_RAW").is_ok_and(|v| v == "1") {
+            obj.insert("raw_ms".into(), json!(samples));
+        }
         // A handful of exchanges is not a tail. Keep the sample count and drop
         // the percentile that the count cannot support.
         if samples.len() < 100 {
@@ -565,6 +667,25 @@ fn user_json(row: &UserRow) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_loop_sends_all_arrivals_without_waiting_for_the_first_reply() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            // Waiting for all five requests before echoing any would deadlock
+            // a closed-loop generator. Unique frame IDs are checked by reader.
+            let mut all = vec![0u8; 5 * 256];
+            socket.read_exact(&mut all).unwrap();
+            socket.write_all(&all).unwrap();
+        });
+        let (samples, errors) = light_open_loop(stream, &vec![9u8; 256], Instant::now() + Duration::from_millis(180), 25, Duration::from_secs(2));
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(samples.len(), 5);
+        server.join().unwrap();
+    }
 
     #[test]
     fn measurement_window_does_not_depend_on_light_users() {

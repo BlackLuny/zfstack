@@ -1,0 +1,148 @@
+{
+  "plan": [
+    {
+      "case": "legacy-aa-bbr",
+      "stack": "zfstack-bbr",
+      "env": [],
+      "seed": 1,
+      "block": "AA",
+      "arm": "legacy"
+    },
+    {
+      "case": "pair-bbr-abba-0-A",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 2,
+      "block": "bbr-abba",
+      "arm": "A"
+    },
+    {
+      "case": "pair-bbr-abba-1-B",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 2,
+      "block": "bbr-abba",
+      "arm": "B"
+    },
+    {
+      "case": "pair-bbr-abba-2-B",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 2,
+      "block": "bbr-abba",
+      "arm": "B"
+    },
+    {
+      "case": "pair-bbr-abba-3-A",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 2,
+      "block": "bbr-abba",
+      "arm": "A"
+    },
+    {
+      "case": "pair-bbr-baab-0-B",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 3,
+      "block": "bbr-baab",
+      "arm": "B"
+    },
+    {
+      "case": "pair-bbr-baab-1-A",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 3,
+      "block": "bbr-baab",
+      "arm": "A"
+    },
+    {
+      "case": "pair-bbr-baab-2-A",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 3,
+      "block": "bbr-baab",
+      "arm": "A"
+    },
+    {
+      "case": "pair-bbr-baab-3-B",
+      "stack": "zfstack-bbr",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 3,
+      "block": "bbr-baab",
+      "arm": "B"
+    },
+    {
+      "case": "pair-cubic-abba-0-A",
+      "stack": "zfstack-cubic",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 2,
+      "block": "cubic-abba",
+      "arm": "A"
+    },
+    {
+      "case": "pair-cubic-abba-1-B",
+      "stack": "zfstack-cubic",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 2,
+      "block": "cubic-abba",
+      "arm": "B"
+    },
+    {
+      "case": "pair-cubic-abba-2-B",
+      "stack": "zfstack-cubic",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=peer"
+      ],
+      "seed": 2,
+      "block": "cubic-abba",
+      "arm": "B"
+    },
+    {
+      "case": "pair-cubic-abba-3-A",
+      "stack": "zfstack-cubic",
+      "env": [
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ],
+      "seed": 2,
+      "block": "cubic-abba",
+      "arm": "A"
+    }
+  ],
+  "binary_sha256": "8b20b12b0d790aaaa48b9a64b853dc9a4d89641e46a0c7e8ab9eb83d87f01c79",
+  "frozen_before_run": true,
+  "trace": false,
+  "rate_mbps": 100,
+  "queue_bytes": 250000,
+  "heavy_conns": 200,
+  "lights": 3,
+  "rr_bytes": 256,
+  "reference": "A=fifo-service, B=per-peer DRR plus largest-backlog tail pushout; same serializer, global queue byte cap and load.",
+  "gates": {
+    "payload": "all exact, no failures",
+    "throughput": "B/A aggregate >=0.99 for each paired CC/block; report all individual values",
+    "tail": "worst peer P99 and maximum; do not pool peers or hide failures",
+    "cost": "report stack CPU/GB, link CPU, process peak RSS and differing closed-loop RR counts; extra network/emulator cost prevents a Pareto claim"
+  },
+  "scope": "Queue-layer causal repair prototype only. Does not modify zfstack TCP or production ZFC/WG. Closed-loop test; not an open-loop SLO certification."
+}

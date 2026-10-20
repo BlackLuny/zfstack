@@ -1,0 +1,87 @@
+{
+  "git_head": {
+    "argv": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "returncode": 0,
+    "stdout": "5830d2b5afd2e25df55bbafd950a2796eb7de04f\n",
+    "stderr": ""
+  },
+  "branch": {
+    "argv": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "returncode": 0,
+    "stdout": "perf/issue51-wire-checksum\n",
+    "stderr": ""
+  },
+  "host_platform": "macOS-26.5.1-arm64-arm-64bit",
+  "docker_inspect": {
+    "argv": [
+      "docker",
+      "inspect",
+      "zfstack-issue69-tail"
+    ],
+    "returncode": 0,
+    "stdout": "[\n    {\n        \"Id\": \"edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad\",\n        \"Created\": \"2026-10-20T03:33:42.56438021Z\",\n        \"Path\": \"sleep\",\n        \"Args\": [\n            \"infinity\"\n        ],\n        \"State\": {\n            \"Status\": \"running\",\n            \"Running\": true,\n            \"Paused\": false,\n            \"Restarting\": false,\n            \"OOMKilled\": false,\n            \"Dead\": false,\n            \"Pid\": 1788,\n            \"ExitCode\": 0,\n            \"Error\": \"\",\n            \"StartedAt\": \"2026-10-20T03:33:42.607780501Z\",\n            \"FinishedAt\": \"0001-01-01T00:00:00Z\"\n        },\n        \"Image\": \"sha256:024db5602d8e7edcbc9d82645d3c81d06e6abcba3412e7376f1d9404c0c0c50b\",\n        \"ResolvConfPath\": \"/var/lib/docker/containers/edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad/resolv.conf\",\n        \"HostnamePath\": \"/var/lib/docker/containers/edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad/hostname\",\n        \"HostsPath\": \"/var/lib/docker/containers/edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad/hosts\",\n        \"LogPath\": \"/var/lib/docker/containers/edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad/edd8d2bf7dc4bcf54d55bcd049b2dd953c76a357710a59ff7df51dfff284d7ad-json.log\",\n        \"Name\": \"/zfstack-issue69-tail\",\n        \"RestartCount\": 0,\n        \"Driver\": \"overlayfs\",\n        \"Platform\": \"linux\",\n        \"MountLabel\": \"\",\n        \"ProcessLabel\": \"\",\n        \"AppArmorProfile\": \"\",\n        \"ExecIDs\": null,\n        \"HostConfig\": {\n            \"Binds\": null,\n            \"ContainerIDFile\": \"\",\n            \"LogConfig\": {\n                \"Type\": \"json-file\",\n                \"Config\": {}\n            },\n            \"NetworkMode\": \"bridge\",\n            \"PortBindings\": {},\n            \"RestartPolicy\": {\n                \"Name\": \"no\",\n                \"MaximumRetryCount\": 0\n            },\n            \"AutoRemove\": false,\n            \"VolumeDriver\": \"\",\n            \"VolumesFrom\": null,\n            \"ConsoleSize\": [\n                0,\n                0\n            ],\n            \"CapAdd\": null,\n            \"CapDrop\": null,\n            \"CgroupnsMode\": \"private\",\n            \"Dns\": null,\n            \"DnsOptions\": [],\n            \"DnsSearch\": [],\n            \"ExtraHosts\": null,\n            \"GroupAdd\": null,\n            \"IpcMode\": \"private\",\n            \"Cgroup\": \"\",\n            \"Links\": null,\n            \"OomScoreAdj\": 0,\n            \"PidMode\": \"\",\n            \"Privileged\": true,\n            \"PublishAllPorts\": false,\n            \"ReadonlyRootfs\": false,\n            \"SecurityOpt\": [\n                \"label=disable\"\n            ],\n            \"UTSMode\": \"\",\n            \"UsernsMode\": \"\",\n            \"ShmSize\": 67108864,\n            \"Runtime\": \"runc\",\n            \"Isolation\": \"\",\n            \"CpuShares\": 0,\n            \"Memory\": 0,\n            \"NanoCpus\": 0,\n            \"CgroupParent\": \"\",\n            \"BlkioWeight\": 0,\n            \"BlkioWeightDevice\": [],\n            \"BlkioDeviceReadBps\": [],\n            \"BlkioDeviceWriteBps\": [],\n            \"BlkioDeviceReadIOps\": [],\n            \"BlkioDeviceWriteIOps\": [],\n            \"CpuPeriod\": 0,\n            \"CpuQuota\": 0,\n            \"CpuRealtimePeriod\": 0,\n            \"CpuRealtimeRuntime\": 0,\n            \"CpusetCpus\": \"2-7\",\n            \"CpusetMems\": \"\",\n            \"Devices\": [],\n            \"DeviceCgroupRules\": null,\n            \"DeviceRequests\": null,\n            \"MemoryReservation\": 0,\n            \"MemorySwap\": 0,\n            \"MemorySwappiness\": null,\n            \"OomKillDisable\": null,\n            \"PidsLimit\": null,\n            \"Ulimits\": [],\n            \"CpuCount\": 0,\n            \"CpuPercent\": 0,\n            \"IOMaximumIOps\": 0,\n            \"IOMaximumBandwidth\": 0,\n            \"Mounts\": [\n                {\n                    \"Type\": \"bind\",\n                    \"Source\": \"/Users/lulin/code/github/zfstack\",\n                    \"Target\": \"/work\"\n                }\n            ],\n            \"MaskedPaths\": null,\n            \"ReadonlyPaths\": null\n        },\n        \"Storage\": {\n            \"RootFS\": {\n                \"Snapshot\": {\n                    \"Name\": \"overlayfs\"\n                }\n            }\n        },\n        \"Mounts\": [\n            {\n                \"Type\": \"bind\",\n                \"Source\": \"/Users/lulin/code/github/zfstack\",\n                \"Destination\": \"/work\",\n                \"Mode\": \"\",\n                \"RW\": true,\n                \"Propagation\": \"rprivate\"\n            }\n        ],\n        \"Config\": {\n            \"Hostname\": \"edd8d2bf7dc4\",\n            \"Domainname\": \"\",\n            \"User\": \"\",\n            \"AttachStdin\": false,\n            \"AttachStdout\": false,\n            \"AttachStderr\": false,\n            \"Tty\": false,\n            \"OpenStdin\": false,\n            \"StdinOnce\": false,\n            \"Env\": [\n                \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n            ],\n            \"Cmd\": [\n                \"sleep\",\n                \"infinity\"\n            ],\n            \"Image\": \"zfstack-issue69-tail-tools:local\",\n            \"Volumes\": null,\n            \"WorkingDir\": \"/work\",\n            \"Entrypoint\": null,\n            \"Labels\": {}\n        },\n        \"NetworkSettings\": {\n            \"SandboxID\": \"eb6cd56762862898d32ba1433e15a97756363b3da050641ce594e6a9e58b2a48\",\n            \"SandboxKey\": \"/var/run/docker/netns/eb6cd5676286\",\n            \"Ports\": {},\n            \"Networks\": {\n                \"bridge\": {\n                    \"IPAMConfig\": null,\n                    \"Links\": null,\n                    \"Aliases\": null,\n                    \"DriverOpts\": null,\n                    \"GwPriority\": 0,\n                    \"NetworkID\": \"1c28893279b88551a508279206b1f58992d919ee96f9d6c2c3a02ae8c213f73d\",\n                    \"EndpointID\": \"8b9d0f08ad8691939f0ae539e92a05b96230db77308dc2a80d62b23d9abae5e5\",\n                    \"Gateway\": \"172.17.0.1\",\n                    \"IPAddress\": \"172.17.0.3\",\n                    \"MacAddress\": \"2a:47:41:b6:52:5d\",\n                    \"IPPrefixLen\": 16,\n                    \"IPv6Gateway\": \"\",\n                    \"GlobalIPv6Address\": \"\",\n                    \"GlobalIPv6PrefixLen\": 0,\n                    \"DNSNames\": null\n                }\n            }\n        },\n        \"ImageManifestDescriptor\": {\n            \"mediaType\": \"application/vnd.oci.image.manifest.v1+json\",\n            \"digest\": \"sha256:024db5602d8e7edcbc9d82645d3c81d06e6abcba3412e7376f1d9404c0c0c50b\",\n            \"size\": 750,\n            \"platform\": {\n                \"architecture\": \"arm64\",\n                \"os\": \"linux\"\n            }\n        }\n    }\n]\n",
+    "stderr": ""
+  },
+  "linux": {
+    "argv": [
+      "docker",
+      "exec",
+      "zfstack-issue69-tail",
+      "uname",
+      "-a"
+    ],
+    "returncode": 0,
+    "stdout": "Linux edd8d2bf7dc4 7.0.12-linuxkit #1 SMP PREEMPT Fri Aug 14 16:27:59 UTC 2026 aarch64 GNU/Linux\n",
+    "stderr": ""
+  },
+  "cpu_affinity": {
+    "argv": [
+      "docker",
+      "exec",
+      "zfstack-issue69-tail",
+      "sh",
+      "-c",
+      "cat /proc/self/status | sed -n /Cpus_allowed_list/p"
+    ],
+    "returncode": 0,
+    "stdout": "Cpus_allowed_list:\t2-7\n",
+    "stderr": ""
+  },
+  "rust": {
+    "argv": [
+      "rustc",
+      "-Vv"
+    ],
+    "returncode": 0,
+    "stdout": "rustc 1.92.0 (ded5c06cf 2025-12-08)\nbinary: rustc\ncommit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234\ncommit-date: 2025-12-08\nhost: aarch64-apple-darwin\nrelease: 1.92.0\nLLVM version: 21.1.3\n",
+    "stderr": ""
+  },
+  "cargo": {
+    "argv": [
+      "cargo",
+      "-V"
+    ],
+    "returncode": 0,
+    "stdout": "cargo 1.92.0 (344c4567c 2025-10-21)\n",
+    "stderr": ""
+  },
+  "docker": {
+    "argv": [
+      "docker",
+      "version",
+      "--format",
+      "{{json .Server}}"
+    ],
+    "returncode": 0,
+    "stdout": "{\"Platform\":{\"Name\":\"Docker Desktop 4.89.0 (238018)\"},\"Version\":\"29.7.2\",\"ApiVersion\":\"1.55\",\"MinAPIVersion\":\"1.40\",\"Os\":\"linux\",\"Arch\":\"arm64\",\"Components\":[{\"Name\":\"Engine\",\"Version\":\"29.7.2\",\"Details\":{\"ApiVersion\":\"1.55\",\"Arch\":\"arm64\",\"BuildTime\":\"Wed Aug  5 18:28:35 2026\",\"Experimental\":\"false\",\"GitCommit\":\"6a43e3d\",\"GoVersion\":\"go1.26.5\",\"KernelVersion\":\"7.0.12-linuxkit\",\"MinAPIVersion\":\"1.40\",\"Module\":\"github.com/moby/moby/v2\",\"ModuleVersion\":\"v2.0.0+unknown\",\"Os\":\"linux\"}},{\"Name\":\"containerd\",\"Version\":\"v2.3.3\",\"Details\":{\"GitCommit\":\"aad11006b869517fcd3009450b6f82da282e1a9b\"}},{\"Name\":\"runc\",\"Version\":\"1.4.3\",\"Details\":{\"GitCommit\":\"v1.4.3-0-gbb14dabe\"}},{\"Name\":\"docker-init\",\"Version\":\"0.19.0\",\"Details\":{\"GitCommit\":\"de40ad0\"}}],\"GitCommit\":\"6a43e3d\",\"GoVersion\":\"go1.26.5\",\"KernelVersion\":\"7.0.12-linuxkit\",\"BuildTime\":\"2026-08-05T18:28:35.000000000+00:00\"}\n",
+    "stderr": ""
+  }
+}

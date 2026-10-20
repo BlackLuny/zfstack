@@ -24,6 +24,21 @@ use crate::isolate::{self, IsolatePlan};
 use crate::stack::UserStack;
 use crate::tun;
 
+fn trace_stream(stage: &str, shard: &zfstack::Shard, id: zfstack::ConnId, bytes: usize) {
+    if !crate::tail_trace::enabled() {
+        return;
+    }
+    let Some(i) = shard.info(id) else { return };
+    if i.peer.0 < 2 {
+        return;
+    }
+    crate::tail_trace::row(serde_json::json!({"kind":"core","stage":stage,"peer":i.peer.0,"port":i.remote.port(),"bytes":bytes,
+        "cwnd":i.cwnd,"pipe":i.pipe,"snd_wnd":i.snd_wnd,"tx_unsent":i.tx_unsent,"srtt_us":i.srtt.as_micros(),
+        "pacing_rate":i.pacing_rate,"rto":i.stats.rto_count,"tlp":i.stats.tlp_count,"bytes_retrans":i.stats.bytes_retrans,
+        "limited_cwnd_ns":i.stats.limited_cwnd_ns,"limited_rwnd_ns":i.stats.limited_rwnd_ns,
+        "limited_pacing_ns":i.stats.limited_pacing_ns,"limited_egress_ns":i.stats.limited_egress_ns}));
+}
+
 #[derive(Clone, Debug)]
 pub struct ZfOpts {
     /// Per-connection receive buffer ceiling / send in-flight cap (bytes), from `--sock-buf-kb`.
@@ -164,6 +179,7 @@ impl Slot {
             }
             match self.shard.read(zn, id, &mut self.buf) {
                 ReadResult::Data(n) => {
+                    trace_stream("app_read", &self.shard, id, n);
                     c.app.on_recv(&self.buf[..n]);
                     progressed = true;
                 }
@@ -213,6 +229,7 @@ impl Slot {
             }
             match self.shard.write(id, &self.buf[..n]) {
                 WriteResult::Written(w) => {
+                    trace_stream("app_write", &self.shard, id, w);
                     progressed = true;
                     if w < n {
                         c.pending.clear();
@@ -393,18 +410,29 @@ impl ZfStack {
 }
 
 fn stack_cfg(opts: &ZfOpts) -> StackConfig {
-    StackConfig {
+    let mut cfg = StackConfig {
         cc: opts.cc,
         pacing: opts.pacing,
         max_rcv_buf: opts.sock_buf as u32,
         max_snd_inflight: opts.sock_buf as u32,
         timestamps: std::env::var("ZF_TS").map_or(true, |v| v != "0"),
         ..Default::default()
+    };
+    // Attribution controls only; default production configuration is unchanged.
+    if let Ok(value) = std::env::var("ZFBENCH_ROUND_CAP") {
+        cfg.round_bytes_cap = value.parse().expect("ZFBENCH_ROUND_CAP bytes");
+        assert!(cfg.round_bytes_cap > 0);
     }
+    if let Ok(value) = std::env::var("ZFBENCH_QUANTUM") {
+        cfg.max_quantum = value.parse().expect("ZFBENCH_QUANTUM bytes");
+        assert!(cfg.max_quantum > 0);
+    }
+    cfg
 }
 
 impl UserStack for ZfStack {
     fn ingress(&mut self, now: Instant, pkt: &[u8]) {
+        crate::tail_trace::packet("core_ingress", pkt, 0, 0);
         let zn = self.zt(now);
         let t0 = Instant::now();
         if let Some(iface) = self.legacy {

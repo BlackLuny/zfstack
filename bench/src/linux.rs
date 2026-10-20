@@ -13,6 +13,8 @@ mod tun;
 mod tunproxy;
 mod tunproxy_legacy;
 mod util;
+mod tail_trace;
+mod link_queue;
 mod wg;
 mod wgmode;
 
@@ -440,6 +442,8 @@ fn main() {
         }
     };
     tun::cleanup();
+    tail_trace::flush();
+    isolate::flush_arrivals();
     std::process::exit(code);
 }
 

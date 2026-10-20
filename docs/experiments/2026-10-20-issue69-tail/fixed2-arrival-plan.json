@@ -1,0 +1,41 @@
+{
+  "plan": [
+    {
+      "case": "fixed2-bbr-abba-0-A",
+      "arm": "A",
+      "env": "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+    },
+    {
+      "case": "fixed2-bbr-abba-1-B",
+      "arm": "B",
+      "env": "ZFBENCH_QUEUE_DISCIPLINE=peer"
+    },
+    {
+      "case": "fixed2-bbr-abba-2-B",
+      "arm": "B",
+      "env": "ZFBENCH_QUEUE_DISCIPLINE=peer"
+    },
+    {
+      "case": "fixed2-bbr-abba-3-A",
+      "arm": "A",
+      "env": "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+    }
+  ],
+  "light_arrivals": "absolute monotonic schedule; independent sender; per-frame unique ID; no response-dependent rescheduling",
+  "hz_per_peer": 25,
+  "light_peers": 3,
+  "loaded_requests_per_peer": 300,
+  "baseline_requests_per_peer": 75,
+  "request_bytes": 256,
+  "max_generator_lag_ms": 20,
+  "request_timeout_sec": 3,
+  "rate_mbps": 100,
+  "queue_bytes": 250000,
+  "heavy_connections": 200,
+  "gates": {
+    "arrival": "all planned arrivals retained, no missed/failed/timed-out/unfinished frames, payload IDs exactly match; any lag >20ms invalidates performance",
+    "throughput": "B/A aggregate >=0.99; report exact delta",
+    "cost": "report all stack/process/link CPU per bulk GB and peak RSS; no automatic Pareto promotion"
+  },
+  "previous_attempt": "fixed-bbr-abba-0-A retained; this separate full block runs every arm regardless of correctness outcome; samebinary,threshold,seed and affinity; no additional blocksafterthis"
+}

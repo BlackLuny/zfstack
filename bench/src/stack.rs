@@ -106,7 +106,10 @@ pub fn run_stack_thread(mut stack: Box<dyn UserStack>, rx: Receiver<Batch>, tx: 
             Err(RecvTimeoutError::Disconnected) => disconnected = true,
         }
         live.pkts_in.fetch_add(n_in, Relaxed);
-        stack.poll(now, &mut |p: &[u8]| out_batch.push(p.to_vec()));
+        stack.poll(now, &mut |p: &[u8]| {
+            crate::tail_trace::packet("core_egress", p, 0, 0);
+            out_batch.push(p.to_vec());
+        });
         live.polls.fetch_add(1, Relaxed);
         if !out_batch.is_empty() {
             live.pkts_out.fetch_add(out_batch.len() as u64, Relaxed);

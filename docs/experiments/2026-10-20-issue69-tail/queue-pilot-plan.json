@@ -1,0 +1,24 @@
+{
+  "plan": [
+    [
+      "fifo-service-pilot",
+      [
+        "--env",
+        "ZFBENCH_QUEUE_DISCIPLINE=fifo"
+      ]
+    ],
+    [
+      "peer-queue-pilot",
+      [
+        "--env",
+        "ZFBENCH_QUEUE_DISCIPLINE=peer",
+        "--trace"
+      ]
+    ]
+  ],
+  "rate_bps": 100000000,
+  "queue_bytes": 250000,
+  "heavy_conns": 200,
+  "bulk_and_light_load_unchanged": true,
+  "note": "Identical single-server serializer; only queue grouping/admission differ. Not a production TCP change."
+}
