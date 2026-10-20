@@ -18,7 +18,8 @@ use bytes::Bytes;
 use core::time::Duration;
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
+use siphasher::sip::SipHasher13;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -28,20 +29,16 @@ use std::sync::Arc;
 /// replays exactly (zfstack#13) without weakening production secrets.
 #[derive(Clone)]
 enum Keys {
-    Random(RandomState),
+    Random([u8; 16]),
     Seeded(u64),
 }
 
 impl BuildHasher for Keys {
-    type Hasher = DefaultHasher;
-    fn build_hasher(&self) -> DefaultHasher {
+    type Hasher = SipHasher13;
+    fn build_hasher(&self) -> SipHasher13 {
         match self {
-            Keys::Random(s) => s.build_hasher(),
-            Keys::Seeded(k) => {
-                let mut h = DefaultHasher::new();
-                h.write_u64(*k);
-                h
-            }
+            Keys::Random(k) => SipHasher13::new_with_key(k),
+            Keys::Seeded(k) => SipHasher13::new_with_keys(0, *k),
         }
     }
 }
@@ -463,9 +460,9 @@ impl Shard {
             // so adding WG ports does not strand 16 MiB per idle port.
             pool: BlockPool::new(16),
             budget: Budget::new(global),
-            budget_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
+            budget_blocked: HashSet::with_hasher(Keys::Random(Self::random_16_bytes())),
             budget_wait_epoch: None,
-            share_blocked: HashSet::with_hasher(Keys::Random(RandomState::new())),
+            share_blocked: HashSet::with_hasher(Keys::Random(Self::random_16_bytes())),
             share_wait_epoch: None,
             share_seen_epoch: None,
             cache_reclaim_seen,
@@ -475,8 +472,8 @@ impl Shard {
             pending_admissions: VecDeque::new(),
             admission: Box::new(AcceptAll),
             stateless: VecDeque::new(),
-            hasher: Keys::Random(RandomState::new()),
-            cookie_key: [Keys::Random(RandomState::new()), Keys::Random(RandomState::new())],
+            hasher: Keys::Random(Self::random_16_bytes()),
+            cookie_key: [Keys::Random(Self::random_16_bytes()), Keys::Random(Self::random_16_bytes())],
             key_seed: None,
             cookie_gen: 0,
             half_open: 0,
@@ -502,9 +499,23 @@ impl Shard {
         s
     }
 
+    fn random_16_bytes() -> [u8; 16] {
+        let mut key = [0u8; 16];
+        // Use RandomState to generate entropy as a simple fallback.
+        // We use two independent RandomState instances to ensure we get
+        // 128 bits of entropy.
+        let s1 = RandomState::new();
+        let s2 = RandomState::new();
+        let h1 = s1.build_hasher().finish();
+        let h2 = s2.build_hasher().finish();
+        key[0..8].copy_from_slice(&h1.to_ne_bytes());
+        key[8..16].copy_from_slice(&h2.to_ne_bytes());
+        key
+    }
+
     fn next_keys(&mut self) -> Keys {
         match self.key_seed.as_mut() {
-            None => Keys::Random(RandomState::new()),
+            None => Keys::Random(Self::random_16_bytes()),
             Some(state) => {
                 // splitmix64
                 *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
