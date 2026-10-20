@@ -190,6 +190,56 @@ elif args[0] == 'build':
             self.build(archive, self.root / "bad-cache", cache_dir=archive / "cache", minimum_free=0)
 
 
+    def test_cold_cache_stderr_progress_never_reaches_parsed_stdout(self):
+        # A fresh Cargo cache prints download progress and warnings on stderr
+        # before the JSON on stdout; the Canada build merged both and failed.
+        archive = self.root / "archive"
+        archive_matrix(self.repos, self.refs, archive)
+        rustc = self.root / "rustc"
+        rustc.write_text("#!/bin/sh\necho 'warning: toolchain notice' >&2\nprintf 'rustc fixture\\nhost: x86_64-unknown-linux-gnu\\n'\n")
+        rustc.chmod(0o755)
+        build_info = {"source": {"commit": self.sha}, "private_tun": {"commit": self.sha}}
+        worker_script = f"#!{sys.executable}\nimport sys\nsys.stderr.write('warning: build-info noise\\n')\nprint({json.dumps(build_info)!r})\n"
+        cargo = self.root / "cargo"
+        cargo.write_text(f'''#!{sys.executable}
+import json,os,pathlib,sys
+args=sys.argv[2:]
+sys.stderr.write('warning: unused manifest key\\n')
+if args == ['-V']:
+    print('cargo fixture')
+elif args[0] == 'metadata':
+    for index in range(1352):
+        sys.stderr.write(f'  Downloaded crate-{{index}} v1.0.0\\n')
+    sys.stderr.flush()
+    print(json.dumps({{'packages':[{{'name':name,'manifest_path':str(pathlib.Path.cwd().parent/name/'Cargo.toml'),'source':None}} for name in ('zfstack','private_tun')]}}))
+elif args[0] == 'tree':
+    print('0'+args[args.index('-p')+1]+' v1.0.0|default,mmsg,jemalloc')
+elif args[0] == 'build':
+    binary=pathlib.Path(os.environ['CARGO_TARGET_DIR'])/'fast-release'/args[args.index('--bin')+1]
+    binary.parent.mkdir(parents=True,exist_ok=True)
+    binary.write_text({worker_script!r})
+    binary.chmod(0o755)
+''')
+        cargo.chmod(0o755)
+        result = self.build(archive, self.root / "cold", cargo=str(cargo), rustc=str(rustc), minimum_free=0,
+                            fakectl=False, forwarder=True, cells=["head-head"])
+        row = result["combinations"][-1]
+        self.assertEqual(row["status"], "BUILT", row["errors"])
+        self.assertNotIn("warning", row["rustc_vv"] + row["cargo_version"] + row["dependency_graph"])
+        self.assertEqual(row["build_info"], build_info)
+        self.assertEqual(row["forwarder"]["build_info"], build_info)
+        out = self.root / "cold/head-head"
+        meta = next(c for c in row["commands"] if "metadata" in c["argv"])
+        self.assertEqual(read_json(out / meta["log"])["packages"][0]["name"], "zfstack")
+        progress = (out / meta["stderr_log"]).read_text().splitlines()
+        self.assertEqual(sum(line.strip().startswith("Downloaded") for line in progress), 1352)
+        parsed = [c for c in row["commands"] if "stderr_log" in c]
+        self.assertEqual(len(parsed), 7)
+        self.assertTrue(all((out / c["stderr_log"]).read_text().startswith("warning") for c in parsed))
+        unparsed = [c for c in row["commands"] if "build" in c["argv"] or "update" in c["argv"]]
+        self.assertTrue(unparsed and all("stderr_log" not in c for c in unparsed))
+        self.assertTrue(all("warning" in (out / c["log"]).read_text() for c in unparsed))
+
     def test_public_build_requires_shared_physical_domain_and_generation(self):
         for node, directory in ((None, self.leases), ({"physical_domain": "only-domain"}, self.leases),
                                 ({"physical_domain": "", "generation": "g"}, self.leases), (self.node, None), (self.node, Path("relative"))):

@@ -1,0 +1,79 @@
+[
+  {
+    "label": "extract-frozen-inputs",
+    "argv": [
+      "tar",
+      "-xzf",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/head-head-sources-clean.tar.gz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/frozen-matrix-2"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792147483886907810,
+    "finished_unix_ns": 1792147484703580856,
+    "returncode": 0
+  },
+  {
+    "label": "fetch-tested-commit",
+    "argv": [
+      "git",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+      "fetch",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/tested.bundle",
+      "HEAD"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792147484703987977,
+    "finished_unix_ns": 1792147484720083536,
+    "returncode": 0
+  },
+  {
+    "label": "checkout-tested-commit",
+    "argv": [
+      "git",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+      "checkout",
+      "--detach",
+      "16b0d13a0fba59dc4748b530bd854a9cccd5ea70"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792147484720402765,
+    "finished_unix_ns": 1792147484934945999,
+    "returncode": 0
+  },
+  {
+    "label": "native-build",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv/bin/python",
+      "-m",
+      "qa.crossrepo",
+      "build",
+      "--archive",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/frozen-matrix-2",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/build-2",
+      "--node",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/node-2.json",
+      "--lease-dir",
+      "/var/lock/zfstack-qa",
+      "--cell",
+      "head-head",
+      "--toolchain",
+      "1.98.1",
+      "--profile",
+      "fast-release",
+      "--jobs",
+      "2",
+      "--cache-dir",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/build-cache"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+    "started_unix_ns": 1792147484936043642,
+    "finished_unix_ns": 1792147524055648332,
+    "returncode": 1
+  }
+]

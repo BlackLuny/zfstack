@@ -1,0 +1,30 @@
+{
+  "tested_sha": "7811fda9e067cb5a021cf4988e0a31b479f9c656",
+  "bundle_sha256": "ccdf9472fcb58799769dc60336ca4c6b2287b6bc9c1c6427bbcd4e781a377c69",
+  "bundle_bytes": 172668149,
+  "remote_directory": "/root/zfstack-qa-pr75-20261016-netem-01",
+  "source_directory": "source-verified",
+  "gate_invocations": 1,
+  "preparation_failures": [
+    {
+      "step": "checkout before transfer completion",
+      "observed_sha256": "e898a0da06800fdc1d9b5f7594aebd986e8628dec829c938bbef3fcd982d22a0",
+      "exit_code": 128,
+      "output": "warning: You appear to have cloned an empty repository. fatal: reference is not a tree: 7811fda9e067cb5a021cf4988e0a31b479f9c656",
+      "gate_started": false
+    },
+    {
+      "step": "bundle verify outside repository",
+      "exit_code": 1,
+      "output": "error: need a repository to verify a bundle",
+      "gate_started": false
+    },
+    {
+      "step": "verified complete bundle clone",
+      "exit_code": 128,
+      "output": "bundle is okay; bundle contains refs/remotes/origin/cursor/queue-control-fifo-injector-0477; clone empty; checkout reference is not a tree",
+      "gate_started": false
+    }
+  ],
+  "recovery": "Verified complete bundle hash and bundle inside empty source repo; explicitly fetched the bundle remote-tracking ref into source-verified, then checked out exact detached SHA and required clean status. No measurement or gate was repeated."
+}

@@ -1,0 +1,80 @@
+{
+  "gate": "FAIL",
+  "lease": {
+    "domain": "zfstack-qa-vps-23.136.204.72-23826",
+    "run_id": "netem-fifo-stage1-20261016",
+    "generation": "7cc58440-68a8-4a79-9cbf-2f504b63e3a7",
+    "owner": "2ff65b19-6f1f-4244-97e2-1a5b28ae3ae0",
+    "pid": 3267607,
+    "created_ns": 1792157811589379699,
+    "owned_until_release": true
+  },
+  "recomputed": {
+    "full": {
+      "selftest_ok": false,
+      "failed_checks": [
+        "udp_exactly_once_in_order"
+      ],
+      "oracle_errors": [],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/root/zfstack-qa-pr75-20261016-netem-01/stage1/full",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 9,
+        "socket_overtaken_after_egress_ns": {
+          "n": 9,
+          "p50": 462037,
+          "p99": 491551,
+          "max": 491551
+        },
+        "egress_gap_to_overtaker_ns": {
+          "n": 9,
+          "p50": 312224,
+          "p99": 313701,
+          "max": 313701
+        },
+        "socket_overtaken_by_send_phase": {
+          "loaded": 9
+        }
+      }
+    },
+    "cancel": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [
+        "netem FIFO execution was cancelled or incomplete",
+        "netem FIFO phase changes are missing, reordered or malformed"
+      ],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/root/zfstack-qa-pr75-20261016-netem-01/stage1/cancel",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    },
+    "overflow": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [
+        "netem FIFO captures cannot be paired",
+        "netem FIFO dropped or overlimited frames",
+        "netem FIFO lost or never released 5005 mirrored frames"
+      ],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/root/zfstack-qa-pr75-20261016-netem-01/stage1/overflow",
+        "udp_frames": 13567,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    }
+  }
+}

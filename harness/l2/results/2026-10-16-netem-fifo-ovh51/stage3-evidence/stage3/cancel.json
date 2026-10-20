@@ -1,0 +1,169 @@
+{
+  "mode": "cancel",
+  "kind": "netem-fifo",
+  "kernel": "6.12.57+deb13-amd64",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "cancel_recorded": true,
+    "oracle_rejects_cancel": true,
+    "udp_no_duplicates": true,
+    "redirect_kept_until_clients_reaped_and_measurement_ended": true
+  },
+  "ok": true,
+  "oracle_errors": [
+    "netem FIFO execution was cancelled or incomplete",
+    "netem FIFO phase changes are missing, reordered or malformed"
+  ],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899150
+  },
+  "frames": 62740,
+  "gso_frames": 799,
+  "link_drop_deltas": {
+    "rig-89b8e0-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-89b8e0-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18475,
+  "udp_mib_delta": {
+    "InDatagrams": 18475,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899150,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 0.020531,
+      "max": 506.56827
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.022943,
+      "max": 62.63063
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.018613,
+      "max": 4.351789
+    }
+  },
+  "resources": {
+    "ring_bytes": 134217728,
+    "copied_bytes": 24306176
+  },
+  "summary": {
+    "paired": 62740,
+    "lost": 0,
+    "unpaired_out": 0,
+    "residence_ns": {
+      "p50": 4837,
+      "p99": 500012560,
+      "max": 502379255
+    }
+  },
+  "actual": {
+    "changes": [
+      {
+        "phase": "active",
+        "t0_ns": 27048916679376765,
+        "t1_ns": 27048916679449365,
+        "shown": {
+          "limit": 100000,
+          "delay": {
+            "delay": 0.5,
+            "jitter": 0,
+            "correlation": 0
+          },
+          "rate": {
+            "rate": 1250000000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "seed": 7436429003582337975,
+          "ecn": false,
+          "gap": 0
+        }
+      },
+      {
+        "phase": "transparent",
+        "t0_ns": 27048924683237245,
+        "t1_ns": 27048924683268571,
+        "reason": "cancel",
+        "shown": {
+          "limit": 100000,
+          "rate": {
+            "rate": 1250000000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "seed": 4638470124963251257,
+          "ecn": false,
+          "gap": 0
+        }
+      },
+      {
+        "phase": "drain",
+        "t0_ns": 27048931929205953,
+        "t1_ns": 27048931929291867,
+        "shown": {
+          "limit": 100000,
+          "rate": {
+            "rate": 250000000,
+            "packetoverhead": 0,
+            "cellsize": 0,
+            "celloverhead": 0
+          },
+          "seed": 15779705905993394087,
+          "ecn": false,
+          "gap": 0
+        }
+      }
+    ],
+    "installed_ns": 27048898781169005,
+    "mirror_installed_ns": 27048898849103568,
+    "cancel_requested_ns": 27048924679110066,
+    "owner_released_ns": 27048940679972273,
+    "mirror_remove_ns": 27048940680106785,
+    "mirror_removed_ns": 27048940685036892,
+    "drained_ns": 27048940685190191,
+    "removed_ns": 27048940755593078,
+    "closed_ns": 27048940909093408
+  },
+  "planned": {
+    "measurement_start_ns": 27048908678953816,
+    "start_ns": 27048916678953816,
+    "end_ns": 27048931928953816,
+    "recovery_start_ns": 27048932678953816,
+    "measurement_end_ns": 27048940678953816
+  },
+  "report_errors": [
+    "netem FIFO cancelled before the measurement completed"
+  ],
+  "udp_inversions": 0,
+  "udp_missing_after_removal": []
+}

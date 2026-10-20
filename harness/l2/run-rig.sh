@@ -308,6 +308,8 @@ if r.get('queue_control') is not None:
     with (p/'queue-link-samples.json').open('x') as stream:
         json.dump(links,stream,indent=2); stream.write('\n')
     (p/'queue-control.json').write_text(json.dumps(r['queue_control'],indent=2)+'\n')
+    if (p/'load'/'queue-ledger.bin.gz').is_file():
+        (p/'load'/'queue-ledger.bin.gz').rename(p/'queue-ledger.bin.gz')
 (p/'result.json').write_text(json.dumps(r,indent=2)+'\n')
 print(json.dumps({'ok':r['ok'],'errors':errors,'heavy_mbps':r['heavy_mbps'],
                   'qdisc_limit_packets':qdisc['limit_packets'],

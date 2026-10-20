@@ -1,0 +1,44 @@
+{
+  "tested_sha": "077f54d9c264f82f82d8a22cd58e8d40db48b3bb",
+  "tree": "616af004f1f890d4847a37244c1f9579507b5ed9",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "cpu": "Apple M1 Max",
+    "memory_bytes": 68719476736,
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "files": {
+    "harness/l2/fifo_injector.py": "42dec445abf0d5adaacaad79875a1f7033d12a76ccbcb90c13768dc0247f8580",
+    "harness/l2/fifo_ledger.py": "bcb9d947eac2844fc63bbbe0d93090bad00a77397bc00539b363fabb1261cd68",
+    "harness/l2/fifo_selftest.py": "907840ef452120bac7ad8d52223fa3a4f497494a8e31fe41d02ffafec1828bc7",
+    "harness/l2/queue_control.py": "e20021c241fbc58e739797898c4d477d265e3345305da2318657f3f61bb00f38",
+    "qa/isolate-linux.sh": "709992b4107bc73703d4d4c02ef78c0d33c992a65b9813bad9bb89d62bf98479",
+    "qa/policy/cases.json": "36db36e42cab7167bb177c5a5f9419c110cf482a35f09bed7fa962b9afc91ea2"
+  },
+  "thresholds_unchanged": true,
+  "formal_run_status": "NOT_RUN",
+  "worker_build_status": "NOT_STARTED",
+  "known_blocked_removed": false,
+  "initial_macos_attempt": {
+    "status": "FAILED_SETUP",
+    "cause": "jsonschema not installed in system Python",
+    "qa_tests_run": 86,
+    "qa_test_errors": 67,
+    "qa_skipped": 5,
+    "full_stdout_stderr_saved_in_this_bundle": false,
+    "note": "Tool transcript contained the failure; installed exact qa/requirements.lock in a task venv before rerunning."
+  },
+  "initial_native_qa_attempt": {
+    "status": "FAIL",
+    "tests_run": 187,
+    "errors": 1,
+    "skipped": 1,
+    "cause": "The read-only /src worktree Git link points outside the container; rerun from a clean clone of the exact tested SHA.",
+    "log": "linux-qa-tests.log"
+  },
+  "full_first_run_limitations": [
+    "Concurrent native L2 unit tests; not a quiet-host or formal timing qualification."
+  ],
+  "additional_full_stop_rule": "Two additional full runs were fixed before execution; neither ran with unit tests or compilation; both retained independently."
+}

@@ -108,6 +108,9 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 最终 worker/matrix 清单在校验并释放租约后封存，记录 `build_lease` 的域、generation、owner 与释放状态。
 每条命令和每臂结束时另写 `build-progress.json`，保留原始退出及 cleanup 记录；其状态与租约释放状态始终为
 `PENDING`，取消后仍可诊断，但不能替代正式 worker/matrix 终态清单或作为已构建资格。
+输出被当作数据解析的命令（`rustc -vV`、`cargo -V`、`cargo metadata`、`cargo tree`、`--build-info`）把 stderr
+单独写入 `command-N.stderr.log`，只解析 `command-N.log` 中的 stdout；冷 cache 的下载进度和告警不会混入
+JSON 或依赖图。两路日志都保留，并共用同一个 64 MiB 输出预算；命令记录的 `stderr_log` 指向该文件。其他命令仍合并两路输出。
 入口从指定 Git 提交导出允许的构建输入，不复制 dirty/untracked 内容、凭据或历史。
 四个组合固定同一 private_tun 版本；依赖 path override 和锁文件变化都会保留。
 `--cell head-head` 只验证单个组合，另外三臂是 `UNEXECUTED`，不宣称四因子对照通过。
@@ -118,10 +121,10 @@ CLI 使用 `--node /absolute/node.json --lease-dir /absolute/shared-leases`。�
 保留转发器构建身份、真实业务端口路径计数及旁路检查。健康探测使用不同端口，不能充当业务路径证据。
 两条路径的执行证据不能互相替代，缺失二进制或路径证据会明确阻断。
 
-**当前状态：known-BLOCKED（台架 `tc` 删除非原子竞态）**。该标注不是豁免，不跳过 required case 或改变阈值；真实 NOT_RUN/BLOCKED 继续保留。后续方案单列为 [issue 草稿](issues/queue-control-atomic-restoration.md)，本 PR 不实现。维护者启用事项见 [手工清单](MAINTAINER-CHECKLIST.md)。
+**当前状态：known-BLOCKED（等待 held-out 正式运行）**。v3 台架 `tc` 删除存在非原子竞态；case v2 改用持久单 FIFO 注入器 `fifo-delay-line`（[说明](../harness/l2/README.md#共享出口队列负对照)、[自检记录](../harness/l2/results/2026-10-16-fifo-injector/REPORT.md)），实现与资格标准已冻结；它在共享 KVM 宿主的唯一一次正式 C16 为 FAIL / VALID，尚未在具备能力的隔离宿主通过独立 held-out 正式运行。候选内核注入器 `netem-fifo` 未进入 case，其仿真 full 自检因出口后的 UDP 乱序 FAIL（[记录](../harness/l2/results/2026-10-16-netem-fifo/REPORT.md)）。该标注不是豁免，不跳过 required case 或改变阈值；真实 NOT_RUN/BLOCKED 继续保留。见 [issue](issues/queue-control-atomic-restoration.md) 与 [手工清单](MAINTAINER-CHECKLIST.md)。
 
 `C16-l2-queue-control` 在同一租约内依次运行干净基线和测试侧的 500 ms 深出口队列注入。
-它要求基线服务合同通过、注入期间载荷仍正确但延迟合同失败、队列确实积压且没有丢包，并在 recovery 前恢复。
+它要求基线服务合同通过、注入期间载荷仍正确但延迟合同失败、队列确实积压且没有丢包，并在 recovery 前原子切换为透明路径。
 250 ms 是该负对照的固定检测阈值，不是产品 SLO，也不表示复现了 #44 的具体实现缺陷。
 每个 peer 的完整请求计数和排队延迟均参与判断；没有样本、发生器漏供给或基线失败不能算负对照成功。
 

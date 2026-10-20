@@ -1,0 +1,32 @@
+{
+  "command": [
+    "env",
+    "QA_DIAGNOSTIC=0",
+    "QA_INJECTOR_CPU=1",
+    "QA_INJECTOR_FIFO=10",
+    "bash",
+    "/work/fixed/qa/isolate-linux.sh",
+    "taskset",
+    "-c",
+    "2-3",
+    "python3",
+    "/work/diagnostic/fifo_selftest.py",
+    "--mode",
+    "overflow",
+    "--output",
+    "/evidence/c-plain-overflow.json"
+  ],
+  "started_unix_ns": 1792145593900372000,
+  "finished_unix_ns": 1792145637926090000,
+  "returncode": 0,
+  "vm_pid": 24963,
+  "diagnostic": false,
+  "args": {
+    "name": "c-plain-overflow",
+    "injector_cpu": 1,
+    "load_cpus": "2-3",
+    "fifo": 10,
+    "plain": true,
+    "mode": "overflow"
+  }
+}

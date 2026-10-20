@@ -1,0 +1,80 @@
+{
+  "gate": "FAIL",
+  "lease": {
+    "domain": "local-tcg-smoke",
+    "run_id": "driver-smoke-2",
+    "generation": "ebf15686-9010-4a6f-a969-bf5233cd9534",
+    "owner": "22cdad11-f3ce-4419-aea8-961659dba1dc",
+    "pid": 178,
+    "created_ns": 1792159120140494190,
+    "owned_until_release": true
+  },
+  "recomputed": {
+    "full": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/tmp/vmout/drv2/out/full",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    },
+    "cancel": {
+      "selftest_ok": false,
+      "failed_checks": [
+        "udp_exactly_once_in_order"
+      ],
+      "oracle_errors": [
+        "netem FIFO execution was cancelled or incomplete",
+        "netem FIFO phase changes are missing, reordered or malformed"
+      ],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/tmp/vmout/drv2/out/cancel",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 30,
+        "socket_overtaken_after_egress_ns": {
+          "n": 30,
+          "p50": 7659105,
+          "p99": 8047265,
+          "max": 8047265
+        },
+        "egress_gap_to_overtaker_ns": {
+          "n": 30,
+          "p50": 518050,
+          "p99": 1069590,
+          "max": 1069590
+        },
+        "socket_overtaken_by_send_phase": {
+          "loaded": 30
+        }
+      }
+    },
+    "overflow": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [
+        "netem FIFO captures cannot be paired",
+        "netem FIFO dropped or overlimited frames",
+        "netem FIFO lost or never released 4968 mirrored frames"
+      ],
+      "oracle_matches_selftest": true,
+      "order": {
+        "source": "/tmp/vmout/drv2/out/overflow",
+        "udp_frames": 13527,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    }
+  }
+}

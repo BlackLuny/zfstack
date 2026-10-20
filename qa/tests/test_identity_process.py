@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import contextlib
+import json
 import os
 import platform
 import signal
@@ -351,6 +352,41 @@ class ProcessTests(unittest.TestCase):
         finally:
             other.kill()
             other.wait(timeout=3)
+
+    def test_separate_stderr_keeps_parsed_stdout_clean_for_descendants(self):
+        source = ('import json,subprocess,sys\n'
+                  'for i in range(1352): sys.stderr.write(f"  Downloaded crate-{i} v1.0.0\\n")\n'
+                  'sys.stderr.flush()\n'
+                  'subprocess.run([sys.executable,"-c","import sys;sys.stderr.write(\'grandchild warning\\\\n\')"],check=True)\n'
+                  'print(json.dumps({"packages":[]}),flush=True)')
+        errors = self.root / "command-0.stderr.log"
+        result = run_child([sys.executable, "-c", source], self.root, self.output, 5, os.environ.copy(), stderr=errors)
+        self.assertEqual((result["status"], result["exit_code"], result["cleanup_status"]), ("completed", 0, "PASS"))
+        self.assertEqual(json.loads(self.output.read_text()), {"packages": []})
+        text = errors.read_text()
+        self.assertEqual(text.count("Downloaded"), 1352)
+        self.assertIn("grandchild warning", text)
+
+    def test_merged_output_is_unchanged_without_separate_stderr(self):
+        result = self.run_python('import sys; sys.stderr.write("err\\n"); sys.stderr.flush(); print("out")')
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(sorted(self.output.read_text().split()), ["err", "out"])
+
+    def test_separate_stderr_must_be_a_distinct_fresh_file(self):
+        with self.assertRaises(EvidenceError):
+            run_child([sys.executable, "-c", "pass"], self.root, self.output, 3, os.environ.copy(), stderr=self.output)
+        existing = self.root / "existing.stderr.log"
+        existing.write_text("old")
+        with self.assertRaises(FileExistsError):
+            run_child([sys.executable, "-c", "pass"], self.root, self.root / "other.log", 3, os.environ.copy(), stderr=existing)
+        self.assertEqual(existing.read_text(), "old")
+
+    def test_output_budget_counts_both_streams(self):
+        source = "import os; os.write(1,b'x'*(33*1024*1024)); os.write(2,b'y'*(33*1024*1024))"
+        result = run_child([sys.executable, "-c", source], self.root, self.output, 5, os.environ.copy(),
+                           stderr=self.root / "command-0.stderr.log")
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("output byte budget exceeded", result["lifecycle_detail"])
 
     def test_output_budget_checked_even_if_child_already_exited(self):
         with patch("qa.process.MAX_OUTPUT", 16):

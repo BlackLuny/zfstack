@@ -1,0 +1,60 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "apt-get",
+        "update"
+      ],
+      "returncode": 0,
+      "started_unix_ns": 1792147056989884904,
+      "finished_unix_ns": 1792147058559823328,
+      "log": "preparation-0.log"
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "--no-upgrade",
+        "cmake",
+        "python3-venv"
+      ],
+      "returncode": 0,
+      "started_unix_ns": 1792147058560355384,
+      "finished_unix_ns": 1792147066412210530,
+      "log": "preparation-1.log"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "venv",
+        "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv"
+      ],
+      "returncode": 0,
+      "started_unix_ns": 1792147066413206544,
+      "finished_unix_ns": 1792147069988015553,
+      "log": "preparation-2.log"
+    }
+  ],
+  "lease": {
+    "domain": "zfstack-qa-vps-23.136.204.72-23826",
+    "run_id": "prepare-tools-pr75-20261016",
+    "generation": "7cc58440-68a8-4a79-9cbf-2f504b63e3a7",
+    "owner": "4af48065-9a84-404d-9c1e-8b4421127534",
+    "pid": 3163226,
+    "created_ns": 1792147056989460248,
+    "owned": false
+  },
+  "installed_packages": [
+    "cmake",
+    "python3-venv"
+  ]
+}
