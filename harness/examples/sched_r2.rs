@@ -7,8 +7,34 @@ use zfharness::world::{execute, Config, Expect, FlowSpec, Kind, Limits, Topology
 use zfstack::StackConfig;
 
 fn stack(mode: &str) -> Option<StackConfig> {
-    assert_eq!(mode, "off", "isolated A build has no DRR or sparse policy");
-    None
+    if mode == "off" {
+        return None;
+    }
+    let mut cfg = StackConfig { peer_deficit_drr: true, ..Default::default() };
+    match mode {
+        "drr-max" => {}
+        "drr-16k" => cfg.peer_drr_quantum = 16384,
+        "adaptive-16k" | "adaptive-32k" | "adaptive-fast" | "adaptive-slow" | "adaptive-k4" => {
+            cfg.adaptive_quantum = true;
+            if mode == "adaptive-32k" {
+                cfg.adaptive_quantum_bytes = 32768;
+            }
+            match mode {
+                "adaptive-fast" => {
+                    cfg.adaptive_window = Duration::from_millis(1);
+                    cfg.adaptive_hold = Duration::from_millis(4);
+                }
+                "adaptive-slow" => {
+                    cfg.adaptive_window = Duration::from_millis(4);
+                    cfg.adaptive_hold = Duration::from_millis(16);
+                }
+                "adaptive-k4" => cfg.adaptive_peer_threshold = 4,
+                _ => {}
+            }
+        }
+        _ => panic!("unknown mode {mode}"),
+    }
+    Some(cfg)
 }
 
 fn flow(peer: u64, class: &'static str, kind: Kind, start_ms: u64) -> FlowSpec {
@@ -85,7 +111,7 @@ fn main() {
                 }
                 for f in 0..cfg.flows.len() {
                     for i in 0..4 {
-                        cfg.events.push(arrival(f, Duration::from_micros(150000 + i * 100), 4096, cfg.events.len()));
+                        cfg.events.push(arrival(f, Duration::from_micros(200000 + i * 100), 4096, cfg.events.len()));
                     }
                 }
             } else {
@@ -94,10 +120,10 @@ fn main() {
                 if zero {
                     cfg.client_max_rcv = Some(4096);
                     cfg.flows[0].read_pause = Some(Duration::from_millis(500));
-                    cfg.events.push(arrival(0, Duration::from_millis(150), 131072, 0));
+                    cfg.events.push(arrival(0, Duration::from_millis(200), 131072, 0));
                 }
                 for i in 0..128 {
-                    cfg.events.push(arrival(0, Duration::from_micros(if zero { 300000 } else { 150000 } + i * 100), 512, cfg.events.len()));
+                    cfg.events.push(arrival(0, Duration::from_micros(if zero { 300000 } else { 200000 } + i * 100), 512, cfg.events.len()));
                 }
             }
         } else {

@@ -49,6 +49,16 @@ pub struct StackConfig {
     /// Fixed peer byte quantum; zero selects max_quantum. The effective value
     /// fits one iface MTU / TSO packet, independently of connection rates.
     pub peer_drr_quantum: usize,
+    /// Experimental congestion-triggered DRR quantum; effective only with peer_deficit_drr.
+    pub adaptive_quantum: bool,
+    /// Congested visit quantum, still clamped to the iface MTU/TSO packet.
+    pub adaptive_quantum_bytes: usize,
+    /// Enter only if local pressure is no older than this window.
+    pub adaptive_window: Duration,
+    /// Minimum queued peers for entry; values below two are treated as two.
+    pub adaptive_peer_threshold: usize,
+    /// Leave after strictly more than this quiet time, checked lazily on service.
+    pub adaptive_hold: Duration,
     pub keepalive_idle: Duration,
     pub keepalive_interval: Duration,
     pub keepalive_probes: u32,
@@ -93,6 +103,11 @@ impl Default for StackConfig {
             max_quantum: 64 * 1024,
             peer_deficit_drr: false,
             peer_drr_quantum: 0,
+            adaptive_quantum: false,
+            adaptive_quantum_bytes: 16 * 1024,
+            adaptive_window: Duration::from_millis(2),
+            adaptive_peer_threshold: 2,
+            adaptive_hold: Duration::from_millis(8),
             keepalive_idle: Duration::from_secs(25),
             keepalive_interval: Duration::from_secs(25),
             keepalive_probes: 3,

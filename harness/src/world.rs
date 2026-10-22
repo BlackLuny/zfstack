@@ -1602,7 +1602,9 @@ impl World {
         let mut peer_peaks: Vec<_> = self.peer_peaks.into_iter().map(|((shard, peer), bytes)| (shard, peer, bytes)).collect();
         peer_peaks.sort_unstable();
         let finish_now = self.now;
+        let adaptive = self.servers.iter().map(|e| e.shard.test_adaptive_quantum_stats()).fold((0, 0, 0), |(a, b, c), (x, y, z)| (a + x, b + y, c + z));
         let scheduler = json!({
+            "adaptive_entries": adaptive.0, "adaptive_exits":adaptive.1, "adaptive_small_visits":adaptive.2,
             "serve_calls": self.servers.iter().map(|e| e.shard.stats().serve_calls).sum::<u64>(),
             "serve_zero": self.servers.iter().map(|e| e.shard.stats().serve_zero).sum::<u64>(),
             "runs": self.servers.iter().map(|e| e.shard.stats().runs).sum::<u64>(),

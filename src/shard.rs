@@ -315,7 +315,36 @@ impl Drr {
     }
 }
 
+/// Lazy hysteresis: no timer or wakeup is needed while there is no work.
+#[derive(Default)]
+struct AdaptiveQuantum {
+    pressure_at: Option<Instant>,
+    small: bool,
+    entries: u64,
+    exits: u64,
+    small_visits: u64,
+}
+
+impl AdaptiveQuantum {
+    fn quantum(&mut self, now: Instant, peers: usize, cfg: &StackConfig) -> usize {
+        if self.small && self.pressure_at.is_some_and(|t| now.saturating_since(t) > cfg.adaptive_hold) {
+            self.small = false;
+            self.exits += 1;
+        }
+        if !self.small && peers >= cfg.adaptive_peer_threshold.max(2) && self.pressure_at.is_some_and(|t| now.saturating_since(t) <= cfg.adaptive_window) {
+            self.small = true;
+            self.entries += 1;
+        }
+        if self.small {
+            cfg.adaptive_quantum_bytes
+        } else {
+            cfg.max_quantum
+        }
+    }
+}
+
 struct Iface {
+    adaptive: AdaptiveQuantum,
     cfg: IfaceConfig,
     /// Data segments leave with a partial checksum (`OutPacket::csum_partial`).
     tx_csum_offload: bool,
@@ -600,7 +629,15 @@ impl Shard {
     pub fn add_iface(&mut self, cfg: IfaceConfig) -> IfaceId {
         self.ensure_rx_admit_reserve(cfg.mtu);
         let id = self.ifaces.len();
-        self.ifaces.push(Some(Iface { cfg, tx_csum_offload: false, tso_max: 0, full: false, drr: Drr::default(), tw_pending: 0 }));
+        self.ifaces.push(Some(Iface {
+            adaptive: AdaptiveQuantum::default(),
+            cfg,
+            tx_csum_offload: false,
+            tso_max: 0,
+            full: false,
+            drr: Drr::default(),
+            tw_pending: 0,
+        }));
         IfaceId(id as u16)
     }
 
@@ -1854,6 +1891,9 @@ impl Shard {
                     let i = s.iface;
                     self.stats.sink_full += 1;
                     self.ifaces[i.0 as usize].as_mut().unwrap().full = true;
+                    if self.cfg.peer_deficit_drr && self.cfg.adaptive_quantum {
+                        self.ifaces[i.0 as usize].as_mut().unwrap().adaptive.pressure_at = Some(now);
+                    }
                     break;
                 }
             }
@@ -1912,6 +1952,9 @@ impl Shard {
                 SendResult::Full => {
                     self.stats.sink_full += 1;
                     self.ifaces[iface.0 as usize].as_mut().unwrap().full = true;
+                    if self.cfg.peer_deficit_drr && self.cfg.adaptive_quantum {
+                        self.ifaces[iface.0 as usize].as_mut().unwrap().adaptive.pressure_at = Some(now);
+                    }
                     self.tw_ready.rotate_left(1);
                 }
             }
@@ -1984,6 +2027,11 @@ impl Shard {
         if self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty()) {
             out.more = true;
             self.stats.round_budget_exhausted += 1;
+            if self.cfg.peer_deficit_drr && self.cfg.adaptive_quantum {
+                for iface in self.ifaces.iter_mut().flatten().filter(|i| !i.full && !i.drr.is_empty()) {
+                    iface.adaptive.pressure_at = Some(now);
+                }
+            }
         }
         if !served_any && out.packets == 0 {
             self.stats.idle_rounds += 1;
@@ -1993,16 +2041,31 @@ impl Shard {
         out
     }
 
+    /// Experimental per-iface transition evidence, only for the L0 test peer.
+    #[cfg(feature = "test-peer")]
+    pub fn test_adaptive_quantum_stats(&self) -> (u64, u64, u64) {
+        self.ifaces.iter().flatten().fold((0, 0, 0), |(a, b, c), i| (a + i.adaptive.entries, b + i.adaptive.exits, c + i.adaptive.small_visits))
+    }
+
     /// A peer visit may span run budgets and Full. Only exhausted visits
     /// earn another Q; all accepted wire bytes (including headers) pay debt.
     fn serve_peer_turn(&mut self, ii: usize, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> usize {
         let iface = self.ifaces[ii].as_mut().unwrap();
+        let requested = if self.cfg.adaptive_quantum {
+            iface.adaptive.quantum(now, iface.drr.ready_peers.len(), &self.cfg)
+        } else if self.cfg.peer_drr_quantum == 0 {
+            self.cfg.max_quantum
+        } else {
+            self.cfg.peer_drr_quantum
+        };
         let Some(peer) = iface.drr.ready_peers.pop_front() else { return 0 };
-        let requested = if self.cfg.peer_drr_quantum == 0 { self.cfg.max_quantum } else { self.cfg.peer_drr_quantum };
         let quantum =
             requested.max(iface.cfg.mtu as usize).max(if iface.tso_max > 0 { iface.tso_max as usize + MAX_HEADER } else { 0 }).min(i64::MAX as usize) as i64;
         let Some(q) = iface.drr.peer_q.get_mut(&peer) else { return 0 };
         if !q.turn_active {
+            if self.cfg.adaptive_quantum && iface.adaptive.small {
+                iface.adaptive.small_visits += 1;
+            }
             q.deficit = q.deficit.saturating_add(quantum);
             q.turn_active = true;
         }
@@ -2188,6 +2251,9 @@ impl Shard {
                 SendResult::Full => {
                     self.stats.sink_full += 1;
                     iface.full = true;
+                    if self.cfg.peer_deficit_drr && self.cfg.adaptive_quantum {
+                        iface.adaptive.pressure_at = Some(now);
+                    }
                     conn.note_egress_limited(now);
                     // Stay queued (tail of its peer queue): resumes on egress_released.
                     return (sent, true);
@@ -4524,3 +4590,7 @@ mod scheduling_counter_tests {
 #[cfg(test)]
 #[path = "peer_deficit_tests.rs"]
 mod peer_deficit_tests;
+
+#[cfg(test)]
+#[path = "adaptive_quantum_tests.rs"]
+mod adaptive_quantum_tests;
