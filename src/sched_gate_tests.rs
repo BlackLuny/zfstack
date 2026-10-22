@@ -191,3 +191,64 @@ fn randomized_events_never_leave_a_sendable_plan_outside_ready() {
         sim.a.shard.check_invariants();
     }
 }
+
+#[test]
+fn budget_release_reenters_ready_without_ack_or_app_polling() {
+    let cfg = StackConfig { pacing: false, ..Default::default() };
+    let mut sim = Sim::new(2208, cfg, StackConfig::default(), Default::default(), Default::default());
+    sim.a.shard.set_budget_limits(128 << 10, 128 << 10, 8);
+    sim.connect(46002, Default::default());
+    sim.run_until(sim.now + Duration::from_millis(100));
+    let id = sim.a.accepted[0];
+    let sh = &mut sim.a.shard;
+    assert_eq!(sh.write(id, &vec![1; 32 << 10]), WriteResult::Written(32 << 10));
+    let hold = sh.memory_handle(PeerId(1)).try_allocate((128 << 10) - sh.budget().physical_used() - 512).unwrap();
+    let zero = sh.stats().serve_zero;
+    sh.run(sim.now, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    assert!(sh.record_waiters() > 0);
+    assert_eq!(sh.stats().serve_zero, zero);
+    let packets = sh.stats().tx_packets;
+    drop(hold);
+    sh.run(sim.now, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    assert!(sh.stats().tx_packets > packets);
+    assert_eq!(sh.record_waiters(), 0);
+}
+
+#[test]
+fn pacing_rate_change_reprices_then_deadline_reenters_service() {
+    let cfg = StackConfig { cc: crate::CcAlgo::Brutal(505), ..Default::default() };
+    let mut sim = Sim::new(2209, cfg, StackConfig::default(), Default::default(), Default::default());
+    sim.connect(46003, Default::default());
+    sim.run_until(sim.now + Duration::from_millis(100));
+    let id = sim.a.accepted[0];
+    sim.a.shard.test_conn_event(id, |c, _| {
+        c.sync_pacing_debt(sim.now, Some(505));
+        c.next_send_time = sim.now + Duration::from_secs(20);
+    });
+    assert_eq!(sim.a.shard.write(id, &[1; 512]), WriteResult::Written(512));
+    sim.a.shard.run(sim.now, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    let old = sim.a.shard.next_deadline().unwrap();
+    sim.a.shard.test_conn_event(id, |c, _| c.cc = crate::cc::new_cc(crate::CcAlgo::Brutal(5050), c.mss, 10));
+    sim.a.shard.run(sim.now, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    let new = sim.a.shard.next_deadline().unwrap();
+    assert!(new < old);
+    let packets = sim.a.shard.stats().tx_packets;
+    sim.a.shard.run(new, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    assert!(sim.a.shard.stats().tx_packets > packets);
+}
+
+#[test]
+fn exact_quantum_boundary_retains_app_limited_bookkeeping() {
+    let cfg = StackConfig { pacing: false, max_quantum: 1420, round_bytes_cap: 1420, ..Default::default() };
+    let mut sim = Sim::new(2210, cfg, StackConfig::default(), Default::default(), Default::default());
+    sim.connect(46004, Default::default());
+    sim.run_until(sim.now + Duration::from_millis(100));
+    let id = sim.a.accepted[0];
+    let mss = sim.a.shard.info(id).unwrap().mss as usize;
+    assert_eq!(sim.a.shard.write(id, &vec![1; mss]), WriteResult::Written(mss));
+    sim.a.shard.run(sim.now, &mut |_: IfaceId, _: &crate::OutPacket<'_>| crate::SendResult::Accepted);
+    sim.a.shard.test_conn_event(id, |c, _| {
+        assert_eq!(c.unsent(), 0);
+        assert!(c.dl.app_limited > 0, "skipped empty service must not erase CC bookkeeping");
+    });
+}

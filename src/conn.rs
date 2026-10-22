@@ -3058,13 +3058,23 @@ impl Conn {
     }
 
     pub(crate) fn note_tx_gate(&mut self, now: Instant) {
-        if self.state.can_send_data() && self.unsent() > 0 {
+        if !self.state.can_send_data() || self.sb.lost_pending() > 0 || self.tlp.pending {
+            return;
+        }
+        if self.unsent() > 0 {
             if let Err(limit) = self.new_data_len() {
                 self.set_limit(now, limit);
                 if limit == LIM_CWND {
                     self.cwnd_limited_now = true;
                 }
             }
+        } else if !self.fin_pending() {
+            // Skipping the formerly empty follow-up serve must retain the
+            // planner's app-limited and limiting-time bookkeeping.
+            if matches!(self.state, State::Established | State::CloseWait) {
+                self.mark_app_limited();
+            }
+            self.set_limit(now, LIM_NONE);
         }
     }
 
