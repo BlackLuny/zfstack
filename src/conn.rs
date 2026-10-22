@@ -2373,6 +2373,28 @@ impl Conn {
         Some(p)
     }
 
+    /// Side-effect-free equivalent of the new-data planner's transport gates.
+    /// Keep segment sizing and SWS here so readiness never promises an unsendable
+    /// partial cwnd/window segment. Retransmissions and probes bypass this gate.
+    fn new_data_len(&self) -> Result<u64, u8> {
+        let mss = self.mss as u64;
+        let unsent = self.unsent();
+        let room = self.send_room();
+        let wnd_room = (self.snd_una + self.snd_wnd).saturating_sub(self.snd_nxt);
+        let seg_max = if self.tso_max as u64 > mss { self.tso_max as u64 / mss * mss } else { mss };
+        let mut len = unsent.min(seg_max).min(wnd_room);
+        if len == 0 || (len < mss && len < unsent && len < self.max_snd_wnd / 2 && self.pipe() > 0) {
+            return Err(LIM_RWND);
+        }
+        if len > room && len > mss && room >= mss {
+            len = room / mss * mss;
+        }
+        if len > room {
+            return Err(LIM_CWND);
+        }
+        Ok(len)
+    }
+
     fn plan_data(&mut self, now: Instant) -> Option<Plan> {
         self.plan_data_with(now, true)
     }
@@ -2458,28 +2480,16 @@ impl Conn {
 
         // 3. New data. With TSO one packet carries whole MSS multiples.
         if unsent > 0 {
-            let wnd_room = wnd_right.saturating_sub(self.snd_nxt);
-            let seg_max = if self.tso_max as u64 > mss { self.tso_max as u64 / mss * mss } else { mss };
-            let mut len = unsent.min(seg_max).min(wnd_room);
-            if len == 0 {
-                self.set_limit(now, LIM_RWND);
-                return None;
-            }
-            // Sender-side SWS avoidance: don't send a small segment just because the
-            // window is small, unless it's all we have.
-            if len < mss && len < unsent && len < self.max_snd_wnd / 2 && self.pipe() > 0 {
-                self.set_limit(now, LIM_RWND);
-                return None;
-            }
-            if len > room && len > mss && room >= mss {
-                // A super-segment shrinks to the MSS multiples cwnd allows.
-                len = room / mss * mss;
-            }
-            if len > room {
-                self.set_limit(now, LIM_CWND);
-                self.cwnd_limited_now = true;
-                return None;
-            }
+            let len = match self.new_data_len() {
+                Ok(len) => len,
+                Err(limit) => {
+                    self.set_limit(now, limit);
+                    if limit == LIM_CWND {
+                        self.cwnd_limited_now = true;
+                    }
+                    return None;
+                }
+            };
             let fin = self.snd_nxt + len == fin_off;
             // PSH marks the end of what the application has written so far.
             let psh = len == unsent;
@@ -3047,6 +3057,17 @@ impl Conn {
         self.rst_pending || self.syn_pending || self.ack_need == AckNeed::Now || self.probe_pending
     }
 
+    pub(crate) fn note_tx_gate(&mut self, now: Instant) {
+        if self.state.can_send_data() && self.unsent() > 0 {
+            if let Err(limit) = self.new_data_len() {
+                self.set_limit(now, limit);
+                if limit == LIM_CWND {
+                    self.cwnd_limited_now = true;
+                }
+            }
+        }
+    }
+
     /// Whether `plan` could produce a segment (used to avoid needless scheduling).
     pub(crate) fn wants_tx(&self) -> bool {
         self.rst_pending
@@ -3054,7 +3075,8 @@ impl Conn {
             || self.ack_need == AckNeed::Now
             || self.probe_pending
             || self.tlp.pending
-            || (self.state.can_send_data() && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending()))
+            || (self.state.can_send_data()
+                && (self.sb.lost_pending() > 0 || (self.unsent() > 0 && self.new_data_len().is_ok()) || (self.unsent() == 0 && self.fin_pending())))
     }
 }
 
@@ -3782,3 +3804,7 @@ mod rx_descriptor_tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "sched_gate_tests.rs"]
+mod sched_gate_tests;

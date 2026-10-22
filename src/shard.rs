@@ -1919,7 +1919,14 @@ impl Shard {
                 let mut again = false;
                 if valid {
                     self.slots[idx as usize].sched.in_ready = false;
-                    let (sent, more) = self.serve(idx, now, budget, sinks, &mut out);
+                    // Events can invalidate an already queued connection. Recheck
+                    // transport readiness before counting an actual service attempt.
+                    let (sent, more) = if self.slots[idx as usize].conn.as_ref().unwrap().wants_tx() {
+                        self.serve(idx, now, budget, sinks, &mut out)
+                    } else {
+                        self.slots[idx as usize].conn.as_mut().unwrap().note_tx_gate(now);
+                        (0, false)
+                    };
                     served_any |= sent > 0;
                     budget = budget.saturating_sub(sent);
                     again = more;
@@ -2091,7 +2098,8 @@ impl Shard {
             self.stats.tx_packets += 1;
             self.stats.tx_bytes += len as u64;
             if sent >= quantum {
-                return (sent, has_record_room);
+                conn.note_tx_gate(now);
+                return (sent, has_record_room && conn.wants_tx());
             }
         }
     }
@@ -2105,6 +2113,16 @@ impl Shard {
 
     // ------------------------------------------------------------------
     // Application API
+
+    #[cfg(test)]
+    pub(crate) fn test_conn_event<R>(&mut self, id: ConnId, f: impl FnOnce(&mut Conn, &mut Ctx) -> R) -> R {
+        self.with_conn(id, f).unwrap()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_conn_ready(&self, id: ConnId) -> bool {
+        self.slots[id.idx()].sched.in_ready || self.pacing.contains(id.idx() as u32)
+    }
 
     fn with_conn<R>(&mut self, id: ConnId, f: impl FnOnce(&mut Conn, &mut Ctx) -> R) -> Option<R> {
         let s = self.slots.get_mut(id.idx())?;
