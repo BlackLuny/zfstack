@@ -155,6 +155,8 @@ pub struct Config {
     pub stack_override: Option<StackConfig>,
     /// Per-shard local sink capacity, replenished every virtual millisecond.
     pub local_egress_burst: Option<usize>,
+    /// Experimental sink refill period; world event deadlines have nanosecond resolution.
+    pub local_egress_period: Duration,
 }
 
 impl Config {
@@ -182,6 +184,7 @@ impl Config {
             tx_cache_trim: None,
             stack_override: None,
             local_egress_burst: None,
+            local_egress_period: Duration::from_millis(1),
         }
     }
 }
@@ -290,6 +293,7 @@ struct ServiceObservation {
 }
 
 struct LocalEgress {
+    period: Duration,
     burst: usize,
     left: usize,
     refill: Instant,
@@ -846,8 +850,13 @@ impl World {
                 errors.push(format!("shard {i} progress reserve is inactive; raise port/peer limits above 2·H4"));
             }
             let mut endpoint = Endpoint::new(shard);
-            endpoint.local_egress =
-                cfg.local_egress_burst.map(|burst| LocalEgress { burst, left: burst, refill: origin + Duration::from_millis(1), blocked: BTreeSet::new() });
+            endpoint.local_egress = cfg.local_egress_burst.map(|burst| LocalEgress {
+                period: cfg.local_egress_period,
+                burst,
+                left: burst,
+                refill: origin + cfg.local_egress_period,
+                blocked: BTreeSet::new(),
+            });
             endpoint.suppress_writable = cfg.suppress_writable;
             servers.push(endpoint);
         }
@@ -1672,7 +1681,7 @@ fn emit_server(si: usize, servers: &mut [Endpoint], links: &mut Links, now: Inst
     if let Some(local) = &mut ep.local_egress {
         if now >= local.refill {
             local.left = local.burst;
-            local.refill = now + Duration::from_millis(1);
+            local.refill = now + local.period;
             for iface in std::mem::take(&mut local.blocked) {
                 ep.shard.egress_released(iface);
             }

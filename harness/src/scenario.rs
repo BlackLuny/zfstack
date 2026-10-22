@@ -20,6 +20,7 @@ pub struct Overrides {
     pub until_ms: Option<u64>,
     pub full: bool,
     pub tx_cache_trim: bool,
+    pub stack_override: Option<zfstack::StackConfig>,
 }
 
 pub fn scenario_names() -> &'static [&'static str] {
@@ -145,14 +146,14 @@ fn run_noisy(name: &str, kind: Noisy, o: &Overrides) -> Value {
         "profile": "StackConfig::default (server). Not StackConfig::client().",
         "comparability": crate::report::COMPARABILITY,
         "budget": l["budget"],
-        "baseline": {
+        "baseline": {"scheduler":base.scheduler,"link":{"queue_drops":base.link_queue_drops,"random_drops":base.link_random_drops},"process_cpu_sec":base.cpu_sec,"wall_sec":base.wall_sec,"flows":base.flows.iter().map(crate::report::flow_json).collect::<Vec<_>>(),
             "steps": base.steps,
             "assertions": crate::oracle::assertions(&base),
             "trace": crate::report::trace_value(&base),
             "users": b["users"],
             "budget": b["budget"],
         },
-        "loaded": {
+        "loaded": {"scheduler":loaded.scheduler,"link":{"queue_drops":loaded.link_queue_drops,"random_drops":loaded.link_random_drops},"process_cpu_sec":loaded.cpu_sec,"wall_sec":loaded.wall_sec,"trace":crate::report::trace_value(&loaded),"flows":loaded.flows.iter().map(crate::report::flow_json).collect::<Vec<_>>(),
             "steps": loaded.steps,
             "users": l["users"],
             "budget": l["budget"],
@@ -223,6 +224,7 @@ pub(crate) fn build(name: &str, o: &Overrides) -> Result<Config, String> {
 
 fn apply(o: &Overrides, cfg: &mut Config) {
     cfg.app_drive = o.app_drive;
+    cfg.stack_override = o.stack_override.clone();
     if o.tx_cache_trim {
         cfg.tx_cache_trim = Some(zfstack::TxCacheTrimPolicy {
             check_interval: Duration::from_millis(10),

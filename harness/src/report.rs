@@ -138,7 +138,7 @@ pub(crate) fn trace_value(report: &Report) -> Value {
     trace
 }
 
-fn flow_json(f: &FlowReport) -> Value {
+pub(crate) fn flow_json(f: &FlowReport) -> Value {
     json!({
         "id": f.id,
         "port": f.port,
@@ -156,6 +156,7 @@ fn flow_json(f: &FlowReport) -> Value {
         "server_queued_end": f.server_queued_end,
         "corrupt": f.corrupt,
         "reset": f.reset,
+        "finished_at_ns": f.finished_at_ns,
         "finished_at_us": f.finished_at_ns.map(|n| n / 1000),
         "planned_rr_rounds": f.planned_rr_rounds,
         "censored_rr_rounds": f.censored_rr_rounds,

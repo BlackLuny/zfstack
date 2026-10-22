@@ -5,6 +5,43 @@
 //! demux logical ports; a per-port pipe leaves the tag unused.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::io::{BufWriter, Write};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, OnceLock,
+};
+
+static CAPTURE: OnceLock<Option<Mutex<BufWriter<std::fs::File>>>> = OnceLock::new();
+static NEXT_LINK: AtomicU64 = AtomicU64::new(0);
+
+/// Optional full ordered packet stream for functional comparisons only.
+fn capture(link: u64, now: Instant, tag: u32, peer: PeerId, packet: &[u8]) {
+    let file = CAPTURE.get_or_init(|| {
+        std::env::var_os("ZF_R2_PACKET_CAPTURE").map(|path| {
+            let file = std::fs::OpenOptions::new().write(true).create_new(true).open(path).expect("new packet capture");
+            Mutex::new(BufWriter::new(file))
+        })
+    });
+    if let Some(file) = file {
+        let mut file = file.lock().unwrap();
+        for bytes in [
+            link.to_le_bytes().as_slice(),
+            &(now.as_nanos() as u64).to_le_bytes(),
+            &tag.to_le_bytes(),
+            &peer.0.to_le_bytes(),
+            &(packet.len() as u32).to_le_bytes(),
+            packet,
+        ] {
+            file.write_all(bytes).expect("packet capture write");
+        }
+    }
+}
+
+pub fn flush_capture() {
+    if let Some(Some(file)) = CAPTURE.get() {
+        file.lock().unwrap().flush().expect("packet capture flush");
+    }
+}
 
 use crate::schedule::{content_digest, Trace};
 use bytes::Bytes;
@@ -63,6 +100,7 @@ struct Flight {
 }
 
 pub struct Link {
+    capture_id: u64,
     pub p: LinkParams,
     busy_until: Instant,
     queued: VecDeque<(Instant, usize)>,
@@ -76,6 +114,7 @@ pub struct Link {
 impl Link {
     pub fn new(p: LinkParams) -> Self {
         Link {
+            capture_id: NEXT_LINK.fetch_add(1, Ordering::Relaxed),
             p,
             busy_until: Instant::ZERO,
             queued: VecDeque::new(),
@@ -88,6 +127,7 @@ impl Link {
     }
 
     pub fn enqueue(&mut self, now: Instant, tag: u32, peer: PeerId, pkt: Bytes, rng: &mut Rng) {
+        capture(self.capture_id, now, tag, peer, &pkt);
         self.trace.push(json!({"event":"enqueue", "at_ns":now.as_nanos(), "port":tag, "peer":peer.0, "len":pkt.len(), "packet":content_digest(&pkt)}));
         self.stats.sent += 1;
         while let Some(&(dep, n)) = self.queued.front() {
