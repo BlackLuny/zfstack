@@ -138,6 +138,7 @@ fn main() {
                 full,
                 tx_cache_trim,
                 sched_mode: sched_mode.clone(),
+                stack_override: None,
             };
             let result = run_named(&scenario, &over);
             let mut value = match result {
