@@ -1,0 +1,191 @@
+{
+  "schema": 1,
+  "baseline": "9d6fb7684e3842da16e673825d3c9ace724aa433",
+  "baseline_source": "origin main fetched 2026-10-22; user superseded missing 2026-10-21 reports",
+  "frozen_before_measurement": true,
+  "gates": {
+    "bulk_goodput_degradation_max_pct": 1,
+    "cpu_per_effective_GB_degradation_max_pct": 1,
+    "memory": "constant bytes per active peer and iface only; no per-service allocation",
+    "correctness": "unchanged existing assertions; no stalls; full EventOnly 21/21",
+    "gating": "serve_zero decreases; all space-opening event regressions pass",
+    "fairness": "worst light-user P99 and maximum pending-data service gap decrease in locally constrained cases",
+    "local_constraint": "sink_full/runs or round_budget_exhausted/runs >= 0.01; otherwise no scheduler benefit attribution",
+    "uncertainty": "paired 95% Student-t CI (n=6, t=2.571); interval crossing zero or within per-case A/A max absolute paired delta => no attributable change; lack of evidence does not pass 1% non-inferiority",
+    "timeouts": "retain all flows/users/planned RR rounds; incomplete latency right-censored at horizon and mark failed; no promotion on failures"
+  },
+  "sampling": {
+    "warmups_per_arm": 1,
+    "formal_pairs": 6,
+    "orders": [
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "aa_pairs": 6,
+    "serial": true,
+    "cpu_affinity": "first allowed CPU; immutable binary hash checked each run",
+    "per_process_timeout_sec": 180
+  },
+  "modes": [
+    "off",
+    "drr-max",
+    "drr-16k",
+    "drr-2mss",
+    "sparse-max",
+    "sparse-16k",
+    "sparse-2mss"
+  ],
+  "l0": {
+    "app_drive": "event-only",
+    "full_matrix": 21,
+    "seed": 2201,
+    "fairness": [
+      "mixed-1",
+      "mixed-16",
+      "mixed-64",
+      "bulk-16-1-1",
+      "bulk-64-1-1",
+      "peers-8-congested",
+      "peers-8-open",
+      "peers-64-congested",
+      "peers-64-open",
+      "peers-1024-congested",
+      "peers-1024-open"
+    ],
+    "fairness_parameters": {
+      "heavy_bytes_per_flow": 1048576,
+      "light_peers": 3,
+      "rr_rounds_per_light": 128,
+      "request_bytes": 64,
+      "response_bytes": 512,
+      "rr_pause_ms": 2,
+      "until_sec": 60,
+      "congested": "bounded local egress sink plus 256KiB default round budget",
+      "open": "unbounded sink; no synthetic Full"
+    },
+    "bulk_and_rr_start": "bulk at 0; RR at 10ms; peer-count arms each peer sends 64KiB"
+  },
+  "pareto_probe_cases": [
+    {
+      "name": "down_1_paced",
+      "args": [
+        "pump-down",
+        "--iterations",
+        "4",
+        "--flows",
+        "1",
+        "--payload",
+        "67108864"
+      ]
+    },
+    {
+      "name": "up_1_paced",
+      "args": [
+        "pump-up",
+        "--iterations",
+        "4",
+        "--flows",
+        "1",
+        "--payload",
+        "67108864"
+      ]
+    },
+    {
+      "name": "up_8_peers_paced",
+      "args": [
+        "pump-up",
+        "--iterations",
+        "4",
+        "--flows",
+        "8",
+        "--peers",
+        "8",
+        "--payload",
+        "8388608"
+      ]
+    },
+    {
+      "name": "bidi_8_one_peer",
+      "args": [
+        "pump-bidi",
+        "--iterations",
+        "4",
+        "--flows",
+        "8",
+        "--peers",
+        "1",
+        "--payload",
+        "4194304"
+      ]
+    },
+    {
+      "name": "up_64_peers_paced",
+      "args": [
+        "pump-up",
+        "--iterations",
+        "2",
+        "--flows",
+        "64",
+        "--peers",
+        "64",
+        "--payload",
+        "2097152"
+      ]
+    },
+    {
+      "name": "up_8_owned_control",
+      "args": [
+        "pump-up",
+        "--iterations",
+        "4",
+        "--flows",
+        "8",
+        "--peers",
+        "8",
+        "--payload",
+        "8388608",
+        "--owned-server"
+      ]
+    },
+    {
+      "name": "down_8_unpaced",
+      "args": [
+        "pump-down",
+        "--iterations",
+        "4",
+        "--flows",
+        "8",
+        "--peers",
+        "8",
+        "--payload",
+        "8388608",
+        "--no-pacing"
+      ]
+    },
+    {
+      "name": "short_64x4096",
+      "args": [
+        "pump-bidi",
+        "--iterations",
+        "50",
+        "--flows",
+        "64",
+        "--peers",
+        "64",
+        "--payload",
+        "4096",
+        "--no-pacing"
+      ]
+    }
+  ],
+  "comparisons": [
+    "step0 vs step1 (separate immutable binaries; step1 has no production toggle)",
+    "off vs each enabled mode (same binary)",
+    "off vs off A/A (same binary)"
+  ],
+  "scope": "L0 virtual protocol/link; CPU includes simulator/validation; L1 TUN and L2 WG are not run and required for deployment"
+}

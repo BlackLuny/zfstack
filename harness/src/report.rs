@@ -28,6 +28,11 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
             waits.extend(g.write_wait_ns.iter().copied());
             recv += g.client_recv;
         }
+        let mut censored_lats = lats.clone();
+        for g in &group {
+            censored_lats.extend(std::iter::repeat_n(g.censored_latency_lower_bound_ns, g.censored_rr_rounds as usize));
+        }
+        censored_lats.sort_unstable();
         lats.sort_unstable();
         waits.sort_unstable();
         users.push(json!({
@@ -38,6 +43,11 @@ pub fn scenario_value(name: &str, report: &Report, notes: &[String]) -> Value {
             "flows": group.len(),
             "client_recv_bytes": recv,
             "finished_at_us": group.iter().filter_map(|g| g.finished_at_ns).max().map(|n| n / 1000),
+            "planned_rr_rounds": group.iter().map(|g| g.planned_rr_rounds as u64).sum::<u64>(),
+            "censored_rr_rounds": group.iter().map(|g| g.censored_rr_rounds as u64).sum::<u64>(),
+            "sim_latency_including_censored_lower_bounds": latency_json(&censored_lats),
+            "worst_flow_p99_us": group.iter().filter_map(|g| { let mut l=g.latencies_ns.clone(); l.extend(std::iter::repeat_n(g.censored_latency_lower_bound_ns,g.censored_rr_rounds as usize)); l.sort_unstable(); pct(&l,99.0).map(|n|n/1000) }).max(),
+            "completed_mean_latency_ns": (!lats.is_empty()).then(|| lats.iter().map(|&x| x as f64).sum::<f64>() / lats.len() as f64),
             "sim_latency": latency_json(&lats),
             "write_wait": latency_json(&waits),
         }));
@@ -147,6 +157,9 @@ fn flow_json(f: &FlowReport) -> Value {
         "corrupt": f.corrupt,
         "reset": f.reset,
         "finished_at_us": f.finished_at_ns.map(|n| n / 1000),
+        "planned_rr_rounds": f.planned_rr_rounds,
+        "censored_rr_rounds": f.censored_rr_rounds,
+        "censored_latency_lower_bound_ns": f.censored_latency_lower_bound_ns,
         "sim_latency_us": f.latencies_ns.iter().map(|n| n / 1000).collect::<Vec<_>>(),
         "write_wait_us": f.write_wait_ns.iter().map(|n| n / 1000).collect::<Vec<_>>(),
         "saw_zero_wnd": f.saw_zero_wnd,

@@ -151,6 +151,10 @@ pub struct Config {
     /// advertises a zero window. `None` keeps the default server profile.
     pub client_max_rcv: Option<u32>,
     pub tx_cache_trim: Option<zfstack::TxCacheTrimPolicy>,
+    /// Experimental server config; clients retain their reference profile.
+    pub stack_override: Option<StackConfig>,
+    /// Per-shard local sink capacity, replenished every virtual millisecond.
+    pub local_egress_burst: Option<usize>,
 }
 
 impl Config {
@@ -176,6 +180,8 @@ impl Config {
             step_cap: 2_000_000,
             client_max_rcv: None,
             tx_cache_trim: None,
+            stack_override: None,
+            local_egress_burst: None,
         }
     }
 }
@@ -271,6 +277,23 @@ struct Endpoint {
     suppressed_writable: u64,
     suppress_writable: Option<u64>,
     trace: Trace,
+    local_egress: Option<LocalEgress>,
+    service: BTreeMap<PeerId, ServiceObservation>,
+}
+
+#[derive(Default)]
+struct ServiceObservation {
+    pending: Option<Instant>,
+    max_gap_ns: u64,
+    packets: u64,
+    bytes: u64,
+}
+
+struct LocalEgress {
+    burst: usize,
+    left: usize,
+    refill: Instant,
+    blocked: BTreeSet<IfaceId>,
 }
 
 struct Port {
@@ -363,6 +386,9 @@ pub struct FlowReport {
     pub corrupt: bool,
     pub reset: bool,
     pub finished_at_ns: Option<u64>,
+    pub planned_rr_rounds: u32,
+    pub censored_rr_rounds: u32,
+    pub censored_latency_lower_bound_ns: u64,
     pub latencies_ns: Vec<u64>,
     pub write_wait_ns: Vec<u64>,
     pub saw_zero_wnd: bool,
@@ -808,7 +834,7 @@ impl World {
             Topology::ShardPerPort => n,
         };
         let global = GlobalBudget::new(cfg.limits.global);
-        let stack = server_stack(cfg.cc, cfg.time_wait);
+        let stack = cfg.stack_override.clone().unwrap_or_else(|| server_stack(cfg.cc, cfg.time_wait));
         let mut servers = Vec::with_capacity(nservers);
         for i in 0..nservers {
             let mut shard = Shard::with_budget_seeded(stack.clone(), std::sync::Arc::clone(&global), cfg.seed ^ (0xA5A5_0000_0000_0000 | i as u64));
@@ -820,6 +846,8 @@ impl World {
                 errors.push(format!("shard {i} progress reserve is inactive; raise port/peer limits above 2·H4"));
             }
             let mut endpoint = Endpoint::new(shard);
+            endpoint.local_egress =
+                cfg.local_egress_burst.map(|burst| LocalEgress { burst, left: burst, refill: origin + Duration::from_millis(1), blocked: BTreeSet::new() });
             endpoint.suppress_writable = cfg.suppress_writable;
             servers.push(endpoint);
         }
@@ -1002,6 +1030,11 @@ impl World {
             }
         };
         for s in &self.servers {
+            if let Some(local) = &s.local_egress {
+                if !local.blocked.is_empty() {
+                    take(Some(local.refill));
+                }
+            }
             if !s.ready.is_empty() {
                 take(Some(self.quantize(self.now.max(self.execution_resume))));
             }
@@ -1507,6 +1540,18 @@ impl World {
                 corrupt,
                 reset,
                 finished_at_ns: finished,
+                planned_rr_rounds: match flow.kind {
+                    Kind::Rr { rounds, .. } => rounds,
+                    _ => 0,
+                },
+                censored_rr_rounds: match flow.kind {
+                    Kind::Rr { rounds, .. } => rounds.saturating_sub(client.map_or(0, |c| c.latencies_ns.len() as u32)),
+                    _ => 0,
+                },
+                censored_latency_lower_bound_ns: client
+                    .and_then(|c| c.rr.as_ref())
+                    .and_then(|r| r.ready)
+                    .map_or(0, |t| self.now.saturating_since(t).as_nanos() as u64),
                 latencies_ns: client.map(|c| c.latencies_ns.clone()).unwrap_or_default(),
                 write_wait_ns: client.map(|c| c.write_wait_ns.clone()).unwrap_or_default(),
                 saw_zero_wnd: server.is_some_and(|s| s.saw_zero_wnd),
@@ -1547,7 +1592,19 @@ impl World {
         let sink_full_before = self.sink_full_before;
         let mut peer_peaks: Vec<_> = self.peer_peaks.into_iter().map(|((shard, peer), bytes)| (shard, peer, bytes)).collect();
         peer_peaks.sort_unstable();
+        let finish_now = self.now;
         let scheduler = json!({
+            "serve_calls": self.servers.iter().map(|e| e.shard.stats().serve_calls).sum::<u64>(),
+            "serve_zero": self.servers.iter().map(|e| e.shard.stats().serve_zero).sum::<u64>(),
+            "runs": self.servers.iter().map(|e| e.shard.stats().runs).sum::<u64>(),
+            "sink_full": self.servers.iter().map(|e| e.shard.stats().sink_full).sum::<u64>(),
+            "round_budget_exhausted": self.servers.iter().map(|e| e.shard.stats().round_budget_exhausted).sum::<u64>(),
+            "share_retry_visits": self.servers.iter().map(|e| e.shard.stats().share_retry_visits).sum::<u64>(),
+            "share_retry_blocked": self.servers.iter().map(|e| e.shard.stats().share_retry_blocked).sum::<u64>(),
+            "share_wakes": self.servers.iter().map(|e| e.shard.stats().share_wakes).sum::<u64>(),
+            "share_wake_noop": self.servers.iter().map(|e| e.shard.stats().share_wake_noop).sum::<u64>(),
+            "share_wake_pending": self.servers.iter().map(|e| e.shard.share_wake_pending()).sum::<usize>(),
+            "peer_service": self.servers.iter().enumerate().flat_map(|(shard, e)| e.service.iter().map(move |(peer, s)| json!({"shard":shard,"peer":peer.0,"data_packets":s.packets,"wire_data_bytes":s.bytes,"max_pending_gap_ns":s.max_gap_ns.max(s.pending.map_or(0, |t| finish_now.saturating_since(t).as_nanos() as u64))}))).collect::<Vec<_>>(),
             "short_writes": self.servers.iter().flat_map(|e| e.apps.values()).map(|a| a.short_writes).sum::<u64>(),
             "app_calls": self.servers.iter().chain(self.clients.iter()).map(|e| e.app_calls).sum::<u64>(),
             "suppressed_writable": self.servers.iter().map(|e| e.suppressed_writable).sum::<u64>(),
@@ -1611,11 +1668,25 @@ fn port_blocked(full: &Option<FullFault>, port: usize, now: Instant) -> bool {
 }
 
 fn emit_server(si: usize, servers: &mut [Endpoint], links: &mut Links, now: Instant, full: &Option<FullFault>, script_full: &BTreeSet<usize>) -> bool {
-    let map = servers[si].iface_port.clone();
-    let outcome = servers[si].shard.run(now, &mut |iface: IfaceId, pkt: &OutPacket<'_>| {
+    let ep = &mut servers[si];
+    if let Some(local) = &mut ep.local_egress {
+        if now >= local.refill {
+            local.left = local.burst;
+            local.refill = now + Duration::from_millis(1);
+            for iface in std::mem::take(&mut local.blocked) {
+                ep.shard.egress_released(iface);
+            }
+        }
+    }
+    // Observe waiting only while the core actually has unsent payload. This
+    // includes transport/pacing waits, and excludes application think time.
+    let pending: BTreeSet<_> = ep.apps.keys().filter_map(|id| ep.shard.info(*id)).filter(|i| i.tx_unsent > 0).map(|i| i.peer).collect();
+    for peer in &pending {
+        ep.service.entry(*peer).or_default().pending.get_or_insert(now);
+    }
+    let map = ep.iface_port.clone();
+    let outcome = ep.shard.run(now, &mut |iface: IfaceId, pkt: &OutPacket<'_>| {
         let Some(port) = map.get(iface.0 as usize).copied().flatten() else {
-            // Iface already removed; dropping the straggler is better than
-            // returning Full and spinning the ready set.
             return SendResult::Accepted;
         };
         if script_full.contains(&port) {
@@ -1624,9 +1695,31 @@ fn emit_server(si: usize, servers: &mut [Endpoint], links: &mut Links, now: Inst
         if port_blocked(full, port, now) || script_full.contains(&port) {
             return SendResult::Full;
         }
+        if let Some(local) = &mut ep.local_egress {
+            if pkt.len() > local.left {
+                local.blocked.insert(iface);
+                return SendResult::Full;
+            }
+            local.left -= pkt.len();
+        }
+        if pkt.payload.iter().any(|p| !p.is_empty()) {
+            let s = ep.service.entry(pkt.peer).or_default();
+            if let Some(t) = s.pending {
+                s.max_gap_ns = s.max_gap_ns.max(now.saturating_since(t).as_nanos() as u64);
+            }
+            s.pending = Some(now);
+            s.packets += 1;
+            s.bytes += pkt.len() as u64;
+        }
         links.enqueue_down(port, now, pkt.peer, Bytes::from(pkt.to_vec()));
         SendResult::Accepted
     });
+    let pending: BTreeSet<_> = ep.apps.keys().filter_map(|id| ep.shard.info(*id)).filter(|i| i.tx_unsent > 0).map(|i| i.peer).collect();
+    for (peer, s) in &mut ep.service {
+        if !pending.contains(peer) {
+            s.pending = None;
+        }
+    }
     outcome.packets > 0 || outcome.more
 }
 
@@ -1667,6 +1760,8 @@ impl Endpoint {
             suppressed_writable: 0,
             suppress_writable: None,
             trace: Trace::default(),
+            local_egress: None,
+            service: BTreeMap::new(),
             unexpected: 0,
             iface_port: Vec::new(),
         }

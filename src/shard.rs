@@ -173,6 +173,17 @@ pub struct ShardStats {
     pub pacing_credit_dropped: u64,
     pub mtu_changes: u64,
     pub round_budget_exhausted: u64,
+    /// Connection service attempts, including pacing / resource deferrals.
+    pub serve_calls: u64,
+    /// Zero-byte service without Full, pacing or send-record budget blocking.
+    pub serve_zero: u64,
+    /// Share-epoch retry visits and visits that still could not notify a writer.
+    pub share_retry_visits: u64,
+    pub share_retry_blocked: u64,
+    /// Actual Writable notifications from share retries, and notifications
+    /// followed by a zero-byte write, another park, or teardown before a write.
+    pub share_wakes: u64,
+    pub share_wake_noop: u64,
     /// Rounds that dropped idle TX blocks on request, and the bytes released.
     pub cache_reclaims: u64,
     pub cache_reclaimed_bytes: u64,
@@ -297,6 +308,7 @@ struct Iface {
 #[derive(Default)]
 struct Sched {
     in_ready: bool,
+    share_wake_pending: bool,
     /// Counted in `half_open` / the TIME_WAIT table (reconciled in `sync_counts`).
     half_open: bool,
     time_wait: bool,
@@ -862,6 +874,7 @@ impl Shard {
             return;
         }
         if slot.conn.as_ref().is_some_and(|c| c.share_write_blocked(&self.cfg, &self.budget)) {
+            self.stats.share_wake_noop += u64::from(std::mem::take(&mut slot.sched.share_wake_pending));
             self.share_blocked.insert(key);
             self.share_wait_epoch.get_or_insert_with(|| self.budget.global().release_epoch());
             self.share_seen_epoch.get_or_insert_with(|| self.budget.share_epoch());
@@ -871,7 +884,13 @@ impl Shard {
                 // another sender released its share but before run's retry.
                 // Do not discard its pending notification on that path.
                 if let Some(conn) = slot.conn.as_mut() {
+                    let before = self.events.len();
                     conn.notify_writable(&mut self.events, &self.cfg, &self.budget);
+                    if self.events.len() != before {
+                        self.stats.share_wakes += 1;
+                        self.stats.share_wake_noop += u64::from(slot.sched.share_wake_pending);
+                        slot.sched.share_wake_pending = true;
+                    }
                 }
             }
             if self.share_blocked.is_empty() {
@@ -899,10 +918,20 @@ impl Shard {
         self.share_blocked.retain(|&(idx, gen)| {
             let Some(slot) = self.slots.get_mut(idx as usize).filter(|s| s.gen == gen) else { return false };
             let Some(conn) = slot.conn.as_mut() else { return false };
+            self.stats.share_retry_visits += 1;
             if conn.share_write_blocked(&self.cfg, &self.budget) {
+                self.stats.share_retry_blocked += 1;
                 return true;
             }
+            let before = self.events.len();
             conn.notify_writable(&mut self.events, &self.cfg, &self.budget);
+            if self.events.len() != before {
+                self.stats.share_wakes += 1;
+                self.stats.share_wake_noop += u64::from(slot.sched.share_wake_pending);
+                slot.sched.share_wake_pending = true;
+            } else {
+                self.stats.share_retry_blocked += 1;
+            }
             false
         });
         if self.share_blocked.is_empty() {
@@ -945,6 +974,7 @@ impl Shard {
 
     fn compact_time_wait(&mut self, idx: u32) {
         let slot = &mut self.slots[idx as usize];
+        self.stats.share_wake_noop += u64::from(std::mem::take(&mut slot.sched.share_wake_pending));
         let mut conn = slot.conn.take().expect("TIME_WAIT connection");
         let tomb = conn.time_wait_snapshot();
         let expires = tomb.expires;
@@ -1014,6 +1044,7 @@ impl Shard {
         if conn.is_none() && tomb.is_none() {
             return;
         }
+        self.stats.share_wake_noop += u64::from(std::mem::take(&mut slot.sched.share_wake_pending));
         if let Some(mut conn) = conn {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.destroy(&mut ctx);
@@ -1946,6 +1977,17 @@ impl Shard {
 
     /// Serve one connection for up to one quantum. Returns (bytes sent, wants more).
     fn serve(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
+        self.stats.serve_calls += 1;
+        let result = self.serve_inner(idx, now, round_left, sinks, out);
+        let slot = &self.slots[idx as usize];
+        let full = slot.conn.as_ref().is_some_and(|c| self.ifaces[c.iface.0 as usize].as_ref().is_some_and(|i| i.full));
+        if result.0 == 0 && round_left > 0 && !full && !self.pacing.contains(idx) && !self.budget_blocked.contains(&(idx, slot.gen)) {
+            self.stats.serve_zero += 1;
+        }
+        result
+    }
+
+    fn serve_inner(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
         // Packet window fields must use the same policy as calc_window.
         // Local TX/cache occupancy only gates RX growth, not RX progress.
         let level = self.budget.level();
@@ -2106,7 +2148,9 @@ impl Shard {
     }
 
     pub fn write(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
+        let pending = self.take_share_wake(id);
         let result = self.write_inner(id, src);
+        self.stats.share_wake_noop += u64::from(pending && !matches!(result, WriteResult::Written(n) if n > 0));
         if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
             self.sync_share_waiter(id.idx() as u32, true);
         }
@@ -2121,7 +2165,9 @@ impl Shard {
     /// nothing and is returned as is. `fill` is not called when the
     /// connection cannot take any bytes.
     pub fn write_with<E>(&mut self, id: ConnId, max: usize, fill: impl FnOnce([&mut [u8]; 2]) -> Result<usize, E>) -> Result<WriteResult, E> {
+        let pending = self.take_share_wake(id);
         let result = self.with_conn(id, |c, ctx| c.write_with(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed));
+        self.stats.share_wake_noop += u64::from(pending && !matches!(result, Ok(WriteResult::Written(n)) if n > 0));
         if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
             self.sync_share_waiter(id.idx() as u32, true);
         }
@@ -2142,11 +2188,22 @@ impl Shard {
         max: usize,
         fill: impl FnOnce([&mut [std::mem::MaybeUninit<u8>]; 2]) -> Result<usize, E>,
     ) -> Result<WriteResult, E> {
+        let pending = self.take_share_wake(id);
         let result = self.with_conn(id, |c, ctx| c.write_with_uninit(max, ctx, fill)).unwrap_or(Ok(WriteResult::Closed));
+        self.stats.share_wake_noop += u64::from(pending && !matches!(result, Ok(WriteResult::Written(n)) if n > 0));
         if self.slots.get(id.idx()).is_some_and(|s| s.gen == id.gen() && s.conn.is_some()) {
             self.sync_share_waiter(id.idx() as u32, true);
         }
         result
+    }
+
+    fn take_share_wake(&mut self, id: ConnId) -> bool {
+        self.slots.get_mut(id.idx()).filter(|s| s.gen == id.gen()).is_some_and(|s| std::mem::take(&mut s.sched.share_wake_pending))
+    }
+
+    /// Share notifications not yet resolved by a write, park, or teardown.
+    pub fn share_wake_pending(&self) -> usize {
+        self.slots.iter().filter(|s| s.sched.share_wake_pending).count()
     }
 
     fn write_inner(&mut self, id: ConnId, src: &[u8]) -> WriteResult {
@@ -4271,5 +4328,61 @@ mod drr_reuse_tests {
         drr.push(peer(1), (3, 0));
         assert_eq!(drr.ready_peers.len(), 1);
         assert_eq!(drr.peer_q[&peer(1)].len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod scheduling_counter_tests {
+    use super::*;
+    use crate::sim::{LinkParams, Sim};
+
+    #[test]
+    fn serve_zero_excludes_full_and_pacing() {
+        let cfg = StackConfig { cc: crate::CcAlgo::Brutal(505), ..Default::default() };
+        let link = LinkParams { rate_bps: 0, delay: Duration::from_millis(1), ..Default::default() };
+        let mut sim = Sim::new(2201, cfg, StackConfig::default(), link.clone(), link);
+        sim.connect(45001, Default::default());
+        sim.run_until(sim.now + Duration::from_millis(100));
+        let id = sim.a.accepted[0];
+        let sh = &mut sim.a.shard;
+        let mut out = RunOutcome::default();
+        let before = sh.stats.serve_zero;
+        sh.serve(id.idx() as u32, sim.now, 65536, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted, &mut out);
+        assert_eq!(sh.stats.serve_zero, before + 1);
+        assert_eq!(sh.write(id, &[1; 512]), WriteResult::Written(512));
+        sh.serve(id.idx() as u32, sim.now, 65536, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Full, &mut out);
+        assert_eq!(sh.stats.serve_zero, before + 1);
+        sh.egress_released(IfaceId(0));
+        sh.slots[id.idx()].conn.as_mut().unwrap().next_send_time = sim.now + Duration::from_secs(20);
+        sh.serve(id.idx() as u32, sim.now, 65536, &mut |_: IfaceId, _: &OutPacket<'_>| SendResult::Accepted, &mut out);
+        assert!(sh.pacing.contains(id.idx() as u32));
+        assert_eq!(sh.stats.serve_zero, before + 1);
+    }
+
+    #[test]
+    fn share_wake_counts_actual_notifications_and_zero_byte_retry() {
+        let cfg = StackConfig { min_prefetch: 1 << 20, prefetch_max: 1 << 20, ..Default::default() };
+        let mut sim = Sim::new(2202, cfg, StackConfig::default(), LinkParams::default(), LinkParams::default());
+        sim.a.shard.set_budget_limits(819200, 819200, 128);
+        sim.connect(45001, Default::default());
+        sim.connect(45002, Default::default());
+        sim.run_until(sim.now + Duration::from_millis(100));
+        let (x, y) = (sim.a.accepted[0], sim.a.accepted[1]);
+        let sh = &mut sim.a.shard;
+        assert_eq!(sh.write(x, &[1; 16384]), WriteResult::Written(16384));
+        assert_eq!(sh.write(y, &[1; 16384]), WriteResult::Written(16384));
+        let n = sh.send_space(x);
+        assert_eq!(sh.write(x, &vec![1; n]), WriteResult::Written(n));
+        assert_eq!(sh.write(x, &[1]), WriteResult::QuotaBlocked);
+        sh.abort(y);
+        sh.retry_share_writers();
+        assert_eq!(sh.stats.share_wakes, 1);
+        assert_eq!(sh.share_wake_pending(), 1);
+        let _ = sh.write(x, &[]); // No payload was accepted, regardless of the quota result.
+        assert_eq!(sh.stats.share_wake_noop, 1);
+        assert_eq!(sh.share_wake_pending(), 0);
+        sh.retry_share_writers();
+        assert_eq!(sh.stats.share_wakes, 1);
+        assert_eq!(sh.stats.share_wake_noop, 1);
     }
 }

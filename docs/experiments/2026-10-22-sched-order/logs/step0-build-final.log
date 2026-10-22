@@ -1,0 +1,62 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling zfstack v0.0.1 (/workspace/zfstack)
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+   Compiling zfharness v0.1.0 (/workspace/zfstack/harness)
+error[E0618]: expected function, found `zfstack::Instant`
+   --> harness/src/world.rs:847:94
+    |
+ 36 | pub fn origin() -> Instant {
+    | -------------------------- this function of the same name is available here, but it's shadowed by the local binding
+...
+827 |         let origin = origin();
+    |             ------ `origin` has type `zfstack::Instant`
+...
+847 |                 cfg.local_egress_burst.map(|burst| LocalEgress { burst, left: burst, refill: origin() + Duration::from_millis(1), b...
+    |                                                                                              ^^^^^^--
+    |                                                                                              |
+    |                                                                                              call expression requires function
+
+For more information about this error, try `rustc --explain E0618`.
+error: could not compile `zfharness` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: `zfstack` (lib) generated 3 warnings

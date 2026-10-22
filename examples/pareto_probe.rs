@@ -196,11 +196,29 @@ struct ResultRow {
     driver_rounds: u64,
     connections_checked: u64,
     heap_capacity_entries: usize,
+    serve_calls: u64,
+    serve_zero: u64,
+    runs: u64,
+    sink_full: u64,
+    round_budget_exhausted: u64,
+    share_retry_visits: u64,
+    share_retry_blocked: u64,
+    share_wakes: u64,
+    share_wake_noop: u64,
 }
 
 impl ResultRow {
     #[cfg(feature = "test-peer")]
     fn add(&mut self, x: Self) {
+        self.serve_calls += x.serve_calls;
+        self.serve_zero += x.serve_zero;
+        self.runs += x.runs;
+        self.sink_full += x.sink_full;
+        self.round_budget_exhausted += x.round_budget_exhausted;
+        self.share_retry_visits += x.share_retry_visits;
+        self.share_retry_blocked += x.share_retry_blocked;
+        self.share_wakes += x.share_wakes;
+        self.share_wake_noop += x.share_wake_noop;
         self.operations += x.operations;
         self.effective_bytes += x.effective_bytes;
         self.allocation_requested_bytes += x.allocation_requested_bytes;
@@ -774,6 +792,15 @@ mod packet_pump {
         if a.shard.stats().rx_packets != ba.packets || b.shard.stats().rx_packets != ab.packets {
             return Err("wire packet delivery accounting mismatch".into());
         }
+        result.serve_calls = a.shard.stats().serve_calls + b.shard.stats().serve_calls;
+        result.serve_zero = a.shard.stats().serve_zero + b.shard.stats().serve_zero;
+        result.runs = a.shard.stats().runs + b.shard.stats().runs;
+        result.sink_full = a.shard.stats().sink_full + b.shard.stats().sink_full;
+        result.round_budget_exhausted = a.shard.stats().round_budget_exhausted + b.shard.stats().round_budget_exhausted;
+        result.share_retry_visits = a.shard.stats().share_retry_visits + b.shard.stats().share_retry_visits;
+        result.share_retry_blocked = a.shard.stats().share_retry_blocked + b.shard.stats().share_retry_blocked;
+        result.share_wakes = a.shard.stats().share_wakes + b.shard.stats().share_wakes;
+        result.share_wake_noop = a.shard.stats().share_wake_noop + b.shard.stats().share_wake_noop;
         result.wire_packets = ab.packets + ba.packets;
         result.wire_bytes = ab.bytes + ba.bytes;
         // Sum of each directional maximum is an upper bound for simultaneous
@@ -894,6 +921,15 @@ fn run() -> ProbeResult<()> {
         ("virtual_work_ns", if is_pump { result.virtual_work_ns.to_string() } else { "null".into() }),
         ("virtual_clock_used_for_rate", "false".into()),
         ("real_network_io", "false".into()),
+        ("serve_calls", result.serve_calls.to_string()),
+        ("serve_zero", result.serve_zero.to_string()),
+        ("runs", result.runs.to_string()),
+        ("sink_full", result.sink_full.to_string()),
+        ("round_budget_exhausted", result.round_budget_exhausted.to_string()),
+        ("share_retry_visits", result.share_retry_visits.to_string()),
+        ("share_retry_blocked", result.share_retry_blocked.to_string()),
+        ("share_wakes", result.share_wakes.to_string()),
+        ("share_wake_noop", result.share_wake_noop.to_string()),
         ("wire_packets", result.wire_packets.to_string()),
         ("wire_bytes", result.wire_bytes.to_string()),
         ("driver_rounds_including_cleanup", result.driver_rounds.to_string()),
