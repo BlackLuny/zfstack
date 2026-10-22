@@ -186,3 +186,18 @@ fn layout_has_no_adaptive_per_peer_or_per_connection_state() {
         std::mem::size_of::<ShardStats>()
     );
 }
+
+#[test]
+fn hysteresis_keeps_small_after_competitors_leave_while_pressure_continues() {
+    let cfg = StackConfig::default();
+    let start = Instant::from_millis(100);
+    let mut state = AdaptiveQuantum { pressure_at: Some(start), ..Default::default() };
+    assert_eq!(state.quantum(start, 2, &cfg), 16384);
+    // K gates entry only. Once entered, a remaining bulk peer can keep the
+    // iface under pressure; hysteresis does not promise a return to max Q.
+    state.pressure_at = Some(start + Duration::from_millis(20));
+    assert_eq!(state.quantum(start + Duration::from_millis(20), 1, &cfg), 16384);
+    assert_eq!(state.entries, 1);
+    assert_eq!(state.quantum(start + Duration::from_millis(28) + Duration::from_nanos(1), 1, &cfg), 65536);
+    assert_eq!(state.exits, 1);
+}

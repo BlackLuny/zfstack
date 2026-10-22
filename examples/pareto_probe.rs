@@ -1022,7 +1022,8 @@ mod tests {
             assert_eq!(global.reserved(), 0);
 
             for case in ["tx-alloc", "tx-alloc-pooled", "tx-alloc-migrate"] {
-                let args = Args { case: case.into(), iterations: 4, flows: 1, peers: 1, payload, borrowed_server: true, pacing: true };
+                let args =
+                    Args { case: case.into(), iterations: 4, flows: 1, peers: 1, payload, borrowed_server: true, pacing: true, sched_mode: "off".into() };
                 let row = tx_alloc_probe(&args).expect("four-iteration functional probe including peer migration");
                 assert_eq!(row.warmup_reserved_bytes, Some(observed), "payload={payload}, case={case}");
                 assert_eq!(row.sampled_peak_reserved_bytes, 0, "work peak was not sampled");
