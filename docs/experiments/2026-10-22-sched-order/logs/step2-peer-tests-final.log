@@ -1,0 +1,96 @@
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+   Compiling zfstack v0.0.1 (/workspace/zfstack)
+warning: `zfstack` (lib) generated 3 warnings
+warning: unused doc comment
+    --> src/tokio_adapter.rs:3978:9
+     |
+3978 | /         /// Sample index at which each connection was opened (the late
+3979 | |         /// connection's earlier samples are placeholders, not stalls).
+     | |_______________________________________________________________________^
+3980 |           let mut conn_since: Vec<usize> = vec![0; total as usize];
+     |           --------------------------------------------------------- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `zfstack` (lib test) generated 4 warnings (3 duplicates)
+    Finished `release` profile [optimized] target(s) in 28.68s
+     Running unittests src/lib.rs (target/release/deps/zfstack-859c02e157aa17ba)
+
+running 5 tests
+test shard::peer_deficit_tests::one_peer_visit_serves_multiple_connections_and_resets_empty_deficit ... ok
+layout: VecDeque=32 PeerReady=48 Drr=104 Iface=120 Sched=4 Slot=192 Conn=1696 StackConfig=312
+test shard::peer_deficit_tests::structure_sizes_are_recorded_for_memory_audit ... ok
+test shard::peer_deficit_tests::round_budget_resumes_unfinished_peer_without_new_credit ... ok
+test shard::peer_deficit_tests::full_freezes_peer_connection_and_remaining_credit_exactly ... ok
+peer Q=65536: worst intervening wire bytes=133480, packetized bound=133910, ideal bound=131072
+peer Q=16384: worst intervening wire bytes=34080, packetized bound=35606, ideal bound=32768
+peer Q=2736: worst intervening wire bytes=5680, packetized bound=8310, ideal bound=5472
+test shard::peer_deficit_tests::real_peer_drr_bounds_intervening_wire_bytes_with_packet_rounding ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 330 filtered out; finished in 0.01s
+
+     Running tests/issue37_throughput.rs (target/release/deps/issue37_throughput-84691b05d111ba0e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/packet_pool_release.rs (target/release/deps/packet_pool_release-be07114acf0c1cc9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/rx_capacity_lifecycle.rs (target/release/deps/rx_capacity_lifecycle-98cc6526b4a322a3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/tx_default_trace.rs (target/release/deps/tx_default_trace-a956275c50aecd72)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

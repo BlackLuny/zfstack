@@ -10,7 +10,7 @@ fn main() {
     let args: Vec<_> = std::env::args().collect();
     let name = args.get(1).expect("case name");
     let mode = args.get(2).map(String::as_str).unwrap_or("off");
-    assert_eq!(mode, "off", "step0 has only the baseline scheduler");
+
     let mut cfg = Config::skeleton(1, Topology::SharedShard);
     cfg.app_drive = zfharness::schedule::AppDriveMode::EventOnly;
     cfg.seed = 2201;
@@ -47,6 +47,9 @@ fn main() {
     } else {
         panic!("unknown case {name}");
     }
+    let mut stack = zfstack::StackConfig::default();
+    zfharness::sched_mode::apply(&mut stack, mode).unwrap();
+    cfg.stack_override = Some(stack);
     let report = execute(cfg);
     let mut v = zfharness::report::scenario_value(name, &report, &[]);
     v["sched_mode"] = serde_json::json!(mode);

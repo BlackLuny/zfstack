@@ -21,6 +21,7 @@ pub struct Overrides {
     pub full: bool,
     pub tx_cache_trim: bool,
     pub stack_override: Option<zfstack::StackConfig>,
+    pub sched_mode: String,
 }
 
 pub fn scenario_names() -> &'static [&'static str] {
@@ -223,8 +224,13 @@ pub(crate) fn build(name: &str, o: &Overrides) -> Result<Config, String> {
 }
 
 fn apply(o: &Overrides, cfg: &mut Config) {
-    cfg.app_drive = o.app_drive;
     cfg.stack_override = o.stack_override.clone();
+    if !o.sched_mode.is_empty() && o.sched_mode != "off" {
+        let mut stack = crate::world::server_stack(cfg.cc, cfg.time_wait);
+        crate::sched_mode::apply(&mut stack, &o.sched_mode).expect("valid scheduler input");
+        cfg.stack_override = Some(stack);
+    }
+    cfg.app_drive = o.app_drive;
     if o.tx_cache_trim {
         cfg.tx_cache_trim = Some(zfstack::TxCacheTrimPolicy {
             check_interval: Duration::from_millis(10),

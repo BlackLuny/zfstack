@@ -44,6 +44,11 @@ pub struct StackConfig {
     pub round_bytes_cap: usize,
     /// Upper bound of the DRR quantum; actual is clamp(rate × 1 ms, 2 MSS, this).
     pub max_quantum: usize,
+    /// Experimental byte-deficit scheduling across peers (default off).
+    pub peer_deficit_drr: bool,
+    /// Fixed peer byte quantum; zero selects max_quantum. The effective value
+    /// fits one iface MTU / TSO packet, independently of connection rates.
+    pub peer_drr_quantum: usize,
     pub keepalive_idle: Duration,
     pub keepalive_interval: Duration,
     pub keepalive_probes: u32,
@@ -86,6 +91,8 @@ impl Default for StackConfig {
             pacing_credit_max: Duration::from_millis(10),
             round_bytes_cap: 256 * 1024,
             max_quantum: 64 * 1024,
+            peer_deficit_drr: false,
+            peer_drr_quantum: 0,
             keepalive_idle: Duration::from_secs(25),
             keepalive_interval: Duration::from_secs(25),
             keepalive_probes: 3,

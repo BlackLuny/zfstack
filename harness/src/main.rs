@@ -42,6 +42,8 @@ enum Cmd {
         /// Exercise opt-in server TX trimming (10/20/60 ms, 2 large/1 small).
         #[arg(long)]
         tx_cache_trim: bool,
+        #[arg(long, default_value = "off", value_parser = ["off", "drr-max", "drr-16k", "drr-2mss"])]
+        sched_mode: String,
         #[arg(long, value_enum, default_value = "json")]
         format: Format,
         /// Also write the JSON document here.
@@ -124,7 +126,7 @@ fn main() {
             let reduced = zfharness::event::reduce(&read_script(&script), &assertion).unwrap_or_else(|e| invalid(&e));
             write_output(&output, &serde_json::to_string_pretty(&reduced).unwrap());
         }
-        Cmd::L0 { scenario, seed, app_drive, ports, lights, heavy_bytes, heavy_conns, until_ms, full, tx_cache_trim, format, json } => {
+        Cmd::L0 { scenario, seed, app_drive, ports, lights, heavy_bytes, heavy_conns, until_ms, full, tx_cache_trim, sched_mode, format, json } => {
             let over = Overrides {
                 app_drive: zfharness::schedule::AppDriveMode::parse(&app_drive).unwrap(),
                 seed: Some(seed),
@@ -135,6 +137,7 @@ fn main() {
                 until_ms,
                 full,
                 tx_cache_trim,
+                sched_mode: sched_mode.clone(),
             };
             let result = run_named(&scenario, &over);
             let mut value = match result {
@@ -148,6 +151,7 @@ fn main() {
                 obj.insert("tool".into(), serde_json::json!("zfharness"));
                 obj.insert("app_drive".into(), serde_json::json!(app_drive));
                 obj.insert("layer".into(), serde_json::json!(if app_drive == "event-only" { "L0-E" } else { "L0-C" }));
+                obj.insert("sched_mode".into(), serde_json::json!(sched_mode));
                 obj.insert("tx_cache_trim_enabled".into(), serde_json::json!(tx_cache_trim));
                 obj.insert("git_sha".into(), serde_json::json!(git_sha()));
                 obj.insert("l1".into(), serde_json::json!("zfbench --test isolate (root, TUN, no WireGuard)"));

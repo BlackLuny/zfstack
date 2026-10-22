@@ -13,3 +13,6 @@ pub mod world;
 
 pub use scenario::{run_named, scenario_names, Overrides};
 pub use world::execute;
+
+#[path = "../../examples/support/sched_mode.rs"]
+pub mod sched_mode;

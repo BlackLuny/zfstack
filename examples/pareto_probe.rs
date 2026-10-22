@@ -37,6 +37,9 @@ pub use zfstack::time;
 #[path = "../src/heap.rs"]
 mod heap;
 
+#[path = "support/sched_mode.rs"]
+mod sched_mode;
+
 type ProbeResult<T> = Result<T, String>;
 
 #[derive(Clone, Debug)]
@@ -46,6 +49,7 @@ struct Args {
     flows: usize,
     peers: usize,
     payload: usize,
+    sched_mode: String,
     borrowed_server: bool,
     pacing: bool,
 }
@@ -70,6 +74,7 @@ impl Args {
             } else {
                 1400
             },
+            sched_mode: "off".into(),
             borrowed_server: true,
             pacing: true,
         };
@@ -81,6 +86,7 @@ impl Args {
                 "--payload" => a.payload = usize::try_from(parse_number(argv.next(), &flag)?).map_err(|_| "payload overflow")?,
                 "--owned-server" => a.borrowed_server = false,
                 "--no-pacing" => a.pacing = false,
+                "--sched-mode" => a.sched_mode = argv.next().ok_or("missing scheduling mode")?,
                 _ => return Err(format!("unknown option {flag}")),
             }
         }
@@ -723,7 +729,8 @@ mod packet_pump {
         let client_send = if args.case == "pump-down" { 0 } else { payload };
         let ga = GlobalBudget::new(1 << 30);
         let gb = GlobalBudget::new(1 << 30);
-        let cfg = StackConfig { pacing: args.pacing, ..Default::default() };
+        let mut cfg = StackConfig { pacing: args.pacing, ..Default::default() };
+        sched_mode::apply(&mut cfg, &args.sched_mode)?;
         let time_wait = cfg.time_wait;
         let mut a = Side::new(cfg.clone(), ga.clone(), args.flows, server_send, client_send, args.borrowed_server);
         let mut b = Side::new(cfg, gb.clone(), args.flows, client_send, server_send, false);
@@ -897,6 +904,7 @@ fn run() -> ProbeResult<()> {
         ("peers", if args.case == "tx-alloc-migrate" { "2".into() } else { args.peers.to_string() }),
         ("payload_bytes", args.payload.to_string()),
         ("server_ingress", if is_pump { quote(if args.borrowed_server { "borrowed_verify" } else { "owned_verify" }) } else { "null".into() }),
+        ("sched_mode", quote(&args.sched_mode)),
         ("pacing", if is_pump { args.pacing.to_string() } else { "null".into() }),
         ("timing_scope", quote(scope)),
         ("cpu_clock", quote("CLOCK_PROCESS_CPUTIME_ID_user_plus_system")),

@@ -246,7 +246,7 @@ type Key = (IfaceId, SocketAddr, SocketAddr);
 #[derive(Default)]
 struct Drr {
     ready_peers: VecDeque<PeerId>,
-    peer_q: HashMap<PeerId, VecDeque<(u32, u32)>>,
+    peer_q: HashMap<PeerId, PeerReady>,
     /// Drained per-peer queues kept for reuse. A peer whose ready queue is
     /// fully served currently frees its `VecDeque` backing and the next ready
     /// burst re-allocates it. Retaining bounded, small backings avoids that
@@ -254,6 +254,27 @@ struct Drr {
     /// queues accumulate: only empty queues up to `DRR_SPARE_CAP` capacity are
     /// kept, and the pool itself is capped at `DRR_SPARE_Q` entries.
     spare_q: Vec<VecDeque<(u32, u32)>>,
+}
+
+/// Byte debt travels with the existing queue, without a second peer index.
+#[derive(Default)]
+struct PeerReady {
+    q: VecDeque<(u32, u32)>,
+    deficit: i64,
+    turn_active: bool,
+}
+
+// Preserve the existing queue operations and allocation-reuse invariants.
+impl std::ops::Deref for PeerReady {
+    type Target = VecDeque<(u32, u32)>;
+    fn deref(&self) -> &Self::Target {
+        &self.q
+    }
+}
+impl std::ops::DerefMut for PeerReady {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.q
+    }
 }
 
 /// Hard cap on retained empty per-peer DRR queues (one iface-local pool).
@@ -275,7 +296,7 @@ impl Drr {
                 let mut q = self.spare_q.pop().unwrap_or_default();
                 q.clear();
                 self.ready_peers.push_back(peer);
-                v.insert(q).push_back(e);
+                v.insert(PeerReady { q, ..Default::default() }).push_back(e);
             }
         }
     }
@@ -285,7 +306,7 @@ impl Drr {
         if let Some(q) = self.peer_q.remove(&peer) {
             debug_assert!(q.is_empty(), "only a drained DRR queue may be recycled");
             if self.spare_q.len() < DRR_SPARE_Q && q.capacity() <= DRR_SPARE_CAP {
-                self.spare_q.push(q);
+                self.spare_q.push(q.q);
             }
         }
     }
@@ -1909,6 +1930,15 @@ impl Shard {
                 if ifc.full {
                     break;
                 }
+                if self.cfg.peer_deficit_drr {
+                    if ifc.drr.is_empty() {
+                        break;
+                    }
+                    let sent = self.serve_peer_turn(ii, now, budget, sinks, &mut out);
+                    served_any |= sent > 0;
+                    budget = budget.saturating_sub(sent);
+                    continue;
+                }
                 let Some(peer) = ifc.drr.ready_peers.pop_front() else { break };
                 let Some(q) = ifc.drr.peer_q.get_mut(&peer) else { continue };
                 let Some((idx, gen)) = q.pop_front() else {
@@ -1963,6 +1993,71 @@ impl Shard {
         out
     }
 
+    /// A peer visit may span run budgets and Full. Only exhausted visits
+    /// earn another Q; all accepted wire bytes (including headers) pay debt.
+    fn serve_peer_turn(&mut self, ii: usize, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> usize {
+        let iface = self.ifaces[ii].as_mut().unwrap();
+        let Some(peer) = iface.drr.ready_peers.pop_front() else { return 0 };
+        let requested = if self.cfg.peer_drr_quantum == 0 { self.cfg.max_quantum } else { self.cfg.peer_drr_quantum };
+        let quantum =
+            requested.max(iface.cfg.mtu as usize).max(if iface.tso_max > 0 { iface.tso_max as usize + MAX_HEADER } else { 0 }).min(i64::MAX as usize) as i64;
+        let Some(q) = iface.drr.peer_q.get_mut(&peer) else { return 0 };
+        if !q.turn_active {
+            q.deficit = q.deficit.saturating_add(quantum);
+            q.turn_active = true;
+        }
+        let mut sent_total = 0usize;
+        loop {
+            let iface = self.ifaces[ii].as_mut().unwrap();
+            let q = iface.drr.peer_q.get_mut(&peer).unwrap();
+            if q.deficit <= 0 || sent_total >= round_left || iface.full {
+                break;
+            }
+            let peer_left = q.deficit as usize;
+            let Some((idx, gen)) = q.pop_front() else { break };
+            let valid = self.slots[idx as usize].gen == gen && self.slots[idx as usize].conn.is_some();
+            if !valid {
+                continue;
+            }
+            self.slots[idx as usize].sched.in_ready = false;
+            let (sent, again) = if self.slots[idx as usize].conn.as_ref().unwrap().wants_tx() {
+                // Connections rotate inside the peer. A connection can consume
+                // the remaining peer credit, or yield early to its siblings.
+                self.serve_with_limit(idx, now, round_left.saturating_sub(sent_total), Some(peer_left), sinks, out)
+            } else {
+                (0, false)
+            };
+            sent_total += sent;
+            let iface = self.ifaces[ii].as_mut().unwrap();
+            let q = iface.drr.peer_q.get_mut(&peer).unwrap();
+            q.deficit = q.deficit.saturating_sub(sent.min(i64::MAX as usize) as i64);
+            if again {
+                self.slots[idx as usize].sched.in_ready = true;
+                // A failed packet has not used either connection or peer turn.
+                if iface.full {
+                    q.push_front((idx, gen));
+                } else {
+                    q.push_back((idx, gen));
+                }
+            }
+            self.after_conn_change_no_sched(idx);
+        }
+        let iface = self.ifaces[ii].as_mut().unwrap();
+        let q = iface.drr.peer_q.get_mut(&peer).unwrap();
+        if q.is_empty() {
+            q.deficit = 0;
+            q.turn_active = false;
+            iface.drr.recycle(peer);
+        } else if q.deficit > 0 && (iface.full || sent_total >= round_left) {
+            // Freeze the unfinished visit at its exact original head.
+            iface.drr.ready_peers.push_front(peer);
+        } else {
+            q.turn_active = false;
+            iface.drr.ready_peers.push_back(peer);
+        }
+        sent_total
+    }
+
     fn after_conn_change_no_sched(&mut self, idx: u32) {
         self.sync_counts(idx);
         self.sync_share_waiter(idx, false);
@@ -1984,8 +2079,20 @@ impl Shard {
 
     /// Serve one connection for up to one quantum. Returns (bytes sent, wants more).
     fn serve(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
+        self.serve_with_limit(idx, now, round_left, None, sinks, out)
+    }
+
+    fn serve_with_limit(
+        &mut self,
+        idx: u32,
+        now: Instant,
+        round_left: usize,
+        limit: Option<usize>,
+        sinks: &mut impl EgressSinks,
+        out: &mut RunOutcome,
+    ) -> (usize, bool) {
         self.stats.serve_calls += 1;
-        let result = self.serve_inner(idx, now, round_left, sinks, out);
+        let result = self.serve_inner(idx, now, round_left, limit, sinks, out);
         let slot = &self.slots[idx as usize];
         let full = slot.conn.as_ref().is_some_and(|c| self.ifaces[c.iface.0 as usize].as_ref().is_some_and(|i| i.full));
         if result.0 == 0 && round_left > 0 && !full && !self.pacing.contains(idx) && !self.budget_blocked.contains(&(idx, slot.gen)) {
@@ -1994,7 +2101,15 @@ impl Shard {
         result
     }
 
-    fn serve_inner(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
+    fn serve_inner(
+        &mut self,
+        idx: u32,
+        now: Instant,
+        round_left: usize,
+        limit: Option<usize>,
+        sinks: &mut impl EgressSinks,
+        out: &mut RunOutcome,
+    ) -> (usize, bool) {
         // Packet window fields must use the same policy as calc_window.
         // Local TX/cache occupancy only gates RX growth, not RX progress.
         let level = self.budget.level();
@@ -2012,11 +2127,12 @@ impl Shard {
         conn.sync_pacing_debt(now, rate);
         conn.tso_max = iface.tso_max;
         let mss = conn.mss as usize;
-        let quantum = match rate {
-            Some(r) => quantum_for(r, mss, self.cfg.max_quantum),
-            None => self.cfg.max_quantum.max(mss),
-        }
-        .min(round_left.max(mss));
+        let quantum = limit
+            .unwrap_or_else(|| match rate {
+                Some(r) => quantum_for(r, mss, self.cfg.max_quantum),
+                None => self.cfg.max_quantum.max(mss),
+            })
+            .min(round_left.max(mss));
         let credit = self.wake.credit;
         let mut sent = 0usize;
         loop {
@@ -2359,7 +2475,7 @@ impl Shard {
         // Each connection appears at most once in ready queues.
         let mut seen = std::collections::HashSet::new();
         for q in self.ifaces.iter().flatten().flat_map(|i| i.drr.peer_q.values()) {
-            for &(i, g) in q {
+            for &(i, g) in &q.q {
                 if self.slots[i as usize].gen == g {
                     assert!(seen.insert(i), "conn {i} queued twice");
                 }
@@ -4404,3 +4520,7 @@ mod scheduling_counter_tests {
         assert_eq!(sh.stats.share_wake_noop, 1);
     }
 }
+
+#[cfg(test)]
+#[path = "peer_deficit_tests.rs"]
+mod peer_deficit_tests;
