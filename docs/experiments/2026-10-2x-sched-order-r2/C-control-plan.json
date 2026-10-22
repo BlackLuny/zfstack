@@ -1,0 +1,23 @@
+{
+  "frozen_before_supplemental_measurement": true,
+  "cases": [
+    "mixed-16",
+    "mixed-64"
+  ],
+  "tick_us": 100,
+  "functional_stages": [
+    "control2",
+    "gate2"
+  ],
+  "instruction_repeats": 3,
+  "cpu_pairs": 6,
+  "aa_pairs": 6,
+  "rationale": "C reference must also include the actual A control (main+e21), not just B off which already contains gating and DRR metadata. All workloads, thresholds and fine-clock settings unchanged; B off data remain labelled gated-off.",
+  "cpu_comparisons": [
+    "control2/off vs adaptive/drr-max",
+    "control2/off vs adaptive/drr-16k",
+    "control2/off vs adaptive/adaptive-16k",
+    "control2/off vs adaptive/adaptive-32k",
+    "control2/off A/A"
+  ]
+}

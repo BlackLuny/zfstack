@@ -2,15 +2,18 @@
 """Build isolated immutable production and noinline attribution binaries."""
 import gzip,hashlib,json,os,pathlib,subprocess,sys
 OUT=pathlib.Path(__file__).resolve().parent
-BIN=pathlib.Path('/workspace/scratch/sched-r2-bin');BIN.mkdir(exist_ok=True)
+BIN=pathlib.Path(os.environ.get('ZF_R2_BIN_DIR','/workspace/scratch/sched-r2-bin'));BIN.mkdir(parents=True,exist_ok=True)
 stages=sys.argv[1:] or ['control','gate','bare']
 for spec in stages:
  root_stage,_,label=spec.partition(':');stage=label or root_stage
  root=pathlib.Path('/workspace/scratch/sched-r2-'+root_stage)
+ if any((BIN/(stage+'-'+k)).exists() for k in ['prod','attr']):raise SystemExit('immutable binaries exist for '+stage)
  env=os.environ.copy();env.update(CARGO_TARGET_DIR='/workspace/scratch/sched-r2-target-'+stage,CARGO_PROFILE_RELEASE_LTO='fat',CARGO_PROFILE_RELEASE_CODEGEN_UNITS='1',CARGO_PROFILE_RELEASE_PANIC='abort',CARGO_PROFILE_RELEASE_DEBUG='1')
  sources=[p for folder in ['src','harness/src','harness/examples'] for p in (root/folder).rglob('*.rs')]+[root/'Cargo.lock',root/'Cargo.toml',root/'harness/Cargo.toml']
  record={'stage':stage,'git_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'source_hashes':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},'build_env':{k:v for k,v in env.items() if k.startswith('CARGO_PROFILE')},'binaries':[]}
  patch=subprocess.check_output(['git','diff','HEAD','--','src','harness'],cwd=root)
+ for untracked in subprocess.check_output(['git','ls-files','--others','--exclude-standard','--','src','harness'],cwd=root,text=True).splitlines():
+  patch+=subprocess.run(['git','diff','--no-index','--','/dev/null',untracked],cwd=root,capture_output=True).stdout
  with gzip.open(OUT/(stage+'-source.patch.gz'),'wb') as f:f.write(patch)
  original={}
  for kind in ['prod','attr']:
