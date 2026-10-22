@@ -1,0 +1,54 @@
+   Compiling zfstack v0.0.1 (/workspace/scratch/sched-r2-gate)
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: method `accepts_writes_for_adapter` is never used
+    --> src/shard.rs:2260:19
+     |
+ 454 | impl Shard {
+     | ---------- method in this implementation
+...
+2260 |     pub(crate) fn accepts_writes_for_adapter(&self, id: ConnId) -> bool {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling zfharness v0.1.0 (/workspace/scratch/sched-r2-gate/harness)
+warning: `zfstack` (lib) generated 4 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 16.04s

@@ -15,19 +15,28 @@ def worlds(v):return [v['baseline'],v['loaded']] if 'loaded' in v else [v]
 def flows(v):return [f for w in worlds(v) for f in w.get('flows',[])]
 def metric(v):
  fs=flows(v); ws=worlds(v);s={k:sum(w.get('scheduler',{}).get(k,0) for w in ws) for k in ['serve_calls','serve_zero','runs','sink_full','round_budget_exhausted','share_retry_visits','share_retry_blocked','share_wakes','share_wake_noop','adaptive_entries','adaptive_exits','adaptive_small_visits']}
+ s['serve_zero_rate']=s['serve_zero']/s['serve_calls'] if s['serve_calls'] else None
+ s['sink_full_per_run']=s['sink_full']/s['runs'] if s['runs'] else None
+ s['round_budget_exhausted_per_run']=s['round_budget_exhausted']/s['runs'] if s['runs'] else None
+ s['share_wake_noop_rate']=s['share_wake_noop']/s['share_wakes'] if s['share_wakes'] else None
  effective=sum(f['client_recv']+f['server_recv'] for f in fs)
  bulk=[f for f in fs if f.get('planned_rr_rounds',0)==0 and f.get('expect')=='complete']
  finish=max((f.get('finished_at_ns') or 60_000_000_000 for f in bulk),default=0)
  cpu=v.get('process_cpu_sec',0);wall=v.get('wall_sec',0)
- return dict(effective_bytes=effective,cpu_sec=cpu,cpu_sec_per_GB=cpu*1e9/effective if effective else None,bulk_completion_ns=finish,bulk_goodput_gbps=sum(f['client_recv']+f['server_recv'] for f in bulk)*8/finish if finish else None,reserved_peak=max((w.get('budget',{}).get('reserved_peak',0) for w in ws),default=0),drops=sum(w.get('link',{}).get('queue_drops',0)+w.get('link',{}).get('random_drops',0) for w in ws),completed_flows=sum(f.get('finished_at_ns') is not None for f in fs),planned_flows=len(fs),cpu_busy_fraction=cpu/wall if wall else None,cpu_per_virtual_sec=cpu/(finish/1e9) if finish else None,**s)
+ return dict(local_pressure_kind='both' if s['sink_full'] and s['round_budget_exhausted'] else 'full_only' if s['sink_full'] else 'round_only' if s['round_budget_exhausted'] else 'none',effective_bytes=effective,cpu_sec=cpu,cpu_sec_per_GB=cpu*1e9/effective if effective else None,bulk_completion_ns=finish,bulk_goodput_gbps=sum(f['client_recv']+f['server_recv'] for f in bulk)*8/finish if finish else None,reserved_peak=max((w.get('budget',{}).get('reserved_peak',0) for w in ws),default=0),drops=sum(w.get('link',{}).get('queue_drops',0)+w.get('link',{}).get('random_drops',0) for w in ws),completed_flows=sum(f.get('finished_at_ns') is not None for f in fs),planned_flows=len(fs),cpu_busy_fraction=cpu/wall if wall else None,cpu_per_virtual_sec=cpu/(finish/1e9) if finish else None,**s)
 def users(v):
  for wi,w in enumerate(worlds(v)):
-  groups=w.get('users',[]);service=w.get('scheduler',{}).get('peer_service',[])
+  groups=w.get('users',[]);by_flow=collections.defaultdict(list);ports=collections.defaultdict(set);by_service=collections.defaultdict(list)
+  for f in w.get('flows',[]):by_flow[(f['port'],f['peer'],f['class'])].append(f)
+  for u in groups:ports[u['peer']].add(u['port'])
+  for item in w.get('scheduler',{}).get('peer_service',[]):by_service[item['peer']].append(item)
   for u in groups:
-   samepeer=[x for x in groups if x['peer']==u['peer']]
-   alias=len({x['port'] for x in samepeer})>1 and v.get('topology')!='shard-per-port'
-   gaps=[s['max_pending_gap_ns'] for s in service if s['peer']==u['peer']]
-   yield dict(world=wi,port=u['port'],peer=u['peer'],user_class=u['class'],flows=u['flows'],planned_rr=u.get('planned_rr_rounds',0),censored_rr=u.get('censored_rr_rounds',0),p99_us=u.get('worst_flow_p99_us') if not u.get('censored_rr_rounds') else None,mean_latency_ns=u.get('completed_mean_latency_ns'),max_pending_gap_ns=max(gaps,default=None) if not alias else None,gap_scope='unavailable: original observer aggregates aliased PeerIds across ifaces' if alias else 'pending unsent per Peer on one iface; includes cwnd/rwnd/pacing waits',finished_at_us=u.get('finished_at_us'),received_bytes=u['client_recv_bytes'])
+   alias=len(ports[u['peer']])>1 and v.get('topology')!='shard-per-port'
+   gaps=[item['max_pending_gap_ns'] for item in by_service[u['peer']] if v.get('topology')!='shard-per-port' or item.get('shard')==u['port']]
+   ff=by_flow[(u['port'],u['peer'],u['class'])]
+   samples=[len(f.get('sim_latency_us',[])) for f in ff if f.get('planned_rr_rounds')]
+   scope='unidentifiable: censored requests' if u.get('censored_rr_rounds') else 'not applicable: bulk' if not samples else 'per-flow sample estimate with fewer than100 requests' if min(samples)<100 else 'L0 per-flow request samples'
+   yield dict(p99_scope=scope,world=wi,port=u['port'],peer=u['peer'],user_class=u['class'],flows=u['flows'],planned_rr=u.get('planned_rr_rounds',0),censored_rr=u.get('censored_rr_rounds',0),p99_us=u.get('worst_flow_p99_us') if not u.get('censored_rr_rounds') else None,mean_latency_ns=u.get('completed_mean_latency_ns'),max_pending_gap_ns=max(gaps,default=None) if not alias else None,gap_scope='unavailable: original observer aggregates aliased PeerIds across ifaces' if alias else 'pending unsent per Peer on one iface; includes cwnd/rwnd/pacing waits',finished_at_us=u.get('finished_at_us'),received_bytes=u['client_recv_bytes'])
 
 def packet_frames(row):
  with gzip.open(OUT/row['packet_capture'],'rb') as f:
@@ -161,6 +170,8 @@ if '--attribution' in sys.argv:
      if pending is not None:child[fn]+=cost;edgecost[(fn,pending)]+=cost;pending=None
      else:self_cost[fn]+=cost
   m=metric(r['result']);primary=sum(self_cost.values())
+  expected=int(next(x.split(':')[1] for x in r['callgrind_summary'] if x.startswith('summary:')))
+  assert primary==expected,(r['case'],r['stage'],r['block'],primary,expected)
   for name in target:
    selected={n for n in set(self_cost)|set(calls) if '::'+name in n and ('Shard::'+name in n if name in ('schedule','serve') else 'Conn::'+name in n) and not (name=='serve' and '::serve_' in n)}
    count=sum(calls[n] for n in selected);own=sum(self_cost[n] for n in selected);inc=sum(self_cost[n]+child[n] for n in selected)
@@ -185,6 +196,9 @@ if '--cpu' in sys.argv:
     mean=statistics.mean(values);half=(2.093 if n==20 else 2.571)*statistics.stdev(values)/math.sqrt(n)
     x[field+'_delta_pct']=mean;x[field+'_ci_low_pct']=mean-half;x[field+'_ci_high_pct']=mean+half
    else:x[field+'_delta_pct']=x[field+'_ci_low_pct']=x[field+'_ci_high_pct']=None
+  for field in ['cpu_sec_per_GB','bulk_goodput_gbps','bulk_completion_ns']:
+   values=[100*(a['B'][field]/a['A'][field]-1) for b,a in pairs if a['A'][field] and a['B'][field] is not None]
+   x[field+'_paired_deltas_pct']=values;x[field+'_n_available']=len(values)
   for arm in 'AB':
    for field in ['cpu_sec_per_GB','cpu_busy_fraction','cpu_per_virtual_sec','effective_bytes','bulk_completion_ns','reserved_peak','drops','serve_calls','serve_zero','sink_full','round_budget_exhausted']:
     vs=[a[arm][field] for b,a in pairs if a[arm][field] is not None];x[arm+'_'+field]=statistics.mean(vs) if vs else None
@@ -198,4 +212,4 @@ if '--cpu' in sys.argv:
   lo,hi=x['cpu_sec_per_GB_ci_low_pct'],x['cpu_sec_per_GB_ci_high_pct'];mean=x['cpu_sec_per_GB_delta_pct'];aa=x['AA_max_abs_pct']
   x['cpu_attribution']='no attributable change' if lo is None or lo<=0<=hi or (aa is not None and abs(mean)<=aa) else 'increase' if mean>0 else 'decrease'
  csvsave('cpu-summary.csv',out);save('cpu-summary.json',out);print(json.dumps({'cpu_comparisons':len(out)}));raise SystemExit()
-raise SystemExit('choose --functional, --instructions, --attribution or --cpu')
+if __name__=='__main__':raise SystemExit('choose --functional, --instructions, --attribution or --cpu')

@@ -1,0 +1,235 @@
+{
+  "schema": 2,
+  "baseline": "9d6fb7684e3842da16e673825d3c9ace724aa433",
+  "protected_files_unchanged": true,
+  "source_snapshots_verified": 9,
+  "binary_hashes_verified": 16,
+  "complete_source_patches_apply_cleanly": 16,
+  "post_measurement_test_or_cli_only_source_differences": [
+    "src/adaptive_quantum_tests.rs",
+    "harness/src/main.rs"
+  ],
+  "measured_runtime_source_matches": true,
+  "both_policy_flags_default_false": true,
+  "sparse_policy_absent": true,
+  "frozen_hashes_verified": [
+    "C-control-plan.json",
+    "C-token-jobs.json",
+    "C-token-plan.json",
+    "attribution-A-jobs.json",
+    "attribution-plan.json",
+    "cpu-A-jobs.json",
+    "cpu-B-jobs.json",
+    "cpu-C-jobs.json",
+    "frozen-plan.json",
+    "functional-A-jobs.json",
+    "functional-A2-jobs.json",
+    "functional-B-jobs.json",
+    "functional-C-jobs.json",
+    "input-correction.json",
+    "instructions-A-jobs.json",
+    "instructions-B-jobs.json",
+    "instructions-C-jobs.json"
+  ],
+  "coverage": [
+    {
+      "phase": "functional-A",
+      "planned": 117,
+      "present": 117,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "functional-A2",
+      "planned": 117,
+      "present": 117,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "functional-B",
+      "planned": 156,
+      "present": 156,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "functional-C",
+      "planned": 4,
+      "present": 4,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "instructions-A",
+      "planned": 351,
+      "present": 351,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "instructions-B",
+      "planned": 468,
+      "present": 468,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "instructions-C",
+      "planned": 12,
+      "present": 12,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "attribution-A",
+      "planned": 351,
+      "present": 351,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "cpu-A",
+      "planned": 3276,
+      "present": 3276,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "cpu-B",
+      "planned": 2576,
+      "present": 2576,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "cpu-C",
+      "planned": 140,
+      "present": 140,
+      "ordered_fields_match": true
+    },
+    {
+      "phase": "C-token",
+      "planned": 36,
+      "present": 36,
+      "ordered_fields_match": true
+    }
+  ],
+  "total_executions": 7604,
+  "primary_Ir_executions": 831,
+  "attribution_executions": 351,
+  "auxiliary_CPU_formal_executions": 5672,
+  "auxiliary_CPU_warmups": 320,
+  "invalid_initial_preflight_executions": [
+    {
+      "phase": "functional-A",
+      "index": 105,
+      "case": "gate-cwnd-small",
+      "stage": "control",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 106,
+      "case": "gate-cwnd-small",
+      "stage": "gate",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 107,
+      "case": "gate-cwnd-small",
+      "stage": "bare",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 108,
+      "case": "gate-rwnd-zero",
+      "stage": "control",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 109,
+      "case": "gate-rwnd-zero",
+      "stage": "gate",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 110,
+      "case": "gate-rwnd-zero",
+      "stage": "bare",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 111,
+      "case": "gate-peers-64",
+      "stage": "control",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 112,
+      "case": "gate-peers-64",
+      "stage": "gate",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 113,
+      "case": "gate-peers-64",
+      "stage": "bare",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 114,
+      "case": "gate-peers-1024",
+      "stage": "control",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 115,
+      "case": "gate-peers-1024",
+      "stage": "gate",
+      "returncode": 1,
+      "error": null
+    },
+    {
+      "phase": "functional-A",
+      "index": 116,
+      "case": "gate-peers-1024",
+      "stage": "bare",
+      "returncode": 1,
+      "error": null
+    }
+  ],
+  "unexpected_failures_or_timeouts": 0,
+  "packet_capture_paths": 430,
+  "unique_archives_checked": 92,
+  "profile_hashes_verified": 1182,
+  "full_workspace_tests": {
+    "library_passed": 339,
+    "library_ignored": 6,
+    "harness_passed": 33,
+    "bench_passed": 19,
+    "integration_passed": 6,
+    "integration_ignored": 1,
+    "log": "logs/workspace-tests-v2.log"
+  },
+  "exact_isolated_gate_library_tests": {
+    "passed": 327,
+    "ignored": 6,
+    "log": "logs/isolated-gate-tests.log"
+  },
+  "example_tests": {
+    "passed": 5,
+    "log": "logs/examples-tests-v2.log"
+  },
+  "later_boundary_test_log": "logs/adaptive-tests-final.log",
+  "qualification": "No policy promotion; A failed strict decrease criterion; B quiet0.5% NI unproven. L0 only."
+}

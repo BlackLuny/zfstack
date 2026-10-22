@@ -3,7 +3,7 @@
 import gzip,hashlib,json,pathlib,subprocess
 OUT=pathlib.Path(__file__).resolve().parent
 records=[]
-for label in ['bare','control','gate','bare2','control2','gate2','adaptive']:
+for label in ['bare','control','gate','bare2','control2','gate2','adaptive','token-control','token-adaptive']:
  m=json.loads((OUT/(label+'-build.json')).read_text());stage=label.rstrip('2');root=pathlib.Path('/workspace/scratch/sched-r2-'+stage)
  original={};manifest_hashes={}
  try:
@@ -22,7 +22,7 @@ for label in ['bare','control','gate','bare2','control2','gate2','adaptive']:
     data+=subprocess.run(['git','diff','--no-index','--','/dev/null',name],cwd=root,capture_output=True).stdout
    return data
   entry={'stage':label,'base_commit':m['git_commit'],'prod_sources_match_manifest':True,'patches':[]}
-  for kind in ['prod','attr']:
+  for kind in (['prod'] if label.startswith('token-') else ['prod','attr']):
    if kind=='attr':
     for name in ['src/conn.rs','src/shard.rs']:
      p=root/name;original.setdefault(p,p.read_bytes());s=p.read_text()
@@ -36,4 +36,4 @@ for label in ['bare','control','gate','bare2','control2','gate2','adaptive']:
   for p,data in original.items():p.write_bytes(data)
 # Existing patch snapshots remain as captured; the complete bundles include the new driver.
 (OUT/'reproduction-sources.json').write_text(json.dumps({'note':'Complete patches against each declared commit, including untracked common driver files omitted by plain git diff in initial build logging. Original patch snapshots preserved. Diagnostic attr patches add only noinline.','sources':records},indent=2)+'\n')
-print(json.dumps({'source_snapshots_verified':len(records),'complete_patches':2*len(records)}))
+print(json.dumps({'source_snapshots_verified':len(records),'complete_patches':sum(len(r['patches']) for r in records)}))

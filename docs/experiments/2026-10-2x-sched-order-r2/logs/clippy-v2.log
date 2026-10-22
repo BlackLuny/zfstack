@@ -1,0 +1,681 @@
+warning: method `wire_len` is never used
+   --> src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> src/conn.rs:749:12
+    |
+457 | impl Conn {
+    | --------- methods in this implementation
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: this `map_or` can be simplified
+    --> src/conn.rs:1949:16
+     |
+1949 |             if self.rack.dsack_round.map_or(true, |r| round > r) {
+     |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+     = note: `#[warn(clippy::unnecessary_map_or)]` on by default
+help: use is_none_or instead
+     |
+1949 -             if self.rack.dsack_round.map_or(true, |r| round > r) {
+1949 +             if self.rack.dsack_round.is_none_or(|r| round > r) {
+     |
+
+warning: this `map_or` can be simplified
+    --> src/conn.rs:2146:12
+     |
+2146 |         if sampled.map_or(true, |s| r.delivered > s.delivered || (r.delivered == s.delivered && r.xmit > s.xmit)) {
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_none_or instead
+     |
+2146 -         if sampled.map_or(true, |s| r.delivered > s.delivered || (r.delivered == s.delivered && r.xmit > s.xmit)) {
+2146 +         if sampled.is_none_or(|s| r.delivered > s.delivered || (r.delivered == s.delivered && r.xmit > s.xmit)) {
+     |
+
+warning: this `map_or` can be simplified
+    --> src/conn.rs:2152:25
+     |
+2152 |         if !ever_rtx && newest_rtt.map_or(true, |(x, _)| r.xmit >= x) {
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_none_or instead
+     |
+2152 -         if !ever_rtx && newest_rtt.map_or(true, |(x, _)| r.xmit >= x) {
+2152 +         if !ever_rtx && newest_rtt.is_none_or(|(x, _)| r.xmit >= x) {
+     |
+
+warning: manual implementation of `.is_multiple_of()`
+    --> src/conn.rs:2747:55
+     |
+2747 |             let ns = owed / rate as u128 + u128::from(owed % rate as u128 != 0);
+     |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!owed.is_multiple_of(rate as u128)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_is_multiple_of
+     = note: `#[warn(clippy::manual_is_multiple_of)]` on by default
+
+warning: manual absolute difference pattern without using `abs_diff`
+  --> src/rtt.rs:48:24
+   |
+48 |             let diff = if self.srtt > rtt { self.srtt - rtt } else { rtt - self.srtt };
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with `abs_diff`: `self.srtt.abs_diff(rtt)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_abs_diff
+   = note: `#[warn(clippy::manual_abs_diff)]` on by default
+
+warning: struct `Rec` has a public `len` method, but no `is_empty` method
+  --> src/scoreboard.rs:48:5
+   |
+48 |     pub fn len(&self) -> u64 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#len_without_is_empty
+   = note: `#[warn(clippy::len_without_is_empty)]` on by default
+
+warning: this `map_or` can be simplified
+   --> src/scoreboard.rs:101:23
+    |
+101 |         debug_assert!(self.recs.back().map_or(true, |b| b.end == r.start));
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_none_or instead
+    |
+101 -         debug_assert!(self.recs.back().map_or(true, |b| b.end == r.start));
+101 +         debug_assert!(self.recs.back().is_none_or(|b| b.end == r.start));
+    |
+
+warning: method `add` can be confused for the standard trait method `std::ops::Add::add`
+  --> src/seq.rs:13:5
+   |
+13 | /     pub fn add(self, n: u32) -> Seq {
+14 | |         Seq(self.0.wrapping_add(n))
+15 | |     }
+   | |_____^
+   |
+   = help: consider implementing the trait `std::ops::Add` or choosing a less ambiguous method name
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#should_implement_trait
+   = note: `#[warn(clippy::should_implement_trait)]` on by default
+
+warning: this function has too many arguments (8/7)
+   --> src/shard.rs:812:5
+    |
+812 | /     fn dispatch_ingress(
+813 | |         &mut self,
+814 | |         now: Instant,
+815 | |         iface: IfaceId,
+...   |
+820 | |         payload: IngressPayload<'_>,
+821 | |     ) {
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+    = note: `#[warn(clippy::too_many_arguments)]` on by default
+
+warning: length comparison to zero
+   --> src/shard.rs:857:20
+    |
+857 |                 if payload.len() == 0 && tomb.can_reuse(h, self.cfg.timestamps) {
+    |                    ^^^^^^^^^^^^^^^^^^ help: using `is_empty` is clearer and more explicit: `payload.is_empty()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#len_zero
+    = note: `#[warn(clippy::len_zero)]` on by default
+
+warning: manual implementation of `BuildHasher::hash_one`
+    --> src/shard.rs:1212:57
+     |
+1212 |         Seq(((now.as_micros() / 4) as u32).wrapping_add(h.finish() as u32))
+     |                                                         ^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_hash_one
+     = note: `#[warn(clippy::manual_hash_one)]` on by default
+help: try
+     |
+1210 ~         
+1211 ~         
+1212 ~         Seq(((now.as_micros() / 4) as u32).wrapping_add(self.hasher.hash_one(&(0u8, remote, local)) as u32))
+     |
+
+warning: manual implementation of `BuildHasher::hash_one`
+    --> src/shard.rs:1218:9
+     |
+1218 |         h.finish() as u32
+     |         ^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_hash_one
+help: try
+     |
+1216 ~         
+1217 ~         
+1218 ~         self.hasher.hash_one(&(1u8, remote, local)) as u32
+     |
+
+warning: manual implementation of `BuildHasher::hash_one`
+    --> src/shard.rs:1354:9
+     |
+1354 |         h.finish() as u32
+     |         ^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_hash_one
+help: try
+     |
+1352 ~         
+1353 ~         
+1354 ~         self.cookie_key[(gen & 1) as usize].hash_one(&(gen, iface, peer, remote, local, peer_isn.0)) as u32
+     |
+
+warning: manual implementation of `.is_multiple_of()`
+    --> src/shard.rs:1574:16
+     |
+1574 |             if w.n % 128 == 0 {
+     |                ^^^^^^^^^^^^^^ help: replace with: `w.n.is_multiple_of(128)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_is_multiple_of
+
+warning: manual implementation of `.is_multiple_of()`
+   --> src/wire.rs:190:31
+    |
+190 |                     (5, _) if (len - 2) % 8 == 0 => {
+    |                               ^^^^^^^^^^^^^^^^^^ help: replace with: `(len - 2).is_multiple_of(8)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_is_multiple_of
+
+warning: manual implementation of `.is_multiple_of()`
+   --> src/wire.rs:232:38
+    |
+232 |     debug_assert!(hdr.len() >= 20 && hdr.len() % 4 == 0);
+    |                                      ^^^^^^^^^^^^^^^^^^ help: replace with: `hdr.len().is_multiple_of(4)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_is_multiple_of
+
+warning: manual implementation of `.is_multiple_of()`
+   --> src/wire.rs:271:35
+    |
+271 |     debug_assert!(d.len() < 64 && d.len() % 4 == 0);
+    |                                   ^^^^^^^^^^^^^^^^ help: replace with: `d.len().is_multiple_of(4)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_is_multiple_of
+
+warning: this `if` statement can be collapsed
+   --> src/sim.rs:346:9
+    |
+346 | /         if c.closed.is_some() {
+347 | |             if c.eof || now < c.read_paused_until {
+348 | |                 if c.eof {
+349 | |                     c.released = true;
+...   |
+354 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#collapsible_if
+    = note: `#[warn(clippy::collapsible_if)]` on by default
+help: collapse nested if block
+    |
+346 ~         if c.closed.is_some()
+347 ~             && (c.eof || now < c.read_paused_until) {
+348 |                 if c.eof {
+...
+352 |                 return;
+353 ~             }
+    |
+
+warning: this function has too many arguments (8/7)
+   --> src/tokio_adapter.rs:901:1
+    |
+901 | / pub fn spawn_with_source<E, I, F>(
+902 | |     cfg: StackConfig,
+903 | |     stream_cfg: StreamConfig,
+904 | |     ifaces: Vec<IfaceConfig>,
+...   |
+913 | |     I: Send + 'static,
+914 | |     F: FnMut(&mut Shard, crate::Instant, I) + Send + 'static,
+    | |_____________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (8/7)
+   --> src/tokio_adapter.rs:923:1
+    |
+923 | / pub fn spawn_with_source_factory<E, I, F, G, A>(
+924 | |     cfg: StackConfig,
+925 | |     stream_cfg: StreamConfig,
+926 | |     ifaces: Vec<IfaceConfig>,
+...   |
+936 | |     F: FnMut(&mut Shard, crate::Instant, I) + Send + 'static,
+937 | |     G: FnOnce(&mut Shard) -> (E, A),
+    | |____________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: called `map(f)` on an `Option` value where `f` is a closure that returns the unit type `()`
+    --> src/tokio_adapter.rs:1321:21
+     |
+1321 |                     r.map(|w| w.wake());
+     |                     ^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#option_map_unit_fn
+     = note: `#[warn(clippy::option_map_unit_fn)]` on by default
+help: use `if let` instead
+     |
+1321 -                     r.map(|w| w.wake());
+1321 +                     if let Some(w) = r { w.wake() }
+     |
+
+warning: called `map(f)` on an `Option` value where `f` is a closure that returns the unit type `()`
+    --> src/tokio_adapter.rs:1322:21
+     |
+1322 |                     w.map(|w| w.wake());
+     |                     ^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#option_map_unit_fn
+help: use `if let` instead
+     |
+1322 -                     w.map(|w| w.wake());
+1322 +                     if let Some(w) = w { w.wake() }
+     |
+
+warning: called `map(f)` on an `Option` value where `f` is a closure that returns the unit type `()`
+    --> src/tokio_adapter.rs:1323:21
+     |
+1323 |                     f.map(|w| w.wake());
+     |                     ^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#option_map_unit_fn
+help: use `if let` instead
+     |
+1323 -                     f.map(|w| w.wake());
+1323 +                     if let Some(w) = f { w.wake() }
+     |
+
+warning: `zfstack` (lib) generated 26 warnings (run `cargo clippy --fix --lib -p zfstack` to apply 18 suggestions)
+warning: casting to the same type is unnecessary (`u64` -> `u64`)
+  --> harness/src/link.rs:29:14
+   |
+29 |             &(now.as_nanos() as u64).to_le_bytes(),
+   |              ^^^^^^^^^^^^^^^^^^^^^^^ help: try: `now.as_nanos()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_cast
+   = note: `#[warn(clippy::unnecessary_cast)]` on by default
+
+warning: `zfharness` (lib) generated 1 warning (run `cargo clippy --fix --lib -p zfharness` to apply 1 suggestion)
+    Checking zfharness v0.1.0 (/workspace/zfstack/harness)
+    Checking zfbench v0.1.0 (/workspace/zfstack/bench)
+    Checking zfstack v0.0.1 (/workspace/zfstack)
+warning: this assertion has a constant value
+  --> bench/examples/linux/pool_idle_probe.rs:29:5
+   |
+29 |     assert!(cfg!(target_os = "linux"));
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider moving this into a const block: `const { assert!(..) }`
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#assertions_on_constants
+   = note: `#[warn(clippy::assertions_on_constants)]` on by default
+
+warning: `zfbench` (example "pool_idle_probe") generated 1 warning
+warning: replacing a value of type `T` with `T::default()` is better expressed using `std::mem::take`
+   --> tests/packet_pool_release.rs:237:20
+    |
+237 |     let acquired = std::mem::replace(&mut *wake.acquired.lock().unwrap(), [None, None]);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `std::mem::take(&mut *wake.acquired.lock().unwrap())`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#mem_replace_with_default
+    = note: `#[warn(clippy::mem_replace_with_default)]` on by default
+
+warning: `zfstack` (test "packet_pool_release") generated 1 warning (run `cargo clippy --fix --test "packet_pool_release" -p zfstack` to apply 1 suggestion)
+warning: unnecessary `>= y + 1` or `x - 1 >=`
+    --> src/buf.rs:3156:17
+     |
+3156 |         assert!(rx.q.capacity() >= 1 + RX_GAP_SLOTS);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: change it to: `rx.q.capacity() > RX_GAP_SLOTS`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#int_plus_one
+     = note: `#[warn(clippy::int_plus_one)]` on by default
+
+warning: unused doc comment
+    --> src/tokio_adapter.rs:3978:9
+     |
+3978 | /         /// Sample index at which each connection was opened (the late
+3979 | |         /// connection's earlier samples are placeholders, not stalls).
+     | |_______________________________________________________________________^
+3980 |           let mut conn_since: Vec<usize> = vec![0; total as usize];
+     |           --------------------------------------------------------- rustdoc does not generate documentation for statements
+     |
+     = help: use `//` for a plain comment
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:411:5
+    |
+411 |     cfg_b.max_rcv_buf = 128 * 1024;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { max_rcv_buf: 128 * 1024, init_rcv_wnd: 32 * 1024, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:410:5
+    |
+410 |     let mut cfg_b = StackConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+    = note: `#[warn(clippy::field_reassign_with_default)]` on by default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:457:5
+    |
+457 |     cfg_a.syn_backlog = 0;
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { syn_backlog: 0, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:456:5
+    |
+456 |     let mut cfg_a = StackConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:659:9
+    |
+659 |         cfg.cc = cc;
+    |         ^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { cc: cc, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:658:9
+    |
+658 |         let mut cfg = StackConfig::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:670:5
+    |
+670 |     cfg.cc = cc;
+    |     ^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { cc: cc, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:669:5
+    |
+669 |     let mut cfg = StackConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:707:5
+    |
+707 |     cfg.cc = CcAlgo::Bbr;
+    |     ^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { cc: CcAlgo::Bbr, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:706:5
+    |
+706 |     let mut cfg = StackConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+   --> src/sim/tests.rs:875:5
+    |
+875 |     cfg_a.syn_backlog = 8;
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `config::StackConfig { syn_backlog: 8, ..Default::default() }` and removing relevant reassignments
+   --> src/sim/tests.rs:874:5
+    |
+874 |     let mut cfg_a = StackConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1092:5
+     |
+1092 |     cfg.min_prefetch = 1 << 20;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { min_prefetch: 1 << 20, prefetch_max: 1 << 20, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1091:5
+     |
+1091 |     let mut cfg = StackConfig::default();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1148:9
+     |
+1148 |         cfg.cc = cc;
+     |         ^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { cc: cc, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1147:9
+     |
+1147 |         let mut cfg = StackConfig::default();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1177:5
+     |
+1177 |     quiet.keepalive_idle = Duration::from_secs(3600);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { keepalive_idle: Duration::from_secs(3600), ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1176:5
+     |
+1176 |     let mut quiet = StackConfig::default();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1179:5
+     |
+1179 |     prober.keepalive_idle = Duration::from_secs(5);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { keepalive_idle: Duration::from_secs(5), keepalive_interval: Duration::from_secs(5), keepalive_probes: 2, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1178:5
+     |
+1178 |     let mut prober = StackConfig::default();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1238:13
+     |
+1238 |             cfg.cc = cc;
+     |             ^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { cc: cc, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1237:13
+     |
+1237 |             let mut cfg = StackConfig::default();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1271:5
+     |
+1271 |     cfg_b.max_rcv_buf = 64 * 1024;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { max_rcv_buf: 64 * 1024, init_rcv_wnd: 32 * 1024, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1270:5
+     |
+1270 |     let mut cfg_b = StackConfig::default();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/sim/tests.rs:1405:5
+     |
+1405 |     cfg.min_prefetch = 1 << 20;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { min_prefetch: 1 << 20, prefetch_max: 1 << 20, ..Default::default() }` and removing relevant reassignments
+    --> src/sim/tests.rs:1404:5
+     |
+1404 |     let mut cfg = StackConfig::default();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:2261:9
+     |
+2261 |         cfg.min_prefetch = 1 << 20;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { min_prefetch: 1 << 20, prefetch_max: 1 << 20, ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:2260:9
+     |
+2260 |         let mut cfg = StackConfig::default();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: manual `Range::contains` implementation
+    --> src/tokio_adapter.rs:2574:17
+     |
+2574 |         assert!(accepted >= 8 && accepted < 64);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use: `(8..64).contains(&accepted)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_range_contains
+     = note: `#[warn(clippy::manual_range_contains)]` on by default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:2692:13
+     |
+2692 |             cfg.write_low_watermark = core_watermark;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { write_low_watermark: core_watermark, ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:2691:13
+     |
+2691 |             let mut cfg = StackConfig::default();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:2753:13
+     |
+2753 |             cfg.min_prefetch = 1 << 20;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { min_prefetch: 1 << 20, prefetch_max: 1 << 20, write_low_watermark: 4096, ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:2752:13
+     |
+2752 |             let mut cfg = StackConfig::default();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:2966:9
+     |
+2966 |         server_cfg.round_bytes_cap = 1500;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { round_bytes_cap: 1500, max_snd_buf: cap, ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:2965:9
+     |
+2965 |         let mut server_cfg = StackConfig::default();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:3462:9
+     |
+3462 |         cfg.orphan_timeout = std::time::Duration::from_millis(500);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { orphan_timeout: std::time::Duration::from_millis(500), ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:3461:9
+     |
+3461 |         let mut cfg = StackConfig::default();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: field assignment outside of initializer for an instance created with Default::default()
+    --> src/tokio_adapter.rs:3944:9
+     |
+3944 |         cfg.max_rcv_buf = 64 * 1024;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+note: consider initializing the variable with `config::StackConfig { max_rcv_buf: 64 * 1024, init_rcv_wnd: 64 * 1024, ..Default::default() }` and removing relevant reassignments
+    --> src/tokio_adapter.rs:3943:9
+     |
+3943 |         let mut cfg = StackConfig::default();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+
+warning: the loop variable `k` is used to index `samples`
+    --> src/tokio_adapter.rs:4234:18
+     |
+4234 |         for k in 3..6 {
+     |                  ^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#needless_range_loop
+     = note: `#[warn(clippy::needless_range_loop)]` on by default
+help: consider using an iterator and enumerate()
+     |
+4234 -         for k in 3..6 {
+4234 +         for (k, <item>) in samples.iter().enumerate().take(6).skip(3) {
+     |
+
+warning: the loop variable `k` is used to index `finished`
+    --> src/tokio_adapter.rs:4239:18
+     |
+4239 |         for k in 0..6 {
+     |                  ^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+     |
+4239 -         for k in 0..6 {
+4239 +         for (k, <item>) in finished.iter().enumerate().take(6) {
+     |
+
+warning: `zfstack` (lib test) generated 50 warnings (26 duplicates) (run `cargo clippy --fix --lib -p zfstack --tests` to apply 2 suggestions)
+warning: field assignment outside of initializer for an instance created with Default::default()
+  --> tests/rx_capacity_lifecycle.rs:60:9
+   |
+60 |         cfg.orphan_timeout = std::time::Duration::from_millis(500);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: consider initializing the variable with `zfstack::StackConfig { orphan_timeout: std::time::Duration::from_millis(500), ..Default::default() }` and removing relevant reassignments
+  --> tests/rx_capacity_lifecycle.rs:59:9
+   |
+59 |         let mut cfg = StackConfig::default();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#field_reassign_with_default
+   = note: `#[warn(clippy::field_reassign_with_default)]` on by default
+
+warning: `zfstack` (test "rx_capacity_lifecycle") generated 1 warning
+warning: `zfharness` (lib test) generated 1 warning (1 duplicate)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.57s

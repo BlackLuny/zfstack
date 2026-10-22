@@ -1,0 +1,7 @@
+error: No valid patches in input (allow with "--allow-empty")
+Traceback (most recent call last):
+  File "/workspace/zfstack/docs/experiments/2026-10-2x-sched-order-r2/replay_check.py", line 14, in <module>
+    subprocess.run(['git','apply','--check','-'],input=data,cwd=root,check=True)
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['git', 'apply', '--check', '-']' returned non-zero exit status 128.

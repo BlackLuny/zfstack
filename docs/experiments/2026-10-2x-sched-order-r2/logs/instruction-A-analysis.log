@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/workspace/zfstack/docs/experiments/2026-10-2x-sched-order-r2/analyze.py", line 129, in <module>
+    csvsave(prefix+'instruction-runs.csv',raw);save(prefix+'instruction-summary.json',summary);csvsave(prefix+'instruction-comparisons.csv',comparisons);save(prefix+'instruction-comparisons.json',comparisons)
+                                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/zfstack/docs/experiments/2026-10-2x-sched-order-r2/analyze.py", line 13, in csvsave
+    w=csv.DictWriter(f,fieldnames=list(x[0]));w.writeheader();w.writerows(x)
+                                                              ^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/csv.py", line 167, in writerows
+    return self.writer.writerows(map(self._dict_to_list, rowdicts))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/csv.py", line 159, in _dict_to_list
+    raise ValueError("dict contains fields not in fieldnames: "
+ValueError: dict contains fields not in fieldnames: 'A_instruction_gate_pass'

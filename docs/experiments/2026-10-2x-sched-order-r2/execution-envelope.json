@@ -1,0 +1,43 @@
+{
+  "toolchain": "Rust1.94.1",
+  "host": {
+    "system": "Linux",
+    "node": "e6a35b665ce6",
+    "release": "6.18.55",
+    "version": "#1 SMP Wed Oct 14 19:45:18 UTC 2026",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "cpu_serial_pin": 0,
+  "instruction_pins": [
+    1,
+    2
+  ],
+  "cgroup_cpu_max": "400000 100000",
+  "valgrind": "3.24.0",
+  "valgrind_package_url": "https://deb.debian.org/debian/pool/main/v/valgrind/valgrind_3.24.0-3_amd64.deb",
+  "debian_package_sha256": "0359e30820ccee7ee5c8d4c951ca276e3978b18f157d71bd77981de05b344907",
+  "instruction_command_prefix": [
+    "taskset",
+    "-c",
+    "index mod2 -> allowed CPUs1/2",
+    "/workspace/scratch/sched-r2-tools/root/usr/bin/valgrind",
+    "--tool=callgrind",
+    "--cache-sim=no",
+    "--branch-sim=no",
+    "--compress-strings=no",
+    "--compress-pos=no",
+    "--callgrind-out-file=profiles/PHASE-INDEX.callgrind"
+  ],
+  "VALGRIND_LIB": "/workspace/scratch/sched-r2-tools/root/usr/libexec/valgrind",
+  "instruction_timeout_sec": 3600,
+  "normal_timeout_sec": 240,
+  "metadata_note": "Early instruction raw rows save base argv; full wrapper is deterministically reconstructed from run.py and this envelope. Later rows also include executed_argv. The measured program is unchanged."
+}

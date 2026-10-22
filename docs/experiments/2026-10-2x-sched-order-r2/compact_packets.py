@@ -3,6 +3,8 @@
 import hashlib,json,os,pathlib
 out=pathlib.Path(__file__).resolve().parent
 seen={};rows=[]
+previous=json.loads((out/'packet-storage.json').read_text()) if (out/'packet-storage.json').exists() else {}
+oldmap={x['path']:x for x in previous.get('files',[])}
 for p in sorted((out/'packets').glob('*.bin.gz')):
  data=p.read_bytes();assert data[:3]==b'\x1f\x8b\x08'
  assert data[3] in (0,8),data[3]
@@ -14,6 +16,6 @@ for p in sorted((out/'packets').glob('*.bin.gz')):
  else:
   if canonical!=data:p.write_bytes(canonical)
   seen[new]=p
- rows.append({'path':str(p.relative_to(out)),'original_compressed_sha256':old,'canonical_compressed_sha256':new,'canonical_size':len(canonical),'same_content_as':str(seen[new].relative_to(out))})
+ rows.append({'path':str(p.relative_to(out)),'original_compressed_sha256':oldmap.get(str(p.relative_to(out)),{}).get('original_compressed_sha256',old),'canonical_compressed_sha256':new,'canonical_size':len(canonical),'same_content_as':str(seen[new].relative_to(out))})
 (out/'packet-storage.json').write_text(json.dumps({'note':'Only gzip filename/mtime headers normalized; DEFLATE bytes and CRC/size trailer retained. Hard links deduplicate identical archive bytes while preserving every execution path. Uncompressed stream hashes in raw JSONL remain valid.','paths':len(rows),'unique_archives':len(seen),'files':rows},indent=2)+'\n')
 print(json.dumps({'paths':len(rows),'unique_archives':len(seen)}))
