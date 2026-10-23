@@ -36,7 +36,7 @@ def audit(out):
                 faults.append("arm environment")
             if env.get("ZFBENCH_RETRY_BUDGET_WRITERS") != "1" or not raw["trial_tuning"].get("retry_budget_writers"):
                 faults.append("host correction not enabled")
-            if plan["phase"] in ("depth", "policy", "confirm", "floor"):
+            if plan["phase"] in ("depth", "policy", "confirm", "floor", "loaded"):
                 depth = row.get("depth", plan.get("multiplier", 0))
                 capacity = max(250000, depth * 12500 * row["rtt"], row.get("floor_packets", 0) * 1420 * row["heavy"])
                 if row["queue_bytes"] != capacity:

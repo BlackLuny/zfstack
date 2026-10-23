@@ -14,7 +14,7 @@ from rtt_analyze import summarize, changes
 from run import ROOT, save, sha, counters
 
 def sequence(phase, multiplier, candidate="q1s0p0", floor_packets=0):
-    rng = random.Random(2026102380 + ["depth", "policy", "confirm"].index(phase))
+    rng = random.Random(2026102380 + ["depth", "policy", "confirm", "loaded"].index(phase))
     rows = []
     if phase == "depth":
         cells = [(cc, heavy) for cc in ("cubic", "bbr") for heavy in (1, 200)]
@@ -31,6 +31,8 @@ def sequence(phase, multiplier, candidate="q1s0p0", floor_packets=0):
     else:
         cells = [(cc, rtt, heavy) for cc in ("cubic", "bbr") for rtt in rig.RTTS for heavy in (1, 200)]
         repeats = 2
+        if phase == "loaded":
+            cells = [(cc, rtt, 200) for cc in ("cubic", "bbr") for rtt in (50, 100, 250, 500)]
         if phase == "confirm":
             cells, repeats = [("cubic", 20, 200)], 12
         rng.shuffle(cells)
@@ -76,7 +78,7 @@ def analyze(out):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("phase", choices=["depth", "policy", "confirm"])
+    p.add_argument("phase", choices=["depth", "policy", "confirm", "loaded"])
     p.add_argument("out", type=Path)
     p.add_argument("--multiplier", type=int, choices=[1,2], default=1)
     p.add_argument("--container", default="zfstack-rtt-20261023")
