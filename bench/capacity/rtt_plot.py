@@ -41,6 +41,7 @@ def plot(summary, destination):
                     handles.append(line); labels.append(f"{cc.upper()}: {name}")
         ax.set(xscale="log", xlabel="Configured base RTT (ms)", ylabel=ylabel, title=title)
         if logy: ax.set_yscale("log")
+        elif metric == "mbps": ax.set_ylim(bottom=0)
         ax.set_xticks([1,10,50,100,250,500])
         ax.xaxis.set_major_formatter(ScalarFormatter())
         ax.grid(True, which="major", alpha=.2)
@@ -52,6 +53,8 @@ def plot(summary, destination):
         target = destination.with_suffix(suffix)
         if target.exists(): raise FileExistsError(target)
         fig.savefig(target, dpi=160)
+        if suffix == ".svg":
+            target.write_text("\n".join(line.rstrip() for line in target.read_text().splitlines()) + "\n")
     plt.close(fig)
 
 

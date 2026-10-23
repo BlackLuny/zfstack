@@ -76,6 +76,19 @@ def analyze(out):
         if result["phase"] == "guard" and (raw["config"]["rate_mbps"] != 10000 or row["rtt"] != 0):
             errors.append("not a host-throughput guard")
         row["valid"] = not errors
+    plan = json.loads((out / "plan.json").read_text())
+    if result["phase"] == "guard" and plan.get("candidate") == rig.BASE:
+        result["comparisons"] = []
+        for cc, heavy in sorted({(r["cc"],r["heavy"]) for r in result["rows"]}):
+            group = [r for r in result["rows"] if (r["cc"],r["heavy"]) == (cc,heavy)]
+            pairs = []
+            for block in sorted({r["block"] for r in group}):
+                pair = sorted([r for r in group if r["block"] == block], key=lambda r:r["position"])
+                if len(pair) == 2: pairs.append(pair)
+            result["comparisons"].append(dict(cc=cc, rtt=0, heavy=heavy, arm=rig.BASE,
+                pairs=len(pairs), valid=len(pairs)==2 and all(a["valid"] and b["valid"] for a,b in pairs),
+                changes_descriptive=changes(pairs)))
+        result["scope"] = "Same binary and same configuration at host peak; A/A noise control, not an optimization."
     if result["phase"] == "screen":
         result["memory_comparisons"] = []
         for cc in ("cubic", "bbr"):

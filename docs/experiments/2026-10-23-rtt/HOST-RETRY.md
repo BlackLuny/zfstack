@@ -71,3 +71,9 @@ diagnostic control. A new final binary is frozen before further measurements,
 and all final comparison arms explicitly set the switch to `1`. The production
 library, its defaults, and its Tokio adapter remain unchanged. V1–V4 fixture
 diagnostics are not pooled into the final CPU/fairness estimates.
+
+All corrected performance cohorts in this study use one port and one shard.
+The recovery tests establish this fixture's behavior; they do not validate a
+general cross-shard budget-notification implementation. The production Tokio
+adapter retains its own asynchronous waiter contract. Keep that scope distinct
+from the test host's input/read/close progress gate.

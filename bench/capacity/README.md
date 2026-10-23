@@ -89,3 +89,51 @@ This needs the same binary and an owned container running the verified image.
 Its 12 attempts are a separate screen, not additional prefetch-confirmation
 pairs. CPU or memory improvements cannot compensate for a material peak-speed
 regression in this guard.
+
+## RTT, joint factors, and corrected host
+
+The [RTT report](../../docs/experiments/2026-10-23-rtt/README.md) separates the
+original fixture, budget-wakeup diagnostics, and corrected-host comparisons.
+The bare-Shard host now retries memory/aggregate-budget-blocked writers after
+real release and input/read/close progress. `ZFBENCH_RETRY_BUDGET_WRITERS=0`
+retains the old diagnostic control; the final runners explicitly set `1`.
+This repair does not modify the production Tokio adapter or library defaults.
+
+Additional test controls include `ZFBENCH_MIN_PREFETCH` (bytes),
+`ZFBENCH_PREFETCH_MS`, `ZFBENCH_QUANTUM` and `ZFBENCH_ROUND_CAP` (bytes),
+`ZFBENCH_CONNECT_PARALLEL` (bounded handshake setup), and
+`ZFBENCH_HEAVY_PROGRESS=1` (250-ms per-flow read observations).
+`ZFBENCH_QUEUE_DISCIPLINE=fifo|peer` compares the same rate serializer and byte
+ceiling with FIFO or peer DRR/pushout at the emulated bottleneck. These are
+benchmark controls, not a deployed queue or online RTT/concurrency controller.
+
+The frozen final executable is `target/release/zfbench-rtt-final-20261023`.
+Build once with the release settings above and copy it to that name before
+starting a fresh experiment. Full protocol changes and selection decisions are
+retained in the RTT report directory. The final continuation is reproducible as:
+
+```sh
+python3 bench/capacity/rtt_queue.py loaded qa/results/rtt-new-loaded --multiplier 1
+python3 bench/capacity/rtt_queue.py confirm qa/results/rtt-new-confirm --multiplier 1
+python3 bench/capacity/rtt_final.py aa qa/results/rtt-new-aa
+python3 bench/capacity/rtt_final.py guard qa/results/rtt-new-guard
+python3 bench/capacity/rtt_final.py guard qa/results/rtt-new-guard-aa --candidate q0s0p0
+```
+
+Run serially in the dedicated container; build before measuring. Every runner
+requires a fresh output directory. Do not replace failed attempts. Reanalysis
+of retained evidence needs no running container:
+
+```sh
+python3 bench/capacity/rtt_queue.py policy qa/results/rtt-20261023-final-policy --analyze
+python3 bench/capacity/rtt_queue.py loaded qa/results/rtt-20261023-final-loaded --analyze
+python3 bench/capacity/rtt_collect.py qa/results/rtt-reanalysis
+python3 bench/capacity/rtt_plot.py qa/results/rtt-reanalysis/final-regimes-summary.json qa/results/rtt-reanalysis/rtvsload
+```
+
+The collector requires all frozen cohorts and retained executable identities;
+the evidence bundle includes them. Plotting additionally uses Matplotlib.
+The combined configured-regime table reuses 64 unchanged attempts and adds 32
+new loaded attempts, with explicit source-cohort provenance. It is not another
+96 measurements or proof of a runtime transition policy. CPU scopes remain
+separate, and plotted ranges from two runs are not confidence intervals.

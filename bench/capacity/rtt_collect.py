@@ -34,6 +34,7 @@ COHORTS = [
     ("final-confirm", "final-confirm", rtt_queue.analyze),
     ("final-aa", "final-aa", rtt_final.analyze),
     ("final-guard", "final-guard", rtt_final.analyze),
+    ("final-guard-aa", "final-guard-aa", rtt_final.analyze),
 ]
 
 
