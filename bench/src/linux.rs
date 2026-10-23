@@ -17,8 +17,6 @@ mod tail_trace;
 mod link_queue;
 mod tx_tuning;
 mod trial_tuning;
-#[cfg(feature = "zfstack")]
-mod budget_retry;
 mod wg;
 mod wgmode;
 

@@ -29,25 +29,16 @@ impl TxTuning {
         Self::parse(cap.as_deref(), prefetch.as_deref()).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
     }
 
-    #[cfg(feature = "zfstack")]
-    pub fn apply(self, cfg: &mut zfstack::StackConfig) {
-        if let Some(n) = self.max_snd_buf {
-            cfg.max_snd_buf = n;
-        }
-        if let Some(n) = self.prefetch_max {
-            cfg.prefetch_max = n;
-        }
-    }
-
     pub fn json(self) -> serde_json::Value {
         serde_json::json!({"max_snd_buf_bytes": self.max_snd_buf, "prefetch_max_bytes": self.prefetch_max})
     }
 }
 
-#[cfg(all(test, feature = "zfstack"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "zfstack")]
     #[test]
     fn absent_overrides_preserve_both_profiles_and_independent_controls() {
         for mut cfg in [zfstack::StackConfig::default(), zfstack::StackConfig::client()] {

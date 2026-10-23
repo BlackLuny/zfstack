@@ -11,6 +11,9 @@
 //! uses one shard per port, all sharing one `GlobalBudget`, still driven by this
 //! single thread.
 
+mod budget_retry;
+mod tuning;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
@@ -124,7 +127,7 @@ struct Slot {
     t_ingress: std::time::Duration,
     t_run: std::time::Duration,
     t_app: std::time::Duration,
-    budget_retry: crate::budget_retry::BudgetRetry,
+    budget_retry: budget_retry::BudgetRetry,
     app_progress: u64,
 }
 
@@ -145,7 +148,7 @@ impl Slot {
             t_run: Default::default(),
             t_app: Default::default(),
             app_progress: 0,
-            budget_retry: crate::budget_retry::BudgetRetry::new(
+            budget_retry: budget_retry::BudgetRetry::new(
                 crate::trial_tuning::TrialTuning::from_env().expect("validated trial tuning").retry_budget_writers,
             ),
         }

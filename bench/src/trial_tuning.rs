@@ -58,22 +58,6 @@ impl TrialTuning {
         })
     }
 
-    #[cfg(feature = "zfstack")]
-    pub fn apply(self, cfg: &mut zfstack::StackConfig) {
-        if let Some(n) = self.min_prefetch {
-            cfg.min_prefetch = n;
-        }
-        if let Some(n) = self.prefetch_ms {
-            cfg.prefetch_time = std::time::Duration::from_millis(n);
-        }
-        if let Some(n) = self.quantum {
-            cfg.max_quantum = n;
-        }
-        if let Some(n) = self.round_cap {
-            cfg.round_bytes_cap = n;
-        }
-    }
-
     pub fn json(self) -> serde_json::Value {
         serde_json::json!({"min_prefetch_bytes": self.min_prefetch, "prefetch_ms": self.prefetch_ms,
             "quantum_bytes": self.quantum, "round_cap_bytes": self.round_cap,
@@ -86,11 +70,12 @@ fn positive(v: &str) -> Result<u64, &'static str> {
     v.parse::<u64>().ok().filter(|n| *n > 0).ok_or("expected a positive integer")
 }
 
-#[cfg(all(test, feature = "zfstack"))]
+#[cfg(test)]
 mod tests {
-    use super::*;
+    #[cfg(feature = "zfstack")]
     #[test]
     fn profiles_keep_their_inflight_window_and_defaults() {
+        use super::*;
         for mut cfg in [zfstack::StackConfig::default(), zfstack::StackConfig::client()] {
             let before = format!("{cfg:?}");
             TrialTuning::default().apply(&mut cfg);
