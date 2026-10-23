@@ -13,7 +13,7 @@ from rtt_final import BINARY, freeze
 from rtt_analyze import summarize, changes
 from run import ROOT, save, sha, counters
 
-def sequence(phase, multiplier, candidate="q1s0p0"):
+def sequence(phase, multiplier, candidate="q1s0p0", floor_packets=0):
     rng = random.Random(2026102380 + ["depth", "policy", "confirm"].index(phase))
     rows = []
     if phase == "depth":
@@ -43,8 +43,9 @@ def sequence(phase, multiplier, candidate="q1s0p0"):
                     c = rig.case(cc, rtt, heavy, 20)
                     c["warmup"] = max(8, c["warmup"])
                     depth = multiplier if arm != rig.BASE else 0
+                    floor = floor_packets if arm != rig.BASE else 0
                     rows.append(dict(block=f"{cc}-rtt{rtt}-h{heavy}-pair{rep}", position=pos, arm=arm, depth=depth,
-                                     queue_bytes=max(250000, depth * 12500 * rtt), **c))
+                                     floor_packets=floor, queue_bytes=max(250000, depth * 12500 * rtt, floor * 1420 * heavy), **c))
     return [dict(index=i, retry_budget=1, **r) for i,r in enumerate(rows)]
 
 
@@ -81,6 +82,7 @@ if __name__ == "__main__":
     p.add_argument("--container", default="zfstack-rtt-20261023")
     p.add_argument("--binary", type=Path, default=BINARY)
     p.add_argument("--candidate", choices=["q1s0p0", "q1s0p2", "q1s0p3"], default="q1s0p0")
+    p.add_argument("--floor-packets", choices=[0,4,8], type=int, default=0)
     p.add_argument("--analyze", action="store_true")
     a = p.parse_args()
     out = a.out.resolve()
@@ -91,8 +93,8 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=False)
     binary = a.binary.resolve()
     digest = sha(binary)
-    rows = sequence(a.phase, a.multiplier, a.candidate)
-    freeze(out, a.phase, rows, binary, multiplier=a.multiplier, candidate=a.candidate)
+    rows = sequence(a.phase, a.multiplier, a.candidate, a.floor_packets)
+    freeze(out, a.phase, rows, binary, multiplier=a.multiplier, candidate=a.candidate, floor_packets=a.floor_packets)
     for row in rows:
         rig.execute(out, row, a.container, binary, digest)
     save(out / "complete.json", dict(attempts=len(rows), end_unix=time.time()))
