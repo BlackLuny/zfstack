@@ -307,6 +307,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
     let result = json!({
         "tool": "zfbench",
         "mode": "client",
+        "tx_tuning": crate::tx_tuning::TxTuning::from_env()?.json(),
         "label": a.label,
         "config": {
             "proxy": proxy_name(kind),

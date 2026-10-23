@@ -284,11 +284,13 @@ fn reader(
 }
 
 pub fn client_config(profile: bool) -> StackConfig {
-    if profile {
+    let mut cfg = if profile {
         StackConfig::client()
     } else {
         StackConfig::default()
-    }
+    };
+    crate::tx_tuning::TxTuning::from_env().expect("validated TX tuning").apply(&mut cfg);
+    cfg
 }
 
 fn open_proxy_tun(vnet: bool, tso: bool) -> io::Result<RawFd> {

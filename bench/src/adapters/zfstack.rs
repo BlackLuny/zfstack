@@ -427,6 +427,7 @@ fn stack_cfg(opts: &ZfOpts) -> StackConfig {
         cfg.max_quantum = value.parse().expect("ZFBENCH_QUANTUM bytes");
         assert!(cfg.max_quantum > 0);
     }
+    crate::tx_tuning::TxTuning::from_env().expect("validated TX tuning").apply(&mut cfg);
     cfg
 }
 

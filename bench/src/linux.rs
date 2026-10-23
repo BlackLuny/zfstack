@@ -15,6 +15,7 @@ mod tunproxy_legacy;
 mod util;
 mod tail_trace;
 mod link_queue;
+mod tx_tuning;
 mod wg;
 mod wgmode;
 
@@ -372,6 +373,10 @@ pub fn sysctl(name: &str) -> String {
 
 fn main() {
     let a = Args::parse();
+    if let Err(e) = tx_tuning::TxTuning::from_env() {
+        eprintln!("zfbench TX tuning: {e}");
+        std::process::exit(2);
+    }
     if a.cleanup {
         tun::cleanup();
         return;
@@ -652,6 +657,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "version": env!("CARGO_PKG_VERSION"),
         "label": a.label,
         "timestamp_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+        "tx_tuning": tx_tuning::TxTuning::from_env()?.json(),
         "config": {
             "stack": stack_name(a.stack),
             "test": test_name(a.test),
