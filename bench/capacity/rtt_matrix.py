@@ -82,6 +82,8 @@ def execute(out, row, container, binary, digest):
     env = dict(ARMS[row["arm"]], ZFBENCH_RR_RAW="1", ZFBENCH_RR_OPEN_HZ="25",
                ZFBENCH_RR_ARRIVALS=f"/work/{rel}/arrivals.json", ZFBENCH_CONNECT_PARALLEL="32",
                ZFBENCH_HEAVY_PROGRESS="1")
+    if "retry_budget" in row:
+        env["ZFBENCH_RETRY_BUDGET_WRITERS"] = str(row["retry_budget"])
     argv = ["docker", "exec", container, "env"] + [f"{k}={v}" for k, v in env.items()]
     argv += ["timeout", "-k", "5", "180", "python3", "/work/bench/tail69_exec.py",
              f"/work/{rel}/resources.json", "taskset", "-c", "0-3", f"/work/{binary.relative_to(ROOT)}"]

@@ -1,7 +1,7 @@
 //! Opt-in experiment controls; absent controls preserve library profiles.
 use std::io;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct TrialTuning {
     pub min_prefetch: Option<u32>,
     pub prefetch_ms: Option<u64>,
@@ -9,6 +9,13 @@ pub struct TrialTuning {
     pub round_cap: Option<usize>,
     pub connect_parallel: usize,
     pub progress: bool,
+    pub retry_budget_writers: bool,
+}
+
+impl Default for TrialTuning {
+    fn default() -> Self {
+        Self { min_prefetch: None, prefetch_ms: None, quantum: None, round_cap: None, connect_parallel: 1, progress: false, retry_budget_writers: true }
+    }
 }
 
 impl TrialTuning {
@@ -29,26 +36,49 @@ impl TrialTuning {
         if connect_parallel > 256 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_CONNECT_PARALLEL exceeds 256"));
         }
-        let progress = match std::env::var("ZFBENCH_HEAVY_PROGRESS").as_deref() {
+        let flag = |name: &str, absent: bool| match std::env::var(name).as_deref() {
             Ok("1") => true,
-            Ok("0") | Err(std::env::VarError::NotPresent) => false,
-            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_HEAVY_PROGRESS must be 0 or 1")),
+            Ok("0") => false,
+            Err(std::env::VarError::NotPresent) => absent,
+            _ => false,
         };
-        Ok(Self { min_prefetch, prefetch_ms, quantum, round_cap, connect_parallel: connect_parallel as usize, progress })
+        for name in ["ZFBENCH_HEAVY_PROGRESS", "ZFBENCH_RETRY_BUDGET_WRITERS"] {
+            if !matches!(std::env::var(name).as_deref(), Ok("0" | "1") | Err(std::env::VarError::NotPresent)) {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{name} must be 0 or 1")));
+            }
+        }
+        Ok(Self {
+            min_prefetch,
+            prefetch_ms,
+            quantum,
+            round_cap,
+            connect_parallel: connect_parallel as usize,
+            progress: flag("ZFBENCH_HEAVY_PROGRESS", false),
+            retry_budget_writers: flag("ZFBENCH_RETRY_BUDGET_WRITERS", true),
+        })
     }
 
     #[cfg(feature = "zfstack")]
     pub fn apply(self, cfg: &mut zfstack::StackConfig) {
-        if let Some(n) = self.min_prefetch { cfg.min_prefetch = n; }
-        if let Some(n) = self.prefetch_ms { cfg.prefetch_time = std::time::Duration::from_millis(n); }
-        if let Some(n) = self.quantum { cfg.max_quantum = n; }
-        if let Some(n) = self.round_cap { cfg.round_bytes_cap = n; }
+        if let Some(n) = self.min_prefetch {
+            cfg.min_prefetch = n;
+        }
+        if let Some(n) = self.prefetch_ms {
+            cfg.prefetch_time = std::time::Duration::from_millis(n);
+        }
+        if let Some(n) = self.quantum {
+            cfg.max_quantum = n;
+        }
+        if let Some(n) = self.round_cap {
+            cfg.round_bytes_cap = n;
+        }
     }
 
     pub fn json(self) -> serde_json::Value {
         serde_json::json!({"min_prefetch_bytes": self.min_prefetch, "prefetch_ms": self.prefetch_ms,
             "quantum_bytes": self.quantum, "round_cap_bytes": self.round_cap,
-            "connect_parallel": self.connect_parallel, "heavy_progress": self.progress})
+            "connect_parallel": self.connect_parallel, "heavy_progress": self.progress,
+            "retry_budget_writers": self.retry_budget_writers})
     }
 }
 
@@ -73,6 +103,8 @@ mod tests {
             assert_eq!(cfg.min_prefetch, 16384);
             assert_eq!(cfg.prefetch_time.as_millis(), 4);
         }
-        for v in ["", "0", "-1", "4ms", "18446744073709551616"] { assert!(positive(v).is_err()); }
+        for v in ["", "0", "-1", "4ms", "18446744073709551616"] {
+            assert!(positive(v).is_err());
+        }
     }
 }

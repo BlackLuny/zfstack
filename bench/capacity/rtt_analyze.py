@@ -11,7 +11,8 @@ from confirm import interval
 from rtt_matrix import ARMS, BASE
 
 KEYS = ["mbps", "stack_cpu_s_per_gb", "stack_cpu_s_per_s", "stack_link_cpu_s_per_gb",
-        "process_cpu_s_per_gb", "rss_hwm_kib", "user_equal_mean_ms", "worst_user_p99_ms",
+        "stack_link_cpu_s_per_s", "process_cpu_s_per_gb", "process_cpu_s_per_s",
+        "rss_hwm_kib", "user_equal_mean_ms", "worst_user_p99_ms",
         "heavy_jain", "max_observed_no_read_sec"]
 
 
@@ -50,6 +51,8 @@ def summarize(path):
                     quantum_bytes=int(env["ZFBENCH_QUANTUM"]) if "ZFBENCH_QUANTUM" in env else None,
                     round_cap_bytes=int(env["ZFBENCH_ROUND_CAP"]) if "ZFBENCH_ROUND_CAP" in env else None,
                     connect_parallel=32, heavy_progress=True)
+    if "retry_budget_writers" in r["trial_tuning"]:
+        expected["retry_budget_writers"] = env.get("ZFBENCH_RETRY_BUDGET_WRITERS", "1") == "1"
     tx = dict(max_snd_buf_bytes=None, prefetch_max_bytes=int(env["ZFBENCH_PREFETCH_MAX"]) if "ZFBENCH_PREFETCH_MAX" in env else None)
     if r["trial_tuning"] != expected or r["tx_tuning"] != tx or r["config"]["sock_buf_kb"] != 16384:
         errors.append("configuration does not match plan")
@@ -64,7 +67,9 @@ def summarize(path):
     link = cpu["link_up_window_sec"] + cpu["link_down_window_sec"]
     out.update(mbps=result["heavy"]["goodput_mbps_window"], stack_cpu_s_per_gb=stack / gb,
                stack_cpu_s_per_s=stack / wall, stack_link_cpu_s_per_gb=(stack + link) / gb,
-               process_cpu_s_per_gb=cpu["process_window_sec"] / gb, rss_hwm_kib=resources["max_rss_kib"],
+               stack_link_cpu_s_per_s=(stack + link) / wall,
+               process_cpu_s_per_gb=cpu["process_window_sec"] / gb,
+               process_cpu_s_per_s=cpu["process_window_sec"] / wall, rss_hwm_kib=resources["max_rss_kib"],
                link_late_mean_us={k:r["link"][k]["timing_late_mean_us"] for k in ("up", "down")},
                bottleneck_drops={k:r["link"][k]["bottleneck_drops"] for k in ("up", "down")},
                wall_sec=wall)

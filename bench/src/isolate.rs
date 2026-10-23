@@ -200,25 +200,26 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     // Bounded parallel handshake setup avoids N * RTT setup time. Connections
     // start reading immediately, so a completed batch cannot block on its data.
     for start in (0..iso.heavy_conns as usize).step_by(trial.connect_parallel) {
-      let batch = std::thread::scope(|scope| {
-        let jobs: Vec<_> = (start..(start + trial.connect_parallel).min(iso.heavy_conns as usize))
-            .map(|i| scope.spawn(move || (i, connect_bound(o, hpeer, hport)))).collect();
-        jobs.into_iter().map(|h| h.join().expect("connect thread")).collect::<Vec<_>>()
-      });
-      for (i, result) in batch {
-        match result {
-            Ok(mut s) => {
-                if let Err(e) = s.write_all(&app::encode_header(app::CMD_DOWN, i as u64)) {
-                    errors.push(format!("heavy {i}: header: {e}"));
-                    continue;
+        let batch = std::thread::scope(|scope| {
+            let jobs: Vec<_> = (start..(start + trial.connect_parallel).min(iso.heavy_conns as usize))
+                .map(|i| scope.spawn(move || (i, connect_bound(o, hpeer, hport))))
+                .collect();
+            jobs.into_iter().map(|h| h.join().expect("connect thread")).collect::<Vec<_>>()
+        });
+        for (i, result) in batch {
+            match result {
+                Ok(mut s) => {
+                    if let Err(e) = s.write_all(&app::encode_header(app::CMD_DOWN, i as u64)) {
+                        errors.push(format!("heavy {i}: header: {e}"));
+                        continue;
+                    }
+                    let (stop, ctr) = (stop.clone(), heavy_bytes.clone());
+                    let per_flow = trial.progress.then(|| (per_flow.clone(), i));
+                    heavy_handles.push(std::thread::spawn(move || heavy_read(s, stop, ctr, per_flow)));
                 }
-                let (stop, ctr) = (stop.clone(), heavy_bytes.clone());
-                let per_flow = trial.progress.then(|| (per_flow.clone(), i));
-                heavy_handles.push(std::thread::spawn(move || heavy_read(s, stop, ctr, per_flow)));
+                Err(e) => errors.push(format!("heavy {i}: connect: {e}")),
             }
-            Err(e) => errors.push(format!("heavy {i}: connect: {e}")),
         }
-      }
     }
     // Heavies run alone through warmup so their congestion window is up before
     // the measured interval. Connecting the lights is a separate phase: it is
@@ -648,7 +649,9 @@ fn heavy_read(mut s: TcpStream, stop: Arc<AtomicBool>, ctr: Arc<AtomicU64>, per_
                 }
                 pos += n as u64;
                 ctr.fetch_add(n as u64, Relaxed);
-                if let Some((flows, i)) = &per_flow { flows[*i].fetch_add(n as u64, Relaxed); }
+                if let Some((flows, i)) = &per_flow {
+                    flows[*i].fetch_add(n as u64, Relaxed);
+                }
             }
             Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {}
             Err(e) if e.kind() == io::ErrorKind::Interrupted => {}

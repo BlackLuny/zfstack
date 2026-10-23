@@ -124,6 +124,8 @@ struct Slot {
     t_ingress: std::time::Duration,
     t_run: std::time::Duration,
     t_app: std::time::Duration,
+    budget_retry: crate::budget_retry::BudgetRetry,
+    app_progress: u64,
 }
 
 impl Slot {
@@ -142,6 +144,10 @@ impl Slot {
             t_ingress: Default::default(),
             t_run: Default::default(),
             t_app: Default::default(),
+            app_progress: 0,
+            budget_retry: crate::budget_retry::BudgetRetry::new(
+                crate::trial_tuning::TrialTuning::from_env().expect("validated trial tuning").retry_budget_writers,
+            ),
         }
     }
 
@@ -168,6 +174,8 @@ impl Slot {
             c.app.finish();
         }
         self.active.remove(&id);
+        self.budget_retry.remove(id);
+        self.app_progress = self.app_progress.wrapping_add(1);
     }
 
     fn pump(&mut self, id: ConnId, zn: zfstack::Instant) -> bool {
@@ -179,6 +187,7 @@ impl Slot {
             }
             match self.shard.read(zn, id, &mut self.buf) {
                 ReadResult::Data(n) => {
+                    self.app_progress = self.app_progress.wrapping_add(1);
                     trace_stream("app_read", &self.shard, id, n);
                     c.app.on_recv(&self.buf[..n]);
                     progressed = true;
@@ -198,7 +207,7 @@ impl Slot {
         loop {
             let Some(c) = self.conns.get_mut(&id) else { return progressed };
             if c.pending_off < c.pending.len() {
-                match self.shard.write(id, &c.pending[c.pending_off..]) {
+                match self.budget_retry.write(&mut self.shard, id, &c.pending[c.pending_off..]) {
                     WriteResult::Written(n) => {
                         c.pending_off += n;
                         progressed = true;
@@ -227,7 +236,7 @@ impl Slot {
             if n == 0 {
                 break;
             }
-            match self.shard.write(id, &self.buf[..n]) {
+            match self.budget_retry.write(&mut self.shard, id, &self.buf[..n]) {
                 WriteResult::Written(w) => {
                     trace_stream("app_write", &self.shard, id, w);
                     progressed = true;
@@ -313,6 +322,8 @@ impl Slot {
         let o = self.shard.run(zn, &mut sink);
         let t1 = Instant::now();
         self.t_run += t1 - t0;
+        let st = self.shard.stats();
+        self.budget_retry.activate(self.shard.budget().global().release_epoch(), (st.rx_packets, st.conns_freed, self.app_progress), &mut self.active);
         let ev = self.handle_events(counters);
         let mut progressed = false;
         if !self.active.is_empty() {
@@ -528,6 +539,7 @@ impl UserStack for ZfStack {
                 "syn_cookies_sent": st.syn_cookies_sent, "conns_created": st.conns_created,
                 "conns_freed": st.conns_freed, "runs": st.runs, "idle_rounds": st.idle_rounds,
                 "round_budget_exhausted": st.round_budget_exhausted,
+                "app_budget_retry": slot.budget_retry.json(),
                 "pacing_credit_dropped": st.pacing_credit_dropped, "rx_dropped_parse": st.rx_dropped_parse,
                 "rx_dropped_no_iface": st.rx_dropped_no_iface,
                 "rx_dropped_peer_mismatch": st.rx_dropped_peer_mismatch,
