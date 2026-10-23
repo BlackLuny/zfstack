@@ -419,14 +419,7 @@ fn stack_cfg(opts: &ZfOpts) -> StackConfig {
         ..Default::default()
     };
     // Attribution controls only; default production configuration is unchanged.
-    if let Ok(value) = std::env::var("ZFBENCH_ROUND_CAP") {
-        cfg.round_bytes_cap = value.parse().expect("ZFBENCH_ROUND_CAP bytes");
-        assert!(cfg.round_bytes_cap > 0);
-    }
-    if let Ok(value) = std::env::var("ZFBENCH_QUANTUM") {
-        cfg.max_quantum = value.parse().expect("ZFBENCH_QUANTUM bytes");
-        assert!(cfg.max_quantum > 0);
-    }
+    crate::trial_tuning::TrialTuning::from_env().expect("validated trial tuning").apply(&mut cfg);
     crate::tx_tuning::TxTuning::from_env().expect("validated TX tuning").apply(&mut cfg);
     cfg
 }

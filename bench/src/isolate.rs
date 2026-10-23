@@ -194,19 +194,31 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     let heavy_bytes = Arc::new(AtomicU64::new(0));
     let stop = Arc::new(AtomicBool::new(false));
     let mut heavy_handles: Vec<JoinHandle<Vec<String>>> = Vec::new();
+    let trial = crate::trial_tuning::TrialTuning::from_env().expect("validated trial tuning");
+    let per_flow: Arc<Vec<AtomicU64>> = Arc::new((0..iso.heavy_conns).map(|_| AtomicU64::new(0)).collect());
     let (hport, hpeer) = heavy_user();
-    for i in 0..iso.heavy_conns {
-        match connect_bound(o, hpeer, hport) {
+    // Bounded parallel handshake setup avoids N * RTT setup time. Connections
+    // start reading immediately, so a completed batch cannot block on its data.
+    for start in (0..iso.heavy_conns as usize).step_by(trial.connect_parallel) {
+      let batch = std::thread::scope(|scope| {
+        let jobs: Vec<_> = (start..(start + trial.connect_parallel).min(iso.heavy_conns as usize))
+            .map(|i| scope.spawn(move || (i, connect_bound(o, hpeer, hport)))).collect();
+        jobs.into_iter().map(|h| h.join().expect("connect thread")).collect::<Vec<_>>()
+      });
+      for (i, result) in batch {
+        match result {
             Ok(mut s) => {
                 if let Err(e) = s.write_all(&app::encode_header(app::CMD_DOWN, i as u64)) {
                     errors.push(format!("heavy {i}: header: {e}"));
                     continue;
                 }
                 let (stop, ctr) = (stop.clone(), heavy_bytes.clone());
-                heavy_handles.push(std::thread::spawn(move || heavy_read(s, stop, ctr)));
+                let per_flow = trial.progress.then(|| (per_flow.clone(), i));
+                heavy_handles.push(std::thread::spawn(move || heavy_read(s, stop, ctr, per_flow)));
             }
             Err(e) => errors.push(format!("heavy {i}: connect: {e}")),
         }
+      }
     }
     // Heavies run alone through warmup so their congestion window is up before
     // the measured interval. Connecting the lights is a separate phase: it is
@@ -239,6 +251,23 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     let window_end_at = window_start + Duration::from_secs(measure);
     let bytes_at_window = heavy_bytes.load(Relaxed);
     mark("window_start");
+    let progress_start: Vec<u64> = per_flow.iter().map(|n| n.load(Relaxed)).collect();
+    let progress_stop = Arc::new(AtomicBool::new(false));
+    let progress_handle = trial.progress.then(|| {
+        let (per_flow, stop) = (per_flow.clone(), progress_stop.clone());
+        let initial = progress_start.clone();
+        std::thread::spawn(move || {
+            let mut rows = vec![json!({"elapsed_ms": 0, "bytes": initial})];
+            let mut next = window_start + Duration::from_millis(250);
+            while !stop.load(Relaxed) && next < window_end_at {
+                std::thread::sleep(next.saturating_duration_since(Instant::now()));
+                rows.push(json!({"elapsed_ms": window_start.elapsed().as_secs_f64() * 1000.0,
+                    "bytes": per_flow.iter().map(|n| n.load(Relaxed)).collect::<Vec<_>>()}));
+                next += Duration::from_millis(250);
+            }
+            rows
+        })
+    });
     let loaded_handles = spawn_loaded(&msg, o.rr_interval_ms, window_end_at, connected);
     let mut loaded = Vec::new();
     for (i, h) in loaded_handles.into_iter().enumerate() {
@@ -260,6 +289,13 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     let window_secs = window_start.elapsed().as_secs_f64().max(1e-6);
     let bytes_at_end = heavy_bytes.load(Relaxed);
     mark("window_end");
+    progress_stop.store(true, Relaxed);
+    let progress_end: Vec<u64> = per_flow.iter().map(|n| n.load(Relaxed)).collect();
+    let progress = progress_handle.map(|h| {
+        let mut rows = h.join().expect("progress observer");
+        rows.push(json!({"elapsed_ms": window_secs * 1000.0, "bytes": progress_end}));
+        rows
+    });
     stop.store(true, Relaxed);
     for (i, h) in heavy_handles.into_iter().enumerate() {
         match h.join() {
@@ -316,6 +352,8 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
             "connect_phase_sec": connect_phase_sec,
             "goodput_mbps_window": window_bytes as f64 * 8.0 / 1e6 / window_secs,
             "goodput_note": "window_wall_sec is the measured Instant interval after connects completed, not secs-warmup",
+            "progress_250ms": progress,
+            "progress_note": "Client read observations, not packet scheduling guarantees. All flows belong to the same heavy peer. Sampling resolution is 250 ms; CPU includes observer overhead in every arm.",
         },
         "baseline_users": baseline.iter().map(user_json).collect::<Vec<_>>(),
         "loaded_users": loaded.iter().map(user_json).collect::<Vec<_>>(),
@@ -592,7 +630,7 @@ fn rr_once(s: &mut TcpStream, msg: &[u8], rbuf: &mut [u8]) -> io::Result<f64> {
     Ok(t.elapsed().as_secs_f64() * 1e3)
 }
 
-fn heavy_read(mut s: TcpStream, stop: Arc<AtomicBool>, ctr: Arc<AtomicU64>) -> Vec<String> {
+fn heavy_read(mut s: TcpStream, stop: Arc<AtomicBool>, ctr: Arc<AtomicU64>, per_flow: Option<(Arc<Vec<AtomicU64>>, usize)>) -> Vec<String> {
     let mut buf = vec![0u8; 256 * 1024];
     let mut pos = 0u64;
     let mut errors = Vec::new();
@@ -610,6 +648,7 @@ fn heavy_read(mut s: TcpStream, stop: Arc<AtomicBool>, ctr: Arc<AtomicU64>) -> V
                 }
                 pos += n as u64;
                 ctr.fetch_add(n as u64, Relaxed);
+                if let Some((flows, i)) = &per_flow { flows[*i].fetch_add(n as u64, Relaxed); }
             }
             Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {}
             Err(e) if e.kind() == io::ErrorKind::Interrupted => {}

@@ -16,6 +16,7 @@ mod util;
 mod tail_trace;
 mod link_queue;
 mod tx_tuning;
+mod trial_tuning;
 mod wg;
 mod wgmode;
 
@@ -377,6 +378,10 @@ fn main() {
         eprintln!("zfbench TX tuning: {e}");
         std::process::exit(2);
     }
+    if let Err(e) = trial_tuning::TrialTuning::from_env() {
+        eprintln!("zfbench trial tuning: {e}");
+        std::process::exit(2);
+    }
     if a.cleanup {
         tun::cleanup();
         return;
@@ -658,6 +663,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "label": a.label,
         "timestamp_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         "tx_tuning": tx_tuning::TxTuning::from_env()?.json(),
+        "trial_tuning": trial_tuning::TrialTuning::from_env()?.json(),
         "config": {
             "stack": stack_name(a.stack),
             "test": test_name(a.test),

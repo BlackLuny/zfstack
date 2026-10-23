@@ -290,6 +290,7 @@ pub fn client_config(profile: bool) -> StackConfig {
         StackConfig::default()
     };
     crate::tx_tuning::TxTuning::from_env().expect("validated TX tuning").apply(&mut cfg);
+    crate::trial_tuning::TrialTuning::from_env().expect("validated trial tuning").apply(&mut cfg);
     cfg
 }
 
