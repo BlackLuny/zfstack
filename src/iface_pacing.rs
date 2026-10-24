@@ -93,6 +93,19 @@ impl IfacePacer {
     pub(crate) fn rate(&self) -> u64 {
         self.rate
     }
+
+    pub(crate) fn set_rate(&mut self, rate: u64, mtu: u16) {
+        debug_assert!(rate > 0);
+        // Preserve bytes of credit/debt and the contention hold. Reconfiguration
+        // must not mint a fresh burst or briefly bypass a paused iface.
+        self.credit = self.credit.saturating_mul(self.rate as i128).div_euclid(rate as i128);
+        self.rate = rate;
+        self.set_mtu(mtu);
+        self.credit = self.credit.min(self.max_credit);
+        if self.deadline.is_some() {
+            self.park();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -140,5 +153,22 @@ mod tests {
             p.charge(usize::MAX);
             assert!(p.deadline().is_some());
         }
+    }
+
+    #[test]
+    fn capacity_changes_preserve_competition_and_reprice_outstanding_debt() {
+        let mut p = IfacePacer::new(12_500_000, 1420);
+        let now = Instant::from_millis(1000);
+        p.allowance(now, true);
+        assert!(p.charge(27_000));
+        let original = p.deadline().unwrap();
+        p.set_rate(6_250_000, 1420);
+        assert!(p.deadline().unwrap() > original);
+        assert_eq!(p.allowance(now, false), 0, "capacity update cannot reset the competition hold");
+        p.set_rate(25_000_000, 1420);
+        assert!(p.deadline().unwrap() < original);
+        let next = p.deadline().unwrap();
+        assert!(p.allowance(next, false) > 0);
+        assert!(p.active());
     }
 }

@@ -646,7 +646,13 @@ impl Shard {
             if iface.pacer.as_ref().map_or(0, IfacePacer::rate) == bytes_per_second {
                 return;
             }
-            iface.pacer = (bytes_per_second != 0).then(|| IfacePacer::new(bytes_per_second, iface.cfg.mtu));
+            if bytes_per_second == 0 {
+                iface.pacer = None;
+            } else if let Some(pacer) = iface.pacer.as_mut() {
+                pacer.set_rate(bytes_per_second, iface.cfg.mtu);
+            } else {
+                iface.pacer = Some(IfacePacer::new(bytes_per_second, iface.cfg.mtu));
+            }
         }
     }
 
