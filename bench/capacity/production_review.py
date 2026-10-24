@@ -17,17 +17,17 @@ from run import ROOT,save,sha,counters
 
 def sequence(phase):
     rng=random.Random(2026102409)
-    cells=[('cubic',100,1),('bbr',500,1)] if phase=='wan' else [('cubic',20,200),('bbr',20,200)]
+    cells=[('cubic',20,4)] if phase=='smoke' else [('cubic',100,1),('bbr',500,1)] if phase=='wan' else [('cubic',20,200),('bbr',20,200)]
     rng.shuffle(cells);rows=[]
     for cc,rtt,n in cells:
         arms=['off','p99'];rng.shuffle(arms)
-        for rep in range(12):
+        for rep in range(1 if phase=='smoke' else 12):
             for pos,arm in enumerate(arms if rep%2==0 else arms[::-1]):
-                row=native.case(cc,rtt,n,40 if phase=='wan' else 20)
+                row=native.case(cc,rtt,n,4 if phase=='smoke' else 40 if phase=='wan' else 20)
                 row.update(index=len(rows),block=f'{cc}-r{rtt}-n{n}-pair{rep:02d}',position=pos,arm=arm,
-                    warmup=max(8,round(40*rtt/1000)),retry_budget=1,
+                    warmup=2 if phase=='smoke' else max(8,round(40*rtt/1000)),retry_budget=1,
                     egress_rate=0 if arm=='off' else 12_375_000,tokio_stack=True,splice=True)
-                if phase=='loaded':row['rr_cpu']=4
+                if phase in ['loaded','smoke']:row['rr_cpu']=4
                 rows.append(row)
     return rows
 
@@ -66,15 +66,15 @@ def run(out,phase,container):
             name=f"{row['index']:03d}-{row['case']}-{row['block']}-{row['position']}-{row['arm']}"
             client.execute(out,name,row,container,binaries[row['arm']],digests[row['arm']],extra=args)
     else:
-        if phase=='loaded':
+        if phase in ['loaded','smoke']:
             for arm in ['off','p99']:native.ARMS[arm]['ZFBENCH_RR_CPU']='4'
         for row in rows:native.execute(out,row,container,binary,digests)
     save(out/'complete.json',dict(end_unix=time.time()))
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=['wan','peak','loaded']);p.add_argument('out',type=Path)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=['smoke','wan','peak','loaded']);p.add_argument('out',type=Path)
     p.add_argument('--container',default='zfstack-production-20261024');p.add_argument('--analyze',action='store_true')
     a=p.parse_args()
-    if a.analyze:print(json.dumps((peaks.analyze if a.phase=='peak' else observed.analyze if a.phase=='loaded' else pacing.analyze)(a.out.resolve()),indent=2))
+    if a.analyze:print(json.dumps((peaks.analyze if a.phase=='peak' else observed.analyze if a.phase in ['loaded','smoke'] else pacing.analyze)(a.out.resolve()),indent=2))
     else:run(a.out.resolve(),a.phase,a.container)

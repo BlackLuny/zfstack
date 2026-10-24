@@ -14,6 +14,8 @@ def qualify(directory):
     audits=read('audit.json');cohorts=read('cohorts.json')['cohorts']
     check('all retained cohort identities',all(a['identity_valid'] for a in audits))
     check('all planned attempts observed',all(c['completed']==c['planned'] for c in cohorts))
+    smoke=read('review-smoke-summary.json')
+    check('V4 isolated observer preflight',smoke['valid']==smoke['observations_valid']==smoke['planned']==2)
     loaded=read('review-loaded-summary.json')
     check('V4 loaded observations valid',loaded['observations_valid']==loaded['planned']==48)
     for c in loaded['comparisons']:

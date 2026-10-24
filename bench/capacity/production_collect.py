@@ -18,7 +18,7 @@ COHORTS = [
     ("final-guard",native.analyze),("final-aa",native.analyze),
     ("final-cross-peak",peaks.analyze),
     ("mixed-smoke",mixed.analyze),("mixed-v2-smoke",mixed.analyze),("final-mixed",mixed.analyze),
-    ("review-wan",native.analyze),("review-peak",peaks.analyze),
+    ("review-smoke",observed.analyze),("review-wan",native.analyze),("review-peak",peaks.analyze),
     ("review-loaded",observed.analyze),
 ]
 

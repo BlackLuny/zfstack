@@ -89,7 +89,11 @@ Do not pool V3's colocated-client estimates with V4's isolated-observer data.
 The 20-ms source-lag gate, 3-s service target, arrival count and all payload
 checks remain unchanged; shared-host noise is quantified, not assumed absent.
 
-Execution order is **loaded confirmation, longer WAN guards, cross-binary
+First validate V4's actual CPU-affinity instrumentation with a separate
+two-attempt CUBIC/20-ms/four-download smoke: 2-s warmup, 4-s measured window,
+same off/99% settings and FIFO, actual reader/writer CPUs must all equal 4.
+Keep these samples outside confirmation. If this runtime preflight passes,
+execution order is **loaded confirmation, longer WAN guards, cross-binary
 peak guards**. This order is declared before the first V4 attempt so primary
 latency/CPU failures are found before spending time on the longer single-flow
 guards. Sample counts, within-cell balanced orders and endpoints are unchanged.
