@@ -52,6 +52,7 @@ pub struct ProxyOpts {
     pub tso: bool,
     /// Run the stack driver on its own current-thread runtime.
     pub driver_thread: bool,
+    pub egress_rate: u64,
 }
 
 fn write_packet(fd: RawFd, p: &OutPacket<'_>, vnet: bool) -> SendResult {
@@ -616,6 +617,7 @@ fn start_stack(
             }
         },
     );
+    handle.set_iface_egress_rate(ids[0], o.egress_rate);
     let sample_memory = tx_experiment.sample.map(|_| memory.clone());
     let pool = PacketPool::new(memory, max_pkt + if vnet { VIRTIO_NET_HDR_LEN } else { 0 }, POOL_CACHED);
     #[cfg(feature = "packet-pool-idle-trim")]

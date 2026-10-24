@@ -68,6 +68,9 @@ pub struct Args {
     /// Bottleneck rate (Mbit/s, IP bytes) of the down direction; 0 = unlimited.
     #[arg(long, default_value_t = 200.0)]
     rate_mbps: f64,
+    /// Production aggregate iface pacing capacity in IP bytes/s (0 = off).
+    #[arg(long, default_value_t = 0)]
+    iface_egress_rate: u64,
     /// Bottleneck rate of the up direction (default: same as --rate-mbps).
     #[arg(long)]
     rate_up_mbps: Option<f64>,
@@ -261,6 +264,7 @@ struct Snap {
 #[derive(Clone, Debug)]
 pub struct StackOpts {
     pub stack: StackKind,
+    pub iface_egress_rate: u64,
     pub sock_buf_kb: usize,
     pub listen_pool: usize,
     pub smol_pacing_backlog_us: Option<i64>,
@@ -272,6 +276,7 @@ impl StackOpts {
     fn from_args(a: &Args) -> Self {
         StackOpts {
             stack: a.stack,
+            iface_egress_rate: a.iface_egress_rate,
             sock_buf_kb: a.sock_buf_kb,
             listen_pool: a.listen_pool,
             smol_pacing_backlog_us: a.smol_pacing_backlog_us,
@@ -283,6 +288,7 @@ impl StackOpts {
     pub fn to_json(&self) -> serde_json::Value {
         json!({
             "stack": stack_name(self.stack),
+            "iface_egress_rate": self.iface_egress_rate,
             "sock_buf_kb": self.sock_buf_kb,
             "listen_pool": self.listen_pool,
             "smol_pacing_backlog_us": self.smol_pacing_backlog_us,
@@ -295,6 +301,7 @@ impl StackOpts {
         let stack = v["stack"].as_str().ok_or("missing stack")?;
         Ok(StackOpts {
             stack: StackKind::from_str(stack, true)?,
+            iface_egress_rate: v["iface_egress_rate"].as_u64().unwrap_or(0),
             sock_buf_kb: v["sock_buf_kb"].as_u64().ok_or("missing sock_buf_kb")? as usize,
             listen_pool: v["listen_pool"].as_u64().ok_or("missing listen_pool")? as usize,
             smol_pacing_backlog_us: v["smol_pacing_backlog_us"].as_i64(),
@@ -318,7 +325,7 @@ pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>, isolate: Option
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing };
+                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing, egress_rate: o.iface_egress_rate };
                 return match isolate {
                     Some(plan) => Box::new(adapters::zfstack::ZfStack::with_isolate(opts, counters, plan.clone())),
                     None => Box::new(adapters::zfstack::ZfStack::new(opts, counters)),
@@ -398,6 +405,7 @@ fn main() {
             vnet_hdr: a.vnet_hdr || a.tso,
             tso: a.tso,
             driver_thread: a.driver_thread,
+            egress_rate: a.iface_egress_rate,
         };
         let r = if a.legacy { tunproxy_legacy::run(o) } else { tunproxy::run(o) };
         if let Err(e) = r {
@@ -668,6 +676,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
             "stack": stack_name(a.stack),
             "test": test_name(a.test),
             "rate_mbps": a.rate_mbps,
+            "iface_egress_rate": a.iface_egress_rate,
             "rate_up_mbps": a.rate_up_mbps.unwrap_or(a.rate_mbps),
             "rtt_ms": a.rtt_ms,
             "loss": a.loss,

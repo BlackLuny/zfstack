@@ -48,6 +48,7 @@ pub struct ZfOpts {
     pub sock_buf: usize,
     pub cc: CcAlgo,
     pub pacing: bool,
+    pub egress_rate: u64,
 }
 
 struct C {
@@ -361,6 +362,7 @@ impl ZfStack {
         let cfg = stack_cfg(&opts);
         let mut shard = Shard::new(cfg);
         let iface = shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
+        shard.set_iface_egress_rate(iface, opts.egress_rate);
         ZfStack {
             opts,
             start: Instant::now(),
@@ -400,6 +402,7 @@ impl ZfStack {
         for port in 0..plan.ports {
             let slot = if plan.per_port_shard { port as usize } else { 0 };
             let iface = slots[slot].shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
+            slots[slot].shard.set_iface_egress_rate(iface, opts.egress_rate);
             slots[slot].note_iface(iface, port);
             locs.push((slot, iface));
         }
@@ -544,6 +547,7 @@ impl UserStack for ZfStack {
                 "round_budget_exhausted": st.round_budget_exhausted,
                 "app_budget_retry": slot.budget_retry.json(),
                 "pacing_credit_dropped": st.pacing_credit_dropped, "rx_dropped_parse": st.rx_dropped_parse,
+                "egress_pacing_pauses": st.egress_pacing_pauses, "egress_paced_bytes": st.egress_paced_bytes,
                 "rx_dropped_no_iface": st.rx_dropped_no_iface,
                 "rx_dropped_peer_mismatch": st.rx_dropped_peer_mismatch,
             }));

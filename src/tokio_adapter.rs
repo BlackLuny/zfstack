@@ -423,6 +423,7 @@ struct PendingControl {
     mtu: HashMap<IfaceId, u16>,
     tx_csum: HashMap<IfaceId, bool>,
     tso: HashMap<IfaceId, u32>,
+    egress_rate: HashMap<IfaceId, u64>,
 }
 
 impl Ctl {
@@ -797,6 +798,12 @@ impl StackHandle {
         self.ctl.pending.lock().unwrap().tso.insert(iface, max_payload);
         self.ctl.notify.notify_one();
     }
+    /// See [`Shard::set_iface_egress_rate`]. Wakes a paced driver when changing
+    /// capacity or disabling the policy, including while it awaits a timer.
+    pub fn set_iface_egress_rate(&self, iface: IfaceId, bytes_per_second: u64) {
+        self.ctl.pending.lock().unwrap().egress_rate.insert(iface, bytes_per_second);
+        self.ctl.notify.notify_one();
+    }
 }
 
 /// Receives accepted connections.
@@ -1142,6 +1149,9 @@ where
         }
         for (iface, max) in pending.tso {
             self.shard.set_iface_tso(iface, max);
+        }
+        for (iface, rate) in pending.egress_rate {
+            self.shard.set_iface_egress_rate(iface, rate);
         }
     }
 
