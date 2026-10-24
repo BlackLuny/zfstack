@@ -1,0 +1,95 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": true,
+    "flows": 1,
+    "legacy": false,
+    "proxy": "zfstack-client",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 10,
+    "splice": true,
+    "test": "down",
+    "tso": true,
+    "tun_mtu": 65535,
+    "vnet_hdr": true,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 7.752479469,
+    "system_busy_sec_per_GB": 0.4354406487423612,
+    "system_window": {
+      "busy_sec": 17.07,
+      "idle_sec": 15.09,
+      "irq_sec": 0.0,
+      "softirq_sec": 2.03,
+      "steal_sec": 0.0,
+      "system_sec": 12.58,
+      "user_sec": 2.46
+    },
+    "window_effective_bytes": 39201668584,
+    "window_wall_sec": 7.999999734
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "9d6fb76"
+  },
+  "errors": [],
+  "label": "client-n2",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": 0.22243951124975925,
+    "cpu_util": 1.0900000362425013,
+    "cpu_window_sec": 8.72,
+    "hwm_kb": 8344,
+    "pid": 48754,
+    "rss_kb_end": 8336,
+    "rss_kb_idle": 5580
+  },
+  "results": {
+    "agg_mbps_per_sec": [
+      38366.75672,
+      38749.781016,
+      38935.701856,
+      38208.02084,
+      38765.446056,
+      39422.929296,
+      39668.48252,
+      39882.2412,
+      38950.403968,
+      39780.122936
+    ],
+    "direction": "down",
+    "flows": 1,
+    "goodput_mbps_mean": 39201.668584,
+    "goodput_mbps_window": 39201.668584,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          38366.75672,
+          38749.781016,
+          38935.701856,
+          38208.02084,
+          38765.446056,
+          39422.929296,
+          39668.48252,
+          39882.2412,
+          38950.403968,
+          39780.122936
+        ],
+        "receiver_bytes": 48841563216,
+        "total_bytes": 48841563216,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "tool": "zfbench"
+}
