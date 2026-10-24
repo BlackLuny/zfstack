@@ -11,7 +11,7 @@ from run import ROOT,save
 PREP=ROOT/'qa/results/fastpath-20261024-build'
 
 
-def phase(name):
+def phase(name,kind=None):
     out=ROOT/'qa/results'/('fastpath-20261024-'+name)
     summary=PREP/(name+'-summary.json')
     if out.exists():
@@ -19,7 +19,7 @@ def phase(name):
         if not (out/'complete.json').exists() or not summary.exists():raise RuntimeError('incomplete existing phase: '+name)
         result=json.loads(summary.read_text())
     else:
-        fastpath.run(out,name,'zfstack-fastpath-20261024')
+        fastpath.run(out,kind or name,'zfstack-fastpath-20261024')
         result=fastpath.analyze(out);save(summary,result)
     if not result['identity_audit']['identity_valid']:raise RuntimeError(name+': identity audit failed')
     print('SUMMARY',name,result['completed'],result['valid'],flush=True)
@@ -40,7 +40,7 @@ def loaded_passed(result):
 def main():
     smoke=phase('smoke')
     if smoke['valid']!=2:raise RuntimeError('native preflight invalid')
-    preflight=phase('preflight')
+    preflight=phase('preflight-v2','preflight')
     if preflight['valid']!=2:raise RuntimeError('controlled placement preflight invalid')
     aa=phase('aa')
     primary=phase('peak')

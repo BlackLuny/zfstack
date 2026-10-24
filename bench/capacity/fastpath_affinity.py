@@ -9,19 +9,22 @@ import sys
 import time
 
 
-def children(pid):
-    try:
-        return [int(p) for p in Path(f'/proc/{pid}/task/{pid}/children').read_text().split()]
-    except FileNotFoundError:
-        return []
-
-
 def descendants(pid):
+    # Some managed kernels omit /proc/<pid>/task/<tid>/children. Build the
+    # tree from PPIDs without inspecting unrelated processes' command lines.
+    tree={}
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():continue
+        try:
+            fields=(entry/'stat').read_text().rsplit(')',1)[1].split()
+            tree.setdefault(int(fields[1]),[]).append(int(entry.name))
+        except (FileNotFoundError,ProcessLookupError):
+            continue
     pending=[pid];seen=set()
     while pending:
         p=pending.pop()
         if p in seen:continue
-        seen.add(p);pending.extend(children(p))
+        seen.add(p);pending.extend(tree.get(p,[]))
     return seen
 
 

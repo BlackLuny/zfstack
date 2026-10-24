@@ -78,7 +78,7 @@ def execute_pinned(out,name,row,container,binary,digest):
 def run(out,phase,container):
     out.relative_to(ROOT);out.mkdir(parents=True,exist_ok=False)
     sources={str(f.relative_to(ROOT)):sha(f) for parent,glob in [(ROOT/'src','*.rs'),(ROOT/'bench/src','*.rs'),(ROOT/'bench/capacity','*.py')] for f in sorted(parent.rglob(glob))}
-    for f in [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'bench/Cargo.toml',PROTOCOL]:sources[str(f.relative_to(ROOT))]=sha(f)
+    for f in [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'bench/Cargo.toml',*sorted(PROTOCOL.parent.glob('*.md'))]:sources[str(f.relative_to(ROOT))]=sha(f)
     for name in sources:
         target=out/'source'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes((ROOT/name).read_bytes())
     digests={tag:sha(binary) for tag,binary in BINARIES.items()}
