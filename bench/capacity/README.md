@@ -186,3 +186,34 @@ Then execute, serially, `production_review.py loaded`, `wan`, and `peak` with
 fresh output directories. The runner audits requested/actual observer CPUs;
 late fully observed responses retain their true latency and SLO failure,
 while missing requests or generator faults still block mean confirmation.
+
+The V4 runners expect the retained executable at
+`target/release/zfbench-production-v4-20261024`. Start with the isolated-observer
+preflight before the three confirmation phases. Its container must be named
+`zfstack-production-20261024` (or pass `--container`), permit CPUs 0–4 and retain
+the documented four-CPU total quota; only the light reader/writer uses CPU 4.
+Use the exact receive-autotuning/sysctl settings retained in the evidence.
+
+```sh
+python3 bench/capacity/production_review.py smoke qa/results/production-new-review-smoke
+python3 bench/capacity/production_review.py loaded qa/results/production-new-review-loaded
+python3 bench/capacity/production_review.py wan qa/results/production-new-review-wan
+python3 bench/capacity/production_review.py peak qa/results/production-new-review-peak
+python3 bench/capacity/production_long.py qa/results/production-new-review-wan-long
+```
+
+The last command is the fixed independent 120-second BBR/500-ms steady test;
+read its [scope and stopping rule](../../docs/experiments/2026-10-24-production-pacing/LONG-WINDOW.md).
+Do not pool it with the preceding 40-second observations. The final
+[production report](../../docs/experiments/2026-10-24-production-pacing/README.md)
+retains every unqualified guard. After extracting its archive in a checkout,
+reanalysis without a running container is:
+
+```sh
+python3 bench/capacity/production_collect.py qa/results/production-reanalysis
+python3 bench/capacity/production_qualify.py qa/results/production-reanalysis
+```
+
+The qualification JSON separates performance guards from functional CI; an
+unqualified physical-peak bound is not a failed Rust test. Never overwrite the
+sealed evidence or retained binaries when reanalyzing.

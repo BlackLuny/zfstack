@@ -23,7 +23,8 @@ def bundle(destination):
     files.update((ROOT/'target/release').glob('zfbench-production-v*-20261024'))
     files.add(ROOT/'target/release/zfbench-rtt-final-20261023')
     files.update((ROOT/'bench/capacity').glob('*.py'))
-    files.update([ROOT/'bench/capacity/README.md',ROOT/'bench/capacity/Dockerfile',ROOT/'bench/tail69_exec.py',ROOT/'docs/design/0011-contention-egress-pacing.md'])
+    files.update([ROOT/'README.md',ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'bench/Cargo.toml',
+        ROOT/'bench/capacity/README.md',ROOT/'bench/capacity/Dockerfile',ROOT/'bench/tail69_exec.py',ROOT/'docs/design/0011-contention-egress-pacing.md'])
     files.update(f for f in destination.iterdir() if f.is_file() and f.suffix in ['.md','.json','.png','.svg'])
     manifest=destination/'evidence-files.json';archive=destination/'evidence.tar.gz'
     if manifest.exists() or archive.exists():raise FileExistsError('evidence already sealed')

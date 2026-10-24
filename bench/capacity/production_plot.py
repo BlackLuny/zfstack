@@ -35,7 +35,7 @@ def plot(source, destination):
         if logy:ax.set_yscale('log')
         else:ax.set_ylim(bottom=0)
     note=f'; {len(missing)} invalid cells omitted' if missing else ''
-    fig.suptitle('Production Tokio / splice at 100 Mbps; identical FIFO in both arms\nTwo runs per arm/cell; bars show observed range, not CI'+note,fontsize=12)
+    fig.suptitle('Frozen V3 production Tokio / splice at 100 Mbps; identical FIFO in both arms\nTwo runs per arm/cell; bars show observed range, not CI'+note,fontsize=12)
     fig.legend(handles,labels,loc='outside lower center',ncol=2,frameon=False,fontsize=9)
     for suffix in ['.png','.svg']:
         target=destination.with_suffix(suffix)

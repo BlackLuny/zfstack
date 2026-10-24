@@ -7,7 +7,7 @@
 - S0 基准与证伪：[`docs/design/0002-s0-benchmark-and-falsification.md`](docs/design/0002-s0-benchmark-and-falsification.md)
 - 代理客户端场景（TUN 卸载、零拷贝收发、驱动内 splice，与 sing-box 1.15 对比）：[`docs/design/0008-client-profile.md`](docs/design/0008-client-profile.md)
 - 多租户混合负载 harness（sans-IO，不经 WireGuard）：[`harness/README.md`](harness/README.md)
-- 多用户竞争时的接口聚合 pacing（core / Tokio / splice）：[配置与边界](docs/design/0011-contention-egress-pacing.md)
+- 多用户竞争时的接口聚合 pacing（core / Tokio / splice）：[配置与边界](docs/design/0011-contention-egress-pacing.md) · [生产路径实验结果](docs/experiments/2026-10-24-production-pacing/README.md)
 - 持续验证、证据和门禁：[QA 使用指南](qa/README.md)
 - 状态：已有核心栈、Tokio adapter、L0 / L1 / L2 台架；性能资格按场景和节点独立校准，未校准结果保持 shadow。
 
