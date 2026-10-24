@@ -217,3 +217,32 @@ python3 bench/capacity/production_qualify.py qa/results/production-reanalysis
 The qualification JSON separates performance guards from functional CI; an
 unqualified physical-peak bound is not a failed Rust test. Never overwrite the
 sealed evidence or retained binaries when reanalyzing.
+
+## V5 cold-state continuation
+
+The [V5 report](../../docs/experiments/2026-10-24-pacing-fast-path/README.md) retains
+the original V4 study and independently measures a smaller hot iface state and
+an outlined aggregate-service loop. `fastpath.py` expects retained old/V4/V5
+executables; it never rebuilds or replaces them. Use an owned network-isolated
+container named `zfstack-fastpath-20261024` (or `--container`) with the same image,
+sysctls, cpuset 0–4 and four-CPU total quota. Follow the prospective protocol,
+including the original invalid placement preflight and its PPID-based fix.
+
+`fastpath.py <phase> <fresh-output>` runs `smoke`, `preflight`, `aa`, `peak`,
+`loaded`, `wan` or `pin` serially. The `pin` phase is conditional; the retained
+study did not meet its eligibility condition and did not run it. The external
+placement observer is diagnostic instrumentation; its CPU is separately saved
+and it does not replace the unrestricted peak guard.
+
+After extracting the evidence archive at the repository root, reanalysis needs
+no running container:
+
+```sh
+python3 bench/capacity/fastpath_collect.py qa/results/fastpath-reanalysis
+```
+
+The collector independently rechecks per-thread placement ledgers, frozen
+commands, sources and binaries, preserving failed attempts and the original
+strict versus observation verdicts. Its performance qualification remains
+separate from functional CI and makes no all-RTT CPU or universal-starvation
+claim. Do not pool this continuation's intervals with preceding V4 results.

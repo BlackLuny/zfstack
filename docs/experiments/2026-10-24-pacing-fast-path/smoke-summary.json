@@ -1,0 +1,309 @@
+{
+  "comparisons": [
+    {
+      "arm": "p99",
+      "cc": "cubic",
+      "changes": {
+        "heavy_jain": {
+          "median_pct": 8.622838309914837,
+          "paired_pct": [
+            8.622838309914837
+          ]
+        },
+        "mbps": {
+          "median_pct": -0.6118811012749803,
+          "paired_pct": [
+            -0.6118811012749803
+          ]
+        },
+        "process_cpu_s_per_gb": {
+          "median_pct": -6.510677118394037,
+          "paired_pct": [
+            -6.510677118394037
+          ]
+        },
+        "process_cpu_s_per_s": {
+          "median_pct": -7.082728955843754,
+          "paired_pct": [
+            -7.082728955843754
+          ]
+        },
+        "rss_hwm_kib": {
+          "median_pct": 18.12395309882746,
+          "paired_pct": [
+            18.12395309882746
+          ]
+        },
+        "stack_cpu_s_per_gb": {
+          "median_pct": -9.96512486370178,
+          "paired_pct": [
+            -9.96512486370178
+          ]
+        },
+        "stack_cpu_s_per_s": {
+          "median_pct": -10.516039280115951,
+          "paired_pct": [
+            -10.516039280115951
+          ]
+        },
+        "stack_link_cpu_s_per_gb": {
+          "median_pct": -6.136055175614974,
+          "paired_pct": [
+            -6.136055175614974
+          ]
+        },
+        "stack_link_cpu_s_per_s": {
+          "median_pct": -6.710399287349178,
+          "paired_pct": [
+            -6.710399287349178
+          ]
+        },
+        "user_equal_mean_ms": {
+          "median_pct": -30.464205717454796,
+          "paired_pct": [
+            -30.464205717454796
+          ]
+        },
+        "worst_user_p99_ms": {
+          "median_pct": -6.291313362317686,
+          "paired_pct": [
+            -6.291313362317686
+          ]
+        }
+      },
+      "heavy": 4,
+      "observation_valid": false,
+      "pairs": 1,
+      "rtt": 20,
+      "valid": true
+    }
+  ],
+  "completed": 2,
+  "identity_audit": {
+    "errors": [],
+    "identity_valid": true
+  },
+  "observation_note": "Strict validity/SLO failures are retained. Only a fully completed, independently monotonic late response may enter an observed-mean comparison despite missing the 3-s service deadline. Generator misses/loss, payload failures and missing observations still block confirmation; no pairs are discarded.",
+  "observations_valid": 2,
+  "phase": "smoke",
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "p99",
+      "binary": "v5",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 2238,
+        "up": 0
+      },
+      "cc": "cubic",
+      "completed_after_deadline": 0,
+      "egress_paced_bytes": 62811524,
+      "egress_pacing_pauses": 2241,
+      "egress_rate": 12375000,
+      "errors": [],
+      "generator_max_lag_ms": 0.568386,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        10733328,
+        11208024,
+        14332536,
+        11511720
+      ],
+      "heavy_jain": 0.9863514054766784,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.649364793333334,
+      "index": 0,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 23.467949057583855,
+        "up": 19.186283448038544
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 95.56969297748029,
+      "measure": 4,
+      "missing_requests": 0,
+      "name": "000-cubic-r20-h4-p99",
+      "nr_throttled": 0,
+      "observation_errors": [],
+      "observation_valid": true,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 450,
+      "position": 0,
+      "process_cpu_s_per_gb": 57.920623004315445,
+      "process_cpu_s_per_s": 0.6919319662474586,
+      "retry_budget": 1,
+      "rr_cpu": 4,
+      "rss_hwm_kib": 14104,
+      "rtt": 20,
+      "service_slo_passed": true,
+      "splice": true,
+      "stack_cpu_s_per_gb": 5.395394111130699,
+      "stack_cpu_s_per_s": 0.06445451485762632,
+      "stack_link_cpu_s_per_gb": 48.22043637071647,
+      "stack_link_cpu_s_per_s": 0.5760514928994185,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "user_equal_mean_ms": 26.081588653333334,
+      "users": [
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 38.723768,
+          "mean_ms": 26.11594644,
+          "missing": 0,
+          "observed_mean_ms": 26.11594644,
+          "p50_ms": 23.616498,
+          "p95_ms": 36.544764,
+          "p99_ms": 37.700727,
+          "peer": 2,
+          "planned": 100
+        },
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 38.673531,
+          "mean_ms": 26.03397597,
+          "missing": 0,
+          "observed_mean_ms": 26.03397597,
+          "p50_ms": 23.490413,
+          "p95_ms": 36.468277,
+          "p99_ms": 37.644691,
+          "peer": 4,
+          "planned": 100
+        },
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 38.706711,
+          "mean_ms": 26.09484355,
+          "missing": 0,
+          "observed_mean_ms": 26.09484355,
+          "p50_ms": 23.492514,
+          "p95_ms": 36.418903,
+          "p99_ms": 37.586173,
+          "peer": 3,
+          "planned": 100
+        }
+      ],
+      "valid": true,
+      "wall_sec": 4.000064054,
+      "warmup": 2,
+      "worst_user_p99_ms": 37.700727
+    },
+    {
+      "arm": "off",
+      "binary": "v5",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 375,
+        "up": 0
+      },
+      "cc": "cubic",
+      "completed_after_deadline": 0,
+      "egress_paced_bytes": 0,
+      "egress_pacing_pauses": 0,
+      "egress_rate": 0,
+      "errors": [],
+      "generator_max_lag_ms": 1.129251,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        7725297,
+        9022149,
+        17163796,
+        14175392
+      ],
+      "heavy_jain": 0.9080515854893166,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.6718615,
+      "index": 1,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 23.70974363565877,
+        "up": 19.44440268984512
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 96.1580660107516,
+      "measure": 4,
+      "missing_requests": 0,
+      "name": "001-cubic-r20-h4-off",
+      "nr_throttled": 0,
+      "observation_errors": [],
+      "observation_valid": true,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 450,
+      "position": 1,
+      "process_cpu_s_per_gb": 61.95426517065013,
+      "process_cpu_s_per_s": 0.744675299297843,
+      "retry_budget": 1,
+      "rr_cpu": 4,
+      "rss_hwm_kib": 11940,
+      "rtt": 20,
+      "service_slo_passed": true,
+      "splice": true,
+      "stack_cpu_s_per_gb": 5.992560219540423,
+      "stack_cpu_s_per_s": 0.07202912604571829,
+      "stack_link_cpu_s_per_gb": 51.37269316875038,
+      "stack_link_cpu_s_per_s": 0.6174873603262204,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "user_equal_mean_ms": 37.50814803,
+      "users": [
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 40.340413,
+          "mean_ms": 37.5541298,
+          "missing": 0,
+          "observed_mean_ms": 37.5541298,
+          "p50_ms": 38.06789,
+          "p95_ms": 40.1033,
+          "p99_ms": 40.231838,
+          "peer": 3,
+          "planned": 100
+        },
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 40.268995,
+          "mean_ms": 37.49967634,
+          "missing": 0,
+          "observed_mean_ms": 37.49967634,
+          "p50_ms": 37.993833,
+          "p95_ms": 40.073969,
+          "p99_ms": 40.179518,
+          "peer": 4,
+          "planned": 100
+        },
+        {
+          "completed": 100,
+          "late_completed": 0,
+          "max_observed_ms": 40.317649,
+          "mean_ms": 37.47063795,
+          "missing": 0,
+          "observed_mean_ms": 37.47063795,
+          "p50_ms": 38.016825,
+          "p95_ms": 40.062459,
+          "p99_ms": 40.147951,
+          "peer": 2,
+          "planned": 100
+        }
+      ],
+      "valid": true,
+      "wall_sec": 4.000632325,
+      "warmup": 2,
+      "worst_user_p99_ms": 40.231838
+    }
+  ],
+  "valid": 2
+}

@@ -27,6 +27,10 @@ handle.set_iface_egress_rate(iface, capacity_bytes_per_second * 99 / 100);
 全部记入债务，并带入下一次唤醒。
 TSO 按分段后的 IP/TCP 头部计费，活跃策略也限制一个超段的大小。
 
+接口热状态为速率、活跃位和可选指针；完整计时状态首次出现竞争时才创建，退出竞争后留在冷状态供复用。
+inactive 路径不访问计时对象，竞争发送循环独立编译。该布局优化已通过功能回归；
+本机少连接峰值和各 RTT CPU 的非劣界限仍有未确认项，不能据此承诺物理吞吐无回退。
+
 额度耗尽时保留 DRR 队列顺序，用接口 deadline 恢复，不逐连接扫描，不靠持续 yield 重试。
 接口 sink `Full` 仍等待外部 `egress_released`，两种等待相互独立；其他接口可继续服务。
 接收处理、重传定时器、无状态 RST 和 TIME_WAIT 控制处理仍运行。普通连接的控制报文
@@ -46,3 +50,4 @@ TSO 按分段后的 IP/TCP 头部计费，活跃策略也限制一个超段的�
 固定最小带宽，应结合实际身份、预算和准入控制。
 
 验证协议、结果与未确认的峰值保护位于 [生产路径实验](../experiments/2026-10-24-production-pacing/README.md)。
+热状态布局后续试验见 [V5 独立复测](../experiments/2026-10-24-pacing-fast-path/README.md)。
