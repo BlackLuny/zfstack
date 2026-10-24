@@ -36,7 +36,7 @@ impl IfacePacer {
 
     pub(crate) fn allowance(&mut self, now: Instant, competing: bool) -> usize {
         if competing {
-            if !self.active || now >= self.until {
+            if !self.active || (now >= self.until && self.deadline.is_none_or(|d| now >= d)) {
                 self.at = now;
                 self.credit = self.batch;
                 self.deadline = None;
@@ -170,5 +170,20 @@ mod tests {
         let next = p.deadline().unwrap();
         assert!(p.allowance(next, false) > 0);
         assert!(p.active());
+    }
+
+    #[test]
+    fn expired_contention_hold_cannot_refill_a_future_low_rate_deadline() {
+        let mut p = IfacePacer::new(100, 1420);
+        let now = Instant::from_millis(1000);
+        assert_eq!(p.allowance(now, true), 1420);
+        assert!(p.charge(1420));
+        let deadline = p.deadline().unwrap();
+        assert!(deadline > now + CONTENTION_HOLD);
+        for seconds in [1, 3, 8] {
+            assert_eq!(p.allowance(now + Duration::from_secs(seconds), true), 0);
+            assert_eq!(p.deadline(), Some(deadline));
+        }
+        assert!(p.allowance(deadline, true) >= 1420);
     }
 }

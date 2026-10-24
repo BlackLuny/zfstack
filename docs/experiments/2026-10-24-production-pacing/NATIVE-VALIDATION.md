@@ -5,7 +5,9 @@ including zero charged memory after driver shutdown. CUBIC/BBR paired mean user
 latency changes were -55.80%/-70.13%; stack CPU/GB -11.06%/-37.30% and
 stack+link CPU/GB -0.24%/-22.62%. CUBIC process CPU/GB rose 3.48% in these two
 pairs, so the entire-process CPU question remains open; do not call all CPU
-scopes equivalent. All bulk connections progressed. These are pilot estimates.
+scopes equivalent. All candidate bulk connections progressed. Off controls had
+finite-window inactive connections, retained in the pilot summaries. These are
+pilot estimates.
 
 V3 adds production `TcpStream::splice` from real kernel upstream sockets into
 the same userspace stack and FIFO downstream fixture. The upstream serves the

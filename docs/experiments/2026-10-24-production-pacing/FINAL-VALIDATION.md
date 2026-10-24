@@ -3,7 +3,7 @@
 The real kernel-upstream / production-Tokio-splice pilot completed eight valid
 attempts. CUBIC/BBR means improved 55.53%/69.21%, worst-user P99 80.53%/84.60%,
 goodput changed -0.80%/+0.22%. Stack CPU/GB changed -22.05%/-44.61%, combined
--10.10%/-24.59%, whole-process -6.57%/-20.91%. All bulk connections progressed,
+-10.10%/-24.59%, whole-process -6.57%/-20.91%. All candidate bulk connections progressed,
 all planned light requests completed, and core memory/upstream workers returned
 to zero. These two-pair estimates select no new factor and do not enter final CIs.
 

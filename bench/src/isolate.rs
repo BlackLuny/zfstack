@@ -539,9 +539,29 @@ fn light_loop(mut s: TcpStream, msg: &[u8], interval: Duration, end: Instant, wa
     (samples, errors)
 }
 
+fn rr_cpu() -> io::Result<Option<usize>> {
+    let Some(value) = std::env::var_os("ZFBENCH_RR_CPU") else { return Ok(None) };
+    let cpu = value.to_str().and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v < libc::CPU_SETSIZE as usize)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid RR CPU"))?;
+    let mut affinity = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+    unsafe {
+        libc::CPU_ZERO(&mut affinity);
+        libc::CPU_SET(cpu, &mut affinity);
+    }
+    if unsafe { libc::sched_setaffinity(0, std::mem::size_of_val(&affinity), &affinity) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(Some(cpu))
+}
+
 /// Fixed absolute arrival times, independent sender/reader, and unique echo
 /// frames. A missed/failed/timed-out arrival stays in the saved denominator.
 fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag: Duration) -> (Vec<f64>, Vec<String>) {
+    let generator_cpu = match rr_cpu() {
+        Ok(cpu) => cpu,
+        Err(error) => return (Vec::new(), vec![format!("RR affinity: {error}")]),
+    };
     assert!((1..=1000).contains(&hz) && msg.len() >= 8);
     let local = s.local_addr().unwrap();
     let origin = Instant::now();
@@ -578,6 +598,7 @@ fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag:
                 break;
             }
         }
+        generator_cpu.map(|_| unsafe { libc::sched_getcpu() })
     });
     let mut raw = Vec::new();
     let mut errors = Vec::new();
@@ -613,9 +634,10 @@ fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag:
             "started_ns":started.map(|t|t.saturating_duration_since(origin).as_nanos()),
             "completed_ns":completed.map(|t|t.saturating_duration_since(origin).as_nanos()),"outcome":outcome}));
     }
-    sender.join().unwrap();
+    let sender_cpu = sender.join().unwrap();
     assert_eq!(observations.len(), count);
-    ARRIVALS.lock().unwrap().push(json!({"local":local.to_string(),"hz":hz,"count":count,"period_ns":period.as_nanos(),"arrivals":observations}));
+    ARRIVALS.lock().unwrap().push(json!({"local":local.to_string(),"hz":hz,"count":count,"period_ns":period.as_nanos(),"arrivals":observations,
+        "requested_cpu":generator_cpu,"observer_cpu":generator_cpu.map(|_| unsafe { libc::sched_getcpu() }),"sender_cpu":sender_cpu}));
     (raw, errors)
 }
 

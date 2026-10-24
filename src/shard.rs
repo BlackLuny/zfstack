@@ -1909,7 +1909,14 @@ impl Shard {
                 if ifc.full {
                     break;
                 }
-                let allowance = ifc.pacer.as_mut().map_or(usize::MAX, |p| p.allowance(now, ifc.drr.ready_peers.len() > 1));
+                let allowance = ifc.pacer.as_mut().map_or(usize::MAX, |p| {
+                    let competing = ifc.drr.ready_peers.len() > 1;
+                    if !competing && !p.active() {
+                        usize::MAX
+                    } else {
+                        p.allowance(now, competing)
+                    }
+                });
                 if allowance == 0 {
                     break;
                 }
@@ -1923,13 +1930,17 @@ impl Shard {
                 let mut again = false;
                 if valid {
                     self.slots[idx as usize].sched.in_ready = false;
-                    let (sent, wire_sent, more) = self.serve(idx, now, budget.min(allowance), sinks, &mut out);
+                    let aggregate_pacing = self.ifaces[ii].as_ref().unwrap().pacer.as_ref().is_some_and(IfacePacer::active);
+                    let (sent, wire_sent, more) = if aggregate_pacing {
+                        self.serve::<true>(idx, now, budget.min(allowance), sinks, &mut out)
+                    } else {
+                        self.serve::<false>(idx, now, budget.min(allowance), sinks, &mut out)
+                    };
                     served_any |= sent > 0;
                     budget = budget.saturating_sub(sent);
-                    if let Some(pacer) = self.ifaces[ii].as_mut().unwrap().pacer.as_mut() {
-                        if pacer.active() {
-                            self.stats.egress_paced_bytes += wire_sent as u64;
-                        }
+                    if aggregate_pacing {
+                        let pacer = self.ifaces[ii].as_mut().unwrap().pacer.as_mut().unwrap();
+                        self.stats.egress_paced_bytes += wire_sent as u64;
                         if pacer.charge(wire_sent) {
                             self.stats.egress_pacing_pauses += 1;
                         }
@@ -1988,8 +1999,16 @@ impl Shard {
     }
 
     /// Serve one connection for up to one quantum. Returns (buffer bytes,
-    /// post-segmentation IP bytes, wants more).
-    fn serve(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, usize, bool) {
+    /// accounted IP bytes (zero on the unpaced path), wants more). Specialize
+    /// the common unpaced path so it has no per-packet aggregate accounting.
+    fn serve<const AGGREGATE_PACING: bool>(
+        &mut self,
+        idx: u32,
+        now: Instant,
+        round_left: usize,
+        sinks: &mut impl EgressSinks,
+        out: &mut RunOutcome,
+    ) -> (usize, usize, bool) {
         // Packet window fields must use the same policy as calc_window.
         // Local TX/cache occupancy only gates RX growth, not RX progress.
         let level = self.budget.level();
@@ -2007,8 +2026,7 @@ impl Shard {
         conn.sync_pacing_debt(now, rate);
         conn.tso_max = iface.tso_max;
         let mss = conn.mss as usize;
-        let aggregate_pacing = iface.pacer.as_ref().is_some_and(IfacePacer::active);
-        if aggregate_pacing {
+        if AGGREGATE_PACING {
             conn.tso_max = conn.tso_max.min(round_left.max(mss).min(u32::MAX as usize) as u32);
         }
         let quantum = match rate {
@@ -2078,10 +2096,12 @@ impl Shard {
                 }
             }
             conn.commit(&plan, now, &self.cfg);
-            wire_sent += len;
-            if aggregate_pacing && gso_size != 0 {
-                // Each device-created segment carries its own IP/TCP header.
-                wire_sent += (plan.len as usize).div_ceil(mss).saturating_sub(1) * hl;
+            if AGGREGATE_PACING {
+                wire_sent += len;
+                if gso_size != 0 {
+                    // Each device-created segment carries its own IP/TCP header.
+                    wire_sent += (plan.len as usize).div_ceil(mss).saturating_sub(1) * hl;
+                }
             }
             if plan.paced() {
                 if let Some(r) = rate {

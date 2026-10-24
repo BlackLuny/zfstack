@@ -137,3 +137,52 @@ The combined configured-regime table reuses 64 unchanged attempts and adds 32
 new loaded attempts, with explicit source-cohort provenance. It is not another
 96 measurements or proof of a runtime transition policy. CPU scopes remain
 separate, and plotted ranges from two runs are not confidence intervals.
+
+## Production contention pacing
+
+The [production protocol](../../docs/experiments/2026-10-24-production-pacing/PROTOCOL.md)
+tests the real `Shard::set_iface_egress_rate` / `StackHandle::set_iface_egress_rate`
+API. `--iface-egress-rate` supplies IP bytes/second; zero disables it. The external
+fixture remains FIFO in both arms. `--tokio-stack --splice` uses the production
+Tokio driver and `TcpStream::splice` with real kernel TCP upstream sockets.
+The extra bridge belongs to this fixture, and process CPU includes its cost.
+The library API is opt-in, requires known downstream capacity and preserves
+the single-peer path. See the [design](../../docs/design/0011-contention-egress-pacing.md)
+for activation and limitations.
+
+After building once with the release settings above, copy the executable to a
+new frozen name. Reproduce phases **serially**, using fresh output directories:
+
+```sh
+python3 bench/capacity/production_pacing.py screen qa/results/production-new-screen
+python3 bench/capacity/production_pacing.py wan qa/results/production-new-wan --candidate p99 --tokio-stack --splice --binary target/release/zfbench-production-v3-20261024
+python3 bench/capacity/production_pacing.py confirm qa/results/production-new-confirm --candidate p99 --tokio-stack --splice --binary target/release/zfbench-production-v3-20261024
+python3 bench/capacity/production_pacing.py guard qa/results/production-new-guard --candidate p99 --tokio-stack --splice --binary target/release/zfbench-production-v3-20261024
+python3 bench/capacity/production_pacing.py aa qa/results/production-new-aa --tokio-stack --splice --binary target/release/zfbench-production-v3-20261024
+python3 bench/capacity/production_peaks.py qa/results/production-new-cross-peak
+python3 bench/capacity/production_mixed.py qa/results/production-new-mixed-smoke --smoke
+python3 bench/capacity/production_mixed.py qa/results/production-new-mixed
+```
+
+The peak runner expects the retained old final executable as its A control.
+The mixed fixture adds a separate upload peer without changing the frozen Rust
+binary; its effective-byte denominator does not include that upload, so CPU/GB
+is intentionally omitted. See [its protocol](../../docs/experiments/2026-10-24-production-pacing/MIXED-VALIDATION.md).
+The owned container also needs a large TCP receive-window maximum for 500-ms
+single-flow coverage. Exact sysctls and requested/actual configuration are in
+the saved evidence.
+
+`production_pacing.py <phase> <out> --analyze`, `production_peaks.py <out> --analyze`
+and `production_mixed.py <out> --analyze` reanalyze saved attempts. The collector
+uses the fixed 2026-10-24 cohort names; the bundle includes raw files, frozen
+sources, binaries, build metadata and replay tools. Never build, run suites,
+plot or compress archives during measurements, and never replace a failed arm.
+
+The final V4 [review protocol](../../docs/experiments/2026-10-24-production-pacing/REVIEW-VALIDATION.md)
+keeps V3 evidence and uses a separate frozen V4 executable. After V3 finishes,
+allow CPU 4 in the owned container for the light-request reader/writer only;
+service processes remain on CPUs 0–3 and total cgroup quota remains four CPUs.
+Then execute, serially, `production_review.py loaded`, `wan`, and `peak` with
+fresh output directories. The runner audits requested/actual observer CPUs;
+late fully observed responses retain their true latency and SLO failure,
+while missing requests or generator faults still block mean confirmation.
