@@ -9,6 +9,7 @@
 - 多租户混合负载 harness（sans-IO，不经 WireGuard）：[`harness/README.md`](harness/README.md)
 - 多用户竞争时的接口聚合 pacing（core / Tokio / splice）：[配置与边界](docs/design/0011-contention-egress-pacing.md) · [生产路径实验结果](docs/experiments/2026-10-24-production-pacing/README.md)
 - 接口热状态与竞争发送循环的后续优化：[V5 实现和独立复测](docs/experiments/2026-10-24-pacing-fast-path/README.md)
+- CUBIC/50 ms 单连接 CPU 异常：[128 次独立复测与环境对照](docs/experiments/2026-10-24-cubic50-retest/README.md)
 - 持续验证、证据和门禁：[QA 使用指南](qa/README.md)
 - 状态：已有核心栈、Tokio adapter、L0 / L1 / L2 台架；性能资格按场景和节点独立校准，未校准结果保持 shadow。
 

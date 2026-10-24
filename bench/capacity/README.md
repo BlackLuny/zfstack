@@ -246,3 +246,29 @@ commands, sources and binaries, preserving failed attempts and the original
 strict versus observation verdicts. Its performance qualification remains
 separate from functional CI and makes no all-RTT CPU or universal-starvation
 claim. Do not pool this continuation's intervals with preceding V4 results.
+
+## Targeted CUBIC / 50 ms CPU retest
+
+The [targeted report](../../docs/experiments/2026-10-24-cubic50-retest/README.md)
+keeps the frozen V5 executable and exact 8-s warmup/20-s window. Original and
+fixed native-thread placements each get 16 ABBA/BAAB blocks; same-setting
+repeats quantify noise. The observer's scheduling counters cover observed
+thread lifetimes, while primary CPU/useful-work measurements come from the
+unchanged executable's exact window.
+
+`cubic50_retest.py preflight <fresh-output>` runs the two observer preflights;
+only after validating them, run `cubic50_retest.py confirmation <fresh-output>`
+in the owned `zfstack-cubic50-20261024` container with the retained image,
+sysctls and four-CPU quota. Keep CPUs 0–4 available; the observer runs on 4.
+Never rebuild or alter the frozen V5 executable during these measurements.
+
+After extracting the archive at the repository root, saved-data reanalysis
+requires no running container:
+
+```sh
+python3 bench/capacity/cubic50_collect.py qa/results/cubic50-reanalysis
+```
+
+Historical two-pair data stay separate. The new bounded CPU result does not
+resolve the unrelated physical-peak guards or establish the cause of every
+historical outlier. All observations and failed verdicts must remain visible.
