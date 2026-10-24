@@ -114,6 +114,7 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
             let mut c = Command::new(std::env::current_exe()?);
             c.args(["--tun-proxy", "--tun-mtu", &mtu.to_string(), "--proxy-upstream", UPSTREAM]);
             c.args(["--proxy-workers", &a.proxy_workers.to_string(), "--relay-buf-kb", &a.relay_buf_kb.to_string()]);
+            c.args(["--iface-egress-rate", &a.iface_egress_rate.to_string()]);
             if kind == ProxyKind::ZfstackClient {
                 c.arg("--client-profile");
             }
@@ -307,6 +308,8 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
     let result = json!({
         "tool": "zfbench",
         "mode": "client",
+        "tx_tuning": crate::tx_tuning::TxTuning::from_env()?.json(),
+        "trial_tuning": crate::trial_tuning::TrialTuning::from_env()?.json(),
         "label": a.label,
         "config": {
             "proxy": proxy_name(kind),
@@ -318,6 +321,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             "conns": a.conns,
             "concurrency": a.concurrency,
             "proxy_workers": a.proxy_workers,
+            "iface_egress_rate": a.iface_egress_rate,
             "relay_buf_kb": a.relay_buf_kb,
             "splice": a.splice,
             "vnet_hdr": a.vnet_hdr || a.tso,

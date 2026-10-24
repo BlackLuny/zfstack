@@ -15,6 +15,8 @@ mod tunproxy_legacy;
 mod util;
 mod tail_trace;
 mod link_queue;
+mod tx_tuning;
+mod trial_tuning;
 mod wg;
 mod wgmode;
 
@@ -66,6 +68,12 @@ pub struct Args {
     /// Bottleneck rate (Mbit/s, IP bytes) of the down direction; 0 = unlimited.
     #[arg(long, default_value_t = 200.0)]
     rate_mbps: f64,
+    /// Production aggregate iface pacing capacity in IP bytes/s (0 = off).
+    #[arg(long, default_value_t = 0)]
+    iface_egress_rate: u64,
+    /// Use the production Tokio driver/app queues in the local emulator.
+    #[arg(long)]
+    tokio_stack: bool,
     /// Bottleneck rate of the up direction (default: same as --rate-mbps).
     #[arg(long)]
     rate_up_mbps: Option<f64>,
@@ -259,6 +267,9 @@ struct Snap {
 #[derive(Clone, Debug)]
 pub struct StackOpts {
     pub stack: StackKind,
+    pub iface_egress_rate: u64,
+    pub tokio_stack: bool,
+    pub splice: bool,
     pub sock_buf_kb: usize,
     pub listen_pool: usize,
     pub smol_pacing_backlog_us: Option<i64>,
@@ -270,6 +281,9 @@ impl StackOpts {
     fn from_args(a: &Args) -> Self {
         StackOpts {
             stack: a.stack,
+            iface_egress_rate: a.iface_egress_rate,
+            tokio_stack: a.tokio_stack,
+            splice: a.splice,
             sock_buf_kb: a.sock_buf_kb,
             listen_pool: a.listen_pool,
             smol_pacing_backlog_us: a.smol_pacing_backlog_us,
@@ -281,6 +295,9 @@ impl StackOpts {
     pub fn to_json(&self) -> serde_json::Value {
         json!({
             "stack": stack_name(self.stack),
+            "iface_egress_rate": self.iface_egress_rate,
+            "tokio_stack": self.tokio_stack,
+            "splice": self.splice,
             "sock_buf_kb": self.sock_buf_kb,
             "listen_pool": self.listen_pool,
             "smol_pacing_backlog_us": self.smol_pacing_backlog_us,
@@ -293,6 +310,9 @@ impl StackOpts {
         let stack = v["stack"].as_str().ok_or("missing stack")?;
         Ok(StackOpts {
             stack: StackKind::from_str(stack, true)?,
+            iface_egress_rate: v["iface_egress_rate"].as_u64().unwrap_or(0),
+            tokio_stack: v["tokio_stack"].as_bool().unwrap_or(false),
+            splice: v["splice"].as_bool().unwrap_or(false),
             sock_buf_kb: v["sock_buf_kb"].as_u64().ok_or("missing sock_buf_kb")? as usize,
             listen_pool: v["listen_pool"].as_u64().ok_or("missing listen_pool")? as usize,
             smol_pacing_backlog_us: v["smol_pacing_backlog_us"].as_i64(),
@@ -316,7 +336,10 @@ pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>, isolate: Option
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing };
+                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing, egress_rate: o.iface_egress_rate };
+                if o.tokio_stack {
+                    return Box::new(adapters::zfstack::TokioStack::new(opts, counters, isolate.cloned(), o.splice));
+                }
                 return match isolate {
                     Some(plan) => Box::new(adapters::zfstack::ZfStack::with_isolate(opts, counters, plan.clone())),
                     None => Box::new(adapters::zfstack::ZfStack::new(opts, counters)),
@@ -372,6 +395,20 @@ pub fn sysctl(name: &str) -> String {
 
 fn main() {
     let a = Args::parse();
+    if a.tokio_stack && (a.wg_server.is_some() || a.serve_wg || a.tun_proxy || a.client_proxy.is_some()
+        || a.topology == isolate::Topology::PerPortShard
+        || !matches!(a.stack, StackKind::ZfstackCubic | StackKind::ZfstackBbr | StackKind::ZfstackNopace)) {
+        eprintln!("--tokio-stack requires the local zfstack emulator with a shared shard");
+        std::process::exit(2);
+    }
+    if let Err(e) = tx_tuning::TxTuning::from_env() {
+        eprintln!("zfbench TX tuning: {e}");
+        std::process::exit(2);
+    }
+    if let Err(e) = trial_tuning::TrialTuning::from_env() {
+        eprintln!("zfbench trial tuning: {e}");
+        std::process::exit(2);
+    }
     if a.cleanup {
         tun::cleanup();
         return;
@@ -388,6 +425,7 @@ fn main() {
             vnet_hdr: a.vnet_hdr || a.tso,
             tso: a.tso,
             driver_thread: a.driver_thread,
+            egress_rate: a.iface_egress_rate,
         };
         let r = if a.legacy { tunproxy_legacy::run(o) } else { tunproxy::run(o) };
         if let Err(e) = r {
@@ -522,7 +560,7 @@ fn run(a: &Args) -> std::io::Result<i32> {
         let (up_tx, up_rx) = crossbeam_channel::unbounded();
         let (down_tx, down_rx) = crossbeam_channel::unbounded();
         let (stop, lv) = (stop_link.clone(), live.clone());
-        let h = std::thread::Builder::new().name("zfb-stack".into()).spawn(move || stack::run_stack_thread(st, up_rx, down_tx, stop, lv))?;
+        let h = std::thread::Builder::new().name("zfb-stack".into()).spawn(move || st.drive(up_rx, down_tx, stop, lv))?;
         stack_handle = Some(h);
         up_src = Source::Tun(fd_a);
         up_sink = Sink::Chan(up_tx);
@@ -652,10 +690,15 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "version": env!("CARGO_PKG_VERSION"),
         "label": a.label,
         "timestamp_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+        "tx_tuning": tx_tuning::TxTuning::from_env()?.json(),
+        "trial_tuning": trial_tuning::TrialTuning::from_env()?.json(),
         "config": {
             "stack": stack_name(a.stack),
             "test": test_name(a.test),
             "rate_mbps": a.rate_mbps,
+            "iface_egress_rate": a.iface_egress_rate,
+            "tokio_stack": a.tokio_stack,
+            "tokio_splice": a.tokio_stack && a.splice,
             "rate_up_mbps": a.rate_up_mbps.unwrap_or(a.rate_mbps),
             "rtt_ms": a.rtt_ms,
             "loss": a.loss,

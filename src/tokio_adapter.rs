@@ -423,6 +423,7 @@ struct PendingControl {
     mtu: HashMap<IfaceId, u16>,
     tx_csum: HashMap<IfaceId, bool>,
     tso: HashMap<IfaceId, u32>,
+    egress_rate: HashMap<IfaceId, u64>,
 }
 
 impl Ctl {
@@ -797,6 +798,12 @@ impl StackHandle {
         self.ctl.pending.lock().unwrap().tso.insert(iface, max_payload);
         self.ctl.notify.notify_one();
     }
+    /// See [`Shard::set_iface_egress_rate`]. Wakes a paced driver when changing
+    /// capacity or disabling the policy, including while it awaits a timer.
+    pub fn set_iface_egress_rate(&self, iface: IfaceId, bytes_per_second: u64) {
+        self.ctl.pending.lock().unwrap().egress_rate.insert(iface, bytes_per_second);
+        self.ctl.notify.notify_one();
+    }
 }
 
 /// Receives accepted connections.
@@ -1142,6 +1149,9 @@ where
         }
         for (iface, max) in pending.tso {
             self.shard.set_iface_tso(iface, max);
+        }
+        for (iface, rate) in pending.egress_rate {
+            self.shard.set_iface_egress_rate(iface, rate);
         }
     }
 
@@ -3068,10 +3078,14 @@ mod tests {
         /// Send what the peer has to the stack, then take the stack's replies
         /// (waiting up to 5 ms or the peer's next timer).
         async fn step(&mut self, h: &StackHandle, iface: IfaceId) {
+            self.step_as(h, iface, PeerId(9)).await;
+        }
+
+        async fn step_as(&mut self, h: &StackHandle, iface: IfaceId, source_peer: PeerId) {
             let now = self.now();
             let mut out: Vec<(PeerId, Bytes)> = Vec::new();
             let mut sink = |_: IfaceId, p: &OutPacket<'_>| {
-                out.push((PeerId(9), Bytes::from(p.to_vec())));
+                out.push((source_peer, Bytes::from(p.to_vec())));
                 SendResult::Accepted
             };
             self.c.run(now, &mut sink);
@@ -3274,6 +3288,130 @@ mod tests {
                 }
                 assert!(tokio::time::Instant::now() < t, "spliced stream not released");
             }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn contention_pacing_splices_both_peers_in_both_directions_and_releases_memory() {
+        const TOTAL: u64 = 256 << 10;
+        for cc in [crate::CcAlgo::Cubic, crate::CcAlgo::Bbr] {
+            let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = upstream.local_addr().unwrap();
+            let echo = tokio::spawn(async move {
+                let mut workers = tokio::task::JoinSet::new();
+                for _ in 0..2 {
+                    let (socket, _) = upstream.accept().await.unwrap();
+                    workers.spawn(async move {
+                        let (mut reader, mut writer) = socket.into_split();
+                        assert_eq!(tokio::io::copy(&mut reader, &mut writer).await.unwrap(), TOTAL);
+                        writer.shutdown().await.unwrap();
+                    });
+                }
+                while let Some(result) = workers.join_next().await {
+                    result.unwrap();
+                }
+            });
+            let (tx0, rx0) = mpsc::unbounded_channel();
+            let (tx1, rx1) = mpsc::unbounded_channel();
+            let global = GlobalBudget::new(32 << 20);
+            let (_input_tx, input_rx) = mpsc::channel::<()>(1);
+            let (handle, mut acceptor, ids, task, ()) = spawn_with_source_factory(
+                StackConfig { cc, ..Default::default() },
+                StreamConfig::default(),
+                vec![IfaceConfig { mtu: 1500 }],
+                move |_| {
+                    let sink = move |_: IfaceId, peer: PeerId, packet: &OutPacket<'_>| {
+                        let tx = match peer.0 {
+                            9 => &tx0,
+                            10 => &tx1,
+                            _ => panic!("unexpected peer"),
+                        };
+                        let _ = tx.send(packet.to_vec());
+                        SendResult::Accepted
+                    };
+                    (sink, ())
+                },
+                global.clone(),
+                ResourceLimits { port_bytes: 16 << 20, peer_bytes: 8 << 20, peer_max_connections: 8 },
+                input_rx,
+                |_, _, ()| {},
+            );
+            let iface = ids[0];
+            handle.set_iface_egress_rate(iface, 512_000);
+            let relay = tokio::spawn(async move {
+                let mut workers = tokio::task::JoinSet::new();
+                for _ in 0..2 {
+                    let stream = acceptor.accept().await.unwrap();
+                    let socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+                    workers.spawn(stream.splice(socket));
+                }
+                while let Some(result) = workers.join_next().await {
+                    assert_eq!(result.unwrap().unwrap(), SpliceStats { uploaded: TOTAL, downloaded: TOTAL });
+                }
+            });
+            let mut peers = [TunPeer::new(1500, rx0), TunPeer::new(1500, rx1)];
+            let connections: Vec<_> = peers
+                .iter_mut()
+                .enumerate()
+                .map(|(i, peer)| {
+                    peer.c.connect(peer.now(), peer.ci, PeerId(9), format!("10.0.0.{}:{}", 2 + i, 5555 + i).parse().unwrap(), "10.0.0.1:80".parse().unwrap())
+                })
+                .collect();
+            let (mut sent, mut received, mut shut, mut eof) = ([0u64; 2], [0u64; 2], [false; 2], [false; 2]);
+            let mut buffer = vec![0u8; 16 << 10];
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                while !eof.iter().all(|done| *done) {
+                    let [first, second] = &mut peers;
+                    tokio::join!(first.step_as(&handle, iface, PeerId(9)), second.step_as(&handle, iface, PeerId(10)));
+                    for (i, peer) in peers.iter_mut().enumerate() {
+                        while peer.c.poll_event().is_some() {}
+                        while sent[i] < TOTAL {
+                            let n = ((TOTAL - sent[i]) as usize).min(buffer.len());
+                            for (k, byte) in buffer[..n].iter_mut().enumerate() {
+                                *byte = pattern_byte(sent[i] + k as u64);
+                            }
+                            match peer.c.write(connections[i], &buffer[..n]) {
+                                WriteResult::Written(n) => sent[i] += n as u64,
+                                _ => break,
+                            }
+                        }
+                        if sent[i] == TOTAL && !shut[i] {
+                            peer.c.shutdown_write(connections[i]);
+                            shut[i] = true;
+                        }
+                        if eof[i] {
+                            continue;
+                        }
+                        loop {
+                            match peer.c.read(peer.now(), connections[i], &mut buffer) {
+                                ReadResult::Data(n) => {
+                                    for (k, byte) in buffer[..n].iter().enumerate() {
+                                        assert_eq!(*byte, pattern_byte(received[i] + k as u64));
+                                    }
+                                    received[i] += n as u64;
+                                }
+                                ReadResult::Eof => {
+                                    eof[i] = true;
+                                    break;
+                                }
+                                ReadResult::WouldBlock => break,
+                                ReadResult::Closed(reason) => panic!("peer {i} closed: {reason:?}"),
+                            }
+                        }
+                    }
+                }
+            })
+            .await
+            .expect("both upload/echo peers must progress while aggregate pacing is active");
+            assert_eq!(received, [TOTAL; 2]);
+            relay.await.unwrap();
+            echo.await.unwrap();
+            let snapshot = handle.snapshot().await.unwrap();
+            assert!(snapshot.stats.egress_paced_bytes > 0);
+            assert!(snapshot.stats.egress_pacing_pauses > 0);
+            task.shutdown_and_join().await.unwrap();
+            drop((handle, peers));
+            assert_eq!(global.reserved(), 0);
         }
     }
 

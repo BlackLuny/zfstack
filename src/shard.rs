@@ -9,6 +9,7 @@ use crate::buf::BlockPool;
 use crate::config::StackConfig;
 use crate::conn::{Conn, Ctx, IngressPayload, Plan, PlanKind, ReadResult, State, SynParams, TimeWaitState, WriteResult};
 use crate::heap::IndexedHeap;
+use crate::iface_pacing::IfacePacing;
 use crate::pktpool::PacketBuf;
 use crate::seq::Seq;
 use crate::time::Instant;
@@ -171,6 +172,9 @@ pub struct ShardStats {
     pub runs: u64,
     pub idle_rounds: u64,
     pub pacing_credit_dropped: u64,
+    /// Aggregate iface pacing, distinct from per-connection CC pacing.
+    pub egress_pacing_pauses: u64,
+    pub egress_paced_bytes: u64,
     pub mtu_changes: u64,
     pub round_budget_exhausted: u64,
     /// Rounds that dropped idle TX blocks on request, and the bytes released.
@@ -290,6 +294,7 @@ struct Iface {
     /// Largest TSO super-segment payload; 0 = off.
     tso_max: u32,
     full: bool,
+    pacer: IfacePacing,
     drr: Drr,
     tw_pending: usize,
 }
@@ -567,7 +572,15 @@ impl Shard {
     pub fn add_iface(&mut self, cfg: IfaceConfig) -> IfaceId {
         self.ensure_rx_admit_reserve(cfg.mtu);
         let id = self.ifaces.len();
-        self.ifaces.push(Some(Iface { cfg, tx_csum_offload: false, tso_max: 0, full: false, drr: Drr::default(), tw_pending: 0 }));
+        self.ifaces.push(Some(Iface {
+            cfg,
+            tx_csum_offload: false,
+            tso_max: 0,
+            full: false,
+            pacer: IfacePacing::default(),
+            drr: Drr::default(),
+            tw_pending: 0,
+        }));
         IfaceId(id as u16)
     }
 
@@ -575,6 +588,7 @@ impl Shard {
     pub fn set_iface_mtu(&mut self, id: IfaceId, mtu: u16) {
         let Some(Some(ifc)) = self.ifaces.get_mut(id.0 as usize) else { return };
         ifc.cfg.mtu = mtu;
+        ifc.pacer.set_mtu(mtu);
         self.ensure_rx_admit_reserve(mtu);
         self.stats.mtu_changes += 1;
         for s in &mut self.slots {
@@ -611,7 +625,7 @@ impl Shard {
 
     /// Earliest instant at which `run` must be called without new input.
     pub fn next_deadline(&self) -> Option<Instant> {
-        let ready = self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty());
+        let ready = self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty() && i.pacer.deadline().is_none());
         if ready
             || (!self.stateless.is_empty() && self.ifaces.iter().flatten().any(|i| !i.full))
             || self.ifaces.iter().flatten().any(|i| !i.full && i.tw_pending > 0)
@@ -622,7 +636,21 @@ impl Shard {
         let b = self.pacing.peek().map(|x| x.0);
         let c = self.pending_admissions.iter().map(|p| if p.debt.is_some() { p.until.min(p.progress_at + ADMISSION_DEBT_STALL) } else { p.until }).min();
         let maintenance = self.tx_cache_trim.and_then(|_| self.pool.has_retained().then(|| self.tx_cache_idle.map_or(Instant::ZERO, |idle| idle.next_check)));
-        [a, b, c, maintenance].into_iter().flatten().min()
+        let iface_pacing = self.ifaces.iter().flatten().filter(|i| !i.full && !i.drr.is_empty()).filter_map(|i| i.pacer.deadline()).min();
+        [a, b, c, maintenance, iface_pacing].into_iter().flatten().min()
+    }
+
+    /// Pace an iface's aggregate output when different peers contend. The host
+    /// supplies its known bottleneck capacity in IP bytes/second; zero disables
+    /// the policy. Packets remain in the existing peer/connection DRR queues.
+    /// A single peer follows the original path. Contention is remembered for
+    /// one second between bursts; 2-ms service batches amortize timer wakeups.
+    /// Honor `next_deadline()` even without ingress. This controls a downstream
+    /// FIFO, not an upstream provider queue, and does not estimate link capacity.
+    pub fn set_iface_egress_rate(&mut self, id: IfaceId, bytes_per_second: u64) {
+        if let Some(Some(iface)) = self.ifaces.get_mut(id.0 as usize) {
+            iface.pacer.set_rate(bytes_per_second, iface.cfg.mtu);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1878,6 +1906,10 @@ impl Shard {
                 if ifc.full {
                     break;
                 }
+                let (allowance, aggregate_pacing) = ifc.pacer.allowance(now, ifc.drr.ready_peers.len() > 1, ifc.cfg.mtu);
+                if allowance == 0 {
+                    break;
+                }
                 let Some(peer) = ifc.drr.ready_peers.pop_front() else { break };
                 let Some(q) = ifc.drr.peer_q.get_mut(&peer) else { continue };
                 let Some((idx, gen)) = q.pop_front() else {
@@ -1888,9 +1920,20 @@ impl Shard {
                 let mut again = false;
                 if valid {
                     self.slots[idx as usize].sched.in_ready = false;
-                    let (sent, more) = self.serve(idx, now, budget, sinks, &mut out);
+                    let (sent, wire_sent, more) = if aggregate_pacing {
+                        self.serve_paced(idx, now, budget.min(allowance), sinks, &mut out)
+                    } else {
+                        self.serve::<false>(idx, now, budget.min(allowance), sinks, &mut out)
+                    };
                     served_any |= sent > 0;
                     budget = budget.saturating_sub(sent);
+                    if aggregate_pacing {
+                        let pacer = &mut self.ifaces[ii].as_mut().unwrap().pacer;
+                        self.stats.egress_paced_bytes += wire_sent as u64;
+                        if pacer.charge(wire_sent) {
+                            self.stats.egress_pacing_pauses += 1;
+                        }
+                    }
                     again = more;
                 }
                 let ifc = self.ifaces[ii].as_mut().unwrap();
@@ -1913,7 +1956,7 @@ impl Shard {
         if n_if > 0 {
             self.iface_rr = (self.iface_rr + 1) % n_if;
         }
-        if self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty()) {
+        if self.ifaces.iter().flatten().any(|i| !i.full && !i.drr.is_empty() && i.pacer.deadline().is_none()) {
             out.more = true;
             self.stats.round_budget_exhausted += 1;
         }
@@ -1944,8 +1987,24 @@ impl Shard {
         }
     }
 
-    /// Serve one connection for up to one quantum. Returns (bytes sent, wants more).
-    fn serve(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, bool) {
+    // Keep the aggregate-accounting loop out of the ordinary scheduling round.
+    // Uncontended traffic only inlines the original unpaced service loop.
+    #[inline(never)]
+    fn serve_paced(&mut self, idx: u32, now: Instant, round_left: usize, sinks: &mut impl EgressSinks, out: &mut RunOutcome) -> (usize, usize, bool) {
+        self.serve::<true>(idx, now, round_left, sinks, out)
+    }
+
+    /// Serve one connection for up to one quantum. Returns (buffer bytes,
+    /// accounted IP bytes (zero on the unpaced path), wants more). Specialize
+    /// the common unpaced path so it has no per-packet aggregate accounting.
+    fn serve<const AGGREGATE_PACING: bool>(
+        &mut self,
+        idx: u32,
+        now: Instant,
+        round_left: usize,
+        sinks: &mut impl EgressSinks,
+        out: &mut RunOutcome,
+    ) -> (usize, usize, bool) {
         // Packet window fields must use the same policy as calc_window.
         // Local TX/cache occupancy only gates RX growth, not RX progress.
         let level = self.budget.level();
@@ -1954,15 +2013,18 @@ impl Shard {
         let conn = slot.conn.as_mut().unwrap();
         let iface_id = conn.iface;
         let _ = gen;
-        let Some(Some(iface)) = self.ifaces.get_mut(iface_id.0 as usize) else { return (0, false) };
+        let Some(Some(iface)) = self.ifaces.get_mut(iface_id.0 as usize) else { return (0, 0, false) };
         if iface.full {
             conn.note_egress_limited(now);
-            return (0, true);
+            return (0, 0, true);
         }
         let rate = conn.egress_pacing_rate(&self.cfg);
         conn.sync_pacing_debt(now, rate);
         conn.tso_max = iface.tso_max;
         let mss = conn.mss as usize;
+        if AGGREGATE_PACING {
+            conn.tso_max = conn.tso_max.min(round_left.max(mss).min(u32::MAX as usize) as u32);
+        }
         let quantum = match rate {
             Some(r) => quantum_for(r, mss, self.cfg.max_quantum),
             None => self.cfg.max_quantum.max(mss),
@@ -1970,6 +2032,7 @@ impl Shard {
         .min(round_left.max(mss));
         let credit = self.wake.credit;
         let mut sent = 0usize;
+        let mut wire_sent = 0usize;
         loop {
             let has_record_room = !conn.needs_record_spare() || conn.try_reserve_send_record(&mut self.budget);
             let Some(mut plan): Option<Plan> = (if has_record_room {
@@ -1982,7 +2045,7 @@ impl Shard {
                 self.budget_blocked.insert((idx, gen));
                 conn.plan_in_place(now, level)
             }) else {
-                return (sent, false);
+                return (sent, wire_sent, false);
             };
             if plan.paced() && rate.is_some() && conn.next_send_time > now + pacing_ahead(rate.unwrap(), mss, self.cfg.max_quantum) {
                 // Data must wait for pacing, but a pending ACK / probe goes now.
@@ -2005,7 +2068,7 @@ impl Shard {
                         let small_burst = conn.send_occupancy() <= quantum_for(r, mss, self.cfg.max_quantum) as u64;
                         let t = if small_burst { conn.next_send_time - ahead } else { conn.next_send_time };
                         self.pacing.set(idx, t);
-                        return (sent, false);
+                        return (sent, wire_sent, false);
                     }
                     if now.saturating_since(conn.next_send_time) > credit + Duration::from_millis(1) && conn.next_send_time != Instant::ZERO {
                         self.stats.pacing_credit_dropped += 1;
@@ -2025,10 +2088,17 @@ impl Shard {
                     iface.full = true;
                     conn.note_egress_limited(now);
                     // Stay queued (tail of its peer queue): resumes on egress_released.
-                    return (sent, true);
+                    return (sent, wire_sent, true);
                 }
             }
             conn.commit(&plan, now, &self.cfg);
+            if AGGREGATE_PACING {
+                wire_sent += len;
+                if gso_size != 0 {
+                    // Each device-created segment carries its own IP/TCP header.
+                    wire_sent += (plan.len as usize).div_ceil(mss).saturating_sub(1) * hl;
+                }
+            }
             if plan.paced() {
                 if let Some(r) = rate {
                     conn.on_paced_send(now, len, r, credit);
@@ -2041,7 +2111,7 @@ impl Shard {
                 out.bytes += len;
                 self.stats.tx_packets += 1;
                 self.stats.tx_bytes += len as u64;
-                return (sent, false);
+                return (sent, wire_sent, false);
             }
             sent += len;
             out.packets += 1;
@@ -2049,7 +2119,7 @@ impl Shard {
             self.stats.tx_packets += 1;
             self.stats.tx_bytes += len as u64;
             if sent >= quantum {
-                return (sent, has_record_room);
+                return (sent, wire_sent, has_record_room);
             }
         }
     }
