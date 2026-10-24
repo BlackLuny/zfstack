@@ -20,6 +20,7 @@ COHORTS = [
     ("mixed-smoke",mixed.analyze),("mixed-v2-smoke",mixed.analyze),("final-mixed",mixed.analyze),
     ("review-smoke",observed.analyze),("review-wan",native.analyze),("review-peak",peaks.analyze),
     ("review-loaded",observed.analyze),
+    ("review-wan-long",native.analyze),
 ]
 
 
