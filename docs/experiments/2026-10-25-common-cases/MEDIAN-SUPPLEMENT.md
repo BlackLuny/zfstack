@@ -1,6 +1,7 @@
 # Blinded supplemental majority test
 
-Added at 2026-10-25 02:01 UTC, after 120/576 ordinary runs and before any
+Specified from the 2026-10-25 02:01:49 UTC progress snapshot (120/576 ordinary
+runs), while enrollment continued and before any
 on/off effect calculation or inspection. Only progress, correctness and
 placement validity have been inspected. No sample, executable, scenario,
 primary estimator, bootstrap band or decision rule is changed. This is a
@@ -36,8 +37,9 @@ largest subset p-value is obtained by taking the 12 largest cell p-values,
 whose minimum is p_(13), giving the expression above. The component cell test
 is itself an intersection-union test by the same maximum-p argument.
 
-The remaining sampling assumption is **independence of the 12 run-pair signs
-within a particular cell** under the sign-test model. Interleaving cells over
+The remaining sampling assumption is **independent run-pair signs within a
+cell from a common paired-effect population** (or, under the null, success
+probability at most one half in every round). Interleaving cells over
 six hours and balancing order addresses environmental drift but cannot prove
 that assumption, exclusive hardware, absence of every host fluctuation, or a
 real-world frequency of these scenarios. This is an exact test conditional on

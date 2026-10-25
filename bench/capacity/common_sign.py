@@ -38,7 +38,7 @@ def analyze(directory):
         thirteenth_ordered_p=ordered[12], partial_conjunction_p=majority,
         majority_median_protection_supported=valid and majority <= .05, alpha=.05,
         estimand='Within-cell median paired CPU/GB < +3% and throughput > -3%; same enumerated 24-cell grid.',
-        assumptions='Independent run-pair signs within each cell; arbitrary between-cell/endpoint dependence. No strict-zero CPU, all-networks or primary-gate override claim.')
+        assumptions='Independent within-cell signs from a common paired-effect population, or null success probability <= 1/2 in each round; arbitrary between-cell/endpoint dependence. No strict-zero CPU, all-networks or primary-gate override claim.')
 
 
 if __name__ == '__main__':
