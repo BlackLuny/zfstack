@@ -68,3 +68,28 @@ audited view must explicitly disclose that distinction and the pause. If the
 certificate or any independent audit fails, keep that case unqualified; do
 not call the issue environmental noise. Additional unrecognized errors remain
 failures and require investigation before inference.
+
+## Later blinded startup and missing-data clarifications
+
+The subsequent [generator confirmation](GENERATOR-CONFIRMATION.md) documents
+fail-closed missing-field guards added to the analysis collector. The measuring
+`common_cases.py` and `common_env.py` remain unchanged. Original strict flags,
+all numeric estimators, draws, pairs and margins are retained.
+
+Before any treatment effects were inspected, independent confirmation row
+`0003-generator-confirm-r01-1-p99` exposed another early comparison race:
+`actual mask differs 34287 taskset`. The wrapper was first observed at
+0.000220 s with mask [0,1,2,3], subsequently execed Python and spawned the
+benchmark; all three native roles were observed by 0.043347 s, with PPID 34287.
+Every post-2-s wrapper sample has name `python3` and mask [3]. The child and
+all requests completed normally. This satisfies the existing 2-s assignment
+bound; a comparison during taskset's initial assignment is premature.
+
+The additional certificate requires that exact taskset error, fixed native
+placement, the wrapper leader's initial/last masks, its actual parentage of
+every required role observed by 2 s, and all post-assignment wrapper samples
+remaining Python on CPU 3. The existing full-mask, zero-driver-migration,
+child-success, payload, arrival and identity checks still apply. A late role,
+wrong parent, post-bound mask deviation or other error cannot qualify. Keep
+the original startup failure separately identified; no new benchmark retry or
+measurement parameter change is introduced.

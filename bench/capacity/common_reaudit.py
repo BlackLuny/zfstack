@@ -70,6 +70,28 @@ def independent_masks(a, row):
     return dict(valid=not errors, errors=sorted(set(errors)))
 
 
+def startup_transition_error(error, row, observer):
+    match = re.fullmatch(r'actual mask differs (\d+) taskset', error)
+    if not match or row['kind'] != 'native' or row['placement'] != 'fixed':
+        return False
+    tid = match.group(1)
+    thread = observer['threads'].get(tid)
+    if not thread or thread['pid'] != int(tid) or thread['name'] != 'python3' or thread['first_seen_sec'] > 2:
+        return False
+    if thread['first']['affinity'] not in [[0, 1, 2, 3], [3]] or thread['last']['affinity'] != [3]:
+        return False
+    if set(observer['required_roles']) != set(ROLES):
+        return False
+    for role in observer['required_roles'].values():
+        child = observer['threads'].get(str(role['tid']))
+        if not child or child['first']['ppid'] != int(tid) or role['first_seen_sec'] > 2:
+            return False
+    # The resource wrapper execs from taskset before spawning those children;
+    # therefore that taskset stage finished before the <=2-s role observations.
+    later = [t for s in observer['samples'] for t in s['threads'] if str(t['tid']) == tid]
+    return len(later) >= 2 and all(t['name'] == 'python3' and t['affinity'] == [3] for t in later)
+
+
 def certify(out, row, container):
     dest = out/rig.name(row)
     original = rig.inspect(out, row, container)
@@ -81,13 +103,16 @@ def certify(out, row, container):
     if row.get('lights'):
         streams = json.loads((dest/'arrivals.json').read_text())
         rr_valid = len(streams) == 6 and all(s.get(k) == 4 for s in streams for k in ['requested_cpu', 'observer_cpu', 'sender_cpu'])
+    rr_errors = [e for e in a['errors'] if rr_transition_error(e, row, a)]
+    startup_errors = [e for e in a['errors'] if startup_transition_error(e, row, a)]
     race = (bool(a['errors']) and a['returncode'] == 0 and end['returncode'] == 1 and raw['ok'] and not raw['errors']
         and original['errors'] == ['process or identity failed'] and original['audit_errors'] == sorted(set(a['errors']))
-        and masks['valid'] and rr_valid and all(rr_transition_error(e, row, a) for e in a['errors']))
+        and masks['valid'] and rr_valid and set(a['errors']) == set(rr_errors+startup_errors))
     return dict(name=rig.name(row), original_outer_returncode=end['returncode'], child_returncode=a['returncode'],
         original_strict_valid=original['strict_valid'], original_observation_valid=original['observation_valid'],
         original_errors=original['errors'], original_audit_errors=original['audit_errors'],
-        independent_masks=masks, rr_ledgers_valid=rr_valid, rr_self_assignment_race_certified=bool(race),
+        independent_masks=masks, rr_ledgers_valid=rr_valid, observer_race_certified=bool(race),
+        rr_self_assignment_race_certified=bool(race and rr_errors), startup_mask_race_certified=bool(race and startup_errors),
         independently_observed_valid=masks['valid'] and rr_valid and (original['observation_valid'] or race),
         independently_service_valid=masks['valid'] and rr_valid and (original['strict_valid'] or race))
 
@@ -151,7 +176,7 @@ def reaudit(directory, destination):
         original_strict_counts={p:sum(c['original_strict_valid'] for c in cs) for p, cs in certificates.items()},
         independently_observed_counts={p:sum(c['independently_observed_valid'] for c in cs) for p, cs in certificates.items()},
         independently_service_counts={p:sum(c['independently_service_valid'] for c in cs) for p, cs in certificates.items()},
-        certified_races=[c for cs in certificates.values() for c in cs if c['rr_self_assignment_race_certified']],
+        certified_races=[c for cs in certificates.values() for c in cs if c['observer_race_certified']],
         certificates=certificates, original_flags_overwritten=False,
         scope='Second read-only actual-mask audit, unchanged workloads/pairs/estimators/margins. Original automatic gate is retained separately; no retry or omission.')
     save(destination/'independent-audit.json', report)
