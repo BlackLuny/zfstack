@@ -26,6 +26,7 @@ def throughput(progress,start,end):
 
 def recovery(progress,at,limit,reference):
     # Report the end of the first full two-second window, at 250-ms resolution.
+    if reference<=0:return dict(seconds=None,mbps=None,passed=False,reason='no positive baseline plateau')
     for k in range(int((limit-2)*4)+1):
         start=at+k/4
         rate=throughput(progress,start,start+2)
@@ -54,9 +55,9 @@ def latency_phases(dest,windows,measure):
     return result
 
 
-def analyze(phase,summary):
+def analyze(phase,summary,out=None):
     if phase not in ['dynamic','demand']:raise ValueError(phase)
-    out=rig.output(phase);rows=summary['rows'];results=[]
+    out=rig.output(phase) if out is None else out;rows=summary['rows'];results=[]
     for case in sorted({r['case'] for r in rows}):
         for rep in sorted({r['round'] for r in rows if r['case']==case}):
             pair=[r for r in rows if r['case']==case and r['round']==rep]
@@ -73,7 +74,7 @@ def analyze(phase,summary):
                     reference=throughput(progress['off'],end-5,end)
                     observed=throughput(progress['auto'],end-5,end)
                     item['stages'][label]=dict(baseline_plateau_mbps=reference,candidate_plateau_mbps=observed,
-                        plateau_ratio=observed/reference,plateau_passed=observed>=.9*reference,
+                        plateau_ratio=observed/reference if reference>0 else None,plateau_passed=reference>0 and observed>=.9*reference,
                         recovery=None if step==0 else recovery(progress['auto'],step,bound,reference))
             else:
                 windows=[('busy',0,8),('producer_paused',8,28),('resumed',28,50)]
@@ -81,10 +82,10 @@ def analyze(phase,summary):
                 silent=[]
                 for arm in ['off','auto']:
                     minimum=min(throughput(progress[arm],8+k/4,9+k/4) for k in range(77))
-                    silent.append(dict(arm=arm,minimum_one_second_mbps=minimum,observed_idle=minimum<.01*reference))
+                    silent.append(dict(arm=arm,minimum_one_second_mbps=minimum,observed_idle=reference>0 and minimum<.01*reference))
                 observed=throughput(progress['auto'],45,50)
                 item.update(actual_app_idle=silent,actual_app_idle_validated=all(x['observed_idle'] for x in silent),baseline_plateau_mbps=reference,
-                    candidate_plateau_mbps=observed,plateau_ratio=observed/reference,plateau_passed=observed>=.9*reference,
+                    candidate_plateau_mbps=observed,plateau_ratio=observed/reference if reference>0 else None,plateau_passed=reference>0 and observed>=.9*reference,
                     recovery=recovery(progress['auto'],28,bound,reference))
             item['latency']={r['arm']:latency_phases(out/rig.name(r),windows,r['measure']) for r in pair}
             item['latency_changes']={}

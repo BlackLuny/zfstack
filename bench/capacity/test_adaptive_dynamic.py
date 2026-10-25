@@ -13,6 +13,7 @@ class NativeTransitionEvidence(unittest.TestCase):
         self.assertEqual(throughput(progress,1,3),8.)
         self.assertEqual(recovery(progress,0,5,8.)['seconds'],2.)
         self.assertFalse(recovery(progress,0,5,20.)['passed'])
+        self.assertFalse(recovery(progress,0,5,0.)['passed'])
 
     def test_phase_membership_uses_monotonic_planned_time_and_keeps_missing(self):
         streams=[]
