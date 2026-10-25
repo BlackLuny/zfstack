@@ -140,17 +140,18 @@ def primary_protected(changes, peak=False, simultaneous=False, margin=3):
 
 def decisions(result, c):
     cells = c['cells']
-    pointwise = [k for k, v in cells.items() if primary_protected(v['changes'])]
-    simultaneous = [k for k, v in cells.items() if primary_protected(v['changes'], simultaneous=True)]
-    strict_cpu = [k for k, v in cells.items() if v['changes']['stack_cpu_s_per_gb']['bootstrap_95_pct'][1] <= 0]
+    eligible = lambda v:v['observed_valid'] and v['candidate_strict_valid']
+    pointwise = [k for k, v in cells.items() if eligible(v) and primary_protected(v['changes'])]
+    simultaneous = [k for k, v in cells.items() if eligible(v) and primary_protected(v['changes'], simultaneous=True)]
+    strict_cpu = [k for k, v in cells.items() if eligible(v) and v['changes']['stack_cpu_s_per_gb']['bootstrap_95_pct'][1] <= 0]
     singles = [v for v in cells.values() if v['heavy'] == 1]
     loaded = [v for v in cells.values() if v['heavy'] > 1]
     clear_regression = [k for k, v in cells.items() if v['changes']['mbps']['bootstrap_95_pct'][1] < -3 or v['changes']['stack_cpu_s_per_gb']['bootstrap_95_pct'][0] > 3]
     aggregates = c['aggregates']
     guard = {label:primary_protected(changes) for label, changes in aggregates.items()}
     broad_cpu = {label:all(aggregates[label][m]['bootstrap_95_pct'][1] <= 3 for m in ['stack_link_cpu_s_per_gb', 'process_cpu_s_per_gb']) for label in ['single', 'contended']}
-    latency_ok = [v for v in loaded if all(v['changes'][m]['bootstrap_95_pct'][1] <= 5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms'])]
-    latency_clear = [k for k, v in cells.items() if v['heavy'] > 1 and any(v['changes'][m]['bootstrap_95_pct'][0] > 5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms'])]
+    latency_ok = [v for v in loaded if eligible(v) and all(m in v['changes'] and v['changes'][m]['bootstrap_95_pct'][1] <= 5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms'])]
+    latency_clear = [k for k, v in cells.items() if v['heavy'] > 1 and any(m in v['changes'] and v['changes'][m]['bootstrap_95_pct'][0] > 5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms'])]
     candidate = [r for r in result['rows'] if r['arm'] != 'off']
     checks = dict(observations_complete=result['observed_valid'] == result['completed'] == result['planned'] == 576 and result['identity_valid'],
         candidates_strict=all(r['strict_valid'] for r in candidate),
@@ -159,7 +160,7 @@ def decisions(result, c):
         all_single_throughput=all(v['changes']['mbps']['bootstrap_95_pct'][0] >= -3 for v in singles),
         no_clear_primary_regression=not clear_regression, all_primary_aggregates=all(guard.values()),
         broad_cpu_aggregates=all(broad_cpu.values()),
-        contended_latency_aggregate=all(aggregates['contended'][m]['bootstrap_95_pct'][1] <= -5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms']),
+        contended_latency_aggregate=all(m in aggregates['contended'] and aggregates['contended'][m]['bootstrap_95_pct'][1] <= -5 for m in ['user_equal_mean_ms', 'worst_user_p99_ms']),
         contended_latency_coverage=len(latency_ok) >= 9 and not latency_clear)
     return dict(representative_scope_qualified=all(checks.values()), checks=checks,
         pointwise_protected_count=len(pointwise), pointwise_protected_cells=pointwise,

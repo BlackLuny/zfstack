@@ -53,6 +53,9 @@ def plot(directory):
     for y, (name, cell) in enumerate(loaded):
         labels.append(f"{cell['cc'].upper()} / {cell['rtt']} ms")
         for ax, metric in zip(axes, ['user_equal_mean_ms', 'worst_user_p99_ms']):
+            if metric not in cell['changes']:
+                ax.text(0, y, 'incomplete arrivals', fontsize=8, color='#777777')
+                continue
             value = cell['changes'][metric]
             low, high = value['bootstrap_95_pct']
             ax.hlines(y, low, high, color='#2563a6', linewidth=2)
