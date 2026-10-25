@@ -107,6 +107,8 @@ def reaudit(directory, destination):
         for row, cert in zip(result['rows'], certs):
             row['original_strict_valid'] = row['strict_valid']
             row['original_observation_valid'] = row['observation_valid']
+            row['independently_service_valid'] = cert['independently_service_valid']
+            row['independently_observed_valid'] = cert['independently_observed_valid']
             # Compatibility projection for the unchanged decision functions.
             # Export the mapping, original flags and certificates explicitly.
             row['strict_valid'] = cert['independently_service_valid']
