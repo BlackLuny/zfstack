@@ -3,6 +3,9 @@
 mod time;
 pub use time::Instant;
 #[allow(dead_code)]
+#[path = "../../src/adaptive_pacing.rs"]
+mod adaptive_pacing;
+#[allow(dead_code)]
 #[path = "../../src/iface_pacing.rs"]
 mod iface_pacing;
 
@@ -32,9 +35,21 @@ fn main() {
             }
         }
     }
+    let mut adaptive_checked = 0;
+    for mtu in mtus {
+        let mut p = IfacePacing::default();
+        p.set_adaptive(true);
+        for now in times {
+            assert_eq!(p.allowance(Instant::from_nanos(now), false, mtu), (usize::MAX, false));
+            assert!(!p.tracks_delivery());
+            assert_eq!(p.deadline(), None);
+            adaptive_checked += 1;
+        }
+    }
     println!(
-        "{{\"bypass_states_checked\":{checked},\"hot_state_bytes\":{},\"cold_clock_bytes\":{},\"production_source_included\":true}}",
+        "{{\"bypass_states_checked\":{checked},\"adaptive_bypass_states_checked\":{adaptive_checked},\"hot_state_bytes\":{},\"cold_clock_bytes\":{},\"adaptive_controller_bytes\":{},\"production_source_included\":true}}",
         std::mem::size_of::<IfacePacing>(),
-        std::mem::size_of::<iface_pacing::IfacePacer>()
+        std::mem::size_of::<iface_pacing::IfacePacer>(),
+        std::mem::size_of::<adaptive_pacing::AdaptivePacer>()
     );
 }

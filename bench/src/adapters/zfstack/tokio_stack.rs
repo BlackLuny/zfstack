@@ -113,7 +113,10 @@ impl UserStack for TokioStack {
                     }
                 },
             );
-            for id in ids { handle.set_iface_egress_rate(id, self.opts.egress_rate); }
+            for id in ids {
+                handle.set_iface_egress_rate(id, self.opts.egress_rate);
+                if self.opts.adaptive_egress { handle.set_iface_adaptive_egress(id, true); }
+            }
             let errors = Arc::new(Mutex::new(Vec::<String>::new()));
             let task_errors = errors.clone();
             let app_stop = stop.clone();
@@ -145,7 +148,25 @@ impl UserStack for TokioStack {
             });
             // Teardown observation only; packet/timer servicing is exclusively
             // the production adapter's event-driven loop.
-            while !stop.load(Relaxed) { tokio::time::sleep(Duration::from_millis(50)).await; }
+            let trace = crate::adaptive_fixture::Controls::from_env().expect("validated fixture controls").trace;
+            let mut adaptive_trace = Vec::new();
+            let mut next_trace = Duration::ZERO;
+            while !stop.load(Relaxed) {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                if trace {
+                    if let Some(start) = crate::adaptive_fixture::window() {
+                        let elapsed = start.elapsed();
+                        if elapsed >= next_trace {
+                            let s = handle.snapshot().await.expect("trace driver live");
+                            adaptive_trace.push(serde_json::json!({"elapsed_ms":elapsed.as_secs_f64()*1000.0,
+                                "rate":s.stats.adaptive_egress_last_rate,"delivery_rate":s.stats.adaptive_egress_last_delivery_rate,
+                                "queue_us":s.stats.adaptive_egress_last_queue_us,"updates":s.stats.adaptive_egress_updates,
+                                "probes":s.stats.adaptive_egress_probes,"paced_bytes":s.stats.egress_paced_bytes}));
+                            next_trace = elapsed + Duration::from_secs(1);
+                        }
+                    }
+                }
+            }
             let snapshot = handle.snapshot().await.expect("driver ended before the fixture");
             task.shutdown_and_join().await.unwrap();
             apps.await.unwrap();
@@ -160,10 +181,14 @@ impl UserStack for TokioStack {
             }
             serde_json::json!({"impl":"zfstack-tokio", "cpu_scope":"stack thread includes production Tokio driver and apps; bridge is separate and included in process CPU",
                 "bridge_cpu_total_sec":bridge_cpu,"fixture_app_errors":*errors.lock().unwrap(),
+                "adaptive_trace":adaptive_trace,
                 "production_splice":splice,"kernel_upstream_threads_after_shutdown":upstream.as_ref().map_or(0,|u|u.active.load(Relaxed)),
                 "port_physical_bytes":snapshot.port_physical_bytes,"global_reserved_bytes":snapshot.global_reserved_bytes,
                 "shards":[{"shard":0,"runs":snapshot.stats.runs,"sink_full":snapshot.stats.sink_full,
                     "egress_paced_bytes":snapshot.stats.egress_paced_bytes,"egress_pacing_pauses":snapshot.stats.egress_pacing_pauses,
+                    "adaptive_egress_updates":snapshot.stats.adaptive_egress_updates,"adaptive_egress_probes":snapshot.stats.adaptive_egress_probes,
+                    "adaptive_egress_last_rate":snapshot.stats.adaptive_egress_last_rate,"adaptive_egress_last_delivery_rate":snapshot.stats.adaptive_egress_last_delivery_rate,
+                    "adaptive_egress_last_queue_us":snapshot.stats.adaptive_egress_last_queue_us,
                     "conns":snapshot.active_connections}],
                 "counter_note":"outer bare-host wakeup/poll counters are not available for the native Tokio runtime"})
         });

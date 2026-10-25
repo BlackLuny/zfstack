@@ -175,6 +175,13 @@ pub struct ShardStats {
     /// Aggregate iface pacing, distinct from per-connection CC pacing.
     pub egress_pacing_pauses: u64,
     pub egress_paced_bytes: u64,
+    /// Experimental adaptive controller updates/probes across all ifaces.
+    pub adaptive_egress_updates: u64,
+    pub adaptive_egress_probes: u64,
+    /// Most recent update on any iface (IP bytes/s, and weighted queue us).
+    pub adaptive_egress_last_rate: u64,
+    pub adaptive_egress_last_delivery_rate: u64,
+    pub adaptive_egress_last_queue_us: u64,
     pub mtu_changes: u64,
     pub round_budget_exhausted: u64,
     /// Rounds that dropped idle TX blocks on request, and the bytes released.
@@ -653,6 +660,19 @@ impl Shard {
         }
     }
 
+    /// Experimental aggregate pacing without a supplied capacity. Learns from
+    /// summed ACK delivery and bulk RTT inflation only while peers contend.
+    /// BBR is the validation target; this policy remains opt-in. Selecting it
+    /// replaces a configured fixed rate; selecting a fixed rate disables it.
+    /// Passing false disables either aggregate policy.
+    /// Repeated identical settings preserve learning. A never-contended peer
+    /// allocates no controller and keeps the original service specialization.
+    pub fn set_iface_adaptive_egress(&mut self, id: IfaceId, enabled: bool) {
+        if let Some(Some(iface)) = self.ifaces.get_mut(id.0 as usize) {
+            iface.pacer.set_adaptive(enabled);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Ingress
 
@@ -838,9 +858,20 @@ impl Shard {
             self.stats.rx_dropped_peer_mismatch += 1;
             return;
         }
+        let iface = self.ifaces[conn.iface.0 as usize].as_mut().unwrap();
+        let delivered_before = iface.pacer.tracks_delivery().then(|| conn.delivered());
         {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.input(now, h, payload, &mut ctx);
+        }
+        if let Some(sample) = delivered_before.and_then(|before| conn.aggregate_delivery(before)) {
+            if let Some(update) = iface.pacer.on_delivery(now, sample.wire_bytes, sample.bulk_rtt, iface.cfg.mtu, sample.queued) {
+                self.stats.adaptive_egress_updates += 1;
+                self.stats.adaptive_egress_probes += u64::from(update.probe);
+                self.stats.adaptive_egress_last_rate = update.rate;
+                self.stats.adaptive_egress_last_delivery_rate = update.delivery_rate;
+                self.stats.adaptive_egress_last_queue_us = update.queue_us;
+            }
         }
         if conn.bad_ack_rst {
             conn.bad_ack_rst = false;

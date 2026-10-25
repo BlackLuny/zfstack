@@ -87,8 +87,15 @@ fn handle(mut s: TcpStream, counters: Arc<ServerCounters>) -> io::Result<()> {
     let mut app = AppConn::new(counters);
     let mut rbuf = vec![0u8; 256 * 1024];
     let mut wbuf = vec![0u8; 256 * 1024];
+    let controls = crate::adaptive_fixture::Controls::from_env()?;
     loop {
         if app.wants_send() {
+            if controls.down_pause.is_some() && app.is_download() {
+                if let Some(remaining) = controls.pause_remaining(std::time::Instant::now()) {
+                    std::thread::sleep(remaining.min(Duration::from_millis(50)));
+                    continue;
+                }
+            }
             let n = app.produce(&mut wbuf);
             s.write_all(&wbuf[..n])?;
             continue;

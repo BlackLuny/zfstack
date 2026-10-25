@@ -1,0 +1,110 @@
+{
+  "clean_extraction": {
+    "analysis_source": "extracted scripts and raw records",
+    "original_raw_worktree_not_used_for_replay": true,
+    "performed": true,
+    "source": "final sealed evidence archive extracted into a new empty directory"
+  },
+  "independent_replay_byte_identical": [
+    "aa-summary.json",
+    "aa-comparisons.json",
+    "primary-summary.json",
+    "primary-comparisons.json",
+    "bandwidth-summary.json",
+    "bandwidth-comparisons.json",
+    "heavy-summary.json",
+    "heavy-comparisons.json",
+    "disabled-summary.json",
+    "disabled-comparisons.json",
+    "peak-summary.json",
+    "peak-comparisons.json",
+    "dynamic-summary.json",
+    "dynamic-comparisons.json",
+    "demand-summary.json",
+    "demand-comparisons.json",
+    "cohorts.json",
+    "qualification.json",
+    "dynamic-transitions.json",
+    "dynamic-phase-latency.json",
+    "demand-transitions.json",
+    "demand-phase-latency.json",
+    "pilot-a0/pilot-summary.json",
+    "pilot-a0/pilot-comparisons.json",
+    "pilot-a0/cohorts.json",
+    "pilot-a1/pilot-summary.json",
+    "pilot-a1/pilot-comparisons.json",
+    "pilot-a1/cohorts.json",
+    "pilot-a1/dynamic-transitions.json",
+    "pilot-a1/demand-transitions.json",
+    "diagnostics.json"
+  ],
+  "independent_replay_files": 31,
+  "passed": true,
+  "sealed_evidence": {
+    "archive_bytes": 54814678,
+    "archive_members": 3895,
+    "archive_sha256": "0a7f4f84624b2a9ee6308987cf092670907d5a0f06ddd8e075e78f473a83fccf",
+    "every_member_sha256_and_size_matches": true,
+    "manifest_entries": 3894
+  },
+  "source_identity": {
+    "a0": {
+      "binary": "target/release/zfbench-adaptive-a0-20261025",
+      "phases": {
+        "pilot": {
+          "build_inputs": 54,
+          "snapshot_inputs": 113
+        }
+      },
+      "sha256": "9801eb32a4d23b5f75f4f87d2e4d634b818bc9f494faff9eee17b5e16c3fc65d"
+    },
+    "a1": {
+      "binary": "target/release/zfbench-adaptive-a1-20261025",
+      "phases": {
+        "aa": {
+          "build_inputs": 54,
+          "snapshot_inputs": 119
+        },
+        "bandwidth": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "demand": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "disabled": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "dynamic": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "heavy": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "peak": {
+          "build_inputs": 54,
+          "snapshot_inputs": 122
+        },
+        "pilot": {
+          "build_inputs": 54,
+          "snapshot_inputs": 118
+        },
+        "primary": {
+          "build_inputs": 54,
+          "snapshot_inputs": 119
+        }
+      },
+      "sha256": "eedab794d2fc1c9910c04bc0a8f49a2cb1dcea3206f885cbf775df412bff55da"
+    },
+    "confirmation_runtime_inputs": 21,
+    "v5": {
+      "binary": "target/release/zfbench-production-v5-20261024",
+      "sha256": "96695f880dd600172e3dfa5b32304da0fa296579357785b5f83dbb87ea1a26c5",
+      "source_inputs": 52
+    }
+  }
+}

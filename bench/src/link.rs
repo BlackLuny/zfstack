@@ -66,6 +66,7 @@ pub struct DirCounters {
     pub late_hist: [u64; LATE_BUCKETS_US.len() + 1],
     pub max_delay_line_pkts: usize,
     pub cpu_sec: f64,
+    pub rate_changes: Vec<serde_json::Value>,
 }
 
 impl DirCounters {
@@ -101,6 +102,7 @@ impl DirCounters {
             "timing_late_max_us": self.late_max_ns as f64 / 1e3,
             "timing_late_hist": hist,
             "cpu_sec": self.cpu_sec,
+            "rate_changes": self.rate_changes,
         })
     }
 }
@@ -226,8 +228,24 @@ pub fn run_direction(p: DirParams, source: Source, sink: Sink, stop: Arc<AtomicB
     };
     let mut rbuf = vec![0u8; 65536];
     let mut out: Batch = Vec::with_capacity(256);
+    let controls = crate::adaptive_fixture::Controls::from_env().expect("validated fixture controls");
+    assert!(controls.rate_steps.is_empty() || emu.fair.is_some(), "rate changes require the FIFO/peer service serializer");
+    let mut next_rate = 0;
     loop {
         let now = Instant::now();
+        if next_rate < controls.rate_steps.len() {
+            if let Some(start) = crate::adaptive_fixture::window() {
+                let elapsed = now.saturating_duration_since(start);
+                while next_rate < controls.rate_steps.len() && elapsed >= controls.rate_steps[next_rate].0 {
+                    let (at, rate) = controls.rate_steps[next_rate];
+                    let q = emu.fair.as_mut().unwrap();
+                    q.advance(start + at, &mut emu.line);
+                    q.set_rate(rate);
+                    emu.c.rate_changes.push(serde_json::json!({"planned_ms":at.as_millis(),"actual_ms":elapsed.as_secs_f64()*1000.0,"rate_bps":rate}));
+                    next_rate += 1;
+                }
+            }
+        }
         emu.due(now, &mut out);
         if !out.is_empty() {
             match &sink {

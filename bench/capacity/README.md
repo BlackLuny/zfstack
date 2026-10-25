@@ -305,6 +305,32 @@ python3 bench/capacity/common_verify.py docs/experiments/2026-10-25-common-cases
 (cd docs/experiments/2026-10-25-common-cases && sha256sum -c artifact-index.sha256)
 ```
 
+## Experimental BBR adaptive aggregate pacing
+
+The [312-attempt A1 report](../../docs/experiments/2026-10-25-adaptive-pacing/README.md)
+retains both 12-attempt pilots and all failures separately from fixed-capacity V5.
+The original [protocol](../../docs/experiments/2026-10-25-adaptive-pacing/PROTOCOL.md)
+and [A1 correction](../../docs/experiments/2026-10-25-adaptive-pacing/A1-CORRECTION.md)
+remain frozen. A1 fails the original qualification: repeatable BBR throughput
+losses at 50/100 ms and incomplete capacity recovery prevent default enablement.
+
+`Shard::set_iface_adaptive_egress` and `StackHandle::set_iface_adaptive_egress`
+select the experimental production policy without supplied capacity. Both
+native arms pass fixed rate zero; `--adaptive-egress` rejects a nonzero
+`--iface-egress-rate`. Fixed/adaptive settings are exclusive, the last setting
+per iface wins, and adaptive false disables either aggregate policy. Defaults
+remain off. The local extreme uses the existing client CUBIC/no-pacing profile;
+BBR WAN single-flow results and the unmeasured BBR local peak are identified
+separately in the report.
+
+`adaptive_artifacts.py collect NEW_DIRECTORY` re-reads all original records;
+it refuses overwriting numerical files. The report gives clean extraction and
+offline `verify` instructions for the 31 numerical JSON outputs, frozen source
+and executable hashes, and every archive member. `adaptive_plot.py` produces
+the standalone figures after the completion marker. Descriptive diagnostics
+do not replace any original guard. Existing study directories, failed arms,
+candidate and sample budget must not be reused or extended for significance.
+
 The verifier checks all archive member hashes/sizes, frozen binary/source
 identities and 20 byte-identical JSON replays. Original strict flags and
 independently certified actual placement are separate views with identical

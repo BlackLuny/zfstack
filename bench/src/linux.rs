@@ -17,6 +17,7 @@ mod tail_trace;
 mod link_queue;
 mod tx_tuning;
 mod trial_tuning;
+mod adaptive_fixture;
 mod wg;
 mod wgmode;
 
@@ -71,6 +72,9 @@ pub struct Args {
     /// Production aggregate iface pacing capacity in IP bytes/s (0 = off).
     #[arg(long, default_value_t = 0)]
     iface_egress_rate: u64,
+    /// Experimental ACK/RTT-driven aggregate pacing; no known capacity input.
+    #[arg(long)]
+    adaptive_egress: bool,
     /// Use the production Tokio driver/app queues in the local emulator.
     #[arg(long)]
     tokio_stack: bool,
@@ -268,6 +272,7 @@ struct Snap {
 pub struct StackOpts {
     pub stack: StackKind,
     pub iface_egress_rate: u64,
+    pub adaptive_egress: bool,
     pub tokio_stack: bool,
     pub splice: bool,
     pub sock_buf_kb: usize,
@@ -282,6 +287,7 @@ impl StackOpts {
         StackOpts {
             stack: a.stack,
             iface_egress_rate: a.iface_egress_rate,
+            adaptive_egress: a.adaptive_egress,
             tokio_stack: a.tokio_stack,
             splice: a.splice,
             sock_buf_kb: a.sock_buf_kb,
@@ -296,6 +302,7 @@ impl StackOpts {
         json!({
             "stack": stack_name(self.stack),
             "iface_egress_rate": self.iface_egress_rate,
+            "adaptive_egress": self.adaptive_egress,
             "tokio_stack": self.tokio_stack,
             "splice": self.splice,
             "sock_buf_kb": self.sock_buf_kb,
@@ -311,6 +318,7 @@ impl StackOpts {
         Ok(StackOpts {
             stack: StackKind::from_str(stack, true)?,
             iface_egress_rate: v["iface_egress_rate"].as_u64().unwrap_or(0),
+            adaptive_egress: v["adaptive_egress"].as_bool().unwrap_or(false),
             tokio_stack: v["tokio_stack"].as_bool().unwrap_or(false),
             splice: v["splice"].as_bool().unwrap_or(false),
             sock_buf_kb: v["sock_buf_kb"].as_u64().ok_or("missing sock_buf_kb")? as usize,
@@ -336,7 +344,7 @@ pub fn build_stack(o: &StackOpts, counters: Arc<ServerCounters>, isolate: Option
                     StackKind::ZfstackNopace => (zfstack::CcAlgo::Cubic, false),
                     _ => (zfstack::CcAlgo::Cubic, true),
                 };
-                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing, egress_rate: o.iface_egress_rate };
+                let opts = adapters::zfstack::ZfOpts { sock_buf: o.sock_buf_kb * 1024, cc, pacing, egress_rate: o.iface_egress_rate, adaptive_egress: o.adaptive_egress };
                 if o.tokio_stack {
                     return Box::new(adapters::zfstack::TokioStack::new(opts, counters, isolate.cloned(), o.splice));
                 }
@@ -395,6 +403,17 @@ pub fn sysctl(name: &str) -> String {
 
 fn main() {
     let a = Args::parse();
+    let adaptive_fixture = adaptive_fixture::Controls::from_env().unwrap_or_else(|e| {
+        eprintln!("adaptive fixture: {e}"); std::process::exit(2)
+    });
+    if adaptive_fixture.enabled() && (!a.tokio_stack || !matches!(a.test, TestKind::Isolate) || a.client_proxy.is_some() || a.serve_wg || a.wg_server.is_some()) {
+        eprintln!("adaptive fixture controls require the local Tokio isolate experiment");
+        std::process::exit(2);
+    }
+    if a.adaptive_egress && a.iface_egress_rate != 0 {
+        eprintln!("--adaptive-egress requires --iface-egress-rate 0; capacity must not be supplied");
+        std::process::exit(2);
+    }
     if a.tokio_stack && (a.wg_server.is_some() || a.serve_wg || a.tun_proxy || a.client_proxy.is_some()
         || a.topology == isolate::Topology::PerPortShard
         || !matches!(a.stack, StackKind::ZfstackCubic | StackKind::ZfstackBbr | StackKind::ZfstackNopace)) {
@@ -426,6 +445,7 @@ fn main() {
             tso: a.tso,
             driver_thread: a.driver_thread,
             egress_rate: a.iface_egress_rate,
+            adaptive_egress: a.adaptive_egress,
         };
         let r = if a.legacy { tunproxy_legacy::run(o) } else { tunproxy::run(o) };
         if let Err(e) = r {
@@ -692,11 +712,13 @@ fn run(a: &Args) -> std::io::Result<i32> {
         "timestamp_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         "tx_tuning": tx_tuning::TxTuning::from_env()?.json(),
         "trial_tuning": trial_tuning::TrialTuning::from_env()?.json(),
+        "adaptive_fixture": adaptive_fixture::Controls::from_env()?.json(),
         "config": {
             "stack": stack_name(a.stack),
             "test": test_name(a.test),
             "rate_mbps": a.rate_mbps,
             "iface_egress_rate": a.iface_egress_rate,
+            "adaptive_egress": a.adaptive_egress,
             "tokio_stack": a.tokio_stack,
             "tokio_splice": a.tokio_stack && a.splice,
             "rate_up_mbps": a.rate_up_mbps.unwrap_or(a.rate_mbps),

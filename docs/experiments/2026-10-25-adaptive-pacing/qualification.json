@@ -1,0 +1,88 @@
+{
+  "candidate": "a1",
+  "checks": {
+    "all_cohorts_observed": false,
+    "all_single_throughput": false,
+    "bandwidth": false,
+    "broad_cpu_scopes": true,
+    "contended_latency_aggregate": true,
+    "contended_latency_cells": false,
+    "demand": false,
+    "disabled": true,
+    "disabled_steady_3pct": false,
+    "dynamic": false,
+    "heavy": false,
+    "no_clear_primary_regression": false,
+    "peak": true,
+    "pointwise_nine_of_twelve": false,
+    "primary_aggregates": false,
+    "primary_candidate_progress": true,
+    "primary_observations": true,
+    "simultaneous_seven_of_twelve": false,
+    "three_clearly_improved_cells": true
+  },
+  "clear_primary_regressions": [
+    "steady-m100-r100-n8",
+    "steady-m100-r50-n8"
+  ],
+  "clearly_improved_latency_cells": [
+    "steady-m100-r1-n8",
+    "steady-m100-r10-n8",
+    "steady-m100-r50-n8"
+  ],
+  "default_enabled": false,
+  "note": "Original strict/observer failures retained. No pooling pilot, V5 disabled guards, bandwidth, heavy, peak or diagnostic traces into primary intervals.",
+  "passed": false,
+  "pointwise_protected": [
+    "steady-m100-r10-n8",
+    "steady-m100-r100-n1",
+    "steady-m100-r50-n1"
+  ],
+  "scope": "Same-host native BBR, symmetric FIFO, sampled RTT/capacity grid. No universal unknown-capacity/default or unconditional starvation guarantee.",
+  "side_cohorts": {
+    "bandwidth": {
+      "candidate_progress": true,
+      "cells": {
+        "steady-m10-r50-n8": true,
+        "steady-m10-r500-n8": true,
+        "steady-m300-r50-n8": false,
+        "steady-m300-r500-n8": false
+      },
+      "margin": 5,
+      "observed": true,
+      "passed": false
+    },
+    "disabled": {
+      "candidate_progress": true,
+      "cells": {
+        "steady-m100-r1-n1": true,
+        "steady-m100-r500-n1": true
+      },
+      "margin": 10,
+      "observed": true,
+      "passed": true
+    },
+    "heavy": {
+      "candidate_progress": true,
+      "cells": {
+        "steady-m100-r20-n200": false
+      },
+      "margin": 5,
+      "observed": false,
+      "passed": false
+    },
+    "peak": {
+      "candidate_progress": true,
+      "cells": {
+        "peak-down1": true,
+        "peak-down2": true
+      },
+      "margin": 10,
+      "observed": true,
+      "passed": true
+    }
+  },
+  "simultaneously_protected": [
+    "steady-m100-r10-n8"
+  ]
+}

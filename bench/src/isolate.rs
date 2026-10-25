@@ -249,6 +249,7 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     let connect_phase_sec = t_connect.elapsed().as_secs_f64();
     let measure = o.secs.saturating_sub(o.warmup).max(1);
     let window_start = Instant::now();
+    crate::adaptive_fixture::mark_window(window_start);
     let window_end_at = window_start + Duration::from_secs(measure);
     let bytes_at_window = heavy_bytes.load(Relaxed);
     mark("window_start");
@@ -637,6 +638,7 @@ fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag:
     let sender_cpu = sender.join().unwrap();
     assert_eq!(observations.len(), count);
     ARRIVALS.lock().unwrap().push(json!({"local":local.to_string(),"hz":hz,"count":count,"period_ns":period.as_nanos(),"arrivals":observations,
+        "measurement_origin_ns":crate::adaptive_fixture::window().map(|window|origin.saturating_duration_since(window).as_nanos()),
         "requested_cpu":generator_cpu,"observer_cpu":generator_cpu.map(|_| unsafe { libc::sched_getcpu() }),"sender_cpu":sender_cpu}));
     (raw, errors)
 }

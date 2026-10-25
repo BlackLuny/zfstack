@@ -235,6 +235,8 @@ impl AppConn {
         }
     }
 
+    pub fn is_download(&self) -> bool { matches!(self.st, St::Down { .. }) }
+
     /// Write up to `buf.len()` bytes to send. Returns bytes written.
     pub fn produce(&mut self, out: &mut [u8]) -> usize {
         let n = match &mut self.st {

@@ -51,6 +51,7 @@ pub struct ZfOpts {
     pub cc: CcAlgo,
     pub pacing: bool,
     pub egress_rate: u64,
+    pub adaptive_egress: bool,
 }
 
 struct C {
@@ -365,6 +366,7 @@ impl ZfStack {
         let mut shard = Shard::new(cfg);
         let iface = shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
         shard.set_iface_egress_rate(iface, opts.egress_rate);
+        if opts.adaptive_egress { shard.set_iface_adaptive_egress(iface, true); }
         ZfStack {
             opts,
             start: Instant::now(),
@@ -405,6 +407,7 @@ impl ZfStack {
             let slot = if plan.per_port_shard { port as usize } else { 0 };
             let iface = slots[slot].shard.add_iface(IfaceConfig { mtu: tun::MTU as u16 });
             slots[slot].shard.set_iface_egress_rate(iface, opts.egress_rate);
+            if opts.adaptive_egress { slots[slot].shard.set_iface_adaptive_egress(iface, true); }
             slots[slot].note_iface(iface, port);
             locs.push((slot, iface));
         }
@@ -550,6 +553,9 @@ impl UserStack for ZfStack {
                 "app_budget_retry": slot.budget_retry.json(),
                 "pacing_credit_dropped": st.pacing_credit_dropped, "rx_dropped_parse": st.rx_dropped_parse,
                 "egress_pacing_pauses": st.egress_pacing_pauses, "egress_paced_bytes": st.egress_paced_bytes,
+                "adaptive_egress_updates":st.adaptive_egress_updates,"adaptive_egress_probes":st.adaptive_egress_probes,
+                "adaptive_egress_last_rate":st.adaptive_egress_last_rate,"adaptive_egress_last_delivery_rate":st.adaptive_egress_last_delivery_rate,
+                "adaptive_egress_last_queue_us":st.adaptive_egress_last_queue_us,
                 "rx_dropped_no_iface": st.rx_dropped_no_iface,
                 "rx_dropped_peer_mismatch": st.rx_dropped_peer_mismatch,
             }));

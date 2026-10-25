@@ -11,6 +11,7 @@
 - 接口热状态与竞争发送循环的后续优化：[V5 实现和独立复测](docs/experiments/2026-10-24-pacing-fast-path/README.md)
 - CUBIC/50 ms 单连接 CPU 异常：[128 次独立复测与环境对照](docs/experiments/2026-10-24-cubic50-retest/README.md)
 - 1–500 ms RTT 的充分重复确认：[672 次运行、汇编与源码论证、逐格保护结论](docs/experiments/2026-10-25-common-cases/README.md)
+- BBR / 出口容量未知的实验性聚合 pacing：[312 次正式验证与负结果](docs/experiments/2026-10-25-adaptive-pacing/README.md)，保持默认关闭。
 - 持续验证、证据和门禁：[QA 使用指南](qa/README.md)
 - 状态：已有核心栈、Tokio adapter、L0 / L1 / L2 台架；性能资格按场景和节点独立校准，未校准结果保持 shadow。
 

@@ -36,6 +36,12 @@ impl Queue {
     pub fn deadline(&self) -> Option<Instant> {
         self.service.map(|s| s.0)
     }
+    /// A packet already in service keeps its scheduled completion; subsequent
+    /// packets use the new rate. The transition error is at most one packet.
+    pub fn set_rate(&mut self, rate_bps: u64) {
+        assert!(rate_bps > 0);
+        self.ns_per_byte = 8e9 / rate_bps as f64;
+    }
     pub fn enqueue(&mut self, p: Vec<u8>, limit: usize) -> Vec<Vec<u8>> {
         let key = self.key(&p);
         let mut dropped = Vec::new();
@@ -122,6 +128,23 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rate_change_preserves_in_service_packet_and_prices_following_packets() {
+        let now = Instant::now();
+        let mut q = Queue::new(false, 100_000_000, Duration::ZERO);
+        let mut line = VecDeque::new();
+        for marker in 1..=3 { q.enqueue(packet(1, marker), 4260); }
+        q.advance(now, &mut line);
+        let first = line[0].0;
+        q.set_rate(10_000_000);
+        assert_eq!(q.deadline(), Some(first));
+        q.advance(now + Duration::from_millis(3), &mut line);
+        assert_eq!(line.len(), 3);
+        assert_eq!(line[0].0 - now, Duration::from_nanos(113600));
+        assert_eq!(line[1].0 - line[0].0, Duration::from_nanos(1136000));
+        assert_eq!(line[2].0 - line[1].0, Duration::from_nanos(1136000));
+        assert_eq!(q.bytes, 0);
+    }
     fn packet(peer: u8, marker: u8) -> Vec<u8> {
         let mut p = vec![marker; 1420];
         p[12..16].copy_from_slice(&[10, 211, 0, 2]);

@@ -20,6 +20,12 @@ use core::time::Duration;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 
+pub(crate) struct AggregateDelivery {
+    pub wire_bytes: u64,
+    pub bulk_rtt: Option<(Duration, Duration)>,
+    pub queued: bool,
+}
+
 /// The WG integration borrows a decrypted packet only for the duration of
 /// `Shard::ingress_borrowed`. Existing simulator/adapter callers can still pass
 /// owned Bytes without copying them. Only data actually retained by TCP is
@@ -756,6 +762,24 @@ impl Conn {
 
     pub fn srtt(&self) -> Duration {
         self.rtt.srtt_or(Duration::ZERO)
+    }
+
+    pub(crate) fn delivered(&self) -> u64 {
+        self.dl.delivered
+    }
+
+    /// ACKed payload translated to IP bytes. RTT feedback uses bulk ACKs so a
+    /// small request's delayed ACK timer is not treated as a shared FIFO queue.
+    pub(crate) fn aggregate_delivery(&self, before: u64) -> Option<AggregateDelivery> {
+        let bytes = self.dl.delivered.saturating_sub(before);
+        if bytes == 0 {
+            return None;
+        }
+        let headers = wire::ip_header_len(self.local.ip()) as u64 + 20 + if self.ts_ok { 12 } else { 0 };
+        let wire = bytes.saturating_add((bytes as u128 * headers as u128).div_ceil(self.mss as u128).min(u64::MAX as u128) as u64);
+        let rtt = (bytes >= self.mss as u64 && self.rtt.has_sample).then_some((self.rtt.srtt, self.rtt.min_rtt));
+        let queued = self.snd_wnd >= u64::from(self.mss) * 4 && (self.unsent() > 0 || self.want_write);
+        Some(AggregateDelivery { wire_bytes: wire, bulk_rtt: rtt, queued })
     }
 
     pub fn is_closed(&self) -> bool {
