@@ -47,6 +47,7 @@ def qualify(directory):
         side[p]=dict(observed=observed,margin=margin,cells=protected_cells,candidate_progress=progress,passed=observed and progress and all(protected_cells.values()))
         checks[p]=side[p]['passed']
     dynamic={}
+    checks['disabled_steady_3pct']=all(v['observed_valid'] and protected(v['changes'],margin=3) for v in comparisons['disabled']['cells'].values())
     for p in ['dynamic','demand']:
         d=dynamic_analyze(p,summaries[p]);save(directory/(p+'-transitions.json'),d);dynamic[p]=d
         # Every phase keeps all independent pair effects. A missing phase is

@@ -154,3 +154,13 @@ This remains one-host, three tested capacities, symmetric no-random-loss FIFO
 evidence, not a guarantee for all Internet paths or hidden shared bottlenecks.
 Defaults stay off while qualification is incomplete. Publish exact source and
 binary identity, failures, raw ledgers and reproducible analysis in a Draft PR.
+
+Before any confirmation sample, clarify an additional default-recommendation
+guard: the disabled-code WAN comparison is steady single-flow work, so it must
+also satisfy the ordinary 3% protection against V5. Keep its originally stated
+10% diagnostic result separately, as with the peak's original/relaxed results;
+do not rewrite that original margin. This additional requirement can only make
+the engineering decision stricter and prevents common overhead in the new
+binary from hiding behind a same-binary off/on comparison. No disabled-code
+comparison has been measured in either pilot. Cases, pair counts, candidate,
+bootstrap and every existing margin are unchanged.
