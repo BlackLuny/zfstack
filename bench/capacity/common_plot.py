@@ -9,7 +9,7 @@ from common_collect import primary_protected
 
 
 def plot(directory):
-    if not (rig.PREP/'done.json').exists():
+    if not (rig.PREP/'all-measurements-done.json').exists():
         raise RuntimeError('finish measurements before rendering')
     import matplotlib
     matplotlib.use('Agg')

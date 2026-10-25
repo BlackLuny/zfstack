@@ -65,3 +65,16 @@ the original missed arrival, the fresh outcome and every original validity
 flag in the archive. A majority-scene engineering recommendation may use the
 conservative majority evidence and this separately identified confirmation;
 it must disclose the unqualified original full-matrix gate.
+
+For the user's majority-scene engineering decision, require at least 22/24
+original cells complete after independent audit, >=18/24 pointwise and
+>=13/24 simultaneous primary protections, and the conservative exact majority
+test p<=.05. All 12 single-flow throughput intervals and single aggregate
+driver/combined/process CPU/GB must meet their original 3% margins. No complete
+cell may show a clear primary regression. At least nine contended cells must
+meet the +5% latency bounds, at least six must have both latency upper bounds
+<=-5%, and none may show a clear >5% latency regression. The fresh affected-cell
+confirmation must pass its own fixed guards; both extreme cells must meet
+their relaxed 10% bounds with full observations. These criteria concern the
+majority objective and separate confirmations, not a new claim that the
+original all-observations gate passed. Freeze this decision before effects.

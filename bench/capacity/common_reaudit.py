@@ -93,7 +93,7 @@ def certify(out, row, container):
 
 
 def reaudit(directory, destination):
-    if not (rig.PREP/'done.json').exists():
+    if not (rig.PREP/'all-measurements-done.json').exists():
         raise RuntimeError('finish every measurement before comparative analysis')
     destination.mkdir(parents=True, exist_ok=False)
     certificates, normalized = {}, {}

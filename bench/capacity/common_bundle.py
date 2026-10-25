@@ -11,14 +11,14 @@ from run import ROOT, save, sha
 
 
 def bundle(directory):
-    if not (rig.PREP/'done.json').exists():
+    if not (rig.PREP/'all-measurements-done.json').exists():
         raise RuntimeError('finish every measurement before sealing')
     manifest = directory/'evidence-files.json'
     archive = directory/'evidence.tar.gz'
     if manifest.exists() or archive.exists():
         raise FileExistsError('already sealed')
     files = set()
-    for phase in ['preparation', 'preflight', 'aa', 'ordinary', 'peak']:
+    for phase in ['preparation', 'preflight', 'aa', 'ordinary', 'peak', 'generator-confirmation']:
         parent = ROOT/'qa/results'/('common-20261025-'+phase)
         files.update(f for f in parent.rglob('*') if f.is_file() and '__pycache__' not in f.parts)
     files.update(ROOT/binary for binary, _ in rig.BINARIES.values())

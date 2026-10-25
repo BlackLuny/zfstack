@@ -9,14 +9,18 @@ import tarfile
 
 import common_cases as rig
 import common_collect
+import common_generator_followup
+import common_majority
 import common_reaudit
+import common_recommendation
 import common_sign
 from run import ROOT, save, sha
 
 ORIGINAL_JSON = ['preflight-summary.json', 'aa-summary.json', 'ordinary-summary.json', 'peak-summary.json',
-    'ordinary-comparisons.json', 'peak-comparisons.json', 'verdict.json', 'cohorts.json', 'majority-median.json']
+    'ordinary-comparisons.json', 'peak-comparisons.json', 'verdict.json', 'cohorts.json', 'majority-median.json',
+    'generator-confirmation-summary.json', 'engineering-decision.json']
 AUDITED_JSON = ['preflight-summary.json', 'aa-summary.json', 'ordinary-summary.json', 'peak-summary.json',
-    'ordinary-comparisons.json', 'peak-comparisons.json', 'majority-median.json', 'independent-audit.json']
+    'ordinary-comparisons.json', 'peak-comparisons.json', 'majority-median.json', 'independent-audit.json', 'majority-with-unknowns.json']
 RUNTIME_PYTHON = ['common_cases.py', 'common_env.py', 'cubic50_env.py', 'fastpath_affinity.py',
     'production_pacing.py', 'rtt_matrix.py', 'rtt_analyze.py', 'analyze.py', 'run.py', 'confirm.py']
 
@@ -26,6 +30,9 @@ def replay(directory, fresh):
     common_collect.collect(fresh)
     save(fresh/'majority-median.json', common_sign.analyze(fresh))
     common_reaudit.reaudit(fresh, fresh/'audited')
+    save(fresh/'audited/majority-with-unknowns.json', common_majority.analyze(fresh/'audited'))
+    save(fresh/'generator-confirmation-summary.json', common_generator_followup.analyze())
+    save(fresh/'engineering-decision.json', common_recommendation.analyze(fresh))
     checked = []
     for parent, names in [(Path('.'), ORIGINAL_JSON), (Path('audited'), AUDITED_JSON)]:
         for name in names:
@@ -43,7 +50,7 @@ def source_identity():
     counts = {}
     helper = ROOT/'bench/tail69_exec.py'
     helper_digest = sha(helper)
-    for phase in ['preflight', 'aa', 'ordinary', 'peak']:
+    for phase in ['preflight', 'aa', 'ordinary', 'peak', 'generator-confirmation']:
         out = ROOT/'qa/results'/('common-20261025-'+phase)
         plan = json.loads((out/'plan.json').read_text())
         for path, digest in build['sources'].items():
@@ -101,7 +108,7 @@ def verify_members(directory):
 
 
 def verify(directory, fresh):
-    if not (rig.PREP/'done.json').exists():
+    if not (rig.PREP/'all-measurements-done.json').exists():
         raise RuntimeError('measurements incomplete')
     identities = source_identity()
     files = replay(directory, fresh)

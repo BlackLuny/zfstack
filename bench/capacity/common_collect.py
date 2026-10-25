@@ -172,7 +172,7 @@ def decisions(result, c):
 
 
 def collect(destination):
-    if not (rig.PREP/'done.json').exists():
+    if not (rig.PREP/'all-measurements-done.json').exists():
         raise RuntimeError('finish every measurement before heavy analysis')
     destination.mkdir(parents=True, exist_ok=True)
     results = {phase:cohort(phase) for phase in ['preflight', 'aa', 'ordinary', 'peak']}
