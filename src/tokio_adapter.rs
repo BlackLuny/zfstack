@@ -424,6 +424,7 @@ struct PendingControl {
     tx_csum: HashMap<IfaceId, bool>,
     tso: HashMap<IfaceId, u32>,
     egress_rate: HashMap<IfaceId, u64>,
+    adaptive_egress: HashMap<IfaceId, bool>,
 }
 
 impl Ctl {
@@ -801,8 +802,49 @@ impl StackHandle {
     /// See [`Shard::set_iface_egress_rate`]. Wakes a paced driver when changing
     /// capacity or disabling the policy, including while it awaits a timer.
     pub fn set_iface_egress_rate(&self, iface: IfaceId, bytes_per_second: u64) {
-        self.ctl.pending.lock().unwrap().egress_rate.insert(iface, bytes_per_second);
+        let mut pending = self.ctl.pending.lock().unwrap();
+        pending.adaptive_egress.remove(&iface);
+        pending.egress_rate.insert(iface, bytes_per_second);
+        drop(pending);
         self.ctl.notify.notify_one();
+    }
+
+    /// Select the experimental ACK/RTT-driven aggregate controller. See
+    /// [`Shard::set_iface_adaptive_egress`]. Last fixed/adaptive selection wins.
+    pub fn set_iface_adaptive_egress(&self, iface: IfaceId, enabled: bool) {
+        let mut pending = self.ctl.pending.lock().unwrap();
+        pending.egress_rate.remove(&iface);
+        pending.adaptive_egress.insert(iface, enabled);
+        drop(pending);
+        self.ctl.notify.notify_one();
+    }
+}
+
+#[cfg(test)]
+mod iface_control_tests {
+    use super::*;
+
+    #[test]
+    fn fixed_and_adaptive_controls_coalesce_in_call_order() {
+        let (tx, _rx) = mpsc::channel(1);
+        let handle =
+            StackHandle { tx, ctl: Arc::new(Ctl { dirty: Mutex::new(HashSet::new()), pending: Mutex::new(PendingControl::default()), notify: Notify::new() }) };
+        let iface = IfaceId(0);
+        handle.set_iface_egress_rate(iface, 100);
+        handle.set_iface_adaptive_egress(iface, true);
+        {
+            let p = handle.ctl.pending.lock().unwrap();
+            assert_eq!(p.adaptive_egress.get(&iface), Some(&true));
+            assert!(!p.egress_rate.contains_key(&iface));
+        }
+        handle.set_iface_adaptive_egress(iface, false);
+        assert_eq!(handle.ctl.pending.lock().unwrap().adaptive_egress.get(&iface), Some(&false));
+        handle.set_iface_adaptive_egress(IfaceId(1), true);
+        handle.set_iface_egress_rate(iface, 0);
+        let p = handle.ctl.pending.lock().unwrap();
+        assert!(!p.adaptive_egress.contains_key(&iface));
+        assert_eq!(p.egress_rate.get(&iface), Some(&0));
+        assert_eq!(p.adaptive_egress.get(&IfaceId(1)), Some(&true));
     }
 }
 
@@ -1152,6 +1194,9 @@ where
         }
         for (iface, rate) in pending.egress_rate {
             self.shard.set_iface_egress_rate(iface, rate);
+        }
+        for (iface, enabled) in pending.adaptive_egress {
+            self.shard.set_iface_adaptive_egress(iface, enabled);
         }
     }
 

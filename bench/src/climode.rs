@@ -115,6 +115,7 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
             c.args(["--tun-proxy", "--tun-mtu", &mtu.to_string(), "--proxy-upstream", UPSTREAM]);
             c.args(["--proxy-workers", &a.proxy_workers.to_string(), "--relay-buf-kb", &a.relay_buf_kb.to_string()]);
             c.args(["--iface-egress-rate", &a.iface_egress_rate.to_string()]);
+            if a.adaptive_egress { c.arg("--adaptive-egress"); }
             if kind == ProxyKind::ZfstackClient {
                 c.arg("--client-profile");
             }
@@ -322,6 +323,7 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             "concurrency": a.concurrency,
             "proxy_workers": a.proxy_workers,
             "iface_egress_rate": a.iface_egress_rate,
+            "adaptive_egress": a.adaptive_egress,
             "relay_buf_kb": a.relay_buf_kb,
             "splice": a.splice,
             "vnet_hdr": a.vnet_hdr || a.tso,

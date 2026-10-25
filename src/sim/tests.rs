@@ -74,6 +74,83 @@ fn iface_pacing_single_peer_preserves_packet_and_time_trace() {
 }
 
 #[test]
+fn adaptive_pacing_bbr_single_peer_preserves_packet_time_and_step_trace() {
+    for rtt in [1, 500] {
+        let scenario = |enabled| {
+            let link = LinkParams { delay: Duration::from_micros(rtt * 500), queue_bytes: 16 << 20, ..Default::default() };
+            let cfg = StackConfig { cc: CcAlgo::Bbr, ..Default::default() };
+            let mut s = Sim::new(94250, cfg.clone(), cfg, link.clone(), link);
+            s.a.shard.set_iface_adaptive_egress(s.a.iface, enabled);
+            s.enable_trace();
+            s.a.accept_template = AppConn { to_send: 2 << 20, fin_after_send: true, ..Default::default() };
+            let ids: Vec<_> = (0..2).map(|n| s.connect(40100 + n, AppConn::default())).collect();
+            s.run_until(s.now + secs(12));
+            for id in ids {
+                assert_download_ok(&s.b.conns[&id], 2 << 20);
+            }
+            assert_eq!(s.a.shard.stats().egress_paced_bytes, 0);
+            assert_eq!(s.a.shard.stats().adaptive_egress_updates, 0);
+            (s.trace_digest(), s.steps)
+        };
+        assert_eq!(scenario(false), scenario(true), "RTT={rtt}");
+    }
+}
+
+#[test]
+fn adaptive_pacing_learns_and_peers_progress_across_capacity_changes() {
+    let link = LinkParams { rate_bps: 10_000_000, delay: Duration::from_millis(5), queue_bytes: 250_000, ..Default::default() };
+    let cfg = StackConfig { cc: CcAlgo::Bbr, ..Default::default() };
+    let mut s = Sim::new(94251, cfg.clone(), cfg, link.clone(), link);
+    s.a.shard.set_iface_adaptive_egress(s.a.iface, true);
+    s.a.accept_template = AppConn { to_send: 64 << 20, ..Default::default() };
+    let ids: Vec<_> = (1..=3).map(|p| s.connect_as(PeerId(p), 40200 + p as u16, AppConn::default())).collect();
+    for rate in [10_000_000, 50_000_000, 5_000_000] {
+        let before: Vec<_> = ids.iter().map(|id| s.b.conns[id].received).collect();
+        // Only the link changes. No capacity is supplied to the shard/controller.
+        s.ab.p.rate_bps = rate;
+        s.run_until(s.now + secs(4));
+        for (id, count) in ids.iter().zip(before) {
+            assert!(s.b.conns[id].received > count, "peer stalled at rate={rate}");
+            assert!(!s.b.conns[id].corrupt);
+        }
+    }
+    assert!(s.a.shard.stats().adaptive_egress_updates > 0);
+    assert!(s.a.shard.stats().adaptive_egress_probes > 0);
+    assert!(s.a.shard.stats().egress_paced_bytes > 0);
+    let before: Vec<_> = ids.iter().map(|id| s.b.conns[id].received).collect();
+    s.a.shard.set_iface_adaptive_egress(s.a.iface, false);
+    s.run_until(s.now + secs(1));
+    for (id, count) in ids.iter().zip(before) {
+        assert!(s.b.conns[id].received > count);
+    }
+}
+
+#[test]
+fn adaptive_pacing_exits_after_a_late_interactive_peer_leaves() {
+    let link = LinkParams { rate_bps: 20_000_000, delay: Duration::from_millis(5), queue_bytes: 250_000, ..Default::default() };
+    let cfg = StackConfig { cc: CcAlgo::Bbr, ..Default::default() };
+    let mut s = Sim::new(94252, cfg.clone(), cfg, link.clone(), link);
+    s.a.shard.set_iface_adaptive_egress(s.a.iface, true);
+    s.a.accept_template = AppConn { to_send: 64 << 20, ..Default::default() };
+    let bulk: Vec<_> = (0..8).map(|n| s.connect(40300 + n, AppConn::default())).collect();
+    s.run_until(s.now + secs(1));
+    s.a.accept_template = AppConn { to_send: 1024, fin_after_send: true, ..Default::default() };
+    let light = s.connect_as(PeerId(2), 40400, AppConn::default());
+    s.run_until(s.now + secs(3));
+    assert_download_ok(&s.b.conns[&light], 1024);
+    assert!(s.a.shard.stats().adaptive_egress_updates > 0);
+    let paced = s.a.shard.stats().egress_paced_bytes;
+    let updates = s.a.shard.stats().adaptive_egress_updates;
+    let before: Vec<_> = bulk.iter().map(|id| s.b.conns[id].received).collect();
+    s.run_until(s.now + secs(1));
+    assert_eq!(s.a.shard.stats().egress_paced_bytes, paced);
+    assert_eq!(s.a.shard.stats().adaptive_egress_updates, updates);
+    for (id, count) in bulk.iter().zip(before) {
+        assert!(s.b.conns[id].received > count);
+    }
+}
+
+#[test]
 fn iface_pacing_late_peer_progresses_and_disabling_releases_the_ready_queue() {
     let link = LinkParams { rate_bps: 20_000_000, delay: Duration::from_millis(5), queue_bytes: 250_000, ..Default::default() };
     let mut s = sim(9425, link.clone(), link);

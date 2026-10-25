@@ -4,6 +4,7 @@
 //! sans-IO (the caller supplies time and moves packets); see
 //! `docs/design/0001-architecture.md`.
 
+mod adaptive_pacing;
 pub mod budget;
 pub mod buf;
 pub mod cc;

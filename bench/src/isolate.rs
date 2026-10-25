@@ -249,6 +249,7 @@ pub fn test_isolate(o: &TestOpts, iso: &Iso, mark: Mark) -> TestOutcome {
     let connect_phase_sec = t_connect.elapsed().as_secs_f64();
     let measure = o.secs.saturating_sub(o.warmup).max(1);
     let window_start = Instant::now();
+    crate::adaptive_fixture::mark_window(window_start);
     let window_end_at = window_start + Duration::from_secs(measure);
     let bytes_at_window = heavy_bytes.load(Relaxed);
     mark("window_start");

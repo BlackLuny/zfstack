@@ -758,6 +758,23 @@ impl Conn {
         self.rtt.srtt_or(Duration::ZERO)
     }
 
+    pub(crate) fn delivered(&self) -> u64 {
+        self.dl.delivered
+    }
+
+    /// ACKed payload translated to IP bytes. RTT feedback uses bulk ACKs so a
+    /// small request's delayed ACK timer is not treated as a shared FIFO queue.
+    pub(crate) fn aggregate_delivery(&self, before: u64) -> Option<(u64, Option<(Duration, Duration)>)> {
+        let bytes = self.dl.delivered.saturating_sub(before);
+        if bytes == 0 {
+            return None;
+        }
+        let headers = wire::ip_header_len(self.local.ip()) as u64 + 20 + if self.ts_ok { 12 } else { 0 };
+        let wire = bytes.saturating_add((bytes as u128 * headers as u128).div_ceil(self.mss as u128).min(u64::MAX as u128) as u64);
+        let rtt = (bytes >= self.mss as u64 && self.rtt.has_sample).then_some((self.rtt.srtt, self.rtt.min_rtt));
+        Some((wire, rtt))
+    }
+
     pub fn is_closed(&self) -> bool {
         self.state == State::Closed
     }

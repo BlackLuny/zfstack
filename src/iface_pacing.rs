@@ -1,5 +1,6 @@
 //! Aggregate pacing in front of an iface's external FIFO. Packets stay in the
 //! existing per-peer DRR queues; a single peer keeps the original fast path.
+use crate::adaptive_pacing::{AdaptivePacer, AdaptiveUpdate};
 use crate::Instant;
 use core::time::Duration;
 
@@ -13,14 +14,20 @@ const CONTENTION_HOLD: Duration = Duration::from_secs(1);
 pub(crate) struct IfacePacing {
     rate: u64,
     active: bool,
+    adaptive: bool,
     clock: Option<Box<IfacePacer>>,
 }
 
 impl IfacePacing {
     pub(crate) fn set_rate(&mut self, rate: u64, mtu: u16) {
-        if self.rate == rate {
+        if self.rate == rate && !self.adaptive {
             return;
         }
+        if self.adaptive {
+            self.clock = None;
+            self.active = false;
+        }
+        self.adaptive = false;
         self.rate = rate;
         if rate == 0 {
             self.active = false;
@@ -30,6 +37,30 @@ impl IfacePacing {
         }
     }
 
+    pub(crate) fn set_adaptive(&mut self, enabled: bool) {
+        if self.adaptive == enabled && (enabled || self.rate == 0) {
+            return;
+        }
+        self.adaptive = enabled;
+        self.rate = 0;
+        self.active = false;
+        self.clock = None;
+    }
+
+    pub(crate) fn tracks_delivery(&self) -> bool {
+        self.adaptive && self.active
+    }
+
+    pub(crate) fn on_delivery(&mut self, now: Instant, wire_bytes: u64, bulk_rtt: Option<(Duration, Duration)>, mtu: u16) -> Option<AdaptiveUpdate> {
+        if !self.tracks_delivery() {
+            return None;
+        }
+        let clock = self.clock.as_mut()?;
+        let update = clock.adaptive.as_mut()?.observe(now, wire_bytes, bulk_rtt, mtu)?;
+        clock.set_rate(update.rate, mtu);
+        Some(update)
+    }
+
     pub(crate) fn set_mtu(&mut self, mtu: u16) {
         if let Some(clock) = self.clock.as_mut() {
             clock.set_mtu(mtu);
@@ -37,8 +68,11 @@ impl IfacePacing {
     }
 
     pub(crate) fn allowance(&mut self, now: Instant, competing: bool, mtu: u16) -> (usize, bool) {
-        if self.rate == 0 || (!competing && !self.active) {
+        if (self.rate == 0 && !self.adaptive) || (!competing && !self.active) {
             return (usize::MAX, false);
+        }
+        if self.adaptive {
+            return self.adaptive_allowance(now, competing, mtu);
         }
         let clock = self.clock.get_or_insert_with(|| Box::new(IfacePacer::new(self.rate, mtu)));
         let bytes = clock.allowance(now, competing);
@@ -46,9 +80,44 @@ impl IfacePacing {
         (bytes, self.active)
     }
 
+    #[inline(never)]
+    fn adaptive_allowance(&mut self, now: Instant, competing: bool, mtu: u16) -> (usize, bool) {
+        let clock = self.clock.get_or_insert_with(|| Box::new(IfacePacer::new(1, mtu)));
+        if now >= clock.until && clock.deadline.is_none_or(|d| now >= d) {
+            clock.adaptive = Some(Box::new(AdaptivePacer::new(now)));
+            clock.active = false;
+            clock.deadline = None;
+        }
+        if competing {
+            clock.until = now + CONTENTION_HOLD;
+        }
+        if now >= clock.until {
+            self.active = false;
+            clock.active = false;
+            clock.deadline = None;
+            return (usize::MAX, false);
+        }
+        self.active = true;
+        if clock.adaptive.as_ref().is_none_or(|a| a.rate() == 0) {
+            // First observe actual delivery without an invented initial cap.
+            return (usize::MAX, false);
+        }
+        if !clock.active {
+            clock.at = now;
+            clock.credit = clock.batch;
+            clock.deadline = None;
+        }
+        let bytes = clock.allowance(now, competing);
+        (bytes, clock.active())
+    }
+
     pub(crate) fn charge(&mut self, bytes: usize) -> bool {
         debug_assert!(self.active);
-        self.clock.as_mut().unwrap().charge(bytes)
+        let clock = self.clock.as_mut().unwrap();
+        if let Some(adaptive) = clock.adaptive.as_mut() {
+            adaptive.sent(bytes);
+        }
+        clock.charge(bytes)
     }
 
     pub(crate) fn deadline(&self) -> Option<Instant> {
@@ -70,13 +139,23 @@ pub(crate) struct IfacePacer {
     until: Instant,
     active: bool,
     deadline: Option<Instant>,
+    adaptive: Option<Box<AdaptivePacer>>,
 }
 
 impl IfacePacer {
     pub(crate) fn new(rate: u64, mtu: u16) -> Self {
         debug_assert!(rate > 0);
-        let mut p =
-            Self { rate, at: Instant::ZERO, credit: BATCH_NS, batch: BATCH_NS, max_credit: MAX_CREDIT_NS, until: Instant::ZERO, active: false, deadline: None };
+        let mut p = Self {
+            rate,
+            at: Instant::ZERO,
+            credit: BATCH_NS,
+            batch: BATCH_NS,
+            max_credit: MAX_CREDIT_NS,
+            until: Instant::ZERO,
+            active: false,
+            deadline: None,
+            adaptive: None,
+        };
         p.set_mtu(mtu);
         p.credit = p.batch;
         p
@@ -161,6 +240,50 @@ impl IfacePacer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adaptive_single_peer_is_lazy_and_modes_are_idempotent() {
+        assert_eq!(core::mem::size_of::<IfacePacing>(), 24);
+        let mut p = IfacePacing::default();
+        p.set_adaptive(true);
+        for i in 0..100 {
+            assert_eq!(p.allowance(Instant::from_millis(i * 500), false, 1420), (usize::MAX, false));
+            assert!(!p.tracks_delivery());
+            assert!(p.clock.is_none());
+        }
+        let now = Instant::from_millis(50_000);
+        assert_eq!(p.allowance(now, true, 1420), (usize::MAX, false));
+        assert!(p.tracks_delivery());
+        let update = p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420).unwrap();
+        assert!(update.rate > 0);
+        let (allowance, active) = p.allowance(now + Duration::from_millis(100), true, 1420);
+        assert!(active && allowance > 0 && allowance < usize::MAX);
+        assert!(p.charge(allowance));
+        let deadline = p.deadline();
+        p.set_adaptive(true);
+        assert_eq!(p.deadline(), deadline);
+        assert_eq!(p.clock.as_ref().unwrap().adaptive.as_ref().unwrap().rate(), update.rate);
+        p.set_rate(0, 1420);
+        assert!(!p.tracks_delivery() && p.clock.is_none());
+        p.set_rate(12_500_000, 1420);
+        p.set_adaptive(false);
+        assert_eq!(p.allowance(now, true, 1420), (usize::MAX, false));
+    }
+
+    #[test]
+    fn adaptive_restarts_learning_after_contention_expires() {
+        let mut p = IfacePacing::default();
+        p.set_adaptive(true);
+        let now = Instant::from_millis(1);
+        p.allowance(now, true, 1420);
+        p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420).unwrap();
+        p.allowance(now + Duration::from_millis(100), true, 1420);
+        assert_eq!(p.allowance(now + Duration::from_secs(2), false, 1420), (usize::MAX, false));
+        assert!(!p.tracks_delivery());
+        assert_eq!(p.deadline(), None);
+        assert_eq!(p.allowance(now + Duration::from_secs(3), true, 1420), (usize::MAX, false));
+        assert_eq!(p.clock.as_ref().unwrap().adaptive.as_ref().unwrap().rate(), 0);
+    }
 
     #[test]
     fn lazy_clock_uses_current_capacity_and_mtu_when_competition_first_arrives() {
