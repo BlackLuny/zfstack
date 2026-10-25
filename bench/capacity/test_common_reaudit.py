@@ -21,6 +21,9 @@ class PlacementRaceCertificate(unittest.TestCase):
         bad = copy.deepcopy(observer)
         bad['samples'].append(dict(elapsed_sec=1.5, threads=[dict(tid=7, affinity=[3])]))
         self.assertFalse(rr_transition_error(error, row, bad))
+        bad = copy.deepcopy(observer)
+        bad['samples'][0]['threads'][0]['affinity'] = [2, 3]
+        self.assertFalse(rr_transition_error(error, row, bad))
 
     def test_initial_taskset_transition_requires_parentage_and_assignment_bound(self):
         row = dict(kind='native', placement='fixed', lights=3)
@@ -41,9 +44,6 @@ class PlacementRaceCertificate(unittest.TestCase):
         wrong = copy.deepcopy(observer)
         wrong['samples'][0]['threads'][0]['affinity'] = [0, 1, 2, 3]
         self.assertFalse(startup_transition_error(error, row, wrong))
-        bad = copy.deepcopy(observer)
-        bad['samples'][0]['threads'][0]['affinity'] = [2, 3]
-        self.assertFalse(rr_transition_error(error, row, bad))
 
 
 if __name__ == '__main__':

@@ -272,3 +272,41 @@ python3 bench/capacity/cubic50_collect.py qa/results/cubic50-reanalysis
 Historical two-pair data stay separate. The new bounded CPU result does not
 resolve the unrelated physical-peak guards or establish the cause of every
 historical outlier. All observations and failed verdicts must remain visible.
+
+## Independent 1–500 ms representative-case confirmation
+
+The [672-attempt report](../../docs/experiments/2026-10-25-common-cases/README.md)
+keeps frozen V5 and all earlier studies unchanged. Read its prospective
+[protocol](../../docs/experiments/2026-10-25-common-cases/PROTOCOL.md),
+[actual-mask audit](../../docs/experiments/2026-10-25-common-cases/AUDIT-CLARIFICATION.md)
+and [one independent affected-cell confirmation](../../docs/experiments/2026-10-25-common-cases/GENERATOR-CONFIRMATION.md).
+It reports 576 ordinary runs (24 cells, 12 balanced pairs), 8 preflights,
+16 A/A diagnostics, 48 local-peak runs and one separate 24-run confirmation.
+One genuine missing arrival and five observer comparison races remain in
+the original records. Neither the original full matrix nor the majority
+engineering decision qualifies; both local peaks pass the separately relaxed
+10% bound. Defaults remain off.
+
+The runtime tools use fixed `qa/results/common-20261025-*` paths, retained
+binary hashes and the owned `zfstack-common-20261025` container. They refuse
+existing destinations; do not invoke them to extend or replace sealed runs.
+For a new independent study, freeze its own names, protocol and seed first.
+The container uses CPUs 0–4, the existing four-CPU quota and the exact recorded
+sysctls. `common_cases.py` runs the original plan; only after it finishes does
+`common_generator_followup.py run` execute the separately frozen 24 runs.
+Do not build, test, plot or compress during either cohort.
+
+Saved evidence needs no running container. Extract its archive at the checkout
+root, then use a new replay directory:
+
+```sh
+tar -xzf docs/experiments/2026-10-25-common-cases/evidence.tar.gz
+python3 bench/capacity/common_verify.py docs/experiments/2026-10-25-common-cases qa/results/common-replay-fresh
+(cd docs/experiments/2026-10-25-common-cases && sha256sum -c artifact-index.sha256)
+```
+
+The verifier checks all archive member hashes/sizes, frozen binary/source
+identities and 20 byte-identical JSON replays. Original strict flags and
+independently certified actual placement are separate views with identical
+numerical estimates. No missing latency is imputed; the independent follow-up
+never enters the original same-round intervals or majority count.
