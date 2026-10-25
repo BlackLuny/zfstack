@@ -664,6 +664,7 @@ impl Shard {
     /// summed ACK delivery and bulk RTT inflation only while peers contend.
     /// BBR is the validation target; this policy remains opt-in. Selecting it
     /// replaces a configured fixed rate; selecting a fixed rate disables it.
+    /// Passing false disables either aggregate policy.
     /// Repeated identical settings preserve learning. A never-contended peer
     /// allocates no controller and keeps the original service specialization.
     pub fn set_iface_adaptive_egress(&mut self, id: IfaceId, enabled: bool) {
@@ -863,8 +864,8 @@ impl Shard {
             let mut ctx = Ctx { cfg: &self.cfg, pool: &mut self.pool, budget: &mut self.budget, events: &mut self.events };
             conn.input(now, h, payload, &mut ctx);
         }
-        if let Some((bytes, rtt)) = delivered_before.and_then(|before| conn.aggregate_delivery(before)) {
-            if let Some(update) = iface.pacer.on_delivery(now, bytes, rtt, iface.cfg.mtu) {
+        if let Some(sample) = delivered_before.and_then(|before| conn.aggregate_delivery(before)) {
+            if let Some(update) = iface.pacer.on_delivery(now, sample.wire_bytes, sample.bulk_rtt, iface.cfg.mtu, sample.queued) {
                 self.stats.adaptive_egress_updates += 1;
                 self.stats.adaptive_egress_probes += u64::from(update.probe);
                 self.stats.adaptive_egress_last_rate = update.rate;

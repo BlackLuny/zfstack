@@ -19,16 +19,22 @@ DIRECTORY = ROOT/'docs/experiments/2026-10-25-adaptive-pacing'
 PREP = ROOT/'qa/results/adaptive-20261025-preparation'
 CONTAINER = 'zfstack-adaptive-20261025'
 PHASES = ['aa', 'primary', 'bandwidth', 'heavy', 'disabled', 'peak', 'dynamic', 'demand']
+CANDIDATE = 'a0'
 V5 = ('target/release/zfbench-production-v5-20261024', '96695f880dd600172e3dfa5b32304da0fa296579357785b5f83dbb87ea1a26c5')
 
 
 def binaries():
-    b=json.loads((PREP/'build-a0.json').read_text())
-    return dict(a0=(b['binary'],b['binary_sha256']),v5=V5)
+    b=json.loads((PREP/f'build-{CANDIDATE}.json').read_text())
+    return {CANDIDATE:(b['binary'],b['binary_sha256']),'v5':V5}
+
+
+def output(phase):
+    prefix='' if CANDIDATE=='a0' else CANDIDATE+'-'
+    return ROOT/'qa/results'/('adaptive-20261025-'+prefix+phase)
 
 
 def sequence(phase):
-    rng=random.Random(2026102505+(['pilot']+PHASES).index(phase))
+    rng=random.Random(2026102505+(['pilot']+PHASES).index(phase)+(100 if CANDIDATE=='a1' else 0))
     cells=[]
     def cell(rate,rtt,n,kind='steady',pairs=8):
         return dict(kind='native',case=f'{kind}-m{rate}-r{rtt}-n{n}',rate_mbps=rate,cc='bbr',rtt=rtt,heavy=n,
@@ -55,7 +61,7 @@ def sequence(phase):
             if rep>=c['pairs']:continue
             for position,letter in enumerate(orders[c['case']][rep]):
                 control=letter=='A'
-                binary='v5' if control and phase in ['peak','disabled'] else 'a0'
+                binary='v5' if control and phase in ['peak','disabled'] else CANDIDATE
                 mode='adaptive' if not control and phase not in ['aa','disabled'] else 'off'
                 arm=('old' if control else 'new-off') if phase=='disabled' else ('old' if control else 'auto') if phase=='peak' else ('off' if control else 'off-repeat') if phase=='aa' else ('off' if control else 'auto')
                 rows.append(dict(index=len(rows),**{k:v for k,v in c.items() if k!='pairs'},round=rep,position=position,
@@ -143,9 +149,9 @@ def inspect(out,row,container=CONTAINER):
 
 
 def run(phase):
-    out=ROOT/'qa/results'/('adaptive-20261025-'+phase)
+    out=output(phase)
     out.mkdir(parents=True,exist_ok=False)
-    build=json.loads((PREP/'build-a0.json').read_text())
+    build=json.loads((PREP/f'build-{CANDIDATE}.json').read_text())
     for path,digest in build['sources'].items():
         if sha(ROOT/path)!=digest:raise RuntimeError('candidate source changed: '+path)
     for path,digest in binaries().values():
@@ -155,7 +161,7 @@ def run(phase):
     for f in ['Cargo.toml','Cargo.lock','bench/Cargo.toml','bench/tail69_exec.py']:sources[f]=sha(ROOT/f)
     for path in sources:
         dest=out/'source'/path;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes((ROOT/path).read_bytes())
-    save(out/'plan.json',dict(phase=phase,rows=rows,sources=sources,binaries=binaries(),container=CONTAINER,base_sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),environment=counters()))
+    save(out/'plan.json',dict(phase=phase,candidate=CANDIDATE,rows=rows,sources=sources,binaries=binaries(),container=CONTAINER,base_sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),environment=counters()))
     for row in rows:
         dest=out/name(row);dest.mkdir();argv,env=command(out,row);binary,digest=binaries()[row['binary']]
         save(dest/'start.json',dict(row=row,argv=argv,env=env,binary_sha256=digest,start_unix=time.time(),cgroup=counters()))
@@ -170,4 +176,5 @@ def run(phase):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=['pilot']+PHASES)
-    a=p.parse_args();run(a.phase)
+    p.add_argument('--candidate',choices=['a0','a1'],default='a1')
+    a=p.parse_args();CANDIDATE=a.candidate;run(a.phase)

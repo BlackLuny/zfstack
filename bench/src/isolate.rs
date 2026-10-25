@@ -638,6 +638,7 @@ fn light_open_loop(mut s: TcpStream, msg: &[u8], end: Instant, hz: u32, max_lag:
     let sender_cpu = sender.join().unwrap();
     assert_eq!(observations.len(), count);
     ARRIVALS.lock().unwrap().push(json!({"local":local.to_string(),"hz":hz,"count":count,"period_ns":period.as_nanos(),"arrivals":observations,
+        "measurement_origin_ns":crate::adaptive_fixture::window().map(|window|origin.saturating_duration_since(window).as_nanos()),
         "requested_cpu":generator_cpu,"observer_cpu":generator_cpu.map(|_| unsafe { libc::sched_getcpu() }),"sender_cpu":sender_cpu}));
     (raw, errors)
 }

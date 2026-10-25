@@ -17,6 +17,7 @@ pub(crate) struct AdaptiveUpdate {
 pub(crate) struct AdaptivePacer {
     start: Instant,
     delivered: u64,
+    queued_delivery: u64,
     sent: u64,
     queue_sum: u128,
     queue_weight: u64,
@@ -27,7 +28,7 @@ pub(crate) struct AdaptivePacer {
 
 impl AdaptivePacer {
     pub fn new(now: Instant) -> Self {
-        Self { start: now, delivered: 0, sent: 0, queue_sum: 0, queue_weight: 0, base_rtt: Duration::ZERO, rate: 0, demand_windows: 0 }
+        Self { start: now, delivered: 0, queued_delivery: 0, sent: 0, queue_sum: 0, queue_weight: 0, base_rtt: Duration::ZERO, rate: 0, demand_windows: 0 }
     }
 
     pub fn rate(&self) -> u64 {
@@ -45,14 +46,18 @@ impl AdaptivePacer {
     fn clear_window(&mut self, now: Instant) {
         self.start = now;
         self.delivered = 0;
+        self.queued_delivery = 0;
         self.sent = 0;
         self.queue_sum = 0;
         self.queue_weight = 0;
         self.base_rtt = Duration::ZERO;
     }
 
-    pub fn observe(&mut self, now: Instant, wire_bytes: u64, bulk_rtt: Option<(Duration, Duration)>, mtu: u16) -> Option<AdaptiveUpdate> {
+    pub fn observe(&mut self, now: Instant, wire_bytes: u64, bulk_rtt: Option<(Duration, Duration)>, mtu: u16, queued: bool) -> Option<AdaptiveUpdate> {
         self.delivered = self.delivered.saturating_add(wire_bytes);
+        if queued {
+            self.queued_delivery = self.queued_delivery.saturating_add(wire_bytes);
+        }
         if let Some((rtt, base)) = bulk_rtt.filter(|(_, base)| !base.is_zero()) {
             self.base_rtt = self.base_rtt.max(base);
             let queue_ns = rtt.saturating_sub(base).as_nanos().min(u64::MAX as u128);
@@ -74,7 +79,7 @@ impl AdaptivePacer {
         let queue_ns = (self.queue_sum / self.queue_weight as u128).min(u64::MAX as u128) as u64;
         let target_ns = (self.base_rtt / 64).clamp(Duration::from_millis(1), Duration::from_millis(5)).as_nanos();
         let expected = self.rate as u128 * elapsed.as_nanos() / 1_000_000_000;
-        let demand = self.sent as u128 * 4 >= expected * 3;
+        let demand = self.sent as u128 * 4 >= expected * 3 || self.queued_delivery as u128 * 2 >= self.delivered as u128;
         let mut probe = false;
         if self.rate == 0 {
             self.rate = scale(delivery, 99);
@@ -90,7 +95,8 @@ impl AdaptivePacer {
             } else if queue_ns as u128 > target_ns {
                 self.rate = scale(self.rate, 98).min(scale(delivery, 99));
             } else {
-                self.rate = scale(self.rate, 102).max(scale(delivery, 101));
+                let gain = 101 + (34 * target_ns.saturating_sub(queue_ns as u128) / target_ns) as u64;
+                self.rate = scale(self.rate, gain).max(scale(delivery, 101));
             }
         }
         let update = AdaptiveUpdate { rate: self.rate, delivery_rate: delivery, queue_us: queue_ns / 1000, probe };
@@ -115,6 +121,7 @@ mod tests {
             (delivered_rate as u128 * elapsed_ms as u128 / 1000) as u64,
             Some((Duration::from_millis(rtt_ms), Duration::from_millis(base_ms))),
             1420,
+            false,
         )
     }
 
@@ -170,10 +177,31 @@ mod tests {
         let mut p = AdaptivePacer::new(Instant::ZERO);
         assert!(epoch(&mut p, 500, 12_500_000, 13_000_000, 500, 500).is_none());
         assert_eq!(p.rate(), 0);
-        assert!(p.observe(Instant::from_millis(1000), 1_000_000, Some((Duration::from_millis(500), Duration::from_millis(500))), 1420).is_some());
+        assert!(p.observe(Instant::from_millis(1000), 1_000_000, Some((Duration::from_millis(500), Duration::from_millis(500))), 1420, false).is_some());
         let rate = p.rate();
         assert!(epoch(&mut p, 10_000, 100_000, 100_000, 500, 500).is_none());
         assert_eq!(p.rate(), rate);
-        assert!(p.observe(Instant::from_millis(11_000), 1_000_000, None, 1420).is_none());
+        assert!(p.observe(Instant::from_millis(11_000), 1_000_000, None, 1420, false).is_none());
+    }
+
+    #[test]
+    fn queued_tcp_demand_distinguishes_capacity_fall_from_app_limited_delivery() {
+        let mut p = AdaptivePacer::new(Instant::ZERO);
+        epoch(&mut p, 100, 12_500_000, 13_000_000, 10, 10).unwrap();
+        p.sent(125_000);
+        let update = p.observe(Instant::from_millis(200), 125_000, Some((Duration::from_millis(60), Duration::from_millis(10))), 1420, true).unwrap();
+        assert_eq!(update.rate, 1_237_500, "cwnd-limited TCP may still have queued demand below the old target");
+    }
+
+    #[test]
+    fn empty_queue_excites_a_higher_capacity_within_ten_high_rtt_windows() {
+        let mut p = AdaptivePacer::new(Instant::ZERO);
+        epoch(&mut p, 1000, 2_500_000, 3_000_000, 500, 500).unwrap();
+        let initial = p.rate();
+        for i in 2..=11 {
+            let rate = p.rate();
+            epoch(&mut p, i * 1000, rate, rate, 500, 500).unwrap();
+        }
+        assert!(p.rate() >= initial * 4, "A0 could not discover a fivefold capacity rise on this feedback trace");
     }
 }

@@ -51,12 +51,19 @@ impl IfacePacing {
         self.adaptive && self.active
     }
 
-    pub(crate) fn on_delivery(&mut self, now: Instant, wire_bytes: u64, bulk_rtt: Option<(Duration, Duration)>, mtu: u16) -> Option<AdaptiveUpdate> {
+    pub(crate) fn on_delivery(
+        &mut self,
+        now: Instant,
+        wire_bytes: u64,
+        bulk_rtt: Option<(Duration, Duration)>,
+        mtu: u16,
+        queued: bool,
+    ) -> Option<AdaptiveUpdate> {
         if !self.tracks_delivery() {
             return None;
         }
         let clock = self.clock.as_mut()?;
-        let update = clock.adaptive.as_mut()?.observe(now, wire_bytes, bulk_rtt, mtu)?;
+        let update = clock.adaptive.as_mut()?.observe(now, wire_bytes, bulk_rtt, mtu, queued)?;
         clock.set_rate(update.rate, mtu);
         Some(update)
     }
@@ -254,7 +261,8 @@ mod tests {
         let now = Instant::from_millis(50_000);
         assert_eq!(p.allowance(now, true, 1420), (usize::MAX, false));
         assert!(p.tracks_delivery());
-        let update = p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420).unwrap();
+        let update =
+            p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420, false).unwrap();
         assert!(update.rate > 0);
         let (allowance, active) = p.allowance(now + Duration::from_millis(100), true, 1420);
         assert!(active && allowance > 0 && allowance < usize::MAX);
@@ -276,7 +284,7 @@ mod tests {
         p.set_adaptive(true);
         let now = Instant::from_millis(1);
         p.allowance(now, true, 1420);
-        p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420).unwrap();
+        p.on_delivery(now + Duration::from_millis(100), 1_250_000, Some((Duration::from_millis(10), Duration::from_millis(10))), 1420, false).unwrap();
         p.allowance(now + Duration::from_millis(100), true, 1420);
         assert_eq!(p.allowance(now + Duration::from_secs(2), false, 1420), (usize::MAX, false));
         assert!(!p.tracks_delivery());
