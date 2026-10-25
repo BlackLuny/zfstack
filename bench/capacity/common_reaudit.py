@@ -128,11 +128,23 @@ def reaudit(directory, destination):
             all(previous['cells'][k]['changes'] == v['changes'] for k, v in current['cells'].items()))
     if not all(numerical_equal.values()):
         raise RuntimeError('independent validity must not change numerical estimates')
+    original_sign = json.loads((directory/'majority-median.json').read_text())
+    updated_sign = common_sign.analyze(destination)
+    numerical_equal['median_sign_test'] = original_sign['cells'] == updated_sign['cells'] and original_sign['partial_conjunction_p'] == updated_sign['partial_conjunction_p']
+    if not numerical_equal['median_sign_test']:
+        raise RuntimeError('independent validity must not change sign p-values')
     original_verdict = json.loads((directory/'verdict.json').read_text())
     revised = collector.decisions(normalized['ordinary'], ordinary)
-    save(destination/'majority-median.json', common_sign.analyze(destination))
+    save(destination/'majority-median.json', updated_sign)
+    other_cohorts = all(normalized[p]['identity_valid'] and normalized[p]['strict_valid'] == normalized[p]['planned'] == n
+        for p, n in [('preflight', 8), ('aa', 16), ('peak', 48)])
+    extreme = {k:dict(relaxed_10pct=collector.primary_protected(v['changes'], peak=True, margin=10),
+        original_3pct=collector.primary_protected(v['changes'], peak=True),
+        clear_worse_than_10pct=v['changes']['mbps']['bootstrap_95_pct'][1] < -10 or v['changes']['service_cpu_s_per_gb']['bootstrap_95_pct'][0] > 10) for k, v in peak['cells'].items()}
     report = dict(original_primary_qualification=original_verdict['representative_scope_qualified'],
         independently_audited_primary_qualification=revised['representative_scope_qualified'],
+        independently_scoped_recommendation_supported=revised['representative_scope_qualified'] and other_cohorts and not any(v['clear_worse_than_10pct'] for v in extreme.values()),
+        other_cohorts_independently_valid=other_cohorts, extreme_verdict=extreme,
         unchanged_numerical_estimates=numerical_equal, qualification_after_independent_audit=revised,
         original_strict_counts={p:sum(c['original_strict_valid'] for c in cs) for p, cs in certificates.items()},
         independently_observed_counts={p:sum(c['independently_observed_valid'] for c in cs) for p, cs in certificates.items()},
