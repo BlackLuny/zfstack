@@ -1,0 +1,85 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": false,
+    "flows": 1,
+    "legacy": false,
+    "mips_rx_offload": false,
+    "mipstack": "/tmp/mipstack-proxy",
+    "proxy": "mipstack",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 10,
+    "splice": false,
+    "test": "connect",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": false,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 0.43524918900000004,
+    "system_busy_sec_per_GB": null,
+    "system_window": {
+      "busy_sec": 0.76,
+      "idle_sec": 0.37,
+      "irq_sec": 0.0,
+      "softirq_sec": 0.05,
+      "steal_sec": 0.0,
+      "system_sec": 0.44,
+      "user_sec": 0.27
+    },
+    "window_effective_bytes": 0,
+    "window_wall_sec": 0.298949852
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "9d6fb76"
+  },
+  "errors": [],
+  "label": "mtu65535-mips-connect-r2",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": null,
+    "cpu_util": 1.1707649214691698,
+    "cpu_window_sec": 0.35,
+    "hwm_kb": 55136,
+    "pid": 14357,
+    "rss_kb_end": 55136,
+    "rss_kb_idle": 6992
+  },
+  "results": {
+    "attempted": 2000,
+    "concurrency": 64,
+    "conn_per_sec": 6690.584883169408,
+    "elapsed_sec": 0.298927528,
+    "failure_samples": [],
+    "failures": {},
+    "latency_connect": {
+      "max_ms": 37.049099000000005,
+      "mean_ms": 2.9538933945000014,
+      "min_ms": 0.050201,
+      "n": 2000,
+      "p50_ms": 2.315424,
+      "p90_ms": 5.891868,
+      "p999_ms": 36.561904,
+      "p99_ms": 9.287427
+    },
+    "latency_total": {
+      "max_ms": 43.802952999999995,
+      "mean_ms": 9.277355974999999,
+      "min_ms": 1.184697,
+      "n": 2000,
+      "p50_ms": 7.992315,
+      "p90_ms": 13.563156999999999,
+      "p999_ms": 43.343266,
+      "p99_ms": 41.485502000000004
+    },
+    "success": 2000,
+    "test": "connect"
+  },
+  "tool": "zfbench"
+}

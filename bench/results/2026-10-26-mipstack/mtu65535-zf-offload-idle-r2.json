@@ -1,0 +1,62 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": true,
+    "flows": 1,
+    "legacy": false,
+    "mips_rx_offload": false,
+    "mipstack": null,
+    "proxy": "zfstack-client",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 10,
+    "splice": true,
+    "test": "idle",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": true,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 0.25011532399999997,
+    "system_busy_sec_per_GB": null,
+    "system_window": {
+      "busy_sec": 0.37,
+      "idle_sec": 8.68,
+      "irq_sec": 0.0,
+      "softirq_sec": 0.04,
+      "steal_sec": 0.01,
+      "system_sec": 0.27,
+      "user_sec": 0.06
+    },
+    "window_effective_bytes": 0,
+    "window_wall_sec": 2.279627067
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "9d6fb76"
+  },
+  "errors": [],
+  "label": "mtu65535-zf-offload-idle-r2",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": null,
+    "cpu_util": 0.06141355400918304,
+    "cpu_window_sec": 0.14,
+    "hwm_kb": 16656,
+    "pid": 20200,
+    "rss_kb_end": 16656,
+    "rss_kb_idle": 5636
+  },
+  "results": {
+    "connect_secs": 0.279397861,
+    "conns": 2000,
+    "rss_bytes_per_conn": 4634.624,
+    "rss_kb_after": 14688,
+    "rss_kb_before": 5636
+  },
+  "tool": "zfbench"
+}

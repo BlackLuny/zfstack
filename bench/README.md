@@ -327,6 +327,7 @@ same way (utime+stime and VmRSS/VmHWM from `/proc/<pid>`):
 | `direct` | none: loopback to the server (kernel-only reference) |
 | `zfstack` / `zfstack-client` | `zfbench --tun-proxy` with `StackConfig::default()` / `StackConfig::client()`, tokio runtime, relay task per connection (`--relay-buf-kb`) or `--splice` (`TcpStream::splice`, relay inside the stack driver) |
 | `singbox-go` / `singbox-gvisor` / `singbox-system` | sing-box (`--singbox PATH`) with a TUN inbound (`stack` option) and a direct outbound whose rule overrides the destination to 127.0.0.1 |
+| `mipstack` | `bench/mipstack-proxy` (`--mipstack PATH`): mihomo's MIPS stack, promiscuous TCP forwarder, `io.Copy` to the same upstream. `--proxy-workers` sets `GOMAXPROCS`. `--mips-rx-offload` skips input checksum verification only |
 
 Flags: `--tun-mtu` (default 65535, sing-box's Linux default), `--proxy-workers`
 (tokio workers / `GOMAXPROCS`), and for zfstack `--vnet-hdr` (TUN with
@@ -345,6 +346,14 @@ $B --client-proxy zfstack-client --splice --vnet-hdr --test idle --conns 2000
 
 The TUN routes `198.18.0.0/15`; its own address is `172.19.0.1/30` because
 sing-box answers DNS on the device's next address. Needs `ip` (iproute2).
+
+```sh
+cd bench/mipstack-proxy && go build -o /tmp/mipstack-proxy .
+python3 bench/mipstack_matrix.py   # MIPS_BIN=/tmp/mipstack-proxy
+```
+
+A same-machine run against mipstack `9a80a07` is written up in
+[`bench/results/2026-10-26-mipstack/REPORT.md`](results/2026-10-26-mipstack/REPORT.md).
 
 ## Multi-tenant isolate (no WireGuard)
 

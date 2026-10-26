@@ -1,0 +1,99 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": false,
+    "flows": 1,
+    "legacy": false,
+    "mips_rx_offload": false,
+    "mipstack": null,
+    "proxy": "direct",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 8,
+    "splice": false,
+    "test": "up",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": false,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 10.893600450000001,
+    "system_busy_sec_per_GB": 0.5568947066361611,
+    "system_window": {
+      "busy_sec": 13.27,
+      "idle_sec": 12.79,
+      "irq_sec": 0.0,
+      "softirq_sec": 4.0,
+      "steal_sec": 0.0,
+      "system_sec": 8.82,
+      "user_sec": 0.45
+    },
+    "window_effective_bytes": 23828561920,
+    "window_wall_sec": 6.000022793
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "9d6fb76"
+  },
+  "errors": [],
+  "label": "direct-up1-r1",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": null,
+    "cpu_util": null,
+    "cpu_window_sec": null,
+    "hwm_kb": null,
+    "pid": null,
+    "rss_kb_end": null,
+    "rss_kb_idle": null
+  },
+  "results": {
+    "agg_mbps_per_sec": [
+      49656.889344,
+      50543.460352,
+      50660.900864,
+      39809.18784,
+      24566.562816,
+      24751.63648,
+      26039.812096,
+      24800.395264
+    ],
+    "direction": "up",
+    "flows": 1,
+    "goodput_mbps_mean": 31771.415893333335,
+    "goodput_mbps_window": 31771.415893333335,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "cwnd_at_end": 98,
+          "data_segs_out": 1109383,
+          "drain_ms": 0.127754,
+          "sent_bytes": 36353998848,
+          "server_count": 36353998848,
+          "srtt_us_at_end": 30,
+          "total_retrans": 0
+        },
+        "mbps_per_sec": [
+          49656.889344,
+          50543.460352,
+          50660.900864,
+          39809.18784,
+          24566.562816,
+          24751.63648,
+          26039.812096,
+          24800.395264
+        ],
+        "receiver_bytes": 36353998848,
+        "total_bytes": 36353998848,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "tool": "zfbench"
+}
