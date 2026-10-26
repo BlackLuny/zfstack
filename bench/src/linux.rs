@@ -203,7 +203,14 @@ pub struct Args {
     /// sing-box binary.
     #[arg(long)]
     singbox: Option<String>,
-    /// Proxy runtime worker threads (zfstack tokio workers / sing-box GOMAXPROCS); 0 = default.
+    /// mipstack TUN proxy binary (`bench/mipstack-proxy`).
+    #[arg(long)]
+    mipstack: Option<String>,
+    /// mipstack proxy: skip input IPv4/TCP checksum verification.
+    /// TX checksums are still computed; MIPS has no TSO offload.
+    #[arg(long)]
+    mips_rx_offload: bool,
+    /// Proxy runtime worker threads (zfstack tokio workers / sing-box and mipstack GOMAXPROCS); 0 = default.
     #[arg(long, default_value_t = 0)]
     proxy_workers: usize,
     /// zfstack proxy: relay copy buffer per direction (KiB).

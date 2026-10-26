@@ -4,11 +4,12 @@
 //! kernel TCP client ──▶ 198.18.0.2:5201 ──TUN zfcT──▶ proxy process ──▶ 127.0.0.1:5201 kernel server
 //! ```
 //!
-//! The proxy is a separate process (zfstack `--tun-proxy`, or sing-box with a
-//! TUN inbound and a direct outbound overriding the destination), so its CPU
-//! time and memory are measured the same way for every implementation:
-//! utime+stime and VmRSS/VmHWM from /proc/<pid>. `direct` skips the proxy and
-//! connects to the server over loopback (kernel-only reference).
+//! The proxy is a separate process (zfstack `--tun-proxy`, sing-box with a
+//! TUN inbound and a direct outbound overriding the destination, or
+//! `mipstack-proxy`), so its CPU time and memory are measured the same way
+//! for every implementation: utime+stime and VmRSS/VmHWM from /proc/<pid>.
+//! `direct` skips the proxy and connects to the server over loopback
+//! (kernel-only reference).
 
 use std::io;
 use std::net::SocketAddr;
@@ -36,6 +37,8 @@ pub enum ProxyKind {
     SingboxGo,
     SingboxGvisor,
     SingboxSystem,
+    /// mipstack (mihomo MIPS) TUN proxy. Requires `--mipstack`.
+    Mipstack,
 }
 
 pub fn proxy_name(k: ProxyKind) -> &'static str {
@@ -46,6 +49,7 @@ pub fn proxy_name(k: ProxyKind) -> &'static str {
         ProxyKind::SingboxGo => "singbox-go",
         ProxyKind::SingboxGvisor => "singbox-gvisor",
         ProxyKind::SingboxSystem => "singbox-system",
+        ProxyKind::Mipstack => "mipstack",
     }
 }
 
@@ -149,6 +153,18 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
                 c.env("GOMAXPROCS", a.proxy_workers.to_string());
             }
             c.spawn()?
+        }
+        ProxyKind::Mipstack => {
+            let bin = a.mipstack.clone().ok_or_else(|| io::Error::other("--client-proxy mipstack requires --mipstack PATH"))?;
+            let mut c = Command::new(bin);
+            c.args(["-mtu", &mtu.to_string(), "-upstream", UPSTREAM, "-tun", PROXY_TUN, "-addr", PROXY_TUN_ADDR]);
+            if a.mips_rx_offload {
+                c.arg("-rx-offload");
+            }
+            if a.proxy_workers > 0 {
+                c.env("GOMAXPROCS", a.proxy_workers.to_string());
+            }
+            c.stdin(Stdio::null()).spawn()?
         }
     };
     // Wait for the device, then for the proxy to accept a connection.
@@ -324,6 +340,8 @@ pub fn run(a: &Args, kind: ProxyKind) -> io::Result<i32> {
             "tso": a.tso,
             "driver_thread": a.driver_thread,
             "legacy": a.legacy,
+            "mipstack": a.mipstack,
+            "mips_rx_offload": a.mips_rx_offload,
         },
         "env": {
             "kernel": tun::sh_output("uname -r").trim(),

@@ -1,0 +1,93 @@
+{
+  "config": {
+    "concurrency": 64,
+    "conns": 2000,
+    "driver_thread": false,
+    "flows": 1,
+    "legacy": false,
+    "mips_rx_offload": true,
+    "mipstack": "/tmp/mipstack-proxy",
+    "proxy": "mipstack",
+    "proxy_workers": 0,
+    "relay_buf_kb": 64,
+    "secs": 8,
+    "splice": false,
+    "test": "down",
+    "tso": false,
+    "tun_mtu": 65535,
+    "vnet_hdr": false,
+    "warmup": 2
+  },
+  "cpu": {
+    "harness_process_sec": 3.8839341579999997,
+    "system_busy_sec_per_GB": 1.1156168677881557,
+    "system_window": {
+      "busy_sec": 15.989999999999998,
+      "idle_sec": 7.46,
+      "irq_sec": 0.0,
+      "softirq_sec": 1.02,
+      "steal_sec": 0.0,
+      "system_sec": 7.43,
+      "user_sec": 7.54
+    },
+    "window_effective_bytes": 14332877587,
+    "window_wall_sec": 6.000018903
+  },
+  "env": {
+    "kernel": "6.12.94+",
+    "nproc": 4,
+    "zfstack_commit": "9d6fb76"
+  },
+  "errors": [],
+  "label": "mtu65535-mips-rx-down1-r1",
+  "mode": "client",
+  "ok": true,
+  "proxy": {
+    "cpu_sec_per_GB": 0.8658414840056918,
+    "cpu_util": 2.0683268170696962,
+    "cpu_window_sec": 12.41,
+    "hwm_kb": 65712,
+    "pid": 17695,
+    "rss_kb_end": 56084,
+    "rss_kb_idle": 7144
+  },
+  "results": {
+    "agg_mbps_per_sec": [
+      15809.154416,
+      15763.651848,
+      19274.681016,
+      18613.476704,
+      18399.208872,
+      19241.368048,
+      19773.658544,
+      19360.627512
+    ],
+    "direction": "down",
+    "flows": 1,
+    "goodput_mbps_mean": 19110.503449333337,
+    "goodput_mbps_window": 19110.503449333333,
+    "per_flow": [
+      {
+        "flow": 0,
+        "info": {
+          "pattern_mismatch_reads": 0
+        },
+        "mbps_per_sec": [
+          15809.154416,
+          15763.651848,
+          19274.681016,
+          18613.476704,
+          18399.208872,
+          19241.368048,
+          19773.658544,
+          19360.627512
+        ],
+        "receiver_bytes": 18280527277,
+        "total_bytes": 18280527277,
+        "zero_secs": 0
+      }
+    ],
+    "zero_throughput_secs": 0
+  },
+  "tool": "zfbench"
+}
