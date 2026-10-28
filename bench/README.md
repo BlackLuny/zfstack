@@ -44,6 +44,10 @@ smoltcp comes from the git dependency
 
 ## Running a single case (as root)
 
+For opt-in zfstack total TX capacity / prefetch controls and a frozen paired
+screening runner, see [`capacity/README.md`](capacity/README.md). These controls
+do not change library defaults or apply to the other stacks.
+
 ```sh
 B=target/release/zfbench
 $B --stack kernel --kernel-cc cubic --test down --rtt-ms 12 --secs 10

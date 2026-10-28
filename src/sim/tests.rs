@@ -48,6 +48,70 @@ fn clean_download() {
 }
 
 #[test]
+fn iface_pacing_single_peer_preserves_packet_and_time_trace() {
+    for cc in [CcAlgo::Cubic, CcAlgo::Bbr] {
+        for rtt in [1, 500] {
+            let scenario = |enabled| {
+                let link = LinkParams { delay: Duration::from_micros(rtt * 500), queue_bytes: 16 << 20, ..Default::default() };
+                let cfg = StackConfig { cc, ..Default::default() };
+                let mut s = Sim::new(9424, cfg.clone(), cfg, link.clone(), link);
+                if enabled {
+                    s.a.shard.set_iface_egress_rate(s.a.iface, 12_500_000);
+                }
+                s.enable_trace();
+                s.a.accept_template = AppConn { to_send: 2 << 20, fin_after_send: true, ..Default::default() };
+                let ids: Vec<_> = (0..2).map(|n| s.connect(40100 + n, AppConn::default())).collect();
+                s.run_until(s.now + secs(12));
+                for id in ids {
+                    assert_download_ok(&s.b.conns[&id], 2 << 20);
+                }
+                assert_eq!(s.a.shard.stats().egress_paced_bytes, 0);
+                (s.trace_digest(), s.steps)
+            };
+            assert_eq!(scenario(false), scenario(true), "single-peer path changed: {cc:?}, RTT={rtt}");
+        }
+    }
+}
+
+#[test]
+fn iface_pacing_late_peer_progresses_and_disabling_releases_the_ready_queue() {
+    let link = LinkParams { rate_bps: 20_000_000, delay: Duration::from_millis(5), queue_bytes: 250_000, ..Default::default() };
+    let mut s = sim(9425, link.clone(), link);
+    s.a.shard.set_iface_egress_rate(s.a.iface, 2_500_000);
+    s.a.accept_template = AppConn { to_send: 64 << 20, ..Default::default() };
+    let bulk: Vec<_> = (0..16).map(|n| s.connect(40200 + n, AppConn::default())).collect();
+    s.run_until(s.now + secs(1));
+    s.a.accept_template = AppConn { to_send: 1024, fin_after_send: true, ..Default::default() };
+    let light = s.connect_as(PeerId(2), 40300, AppConn::default());
+    s.run_until(s.now + Duration::from_millis(500));
+    assert_download_ok(&s.b.conns[&light], 1024);
+    assert!(s.a.shard.stats().egress_paced_bytes > 0);
+    assert!(s.a.shard.stats().egress_pacing_pauses > 0);
+    let before: Vec<_> = bulk.iter().map(|id| s.b.conns[id].received).collect();
+    s.a.shard.set_iface_egress_rate(s.a.iface, 0);
+    s.run_until(s.now + secs(1));
+    for (id, before) in bulk.into_iter().zip(before) {
+        assert!(s.b.conns[&id].received > before, "bulk connection did not resume after disabling");
+        assert!(!s.b.conns[&id].corrupt);
+    }
+}
+
+#[test]
+fn iface_pacing_and_sink_full_resume_without_an_ingress_wakeup() {
+    let link = LinkParams { rate_bps: 20_000_000, delay: Duration::from_millis(5), queue_bytes: 250_000, ..Default::default() };
+    let mut s = sim(9426, link.clone(), link);
+    s.a.shard.set_iface_egress_rate(s.a.iface, 2_500_000);
+    s.a.egress_rate = Some(20_000_000);
+    s.a.accept_template = AppConn { to_send: 256 << 10, fin_after_send: true, ..Default::default() };
+    let ids: Vec<_> = (1..=3).map(|peer| s.connect_as(PeerId(peer), 40400 + peer as u16, AppConn::default())).collect();
+    s.run_until(s.now + secs(4));
+    for id in ids {
+        assert_download_ok(&s.b.conns[&id], 256 << 10);
+    }
+    assert!(s.a.shard.stats().sink_full > 0);
+}
+
+#[test]
 fn issue37_idle_connections_leave_room_for_another_peer() {
     let mut s = sim(3701, LinkParams::default(), LinkParams::default());
     let port = 8 << 20;

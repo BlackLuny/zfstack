@@ -1,0 +1,218 @@
+{
+  "completed": 2,
+  "fixed_vs_original_cpu_interaction": null,
+  "identity_audit": {
+    "errors": [],
+    "valid": true
+  },
+  "independent_observer_audit": {
+    "errors": [],
+    "valid": true
+  },
+  "interval_scope": "Pointwise whole-round 95% bootstrap intervals, 16 independent rounds; no pooled historical data or all-environment causation claim.",
+  "phase": "preflight",
+  "placements": {
+    "fixed": {
+      "blocks": [],
+      "changes": {},
+      "rounds": 0,
+      "valid": false
+    },
+    "original": {
+      "blocks": [],
+      "changes": {},
+      "rounds": 0,
+      "valid": false
+    }
+  },
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "off",
+      "block": "r00-original",
+      "bottleneck_drops": {
+        "down": 649,
+        "up": 0
+      },
+      "cc": "cubic",
+      "driver_observed_span_sec": 26.166646954021417,
+      "egress_paced_bytes": 0,
+      "egress_rate": 0,
+      "errors": [],
+      "gb": 0.224832596,
+      "heavy": 1,
+      "heavy_flow_window_bytes": [
+        224831228
+      ],
+      "heavy_jain": 1.0,
+      "heavy_zero_window_flows": 0,
+      "independent_observer_audit": {
+        "errors": [],
+        "valid": true
+      },
+      "index": 0,
+      "lights": 0,
+      "link_late_mean_us": {
+        "down": 32.67920928776153,
+        "up": 24.294809502192606
+      },
+      "link_stack_seconds": 11.361696656,
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 89.93260381418196,
+      "measure": 20,
+      "name": "000-r00-original-0-off",
+      "nr_throttled": 0,
+      "order": "preflight",
+      "per_flow_max_observed_no_read_sec": [
+        0.0
+      ],
+      "placement": "original",
+      "position": 0,
+      "process_cpu_s_per_gb": 61.06133337979161,
+      "process_cpu_s_per_s": 0.6864255902694673,
+      "process_seconds": 13.728578099000002,
+      "retry_budget": 1,
+      "round": 0,
+      "rss_hwm_kib": 12236,
+      "rtt": 50,
+      "setting": "off",
+      "splice": true,
+      "stack_cpu_s_per_gb": 5.911464407945545,
+      "stack_cpu_s_per_s": 0.06645417354944134,
+      "stack_lifetime_cpu_seconds": 1.785101762,
+      "stack_lifetime_pkts_in": 110139,
+      "stack_lifetime_pkts_out": 219410,
+      "stack_lifetime_runs": 123699,
+      "stack_lifetime_us_per_packet_out": 8.13591797092202,
+      "stack_link_cpu_s_per_gb": 50.534027797286114,
+      "stack_link_cpu_s_per_s": 0.5680820895883976,
+      "stack_seconds": 1.329089889,
+      "telemetry": {
+        "driver": {
+          "context_switches_observed_delta": {
+            "nonvoluntary_ctxt_switches": 125,
+            "voluntary_ctxt_switches": 98462
+          },
+          "observed_cpu_locations": [
+            0,
+            2,
+            3
+          ],
+          "runqueue_ns_observed_delta": 98352008,
+          "runtime_ns_observed_delta": 1663142363,
+          "sampled_cpu_changes": 3,
+          "scheduler_counts_observed_delta": {
+            "nr_involuntary_switches": 125,
+            "nr_switches": 98587,
+            "nr_voluntary_switches": 98462,
+            "se.nr_migrations": 3
+          },
+          "timeslices_observed_delta": 98587
+        },
+        "errors": [],
+        "observer_cpu_sec": 0.43221452499999996,
+        "valid": true
+      },
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "valid": true,
+      "wall_sec": 20.000096578,
+      "warmup": 8,
+      "window_softirq_seconds": 1.19,
+      "window_steal_seconds": 1.26
+    },
+    {
+      "arm": "p99",
+      "block": "r00-fixed",
+      "bottleneck_drops": {
+        "down": 618,
+        "up": 0
+      },
+      "cc": "cubic",
+      "driver_observed_span_sec": 26.14726531499764,
+      "egress_paced_bytes": 0,
+      "egress_rate": 12375000,
+      "errors": [],
+      "gb": 0.238601884,
+      "heavy": 1,
+      "heavy_flow_window_bytes": [
+        238601884
+      ],
+      "heavy_jain": 1.0,
+      "heavy_zero_window_flows": 0,
+      "independent_observer_audit": {
+        "errors": [],
+        "valid": true
+      },
+      "index": 1,
+      "lights": 0,
+      "link_late_mean_us": {
+        "down": 17.544810389511397,
+        "up": 17.355226819495694
+      },
+      "link_stack_seconds": 11.493094447999999,
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 95.44045038091713,
+      "measure": 20,
+      "name": "001-r00-fixed-0-on",
+      "nr_throttled": 0,
+      "order": "preflight",
+      "per_flow_max_observed_no_read_sec": [
+        0.0
+      ],
+      "placement": "fixed",
+      "position": 0,
+      "process_cpu_s_per_gb": 58.10696079415701,
+      "process_cpu_s_per_s": 0.6932193076305736,
+      "process_seconds": 13.864430318999998,
+      "retry_budget": 1,
+      "round": 0,
+      "rss_hwm_kib": 12216,
+      "rtt": 50,
+      "setting": "on",
+      "splice": true,
+      "stack_cpu_s_per_gb": 5.8424841565794186,
+      "stack_cpu_s_per_s": 0.06970116430997098,
+      "stack_lifetime_cpu_seconds": 1.9046142339999999,
+      "stack_lifetime_pkts_in": 120043,
+      "stack_lifetime_pkts_out": 236760,
+      "stack_lifetime_runs": 136536,
+      "stack_lifetime_us_per_packet_out": 8.044493301233317,
+      "stack_link_cpu_s_per_gb": 48.16849831747348,
+      "stack_link_cpu_s_per_s": 0.574652891785748,
+      "stack_seconds": 1.394027727,
+      "telemetry": {
+        "driver": {
+          "context_switches_observed_delta": {
+            "nonvoluntary_ctxt_switches": 15,
+            "voluntary_ctxt_switches": 108913
+          },
+          "observed_cpu_locations": [
+            0
+          ],
+          "runqueue_ns_observed_delta": 16996982,
+          "runtime_ns_observed_delta": 1777730944,
+          "sampled_cpu_changes": 0,
+          "scheduler_counts_observed_delta": {
+            "nr_involuntary_switches": 15,
+            "nr_switches": 108929,
+            "nr_voluntary_switches": 108914,
+            "se.nr_migrations": 0
+          },
+          "timeslices_observed_delta": 108929
+        },
+        "errors": [],
+        "observer_cpu_sec": 0.387621787,
+        "valid": true
+      },
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "valid": true,
+      "wall_sec": 20.000063712,
+      "warmup": 8,
+      "window_softirq_seconds": 1.05,
+      "window_steal_seconds": 0.77
+    }
+  ],
+  "valid": 2
+}

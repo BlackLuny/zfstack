@@ -1,0 +1,287 @@
+{
+  "comparisons": [
+    {
+      "arm": "p99",
+      "cc": "cubic",
+      "changes": {
+        "heavy_jain": {
+          "median_pct": -2.2721364897468455,
+          "paired_pct": [
+            -2.2721364897468455
+          ]
+        },
+        "mbps": {
+          "median_pct": -0.9195943137665141,
+          "paired_pct": [
+            -0.9195943137665141
+          ]
+        },
+        "process_cpu_s_per_s": {
+          "median_pct": -1.321546704418819,
+          "paired_pct": [
+            -1.321546704418819
+          ]
+        },
+        "rss_hwm_kib": {
+          "median_pct": 11.501687289088869,
+          "paired_pct": [
+            11.501687289088869
+          ]
+        },
+        "stack_cpu_s_per_s": {
+          "median_pct": -14.000680225832374,
+          "paired_pct": [
+            -14.000680225832374
+          ]
+        },
+        "stack_link_cpu_s_per_s": {
+          "median_pct": -0.5075591156239567,
+          "paired_pct": [
+            -0.5075591156239567
+          ]
+        },
+        "user_equal_mean_ms": {
+          "median_pct": -34.026937989505704,
+          "paired_pct": [
+            -34.026937989505704
+          ]
+        },
+        "worst_user_p99_ms": {
+          "median_pct": -5.258620726034069,
+          "paired_pct": [
+            -5.258620726034069
+          ]
+        }
+      },
+      "heavy": 4,
+      "pairs": 1,
+      "rtt": 20,
+      "valid": false
+    }
+  ],
+  "completed": 2,
+  "cpu_note": "External upload is absent from the main effective-byte denominator; CPU/GB is intentionally omitted.",
+  "phase": "mixed-smoke",
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "p99",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 2007,
+        "up": 0
+      },
+      "cc": "cubic",
+      "egress_paced_bytes": 260649104,
+      "egress_pacing_pauses": 9526,
+      "egress_rate": 12375000,
+      "errors": [
+        "OSError: [Errno 100] Network is down",
+        "upload did not deliver enough observable data",
+        "upload made no acknowledged progress near the loaded interval"
+      ],
+      "generator_max_lag_ms": 10.652717,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        51000408,
+        60750144,
+        75623040,
+        50815728
+      ],
+      "heavy_jain": 0.9719609222119839,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.61833198,
+      "index": 0,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 28.283387437541723,
+        "up": 17.121847979076016
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 95.275422689908,
+      "measure": 20,
+      "missing_requests": 0,
+      "name": "000-cubic-r20-h4-p99",
+      "nr_throttled": 0,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 1650,
+      "position": 0,
+      "process_cpu_s_per_s": 0.6919221693689136,
+      "retry_budget": 1,
+      "rss_hwm_kib": 15860,
+      "rtt": 20,
+      "splice": true,
+      "stack_cpu_s_per_s": 0.05508886762756983,
+      "stack_link_cpu_s_per_s": 0.5619594747498595,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "upload_acked_total": 0,
+      "upload_max_observed_no_ack_sec": 0,
+      "upload_peer": 5,
+      "upload_received_total": 0,
+      "upload_recent_acked_bytes": 0,
+      "uploader_cpu_total_sec": 1.831527495,
+      "user_equal_mean_ms": 24.368624736,
+      "users": [
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 49.220373,
+          "mean_ms": 24.355893144,
+          "missing": 0,
+          "observed_mean_ms": 24.355893144,
+          "p50_ms": 22.827862,
+          "p95_ms": 34.209329,
+          "p99_ms": 38.107171,
+          "peer": 4,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 42.998074,
+          "mean_ms": 24.362241172,
+          "missing": 0,
+          "observed_mean_ms": 24.362241172,
+          "p50_ms": 22.845435,
+          "p95_ms": 34.220893,
+          "p99_ms": 38.166378,
+          "peer": 3,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 49.217648,
+          "mean_ms": 24.387739892,
+          "missing": 0,
+          "observed_mean_ms": 24.387739892,
+          "p50_ms": 22.810735,
+          "p95_ms": 34.268207,
+          "p99_ms": 38.124796,
+          "peer": 2,
+          "planned": 500
+        }
+      ],
+      "valid": false,
+      "wall_sec": 20.000064631,
+      "warmup": 8,
+      "worst_user_p99_ms": 38.166378
+    },
+    {
+      "arm": "off",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 500,
+        "up": 0
+      },
+      "cc": "cubic",
+      "egress_paced_bytes": 0,
+      "egress_pacing_pauses": 0,
+      "egress_rate": 0,
+      "errors": [
+        "OSError: [Errno 100] Network is down",
+        "upload did not deliver enough observable data",
+        "upload made no acknowledged progress near the loaded interval"
+      ],
+      "generator_max_lag_ms": 4.505399,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        54104356,
+        64124171,
+        57579278,
+        64636618
+      ],
+      "heavy_jain": 0.9945586522619624,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.631610966666667,
+      "index": 1,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 16.81068462156839,
+        "up": 22.788053237375593
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 96.15970184016498,
+      "measure": 20,
+      "missing_requests": 0,
+      "name": "001-cubic-r20-h4-off",
+      "nr_throttled": 0,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 1650,
+      "position": 1,
+      "process_cpu_s_per_s": 0.7011887055995211,
+      "retry_budget": 1,
+      "rss_hwm_kib": 14224,
+      "rtt": 20,
+      "splice": true,
+      "stack_cpu_s_per_s": 0.06405732949078204,
+      "stack_link_cpu_s_per_s": 0.5648263021337813,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "upload_acked_total": 0,
+      "upload_max_observed_no_ack_sec": 0,
+      "upload_peer": 5,
+      "upload_received_total": 0,
+      "upload_recent_acked_bytes": 0,
+      "uploader_cpu_total_sec": 1.881084101,
+      "user_equal_mean_ms": 36.937234673333336,
+      "users": [
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 111.45912,
+          "mean_ms": 36.999170418,
+          "missing": 0,
+          "observed_mean_ms": 36.999170418,
+          "p50_ms": 37.180339,
+          "p95_ms": 39.947848,
+          "p99_ms": 40.284803,
+          "peer": 2,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 111.455599,
+          "mean_ms": 37.007169018,
+          "missing": 0,
+          "observed_mean_ms": 37.007169018,
+          "p50_ms": 37.19433,
+          "p95_ms": 39.988023,
+          "p99_ms": 40.21747,
+          "peer": 3,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 40.35053,
+          "mean_ms": 36.805364584,
+          "missing": 0,
+          "observed_mean_ms": 36.805364584,
+          "p50_ms": 37.236616,
+          "p95_ms": 39.985977,
+          "p99_ms": 40.134998,
+          "peer": 4,
+          "planned": 500
+        }
+      ],
+      "valid": false,
+      "wall_sec": 20.003757793,
+      "warmup": 8,
+      "worst_user_p99_ms": 40.284803
+    }
+  ],
+  "valid": 0
+}
