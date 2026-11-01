@@ -167,9 +167,17 @@ fn main() {
             let conn = id.unwrap();
             let mss = shard.info(conn).unwrap().mss as usize;
             expected = mss + 8;
-            for i in 0..8 {
-                let data = vec![byte; if i == 0 { mss } else { 1 }];
-                assert_eq!(shard.write(conn, &data), WriteResult::Written(data.len()));
+            let data = vec![byte; mss];
+            assert_eq!(shard.write(conn, &data), WriteResult::Written(data.len()));
+            shard.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| sink.send(&fd, p, origin.elapsed().as_millis()));
+            phase = "head-sent";
+        }
+        if phase == "head-sent" && opts.control.join("tails").exists() {
+            let conn = id.unwrap();
+            // Both full-sized heads must precede either OOO tail; otherwise
+            // a faster peer can already have SACK options when sending its head.
+            for _ in 0..7 {
+                assert_eq!(shard.write(conn, &[byte]), WriteResult::Written(1));
                 shard.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| sink.send(&fd, p, origin.elapsed().as_millis()));
             }
             // The ninth write remains unsent until BOTH receive OOO tails exist.
@@ -186,7 +194,7 @@ fn main() {
         }
         // Deliberately hold the scheduler only during the bounded setup barrier;
         // after pressure starts, every timer is driven using wall-clock time.
-        if phase != "filled" && phase != "setup" {
+        if !matches!(phase, "filled" | "head-sent" | "setup") {
             shard.egress_released(iface);
             shard.run(now, &mut |_: IfaceId, p: &OutPacket<'_>| sink.send(&fd, p, origin.elapsed().as_millis()));
         }

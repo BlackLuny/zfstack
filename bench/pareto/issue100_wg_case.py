@@ -133,7 +133,7 @@ def case(binary, output, fault, timestamps):
             net(side, "ip", "route", "add", f"10.100.0.{i}/32", "dev", "i100t0")
             caplog = (output / f"{side}.tcpdump.log").open("w")
             handles.append(caplog)
-            captures.append(subprocess.Popen(["ip", "netns", "exec", f"i100{side}", "tcpdump", "-U", "-n", "-i", "any",
+            captures.append(subprocess.Popen(["ip", "netns", "exec", f"i100{side}", "tcpdump", "--immediate-mode", "-U", "-n", "-i", "any",
                                               "-w", str(output / f"{side}.pcap"), "tcp or udp port 51820"], stdout=caplog, stderr=subprocess.STDOUT))
         wait_for(lambda: all("listening on" in (output / f"{s}.tcpdump.log").read_text() for s in "ab"), children + captures, 3)
         (output / "network-ready").touch()
@@ -142,6 +142,9 @@ def case(binary, output, fault, timestamps):
         if fault:
             impair()
         (output / "start").touch()
+        wait_for(lambda: all(s["phase"] == "head-sent" for s in statuses(output)), children, 2)
+        result["both_heads_sent"] = statuses(output)
+        (output / "tails").touch()
         wait_for(lambda: all(s["phase"] == "filled" and (not fault or s["info"]["ooo_bytes"] == 7)
                              for s in statuses(output)), children, 2)
         result["before_pressure"] = statuses(output)
@@ -194,6 +197,10 @@ def case(binary, output, fault, timestamps):
         for process in captures:
             if process.poll() is None:
                 process.send_signal(signal.SIGINT)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
         for process in children + captures:
             if process.poll() is None:
                 process.terminate()
