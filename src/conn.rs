@@ -106,6 +106,8 @@ pub(crate) struct Plan {
     pub len: u32,
     /// Payload limit after the options emitted on this packet (also the GSO size).
     pub mss: u16,
+    /// Limit SACK options when a full send record must be repaired in place.
+    pub sack_cap: u8,
     pub window: u16,
     pub rec_idx: usize,
 }
@@ -2304,7 +2306,7 @@ impl Conn {
     /// Decide the next segment. Does not change protocol state except for splitting
     /// send records to the current MSS and bookkeeping of limits.
     pub(crate) fn plan(&mut self, now: Instant, level: Pressure) -> Option<Plan> {
-        let base = |kind, flags, seq_off, len| Plan { kind, flags, seq_off, len, mss: 0, window: 0, rec_idx: usize::MAX };
+        let base = |kind, flags, seq_off, len| Plan { kind, flags, seq_off, len, mss: 0, sack_cap: u8::MAX, window: 0, rec_idx: usize::MAX };
         if self.rst_pending {
             return Some(base(PlanKind::Rst, RST | ACK, self.snd_nxt, 0));
         }
@@ -2348,7 +2350,8 @@ impl Conn {
     /// Plan while no send record can be added (docs/design/0005 §3). A lost
     /// record that still fits one MSS is retransmitted in its existing slot,
     /// so a sender that cannot grow its records still repairs the losses
-    /// whose ACKs free them; new data, probes and splits wait.
+    /// whose ACKs free them. Reduce SACK options to fit that record if needed;
+    /// new data, probes and splits wait.
     pub(crate) fn plan_in_place(&mut self, now: Instant, level: Pressure) -> Option<Plan> {
         if !self.rst_pending && self.state.can_send_data() {
             if let Some(mut p) = self.plan_data_with(now, false) {
@@ -2366,7 +2369,7 @@ impl Conn {
 
     /// A pure control segment (probe or ACK), used when data is pacing-blocked.
     pub(crate) fn plan_control(&mut self, level: Pressure) -> Option<Plan> {
-        let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, mss: 0, window: 0, rec_idx: usize::MAX };
+        let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, mss: 0, sack_cap: u8::MAX, window: 0, rec_idx: usize::MAX };
         let mut p = if self.probe_pending {
             base(PlanKind::Probe, ACK, self.snd_una.wrapping_sub(1))
         } else if self.ack_need == AckNeed::Now && self.state.synchronized() {
@@ -2384,11 +2387,12 @@ impl Conn {
 
     /// `mss` already reserves timestamp space. SACK/DSACK are variable options:
     /// reserve their padded length too, without changing the CC's base MSS.
-    fn data_mss(&self) -> u32 {
+    fn data_mss(&self, sack_cap: u8) -> u32 {
         if !self.sack_ok {
             return self.mss;
         }
-        let blocks = (usize::from(self.dsack.is_some()) + self.ooo.as_deref().map_or(0, OooQueue::ranges)).min(wire::max_sack_blocks(self.ts_ok));
+        let blocks =
+            (usize::from(self.dsack.is_some()) + self.ooo.as_deref().map_or(0, OooQueue::ranges)).min(wire::max_sack_blocks(self.ts_ok)).min(sack_cap as usize);
         self.mss - if blocks > 0 { 4 + 8 * blocks as u32 } else { 0 }
     }
 
@@ -2398,7 +2402,8 @@ impl Conn {
         if !self.state.can_send_data() {
             return None;
         }
-        let mss = self.data_mss() as u64;
+        let mut sack_cap = u8::MAX;
+        let mut mss = self.data_mss(sack_cap) as u64;
         let room = self.send_room();
         let fin_off = self.fin_off.unwrap_or(u64::MAX);
 
@@ -2407,9 +2412,18 @@ impl Conn {
             let r = self.sb.recs[i];
             if r.len() > mss {
                 if !can_insert {
-                    return None;
+                    if r.len() > self.mss as u64 {
+                        // An MTU decrease (or a TSO record) still needs a split.
+                        return None;
+                    }
+                    // Progress cannot depend on receiving the peer's missing
+                    // data first. Fit fewer SACK blocks instead of splitting;
+                    // the padded option costs 4 bytes plus 8 per block.
+                    sack_cap = ((self.mss as u64 - r.len()).saturating_sub(4) / 8).min(wire::max_sack_blocks(self.ts_ok) as u64) as u8;
+                    mss = self.data_mss(sack_cap) as u64;
+                } else {
+                    self.sb.split(i, r.start + mss);
                 }
-                self.sb.split(i, r.start + mss);
             }
             let r = self.sb.recs[i];
             let data_len = r.end.min(fin_off) - r.start.min(fin_off);
@@ -2422,6 +2436,7 @@ impl Conn {
                     seq_off: r.start,
                     len: data_len as u32,
                     mss: mss as u16,
+                    sack_cap,
                     window: 0,
                     rec_idx: i,
                 });
@@ -2448,6 +2463,7 @@ impl Conn {
                     seq_off: self.snd_nxt,
                     len: len as u32,
                     mss: mss as u16,
+                    sack_cap,
                     window: 0,
                     rec_idx: usize::MAX,
                 });
@@ -2467,6 +2483,7 @@ impl Conn {
                     seq_off: r.start,
                     len: data_len as u32,
                     mss: mss as u16,
+                    sack_cap,
                     window: 0,
                     rec_idx: i,
                 });
@@ -2507,12 +2524,13 @@ impl Conn {
                 seq_off: self.snd_nxt,
                 len: len as u32,
                 mss: mss as u16,
+                sack_cap,
                 window: 0,
                 rec_idx: usize::MAX,
             });
         }
         if self.fin_pending() && self.snd_nxt == fin_off {
-            return Some(Plan { kind: PlanKind::New, flags: ACK | FIN, seq_off: fin_off, len: 0, mss: mss as u16, window: 0, rec_idx: usize::MAX });
+            return Some(Plan { kind: PlanKind::New, flags: ACK | FIN, seq_off: fin_off, len: 0, mss: mss as u16, sack_cap, window: 0, rec_idx: usize::MAX });
         }
         if self.state == State::Established || self.state == State::CloseWait {
             self.mark_app_limited();
@@ -2542,9 +2560,9 @@ impl Conn {
                 o.ts = Some((self.ts_val(now), self.ts_recent));
             }
             if self.sack_ok && p.flags & ACK != 0 {
-                let max = wire::max_sack_blocks(self.ts_ok);
+                let max = wire::max_sack_blocks(self.ts_ok).min(p.sack_cap as usize);
                 let mut n = 0usize;
-                if let Some((l, r)) = self.dsack {
+                if let Some((l, r)) = self.dsack.filter(|_| max > 0) {
                     o.sack[0] = (self.rx_sp.seq(l), self.rx_sp.seq(r));
                     n = 1;
                 }
@@ -2601,7 +2619,11 @@ impl Conn {
             self.ack_need = AckNeed::None;
             self.delack_at = None;
             self.unacked_bytes = 0;
-            self.dsack = None;
+            // A full-sized in-place retransmission may have omitted DSACK.
+            // Keep it pending until a packet can actually carry the option.
+            if p.sack_cap > 0 {
+                self.dsack = None;
+            }
             let right = self.rcv_nxt + ((p.window as u64) << self.rcv_wscale);
             self.rcv_adv = self.rcv_adv.max(right);
         }
@@ -3126,14 +3148,27 @@ mod sack_mtu_regression_tests {
 
     fn check_packet(conn: &mut Conn, plan: &Plan) {
         assert!(plan.len > 0);
+        packet(conn, plan, Instant::ZERO);
+    }
+
+    fn packet(conn: &mut Conn, plan: &Plan, now: Instant) -> Vec<u8> {
         let mut hdr = [0; MAX_HEADER];
-        let (header, payload) = conn.build(plan, Instant::ZERO, &mut hdr, 64, false);
+        let tso = conn.tso_max > 0;
+        let (header, payload) = conn.build(plan, now, &mut hdr, 64, false);
         assert_eq!(payload.iter().map(|p| p.len()).sum::<usize>(), plan.len as usize);
         assert!(header + plan.mss as usize <= MTU, "header {header}, MSS {}", plan.mss);
         // A TSO packet may be large; every device-produced segment must fit.
-        if conn.tso_max == 0 {
+        if !tso {
             assert!(header + plan.len as usize <= MTU);
         }
+        [hdr[..header].as_ref(), payload[0], payload[1]].concat()
+    }
+
+    fn input(conn: &mut Conn, ctx: &mut Ctx<'_>, pkt: &[u8], now: Instant) {
+        let ip = wire::parse_ip(pkt).unwrap();
+        let tcp = wire::parse_tcp(pkt, &ip).unwrap();
+        assert_eq!((ip.src, ip.dst), (conn.remote.ip(), conn.local.ip()));
+        conn.input(now, &tcp, IngressPayload::Borrowed(&pkt[ip.l4_off + tcp.data_off..ip.l4_off + ip.l4_len]), ctx);
     }
 
     #[test]
@@ -3194,9 +3229,11 @@ mod sack_mtu_regression_tests {
                     conn.tlp.pending = true;
                 } else {
                     conn.sb.mark_lost(0);
-                    // Without a record slot, send the ACK instead of an oversized retransmission.
-                    let control = conn.plan_in_place(Instant::ZERO, Pressure::Free).unwrap();
-                    assert_eq!(control.kind, PlanKind::Ack);
+                    // Without a record slot, omit SACK rather than blocking repair.
+                    let repair = conn.plan_in_place(Instant::ZERO, Pressure::Free).unwrap();
+                    assert_eq!(repair.kind, PlanKind::Rtx);
+                    assert_eq!(repair.len, original.len);
+                    check_packet(conn, &repair);
                     assert_eq!(conn.sb.recs.len(), 1);
                 }
                 let plan = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
@@ -3205,6 +3242,184 @@ mod sack_mtu_regression_tests {
                 assert_eq!(conn.sb.recs.len(), 2);
                 conn.commit(&plan, Instant::ZERO, ctx.cfg);
             });
+        }
+    }
+
+    #[test]
+    fn in_place_retransmission_limits_sack_to_available_option_space() {
+        for ipv6 in [false, true] {
+            for timestamps in [false, true] {
+                for tso in [0, 12000] {
+                    for dsack in [false, true] {
+                        // Include both sides of each padded SACK-size boundary.
+                        for slack in [0, 3, 4, 8, 11, 12, 19, 20, 27, 28, 35, 36] {
+                            exercise(ipv6, timestamps, |conn, ctx| {
+                                conn.tso_max = tso;
+                                write(conn, ctx, (conn.mss - slack) as usize);
+                                let original = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                                conn.commit(&original, Instant::ZERO, ctx.cfg);
+                                conn.dsack = dsack.then_some((0, 1));
+                                let pending_dsack = conn.dsack;
+                                let mut ooo = OooQueue::default();
+                                for i in 0..5 {
+                                    ooo.insert(10 + i * 10, Bytes::from_static(b"x"));
+                                }
+                                conn.ooo = Some(Box::new(ooo));
+                                conn.sb.mark_lost(0);
+                                conn.ack_need = AckNeed::Now;
+                                let records = conn.sb.recs.len();
+                                let capacity = conn.sb.recs.capacity();
+                                let plan = conn.plan_in_place(Instant::ZERO, Pressure::Free).unwrap();
+                                assert_eq!(plan.kind, PlanKind::Rtx);
+                                assert_eq!(plan.len, original.len);
+                                assert_eq!(plan.seq_off, original.seq_off);
+                                let pkt = packet(conn, &plan, Instant::ZERO);
+                                assert!(pkt.len() <= MTU);
+                                assert!(plan.len <= plan.mss as u32, "in-place repair must not need GSO");
+                                let ip = wire::parse_ip(&pkt).unwrap();
+                                let tcp = wire::parse_tcp(&pkt, &ip).unwrap();
+                                let blocks = ((slack.saturating_sub(4) / 8) as usize).min(wire::max_sack_blocks(timestamps));
+                                assert_eq!(tcp.opts.sack_blocks().len(), blocks);
+                                assert_eq!(plan.mss as u32, conn.mss - if blocks > 0 { 4 + 8 * blocks as u32 } else { 0 });
+                                if dsack && blocks > 0 {
+                                    assert_eq!(tcp.opts.sack_blocks()[0], (conn.rx_sp.seq(0), conn.rx_sp.seq(1)));
+                                }
+                                // Building a packet refused by the sink must not
+                                // consume DSACK or commit the retransmission.
+                                assert_eq!(conn.dsack, pending_dsack);
+                                assert_eq!(packet(conn, &plan, Instant::ZERO), pkt);
+                                conn.commit(&plan, Instant::ZERO, ctx.cfg);
+                                assert_eq!((conn.sb.recs.len(), conn.sb.recs.capacity()), (records, capacity));
+                                assert_eq!(conn.dsack, pending_dsack.filter(|_| blocks == 0));
+                                // The cap belongs to this data packet only. A
+                                // later control ACK still sends the full options.
+                                conn.ack_need = AckNeed::Now;
+                                let ack = conn.plan_control(Pressure::Free).unwrap();
+                                let pkt = packet(conn, &ack, Instant::ZERO);
+                                let ip = wire::parse_ip(&pkt).unwrap();
+                                let tcp = wire::parse_tcp(&pkt, &ip).unwrap();
+                                assert_eq!(tcp.opts.sack_blocks().len(), wire::max_sack_blocks(timestamps));
+                                conn.commit(&ack, Instant::ZERO, ctx.cfg);
+                                assert!(conn.dsack.is_none());
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn in_place_retransmission_waits_when_base_mss_requires_a_split() {
+        for tso in [false, true] {
+            exercise(false, true, |conn, ctx| {
+                conn.tso_max = if tso { 12000 } else { 0 };
+                write(conn, ctx, conn.mss as usize * if tso { 2 } else { 1 });
+                let original = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                conn.commit(&original, Instant::ZERO, ctx.cfg);
+                let mtu = if tso { MTU } else { MTU - 128 };
+                conn.clamp_mtu(mtu as u16);
+                conn.dsack = Some((0, 1));
+                conn.sb.mark_lost(0);
+                assert!(conn.sb.recs[0].len() > conn.mss as u64);
+                assert!(conn.plan_in_place(Instant::ZERO, Pressure::Free).is_none());
+                assert_eq!(conn.sb.recs.len(), 1);
+                let plan = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                assert_eq!(plan.kind, PlanKind::Rtx);
+                let pkt = packet(conn, &plan, Instant::ZERO);
+                assert!(pkt.len() <= mtu);
+                assert_eq!(conn.sb.recs.len(), 2);
+            });
+        }
+    }
+
+    #[test]
+    fn bidirectional_loss_repairs_with_full_records_and_receive_holes() {
+        for ipv6 in [false, true] {
+            for timestamps in [false, true] {
+                exercise(ipv6, timestamps, |a, ca| {
+                    exercise(ipv6, timestamps, |b, cb| {
+                        std::mem::swap(&mut b.local, &mut b.remote);
+                        let sent_at = Instant::from_millis(10);
+                        let received_at = sent_at + Duration::from_millis(1);
+                        let send_flight = |conn: &mut Conn, ctx: &mut Ctx<'_>| {
+                            // As in Shard admission, prepay the small in-order RX
+                            // credit so filling the hole needs no new allocation.
+                            let charge = crate::buf::rx_progress_charge(MTU as u16);
+                            let lease = ctx.budget.memory_scope(conn.peer).try_rx_progress(charge).unwrap();
+                            conn.set_rx_progress(crate::buf::RxProgress::new(lease, charge));
+                            let slots = conn.sb.recs.capacity();
+                            let mut flight = Vec::new();
+                            for i in 0..slots {
+                                // The lost head is full MSS; the remaining tiny
+                                // records fill the deque and create a real OOO tail.
+                                write(conn, ctx, if i == 0 { conn.mss as usize } else { 1 });
+                                let plan = conn.plan(sent_at, Pressure::Free).unwrap();
+                                assert_eq!(plan.kind, PlanKind::New);
+                                flight.push(packet(conn, &plan, sent_at));
+                                conn.commit(&plan, sent_at, ctx.cfg);
+                            }
+                            assert!(!conn.has_record_spare());
+                            flight
+                        };
+                        let flights = [send_flight(a, ca), send_flight(b, cb)];
+                        // Lose the first full-sized segment in BOTH directions.
+                        for pkt in &flights[0][1..] {
+                            input(b, cb, pkt, received_at);
+                        }
+                        for pkt in &flights[1][1..] {
+                            input(a, ca, pkt, received_at);
+                        }
+                        let repair_at = a.rto_deadline().max(b.rto_deadline());
+                        let repair = |conn: &mut Conn, ctx: &mut Ctx<'_>| {
+                            assert_eq!(conn.rcv_nxt, 1);
+                            assert_eq!(conn.ooo.as_ref().unwrap().bytes(), conn.sb.recs.len() - 1);
+                            // No other connection or cache can release this budget.
+                            let global = ctx.budget.global().clone();
+                            let ceiling = global.high() - global.headroom(global.high(), crate::budget::Tier::Drain);
+                            let blocker =
+                                ctx.budget.try_allocate_kind(PeerId(2), ceiling - global.reserved(), crate::budget::AllocationKind::SendRecord).unwrap();
+                            assert!(!conn.try_reserve_send_record(ctx.budget));
+                            assert!(conn.on_timer(repair_at, ctx));
+                            assert_eq!(conn.stats.rto_count, 1);
+                            let plan = conn.plan_in_place(repair_at, Pressure::Free).unwrap();
+                            assert_eq!(plan.kind, PlanKind::Rtx, "receive SACKs must not block loss repair");
+                            assert_eq!(plan.len, conn.mss);
+                            assert!(!conn.has_record_spare());
+                            let pkt = packet(conn, &plan, repair_at);
+                            conn.commit(&plan, repair_at, ctx.cfg);
+                            (pkt, blocker)
+                        };
+                        let repairs = [repair(a, ca), repair(b, cb)];
+                        // Both repairs were planned with the receive holes still
+                        // present and both record allocations still denied.
+                        input(b, cb, &repairs[0].0, repair_at);
+                        input(a, ca, &repairs[1].0, repair_at);
+                        let finish = |conn: &mut Conn, ctx: &mut Ctx<'_>| {
+                            assert!(conn.ooo.is_none(), "repair must fill the hole without reneging");
+                            assert_eq!(conn.stats.dropped_no_mem, 0);
+                            assert_eq!(conn.stats.rx_progress_packets, 1);
+                            let mut data = vec![0; conn.mss as usize + conn.sb.recs.len() - 1];
+                            let len = data.len();
+                            assert_eq!(conn.read(&mut data, ctx, repair_at), ReadResult::Data(len));
+                            assert_eq!(data, vec![0x5a; len]);
+                            let ack = conn.plan_control(Pressure::Free).unwrap();
+                            let pkt = packet(conn, &ack, repair_at);
+                            conn.commit(&ack, repair_at, ctx.cfg);
+                            pkt
+                        };
+                        let acks = [finish(a, ca), finish(b, cb)];
+                        input(b, cb, &acks[0], repair_at);
+                        input(a, ca, &acks[1], repair_at);
+                        for conn in [a, b] {
+                            assert_eq!(conn.snd_una, conn.snd_max);
+                            assert!(conn.sb.is_empty(), "cumulative ACK must free the full record deque");
+                            assert_eq!(conn.stats.rto_count, 1, "repair must finish before another RTO");
+                            conn.check_invariants();
+                        }
+                    });
+                });
+            }
         }
     }
 }
