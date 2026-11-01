@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 
 
@@ -75,6 +76,8 @@ def check_case(path, expected, binary_hash):
         row = {"side":side,"rto_count":end["info"]["rto_count"],"record_failures":end["send_record_failures"],
                "received":end["received"],"expected":end["expected"],"wg_rx":int(rx),"wg_tx":int(tx),
                "capture":pcap(path / f"{side}.pcap")}
+        capture_log = (path / f"{side}.tcpdump.log").read_text()
+        row["capture"]["kernel_capture_drops"] = int(re.search(r"(\d+) packets dropped by kernel", capture_log).group(1))
         if data["fault"]:
             blocked = data["both_blocked_after_rto"][i]
             assert blocked["record_waiters"] == 1 and blocked["send_record_failures"] > 0
@@ -84,7 +87,10 @@ def check_case(path, expected, binary_hash):
             for item in data["fault_counters"][side]["nftables"]:
                 if "rule" in item:
                     counters.extend(e["counter"]["packets"] for e in item["rule"]["expr"] if "counter" in e)
-            assert len(counters) == 2 and all(n > 0 for n in counters), "fault injection did not actually drop packets"
+            # nft is first-match: a piggyback ACK on a full data packet is
+            # already dropped by rule 1, so the pure-ACK counter can be zero.
+            # Actual data loss is mandatory, and both real RTOs are proven above.
+            assert len(counters) == 2 and counters[0] > 0, "kernel did not drop the full-sized head"
             row["kernel_drop_counters"] = counters
         if expected == "PASS":
             assert end["phase"] == "complete" and end["received"] == end["expected"]
@@ -117,7 +123,9 @@ def main():
             cases.append(check_case(args.suite / f"{index:02d}-{arm}", expected, protocol[f"{arm}_binary_sha256"]))
     report = {"verified":True,"scope":"functional, real Linux Shards/TUN/kernel WG over isolated veth; not WAN or zfc release qualification",
               "positive_cases":sum(c["observed"] == "PASS" for c in cases),"expected_stall_controls":sum(c["observed"] == "STALL" for c in cases),
-              "emsgsize":0,"cases":cases,"protocol_sha256":digest(args.suite / "protocol.json")}
+              "emsgsize":0,"cases":cases,"protocol_sha256":digest(args.suite / "protocol.json"),
+              "analyzer_sha256":digest(__file__),
+              "capture_note":"Capture drops are retained per endpoint. Full TUN writes and application bytes are independently checked by endpoint records."}
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k:v for k,v in report.items() if k != "cases"}))
 
