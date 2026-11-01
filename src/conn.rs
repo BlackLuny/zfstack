@@ -104,6 +104,8 @@ pub(crate) struct Plan {
     pub flags: u8,
     pub seq_off: u64,
     pub len: u32,
+    /// Payload limit after the options emitted on this packet (also the GSO size).
+    pub mss: u16,
     pub window: u16,
     pub rec_idx: usize,
 }
@@ -2302,7 +2304,7 @@ impl Conn {
     /// Decide the next segment. Does not change protocol state except for splitting
     /// send records to the current MSS and bookkeeping of limits.
     pub(crate) fn plan(&mut self, now: Instant, level: Pressure) -> Option<Plan> {
-        let base = |kind, flags, seq_off, len| Plan { kind, flags, seq_off, len, window: 0, rec_idx: usize::MAX };
+        let base = |kind, flags, seq_off, len| Plan { kind, flags, seq_off, len, mss: 0, window: 0, rec_idx: usize::MAX };
         if self.rst_pending {
             return Some(base(PlanKind::Rst, RST | ACK, self.snd_nxt, 0));
         }
@@ -2364,7 +2366,7 @@ impl Conn {
 
     /// A pure control segment (probe or ACK), used when data is pacing-blocked.
     pub(crate) fn plan_control(&mut self, level: Pressure) -> Option<Plan> {
-        let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, window: 0, rec_idx: usize::MAX };
+        let base = |kind, flags, seq_off| Plan { kind, flags, seq_off, len: 0, mss: 0, window: 0, rec_idx: usize::MAX };
         let mut p = if self.probe_pending {
             base(PlanKind::Probe, ACK, self.snd_una.wrapping_sub(1))
         } else if self.ack_need == AckNeed::Now && self.state.synchronized() {
@@ -2380,13 +2382,23 @@ impl Conn {
         self.plan_data_with(now, true)
     }
 
+    /// `mss` already reserves timestamp space. SACK/DSACK are variable options:
+    /// reserve their padded length too, without changing the CC's base MSS.
+    fn data_mss(&self) -> u32 {
+        if !self.sack_ok {
+            return self.mss;
+        }
+        let blocks = (usize::from(self.dsack.is_some()) + self.ooo.as_deref().map_or(0, OooQueue::ranges)).min(wire::max_sack_blocks(self.ts_ok));
+        self.mss - if blocks > 0 { 4 + 8 * blocks as u32 } else { 0 }
+    }
+
     /// `can_insert` is false when the send records have no spare slot: only a
     /// retransmission that reuses its record is planned.
     fn plan_data_with(&mut self, now: Instant, can_insert: bool) -> Option<Plan> {
         if !self.state.can_send_data() {
             return None;
         }
-        let mss = self.mss as u64;
+        let mss = self.data_mss() as u64;
         let room = self.send_room();
         let fin_off = self.fin_off.unwrap_or(u64::MAX);
 
@@ -2409,6 +2421,7 @@ impl Conn {
                     flags: ACK | if fin { FIN } else { 0 } | if data_len > 0 { PSH } else { 0 },
                     seq_off: r.start,
                     len: data_len as u32,
+                    mss: mss as u16,
                     window: 0,
                     rec_idx: i,
                 });
@@ -2434,6 +2447,7 @@ impl Conn {
                     flags: ACK | PSH | if fin { FIN } else { 0 },
                     seq_off: self.snd_nxt,
                     len: len as u32,
+                    mss: mss as u16,
                     window: 0,
                     rec_idx: usize::MAX,
                 });
@@ -2452,6 +2466,7 @@ impl Conn {
                     flags: ACK | if fin { FIN } else { 0 } | if data_len > 0 { PSH } else { 0 },
                     seq_off: r.start,
                     len: data_len as u32,
+                    mss: mss as u16,
                     window: 0,
                     rec_idx: i,
                 });
@@ -2491,12 +2506,13 @@ impl Conn {
                 flags: ACK | if psh { PSH } else { 0 } | if fin { FIN } else { 0 },
                 seq_off: self.snd_nxt,
                 len: len as u32,
+                mss: mss as u16,
                 window: 0,
                 rec_idx: usize::MAX,
             });
         }
         if self.fin_pending() && self.snd_nxt == fin_off {
-            return Some(Plan { kind: PlanKind::New, flags: ACK | FIN, seq_off: fin_off, len: 0, window: 0, rec_idx: usize::MAX });
+            return Some(Plan { kind: PlanKind::New, flags: ACK | FIN, seq_off: fin_off, len: 0, mss: mss as u16, window: 0, rec_idx: usize::MAX });
         }
         if self.state == State::Established || self.state == State::CloseWait {
             self.mark_app_limited();
@@ -2662,9 +2678,9 @@ impl Conn {
         let mut r = self.snapshot_rec(now);
         r.start = p.seq_off;
         r.end = end;
-        if p.len > self.mss {
+        if p.len > p.mss as u32 {
             // A TSO super-segment: the device cuts it every MSS.
-            r.seg = self.mss as u16;
+            r.seg = p.mss;
             self.sent_tso = true;
         }
         r.tx_in_flight += end - p.seq_off;
@@ -2675,7 +2691,7 @@ impl Conn {
         self.snd_nxt = end;
         self.snd_max = self.snd_max.max(end);
         self.stats.bytes_sent += p.len as u64;
-        if (p.len as u64) < self.mss as u64 && p.len > 0 {
+        if p.len < p.mss as u32 && p.len > 0 {
             self.stats.small_segs += 1;
         }
         if let Some(rec) = self.recovery.as_mut() {
@@ -3058,6 +3074,138 @@ impl Conn {
             || self.probe_pending
             || self.tlp.pending
             || (self.state.can_send_data() && (self.sb.lost_pending() > 0 || self.unsent() > 0 || self.fin_pending()))
+    }
+}
+
+#[cfg(test)]
+mod sack_mtu_regression_tests {
+    use super::*;
+    use crate::budget::GlobalBudget;
+
+    const MTU: usize = 1420;
+
+    fn exercise(ipv6: bool, timestamps: bool, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
+        let cfg = StackConfig { pacing: false, timestamps, ..StackConfig::default() };
+        let global = GlobalBudget::new(16 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(16 << 20, 16 << 20, 8);
+        let mut pool = BlockPool::new(0);
+        let mut events = VecDeque::new();
+        let (local, remote) = if ipv6 { ("[2001:db8::1]:80", "[2001:db8::2]:40000") } else { ("10.0.0.1:80", "10.0.0.2:40000") };
+        let mut conn = Conn::new_from_cookie(
+            ConnId(1),
+            IfaceId(1),
+            PeerId(1),
+            local.parse().unwrap(),
+            remote.parse().unwrap(),
+            Seq(1),
+            0,
+            MTU as u16,
+            Seq(1),
+            &SynParams { mss: Some(65535), wscale: None, sack: true, ts: timestamps.then_some((1, 0)) },
+            &cfg,
+            Instant::ZERO,
+        );
+        // A cookie constructor has not received the established window update.
+        conn.snd_wnd = 65535;
+        conn.max_snd_wnd = 65535;
+        let mut ctx = Ctx { cfg: &cfg, pool: &mut pool, budget: &mut budget, events: &mut events };
+        assert!(conn.try_reserve_send_record(ctx.budget));
+        run(&mut conn, &mut ctx);
+        // These tests install synthetic OOO ranges without receive charges.
+        conn.ooo = None;
+        conn.destroy(&mut ctx);
+        drop(conn);
+        assert_eq!(ctx.budget.used, 0);
+        assert_eq!(global.reserved(), 0);
+    }
+
+    fn write(conn: &mut Conn, ctx: &mut Ctx<'_>, n: usize) {
+        assert!(matches!(conn.write(&vec![0x5a; n], ctx), WriteResult::Written(m) if m == n));
+    }
+
+    fn check_packet(conn: &mut Conn, plan: &Plan) {
+        assert!(plan.len > 0);
+        let mut hdr = [0; MAX_HEADER];
+        let (header, payload) = conn.build(plan, Instant::ZERO, &mut hdr, 64, false);
+        assert_eq!(payload.iter().map(|p| p.len()).sum::<usize>(), plan.len as usize);
+        assert!(header + plan.mss as usize <= MTU, "header {header}, MSS {}", plan.mss);
+        // A TSO packet may be large; every device-produced segment must fit.
+        if conn.tso_max == 0 {
+            assert!(header + plan.len as usize <= MTU);
+        }
+    }
+
+    #[test]
+    fn full_data_with_dsack_fits_negotiated_mtu() {
+        for ipv6 in [false, true] {
+            for timestamps in [false, true] {
+                exercise(ipv6, timestamps, |conn, ctx| {
+                    write(conn, ctx, conn.mss as usize);
+                    conn.dsack = Some((0, 1));
+                    let plan = conn.plan(Instant::ZERO, Pressure::Free).expect("data plan");
+                    check_packet(conn, &plan);
+                    assert_eq!(plan.len, conn.mss - 12);
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn sack_options_limit_data_and_tso_segmentation_grid() {
+        for ipv6 in [false, true] {
+            for timestamps in [false, true] {
+                for tso in [0, 12000] {
+                    for ranges in 0..=5 {
+                        exercise(ipv6, timestamps, |conn, ctx| {
+                            write(conn, ctx, 12000);
+                            conn.tso_max = tso;
+                            conn.dsack = Some((0, 1));
+                            let mut ooo = OooQueue::default();
+                            for i in 0..ranges {
+                                ooo.insert(10 + i * 10, Bytes::from_static(b"x"));
+                            }
+                            conn.ooo = Some(Box::new(ooo));
+                            let blocks = (ranges as usize + 1).min(wire::max_sack_blocks(timestamps));
+                            let expected = conn.mss - (4 + 8 * blocks as u32);
+                            let plan = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                            check_packet(conn, &plan);
+                            assert_eq!(plan.mss as u32, expected);
+                            conn.commit(&plan, Instant::ZERO, ctx.cfg);
+                            assert!(conn.dsack.is_none());
+                            assert_eq!(conn.sb.recs[0].seg, if tso > 0 { expected as u16 } else { 0 });
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn retransmission_and_tail_probe_split_for_new_sack_options() {
+        for tail_probe in [false, true] {
+            exercise(false, true, |conn, ctx| {
+                write(conn, ctx, conn.mss as usize);
+                let original = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                conn.commit(&original, Instant::ZERO, ctx.cfg);
+                conn.dsack = Some((0, 1));
+                conn.ack_need = AckNeed::Now;
+                if tail_probe {
+                    conn.tlp.pending = true;
+                } else {
+                    conn.sb.mark_lost(0);
+                    // Without a record slot, send the ACK instead of an oversized retransmission.
+                    let control = conn.plan_in_place(Instant::ZERO, Pressure::Free).unwrap();
+                    assert_eq!(control.kind, PlanKind::Ack);
+                    assert_eq!(conn.sb.recs.len(), 1);
+                }
+                let plan = conn.plan(Instant::ZERO, Pressure::Free).unwrap();
+                assert_eq!(plan.kind, if tail_probe { PlanKind::TlpProbe } else { PlanKind::Rtx });
+                check_packet(conn, &plan);
+                assert_eq!(conn.sb.recs.len(), 2);
+                conn.commit(&plan, Instant::ZERO, ctx.cfg);
+            });
+        }
     }
 }
 
