@@ -243,6 +243,7 @@ def main():
     with Lease(args.lease_dir.resolve(), args.physical_domain, "issue100-wg-" + args.output.name, args.generation) as lease:
         args.output.mkdir(exist_ok=False)
         protocol = {"kind":"functional-only","mtu":1420,"rounds":args.rounds,"order":"healthy, then base/fixed per round",
+                    "registered_ns":time.time_ns(),"rustc":command(["rustc", "+1.94.1", "-Vv"]),
                     "physical_domain":args.physical_domain,"generation":args.generation,"runner_sha256":sha(__file__),
                     "rule":"Both endpoints full, allocation denied and OOO=7 at RTO before releasing network faults; budget blockers held until full ACK and read.",
                     "recovery_timeout_secs":7,"maximum_case_secs":15,"expected_negative":"STALL, never accepted as a positive pass"}
