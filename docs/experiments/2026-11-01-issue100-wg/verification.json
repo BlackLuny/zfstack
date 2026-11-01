@@ -1,0 +1,374 @@
+{
+  "analyzer_sha256": "1c00cdf9f954fbbae0641907d57930fbc18086b71301cdd3e1d5f9298ab7dae0",
+  "capture_note": "Capture drops are retained per endpoint. Full TUN writes and application bytes are independently checked by endpoint records.",
+  "cases": [
+    {
+      "case": "healthy",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 7,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "08453a1927454685d7863a0d8e7699b217162196e2e6e27ee28c93163223b4ad",
+            "tcp_packets": 50,
+            "wg_data_packets": 24,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "received": 1632,
+          "record_failures": 0,
+          "rto_count": 0,
+          "side": "a",
+          "wg_rx": 2952,
+          "wg_tx": 3104
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 0,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "fee388228e7f217cfee356278a004ab299664bd0e03ad0cd96e49eec55587cfc",
+            "tcp_packets": 54,
+            "wg_data_packets": 27,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "received": 1632,
+          "record_failures": 0,
+          "rto_count": 0,
+          "side": "b",
+          "wg_rx": 3104,
+          "wg_tx": 2952
+        }
+      ],
+      "expected": "PASS",
+      "observed": "PASS",
+      "timestamps": true
+    },
+    {
+      "case": "01-base",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 23,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "283149aa658657ec1778a95eba0cbdbe1d8f61788966a7816105eb5c5f46cf9f",
+            "tcp_packets": 21,
+            "wg_data_packets": 9,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1376,
+          "kernel_drop_counters": [
+            1,
+            1
+          ],
+          "received": 0,
+          "record_failures": 5040,
+          "rto_count": 5,
+          "side": "a",
+          "wg_rx": 860,
+          "wg_tx": 1012
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 34,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "f423e0a13747e4b455e6047edd948ebb0ce76c50a3934444df48171756ecbbc0",
+            "tcp_packets": 10,
+            "wg_data_packets": 9,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1376,
+          "kernel_drop_counters": [
+            1,
+            1
+          ],
+          "received": 0,
+          "record_failures": 4972,
+          "rto_count": 5,
+          "side": "b",
+          "wg_rx": 1012,
+          "wg_tx": 860
+        }
+      ],
+      "expected": "STALL",
+      "observed": "STALL",
+      "timestamps": true
+    },
+    {
+      "case": "01-fixed",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 27,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "667196c35ac95046591e86af88e8e8fb3e583f0fd7429cf1d767f5aa91ecf6ee",
+            "tcp_packets": 35,
+            "wg_data_packets": 19,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "full_mss_repairs_without_sack": 2,
+          "kernel_drop_counters": [
+            2,
+            1
+          ],
+          "received": 1632,
+          "record_failures": 299,
+          "rto_count": 2,
+          "side": "a",
+          "wg_rx": 2952,
+          "wg_tx": 3008
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 2,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "bdce77e63ffe949ef739bc4f714ac4ee69c79625c9ff0ed1cbce8c1ca3aa6698",
+            "tcp_packets": 53,
+            "wg_data_packets": 26,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "full_mss_repairs_without_sack": 2,
+          "kernel_drop_counters": [
+            2,
+            1
+          ],
+          "received": 1632,
+          "record_failures": 294,
+          "rto_count": 2,
+          "side": "b",
+          "wg_rx": 3008,
+          "wg_tx": 2952
+        }
+      ],
+      "expected": "PASS",
+      "observed": "PASS",
+      "timestamps": true
+    },
+    {
+      "case": "02-base",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 27,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "7f62a94042f4a282e4141791281a7383cd8b9436009f4135c1922c1bb6cb50b6",
+            "tcp_packets": 18,
+            "wg_data_packets": 8,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1388,
+          "kernel_drop_counters": [
+            1,
+            1
+          ],
+          "received": 0,
+          "record_failures": 5352,
+          "rto_count": 5,
+          "side": "a",
+          "wg_rx": 748,
+          "wg_tx": 884
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 30,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "c8df280a37214e45001c14fb11c2e194dba61ab12cc9e4bf086dd2262cb01cd8",
+            "tcp_packets": 18,
+            "wg_data_packets": 5,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1388,
+          "kernel_drop_counters": [
+            1,
+            1
+          ],
+          "received": 0,
+          "record_failures": 5310,
+          "rto_count": 5,
+          "side": "b",
+          "wg_rx": 884,
+          "wg_tx": 748
+        }
+      ],
+      "expected": "STALL",
+      "observed": "STALL",
+      "timestamps": false
+    },
+    {
+      "case": "02-fixed",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 0,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "a0de86b542a0e89dcf196e61001d9ddf6e011dfa3022c329ef5e9ac9c4c936ac",
+            "tcp_packets": 59,
+            "wg_data_packets": 28,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1644,
+          "full_mss_repairs_without_sack": 3,
+          "kernel_drop_counters": [
+            3,
+            0
+          ],
+          "received": 1644,
+          "record_failures": 164,
+          "rto_count": 2,
+          "side": "a",
+          "wg_rx": 2888,
+          "wg_tx": 3008
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 0,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "9929e9fea8b6339ae55b146489248f0a0dd26e2f8d868ba6e1ff48319e2e3f84",
+            "tcp_packets": 59,
+            "wg_data_packets": 28,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1644,
+          "full_mss_repairs_without_sack": 2,
+          "kernel_drop_counters": [
+            2,
+            1
+          ],
+          "received": 1644,
+          "record_failures": 154,
+          "rto_count": 2,
+          "side": "b",
+          "wg_rx": 3008,
+          "wg_tx": 2888
+        }
+      ],
+      "expected": "PASS",
+      "observed": "PASS",
+      "timestamps": false
+    },
+    {
+      "case": "03-base",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 0,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "7fcdce2d788380fe6bb544df31a486ffc89c0d5388e5cd6e3564570fb6c9f58b",
+            "tcp_packets": 36,
+            "wg_data_packets": 17,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1376,
+          "kernel_drop_counters": [
+            1,
+            1
+          ],
+          "received": 0,
+          "record_failures": 4114,
+          "rto_count": 5,
+          "side": "a",
+          "wg_rx": 972,
+          "wg_tx": 1012
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 7,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 176,
+            "sha256": "a38dda405b6f82f2b3858d10e1aca0298a26d16c2c90dc68a8184090a41fe4db",
+            "tcp_packets": 28,
+            "wg_data_packets": 17,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1376,
+          "kernel_drop_counters": [
+            1,
+            0
+          ],
+          "received": 0,
+          "record_failures": 4101,
+          "rto_count": 5,
+          "side": "b",
+          "wg_rx": 1012,
+          "wg_tx": 972
+        }
+      ],
+      "expected": "STALL",
+      "observed": "STALL",
+      "timestamps": true
+    },
+    {
+      "case": "03-fixed",
+      "endpoints": [
+        {
+          "capture": {
+            "kernel_capture_drops": 11,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "afaf52dca99f96e3112b3073e4f6a75d96294b17ac2d967f54321a1d3cf5afd4",
+            "tcp_packets": 46,
+            "wg_data_packets": 21,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "full_mss_repairs_without_sack": 2,
+          "kernel_drop_counters": [
+            2,
+            1
+          ],
+          "received": 1632,
+          "record_failures": 282,
+          "rto_count": 2,
+          "side": "a",
+          "wg_rx": 2856,
+          "wg_tx": 3008
+        },
+        {
+          "capture": {
+            "kernel_capture_drops": 31,
+            "max_tcp_ip_bytes": 1420,
+            "max_wg_ip_bytes": 1480,
+            "sha256": "05cdeb21a3d4c143a22cbf75cd705c0855eca01853c66ede7276946b76db87d2",
+            "tcp_packets": 33,
+            "wg_data_packets": 14,
+            "wg_handshake_packets": 2
+          },
+          "expected": 1632,
+          "full_mss_repairs_without_sack": 2,
+          "kernel_drop_counters": [
+            2,
+            1
+          ],
+          "received": 1632,
+          "record_failures": 283,
+          "rto_count": 2,
+          "side": "b",
+          "wg_rx": 3008,
+          "wg_tx": 2856
+        }
+      ],
+      "expected": "PASS",
+      "observed": "PASS",
+      "timestamps": true
+    }
+  ],
+  "emsgsize": 0,
+  "expected_stall_controls": 3,
+  "positive_cases": 4,
+  "protocol_sha256": "cd8a1ae771faeb7300677e58b35efe76f88746762b3188c29b4339a09a7bc3f3",
+  "scope": "functional, real Linux Shards/TUN/kernel WG over isolated veth; not WAN or zfc release qualification",
+  "verified": true
+}

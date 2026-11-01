@@ -2014,7 +2014,7 @@ impl Shard {
             }
             let peer = conn.peer;
             let csum_partial = iface.tx_csum_offload;
-            let gso_size = if plan.len as usize > mss { mss as u16 } else { 0 };
+            let gso_size = if plan.len > plan.mss as u32 { plan.mss } else { 0 };
             let (hl, payload) = conn.build(&plan, now, &mut self.hdr, self.cfg.ttl, csum_partial);
             let pkt = OutPacket { peer, header: &self.hdr[..hl], payload, csum_partial, gso_size };
             let len = pkt.len();
