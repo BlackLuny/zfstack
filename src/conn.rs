@@ -1299,6 +1299,9 @@ impl Conn {
         self.stats.segs_in += 1;
         match self.state {
             State::Closed => {}
+            // Match the compact TIME_WAIT path: a late RST must not assassinate
+            // TIME_WAIT or discard the stream an application has yet to drain.
+            State::TimeWait if h.has(RST) => {}
             State::SynSent => self.input_syn_sent(now, h, ctx),
             State::SynReceived => self.input_sync(now, h, payload, ctx, true),
             _ => self.input_sync(now, h, payload, ctx, false),
@@ -3065,6 +3068,33 @@ mod rx_descriptor_tests {
 
     fn exercise(high: u64, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
         exercise_config(high, StackConfig::default(), run);
+    }
+
+    #[test]
+    fn time_wait_reset_preserves_unread_stream() {
+        exercise(1 << 20, |conn, ctx| {
+            conn.process_data(Instant::ZERO, 1, IngressPayload::Borrowed(&[0x5a; 64]), false, ctx);
+            conn.fin_rcvd = Some(conn.rcv_nxt);
+            conn.rcv_nxt += 1;
+            conn.enter_time_wait(Instant::ZERO, ctx);
+            let reset = TcpHeader {
+                src_port: 40000,
+                dst_port: 80,
+                seq: conn.rx_sp.seq(conn.rcv_nxt),
+                ack: conn.tx_sp.seq(conn.snd_max),
+                flags: RST | ACK,
+                window: 65535,
+                opts: wire::TcpOptions::default(),
+                data_off: 20,
+            };
+            conn.input(Instant::ZERO, &reset, IngressPayload::Borrowed(&[]), ctx);
+            assert_eq!(conn.state, State::TimeWait);
+            assert_eq!(conn.close_reason, None);
+            let mut data = [0; 64];
+            assert_eq!(conn.read(&mut data, ctx, Instant::ZERO), ReadResult::Data(64));
+            assert_eq!(data, [0x5a; 64]);
+            assert_eq!(conn.read(&mut data, ctx, Instant::ZERO), ReadResult::Eof);
+        });
     }
 
     fn exercise_config(high: u64, cfg: StackConfig, run: impl FnOnce(&mut Conn, &mut Ctx<'_>)) {
