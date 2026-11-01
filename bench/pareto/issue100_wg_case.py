@@ -105,7 +105,7 @@ def impair():
         rules = ('table inet i100 { chain forward { type filter hook forward priority 0; policy accept;\n'
                  ' iifname "i100t0" ip length > 400 counter drop\n'
                  ' iifname "i100t0" tcp flags & (syn | fin | rst | psh | ack) == ack counter drop\n'
-                 '} }\n')
+                 '}\n}\n')
         command(["ip", "netns", "exec", f"i100{side}", "nft", "-f", "-"], data=rules)
 
 
@@ -229,7 +229,7 @@ def main():
     args.fixed_root, args.base_root = args.fixed_root.resolve(), args.base_root.resolve()
     if args.inside:
         assert os.environ.get("QA_NETNS_ISOLATED") == "1" and os.geteuid() == 0
-        bins = {name: args.output / f"target-{name}/release/examples/issue100_wg_duplex" for name in ("fixed", "base")}
+        bins = {name: args.output / f"target-{name}/release/issue100_wg_duplex" for name in ("fixed", "base")}
         results = [case(bins["fixed"], args.output / "healthy", False, True)]
         for repeat in range(args.rounds):
             timestamps = repeat % 2 == 0
@@ -253,9 +253,9 @@ def main():
             env["CARGO_TARGET_DIR"] = str(args.output / f"target-{arm}")
             env["CARGO_BUILD_JOBS"] = "2"
             with (args.output / f"build-{arm}.log").open("w") as log:
-                command_args = ["cargo", "+1.94.1", "build", "--locked", "--release", "-p", "zfbench", "--example", "issue100_wg_duplex", "--features", "zfstack/test-peer"]
+                command_args = ["cargo", "+1.94.1", "build", "--locked", "--release", "--manifest-path", str(root / "bench/issue100-wg/Cargo.toml")]
                 subprocess.run(command_args, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
-            binary = args.output / f"target-{arm}/release/examples/issue100_wg_duplex"
+            binary = args.output / f"target-{arm}/release/issue100_wg_duplex"
             protocol[f"{arm}_binary_sha256"] = sha(binary)
             save(args.output / "protocol.json", protocol)
         lease.check()

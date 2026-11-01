@@ -91,12 +91,14 @@ impl SinkStats {
 }
 
 fn snapshot(shard: &Shard, id: Option<ConnId>, sink: &SinkStats, phase: &str, received: usize, expected: usize, held: u64) -> Value {
-    let info = id.and_then(|id| shard.info(id)).map(|i| json!({
-        "state":format!("{:?}",i.state),"mss":i.mss,"tx_queued":i.tx_queued,"tx_unsent":i.tx_unsent,
-        "rx_queued":i.rx_queued,"ooo_bytes":i.ooo_bytes,"pipe":i.pipe,"lost":i.lost,"sacked":i.sacked,
-        "rto_count":i.stats.rto_count,"bytes_retrans":i.stats.bytes_retrans,"dropped_no_mem":i.stats.dropped_no_mem,
-        "rx_progress_packets":i.stats.rx_progress_packets,"bytes_sent":i.stats.bytes_sent,"ooo_segs":i.stats.ooo_segs
-    }));
+    let info = id.and_then(|id| shard.info(id)).map(|i| {
+        json!({
+            "state":format!("{:?}",i.state),"mss":i.mss,"tx_queued":i.tx_queued,"tx_unsent":i.tx_unsent,
+            "rx_queued":i.rx_queued,"ooo_bytes":i.ooo_bytes,"pipe":i.pipe,"lost":i.lost,"sacked":i.sacked,
+            "rto_count":i.stats.rto_count,"bytes_retrans":i.stats.bytes_retrans,"dropped_no_mem":i.stats.dropped_no_mem,
+            "rx_progress_packets":i.stats.rx_progress_packets,"bytes_sent":i.stats.bytes_sent,"ooo_segs":i.stats.ooo_segs
+        })
+    });
     json!({"phase":phase,"info":info,"received":received,"expected":expected,"held_bytes":held,
         "reserved":shard.budget().global().reserved(),"high":LIMIT,"record_waiters":shard.record_waiters(),
         "send_record_failures":shard.budget().stats().failures().send_record,"runs":shard.stats().runs,
