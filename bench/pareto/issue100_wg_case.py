@@ -135,6 +135,7 @@ def case(binary, output, fault, timestamps):
             handles.append(caplog)
             captures.append(subprocess.Popen(["ip", "netns", "exec", f"i100{side}", "tcpdump", "-U", "-n", "-i", "any",
                                               "-w", str(output / f"{side}.pcap"), "tcp or udp port 51820"], stdout=caplog, stderr=subprocess.STDOUT))
+        wait_for(lambda: all("listening on" in (output / f"{s}.tcpdump.log").read_text() for s in "ab"), children + captures, 3)
         (output / "network-ready").touch()
         wait_for(lambda: all(s["phase"] == "connected" for s in statuses(output)), children, 4)
         result["connected"] = observe()
