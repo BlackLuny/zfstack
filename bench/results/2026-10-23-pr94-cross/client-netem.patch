@@ -1,0 +1,54 @@
+diff --git a/bench/src/climode.rs b/bench/src/climode.rs
+index 63b91ee..c743479 100644
+--- a/bench/src/climode.rs
++++ b/bench/src/climode.rs
+@@ -161,6 +161,7 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
+         let up = std::fs::read_to_string(format!("/sys/class/net/{PROXY_TUN}/operstate")).is_ok();
+         if up {
+             tun::sh_quiet(&format!("ip route replace {PROXY_ROUTE} dev {PROXY_TUN}"));
++            apply_client_netem()?;
+         }
+         if up && std::net::TcpStream::connect_timeout(&target, Duration::from_millis(300)).is_ok() {
+             break;
+@@ -170,6 +171,41 @@ fn spawn_proxy(a: &Args, kind: ProxyKind) -> io::Result<Option<Child>> {
+     Ok(Some(child))
+ }
+ 
++/// Optional client-path delay/loss. `ZFBENCH_CLIENT_NETEM=delay_ms:loss_prob`
++/// (for example `80:0.01`). Root netem applies to host egress into the TUN,
++/// which is the client-to-proxy direction. Proxy writes do not traverse it,
++/// so the delay is one way; callers pass the full target RTT as `delay_ms`
++/// when they want download ACKs to see about that RTT. Absent or `0:0` is a no-op.
++fn apply_client_netem() -> io::Result<()> {
++    let Ok(spec) = std::env::var("ZFBENCH_CLIENT_NETEM") else { return Ok(()) };
++    let mut parts = spec.split(':');
++    let delay_ms: f64 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
++    let loss: f64 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
++    if delay_ms <= 0.0 && loss <= 0.0 {
++        return Ok(());
++    }
++    if !(0.0..10_000.0).contains(&delay_ms) || !(0.0..=1.0).contains(&loss) {
++        return Err(io::Error::new(io::ErrorKind::InvalidInput, "ZFBENCH_CLIENT_NETEM out of range"));
++    }
++    // rate caps host egress into the TUN (client -> proxy). Proxy -> client
++    // writes do not traverse this qdisc. 100 Mbit/s matches the server matrix.
++    let cmd = if loss > 0.0 {
++        format!(
++            "tc qdisc replace dev {PROXY_TUN} root netem delay {:.3}ms rate 100mbit loss {:.4}%",
++            delay_ms,
++            loss * 100.0
++        )
++    } else {
++        format!("tc qdisc replace dev {PROXY_TUN} root netem delay {:.3}ms rate 100mbit", delay_ms)
++    };
++    tun::sh(&cmd)?;
++    let show = tun::sh_output(&format!("tc qdisc show dev {PROXY_TUN}"));
++    if !show.contains("netem") {
++        return Err(io::Error::other(format!("client netem was not installed: {show}")));
++    }
++    Ok(())
++}
++
+ fn stop_proxy(child: Option<Child>) {
+     if let Some(mut c) = child {
+         unsafe { libc::kill(c.id() as i32, libc::SIGTERM) };

@@ -1,0 +1,31 @@
+{
+  "which": "all",
+  "count": 222,
+  "rate_mbps": 100.0,
+  "secs": 12,
+  "warmup": 4,
+  "open_loop_hz": 25,
+  "kernel": "6.12.94+",
+  "nproc": 4,
+  "hostname": "cursor",
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "bins": {
+    "pr94": {
+      "path": "/tmp/target-pr94/release/zfbench",
+      "sha256": "6b5751259ac1e6f46cd379a2e38bc8812c89b6b188357888dd4f14369cc7820d"
+    },
+    "main": {
+      "path": "/tmp/target-main/release/zfbench",
+      "sha256": "682f38ff1dbde953381497303a2882223f515474ef5ac42ac46d416dbec922ed"
+    }
+  },
+  "pr94": "9e2af0d50069abae4d9ef09c161fe3a3dda141a5",
+  "main": "9d6fb7684e3842da16e673825d3c9ace724aa433",
+  "src_identical": true,
+  "tcp_rmem": "4096\t1048576\t67108864",
+  "tcp_wmem": "4096\t1048576\t67108864",
+  "tcp_cc": "cubic",
+  "tcp_available_cc": "reno cubic",
+  "singbox": "/tmp/singbox-bin/sing-box",
+  "note": "Release profile, not fat LTO. Loss is applied in both directions on the emulator. Client netem delays only host egress into the TUN."
+}
