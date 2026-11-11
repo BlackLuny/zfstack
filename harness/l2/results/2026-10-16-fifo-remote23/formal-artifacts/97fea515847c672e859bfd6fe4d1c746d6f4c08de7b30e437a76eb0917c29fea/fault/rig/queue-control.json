@@ -1,0 +1,1769 @@
+{
+  "schema_version": 4,
+  "strategy": {
+    "kind": "tc-mirred-tap-userspace-fifo",
+    "path": "persistent from before baseline until after recovery",
+    "active": "release = arrival + delay_ms",
+    "drain": "FIFO behind backlog at drain_rate_bps",
+    "drain_rate_bps": 2000000000,
+    "transparent": "release = arrival once the FIFO is empty",
+    "lateness_limit_ns": 20000000,
+    "memory_limit_bytes": 268435456,
+    "max_frames": 4000000
+  },
+  "scope": "test-side shared worker egress queue; persistent userspace FIFO, not historical root-cause reproduction",
+  "config": {
+    "kind": "fifo-delay-line",
+    "node": "worker",
+    "interface": "eth0",
+    "phase": "loaded",
+    "delay_ms": 500.0,
+    "limit_packets": 100000
+  },
+  "clock": "CLOCK_MONOTONIC",
+  "planned": {
+    "measurement_start_ns": 37315679520603664,
+    "start_ns": 37315687520603664,
+    "end_ns": 37315702770603664,
+    "recovery_start_ns": 37315703520603664,
+    "measurement_end_ns": 37315711520603664
+  },
+  "actual": {
+    "installed_ns": 37315676602939495,
+    "transparent_ns": 37315703523772557,
+    "owner_released_ns": 37315711636714693,
+    "removed_ns": 37315711639280808,
+    "closed_ns": 37315711742006954
+  },
+  "kernel": {
+    "qdisc_before": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ],
+    "tap_qdisc": [
+      {
+        "kind": "noqueue",
+        "handle": "80c7:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ],
+    "tap_before": {
+      "rx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      },
+      "tx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      }
+    },
+    "qdisc_installed": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      },
+      {
+        "kind": "clsact",
+        "handle": "ffff:",
+        "parent": "ffff:fff1",
+        "options": {}
+      }
+    ],
+    "action": {
+      "packets": 355584,
+      "bytes": 447310894,
+      "drops": 0,
+      "overlimits": 0
+    },
+    "tap_after": {
+      "rx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      },
+      "tx": {
+        "packets": 355584,
+        "bytes": 447310894,
+        "dropped": 0,
+        "errors": 0
+      }
+    },
+    "qdisc_restored": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ]
+  },
+  "resources": {
+    "max_frames": 22526,
+    "max_bytes": 30089968
+  },
+  "ledger": {
+    "path": "queue-ledger.bin.gz",
+    "sha256": "68c4da441700d14f60bd9344c7532727745b0081be5037768c02b0015ca6734a",
+    "frames": 355584,
+    "record_format": "<IBBBxHIQIIQH gzip"
+  },
+  "errors": [],
+  "cancelled": false,
+  "cleanup": "PASS",
+  "summary": {
+    "pre": {
+      "frames": 11235,
+      "max_residence_ns": 444710,
+      "p99_residence_ns": 95281
+    },
+    "active": {
+      "frames": 288987,
+      "max_residence_ns": 662718680,
+      "p99_residence_ns": 643325930
+    },
+    "drain": {
+      "frames": 18536,
+      "max_residence_ns": 492238194,
+      "p99_residence_ns": 278596466
+    },
+    "transparent": {
+      "frames": 36826,
+      "max_residence_ns": 15280892,
+      "p99_residence_ns": 70295
+    }
+  },
+  "link_samples": {
+    "schema_version": 1,
+    "clock": "CLOCK_MONOTONIC",
+    "before": {
+      "schema_version": 1,
+      "clock": "CLOCK_MONOTONIC",
+      "begin_ns": 37315676390558481,
+      "nodes": {
+        "client0": {
+          "namespace": "rig-38b7b5-client",
+          "begin_ns": 37315676390562323,
+          "namespace_inode": 4026533334,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 92,
+                  "packets": 1,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 180,
+                  "packets": 2,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 4,
+              "link_index": 5,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "82:79:d2:d5:46:ca",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4946,
+                  "packets": 59,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 822,
+                  "packets": 9,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676394624439
+        },
+        "client1": {
+          "namespace": "rig-38b7b5-fwd1",
+          "begin_ns": 37315676394625427,
+          "namespace_inode": 4026533143,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 92,
+                  "packets": 1,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 180,
+                  "packets": 2,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 8,
+              "link_index": 9,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "26:0d:1e:f0:ac:21",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4676,
+                  "packets": 56,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 822,
+                  "packets": 9,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676398379914
+        },
+        "client2": {
+          "namespace": "rig-38b7b5-fwd2",
+          "begin_ns": 37315676398381109,
+          "namespace_inode": 4026533091,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 92,
+                  "packets": 1,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 180,
+                  "packets": 2,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 10,
+              "link_index": 11,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "c2:7b:e4:e3:8e:df",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4476,
+                  "packets": 54,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 822,
+                  "packets": 9,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676401773714
+        },
+        "client3": {
+          "namespace": "rig-38b7b5-fwd3",
+          "begin_ns": 37315676401774826,
+          "namespace_inode": 4026533282,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 92,
+                  "packets": 1,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 180,
+                  "packets": 2,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 12,
+              "link_index": 13,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "26:2e:62:54:a8:5c",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4246,
+                  "packets": 51,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 822,
+                  "packets": 9,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676405317753
+        },
+        "target": {
+          "namespace": "rig-38b7b5-target",
+          "begin_ns": 37315676405318845,
+          "namespace_inode": 4026533476,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 16,
+              "link_index": 17,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "de:2d:b7:2f:d0:6e",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 3760,
+                  "packets": 46,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 516,
+                  "packets": 6,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676408703576
+        },
+        "worker": {
+          "namespace": "rig-38b7b5-worker",
+          "begin_ns": 37315676408705025,
+          "namespace_inode": 4026533978,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 400,
+                  "packets": 8,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 400,
+                  "packets": 8,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 6,
+              "link_index": 7,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "9a:76:5a:f7:7d:75",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 10265,
+                  "packets": 75,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 5352,
+                  "packets": 30,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315676412257438
+        }
+      },
+      "errors": [],
+      "end_ns": 37315676412258943
+    },
+    "after": {
+      "schema_version": 1,
+      "clock": "CLOCK_MONOTONIC",
+      "begin_ns": 37315715162730029,
+      "nodes": {
+        "client0": {
+          "namespace": "rig-38b7b5-client",
+          "begin_ns": 37315715162734797,
+          "namespace_inode": 4026533334,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 405125940,
+                  "packets": 304805,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 16025076,
+                  "packets": 137202,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 4,
+              "link_index": 5,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "82:79:d2:d5:46:ca",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 417934536,
+                  "packets": 304892,
+                  "errors": 0,
+                  "dropped": 5,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 21788370,
+                  "packets": 137213,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715169606999
+        },
+        "client1": {
+          "namespace": "rig-38b7b5-fwd1",
+          "begin_ns": 37315715169608749,
+          "namespace_inode": 4026533143,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 4021812,
+                  "packets": 4789,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4082420,
+                  "packets": 4800,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 8,
+              "link_index": 9,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "26:0d:1e:f0:ac:21",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4229508,
+                  "packets": 4874,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4284872,
+                  "packets": 4812,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715177331710
+        },
+        "client2": {
+          "namespace": "rig-38b7b5-fwd2",
+          "begin_ns": 37315715177333351,
+          "namespace_inode": 4026533091,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 4022564,
+                  "packets": 4789,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4081812,
+                  "packets": 4799,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 10,
+              "link_index": 11,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "c2:7b:e4:e3:8e:df",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4230060,
+                  "packets": 4872,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4284222,
+                  "packets": 4811,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715181219849
+        },
+        "client3": {
+          "namespace": "rig-38b7b5-fwd3",
+          "begin_ns": 37315715181221329,
+          "namespace_inode": 4026533282,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 2,
+              "ifname": "wg0",
+              "flags": [
+                "POINTOPOINT",
+                "NOARP",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1420,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "none",
+              "stats64": {
+                "rx": {
+                  "bytes": 4026232,
+                  "packets": 4802,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4086484,
+                  "packets": 4813,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 12,
+              "link_index": 13,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "26:2e:62:54:a8:5c",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 4234044,
+                  "packets": 4882,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 4289482,
+                  "packets": 4825,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715184824978
+        },
+        "target": {
+          "namespace": "rig-38b7b5-target",
+          "begin_ns": 37315715184826858,
+          "namespace_inode": 4026533476,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 0,
+                  "packets": 0,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 16,
+              "link_index": 17,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "de:2d:b7:2f:d0:6e",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 16471247,
+                  "packets": 36268,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 443901832,
+                  "packets": 43102,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715188279588
+        },
+        "worker": {
+          "namespace": "rig-38b7b5-worker",
+          "begin_ns": 37315715188281258,
+          "namespace_inode": 4026533978,
+          "links": [
+            {
+              "ifindex": 1,
+              "ifname": "lo",
+              "flags": [
+                "LOOPBACK",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 65536,
+              "qdisc": "noqueue",
+              "operstate": "UNKNOWN",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "loopback",
+              "address": "00:00:00:00:00:00",
+              "broadcast": "00:00:00:00:00:00",
+              "stats64": {
+                "rx": {
+                  "bytes": 1200,
+                  "packets": 24,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 1200,
+                  "packets": 24,
+                  "errors": 0,
+                  "dropped": 0,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 0
+                }
+              }
+            },
+            {
+              "ifindex": 6,
+              "link_index": 7,
+              "ifname": "eth0",
+              "flags": [
+                "BROADCAST",
+                "MULTICAST",
+                "UP",
+                "LOWER_UP"
+              ],
+              "mtu": 1500,
+              "qdisc": "noqueue",
+              "operstate": "UP",
+              "linkmode": "DEFAULT",
+              "group": "default",
+              "txqlen": 1000,
+              "link_type": "ether",
+              "address": "9a:76:5a:f7:7d:75",
+              "broadcast": "ff:ff:ff:ff:ff:ff",
+              "link_netnsid": 0,
+              "stats64": {
+                "rx": {
+                  "bytes": 478558637,
+                  "packets": 194829,
+                  "errors": 0,
+                  "dropped": 0,
+                  "over_errors": 0,
+                  "multicast": 0,
+                  "length_errors": 0,
+                  "crc_errors": 0,
+                  "frame_errors": 0,
+                  "fifo_errors": 0,
+                  "missed_errors": 0
+                },
+                "tx": {
+                  "bytes": 447088058,
+                  "packets": 355446,
+                  "errors": 0,
+                  "dropped": 172,
+                  "carrier_errors": 0,
+                  "collisions": 0,
+                  "aborted_errors": 0,
+                  "fifo_errors": 0,
+                  "window_errors": 0,
+                  "heartbeat_errors": 0,
+                  "carrier_changes": 2
+                }
+              }
+            }
+          ],
+          "end_ns": 37315715191663689
+        }
+      },
+      "errors": [],
+      "end_ns": 37315715191666269
+    }
+  }
+}

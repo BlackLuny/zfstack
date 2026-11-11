@@ -1,0 +1,65 @@
+[
+  {
+    "label": "capabilities",
+    "argv": [
+      "/bin/python3",
+      "/workspace/harness/l2/results/2026-10-16-netem-fifo/netem_capabilities.py",
+      "/tmp/vmout/drv/out/capabilities.json"
+    ],
+    "returncode": 0,
+    "started_unix_ns": 1792157152283136490,
+    "finished_unix_ns": 1792157157769348800,
+    "proc_modules": "cls_matchall 16384 0 - Live 0xffffffffc0a22000\nact_mirred 20480 0 - Live 0xffffffffc0a1a000\nsch_ingress 20480 0 - Live 0xffffffffc0a12000\nsch_netem 24576 0 - Live 0xffffffffc0a09000\ndummy 12288 0 - Live 0xffffffffc0a03000\nveth 45056 0 - Live 0xffffffffc09f4000\nkvm_amd 212992 0 - Live 0xffffffffc09bc000\nccp 147456 1 kvm_amd, Live 0xffffffffc0994000\nkvm 1404928 1 kvm_amd, Live 0xffffffffc0839000\nirqbypass 12288 1 kvm, Live 0xffffffffc0833000\ncrct10dif_pclmul 12288 1 - Live 0xffffffffc082d000\ncrc32_pclmul 12288 0 - Live 0xffffffffc0827000\npolyval_clmulni 12288 0 - Live 0xffffffffc0821000\npolyval_generic 12288 1 polyval_clmulni, Live 0xffffffffc081b000\nghash_clmulni_intel 16384 0 - Live 0xffffffffc0814000\nsha256_ssse3 32768 0 - Live 0xffffffffc080b000\nsha1_ssse3 32768 0 - Live 0xffffffffc079c000\naesni_intel 356352 0 - Live 0xffffffffc07b9000\ncrypto_simd 16384 1 aesni_intel, Live 0xffffffffc0734000\ncryptd 24576 2 ghash_clmulni_intel,crypto_simd, Live 0xffffffffc07b0000\ninput_leds 12288 0 - Live 0xffffffffc07a6000\npsmouse 217088 0 - Live 0xffffffffc075c000\nserio_raw 20480 0 - Live 0xffffffffc0736000\nahci 49152 0 - Live 0xffffffffc071a000\ni2c_i801 36864 0 - Live 0xffffffffc0700000\ni2c_smbus 16384 1 i2c_i801, Live 0xffffffffc0738000\nlibahci 53248 1 ahci, Live 0xffffffffc0721000\nlpc_ich 32768 0 - Live 0xffffffffc070f000\nmac_hid 12288 0 - Live 0xffffffffc0705000\nqemu_fw_cfg 24576 0 - Live 0xffffffffc06be000\noverlay 212992 8 - Live 0xffffffffc06c3000\n9pnet_virtio 20480 2 - Live 0xffffffffc06a8000\nvirtiofs 36864 0 - Live 0xffffffffc06b1000\n9p 77824 2 - Live 0xffffffffc0691000\n9pnet 102400 2 9pnet_virtio,9p, Live 0xffffffffc0674000\nnetfs 512000 1 9p, Live 0xffffffffc05f3000\n"
+  },
+  {
+    "label": "full",
+    "argv": [
+      "/bin/python3",
+      "/workspace/harness/l2/fifo_selftest.py",
+      "--kind",
+      "netem-fifo",
+      "--mode",
+      "full",
+      "--output",
+      "/tmp/vmout/drv/out/full.json"
+    ],
+    "returncode": 0,
+    "started_unix_ns": 1792157157788640040,
+    "finished_unix_ns": 1792157214604422200,
+    "proc_modules": "cls_matchall 16384 0 - Live 0xffffffffc0a22000\nact_mirred 20480 0 - Live 0xffffffffc0a1a000\nsch_ingress 20480 0 - Live 0xffffffffc0a12000\nsch_netem 24576 0 - Live 0xffffffffc0a09000\ndummy 12288 0 - Live 0xffffffffc0a03000\nveth 45056 0 - Live 0xffffffffc09f4000\nkvm_amd 212992 0 - Live 0xffffffffc09bc000\nccp 147456 1 kvm_amd, Live 0xffffffffc0994000\nkvm 1404928 1 kvm_amd, Live 0xffffffffc0839000\nirqbypass 12288 1 kvm, Live 0xffffffffc0833000\ncrct10dif_pclmul 12288 1 - Live 0xffffffffc082d000\ncrc32_pclmul 12288 0 - Live 0xffffffffc0827000\npolyval_clmulni 12288 0 - Live 0xffffffffc0821000\npolyval_generic 12288 1 polyval_clmulni, Live 0xffffffffc081b000\nghash_clmulni_intel 16384 0 - Live 0xffffffffc0814000\nsha256_ssse3 32768 0 - Live 0xffffffffc080b000\nsha1_ssse3 32768 0 - Live 0xffffffffc079c000\naesni_intel 356352 0 - Live 0xffffffffc07b9000\ncrypto_simd 16384 1 aesni_intel, Live 0xffffffffc0734000\ncryptd 24576 2 ghash_clmulni_intel,crypto_simd, Live 0xffffffffc07b0000\ninput_leds 12288 0 - Live 0xffffffffc07a6000\npsmouse 217088 0 - Live 0xffffffffc075c000\nserio_raw 20480 0 - Live 0xffffffffc0736000\nahci 49152 0 - Live 0xffffffffc071a000\ni2c_i801 36864 0 - Live 0xffffffffc0700000\ni2c_smbus 16384 1 i2c_i801, Live 0xffffffffc0738000\nlibahci 53248 1 ahci, Live 0xffffffffc0721000\nlpc_ich 32768 0 - Live 0xffffffffc070f000\nmac_hid 12288 0 - Live 0xffffffffc0705000\nqemu_fw_cfg 24576 0 - Live 0xffffffffc06be000\noverlay 212992 8 - Live 0xffffffffc06c3000\n9pnet_virtio 20480 2 - Live 0xffffffffc06a8000\nvirtiofs 36864 0 - Live 0xffffffffc06b1000\n9p 77824 2 - Live 0xffffffffc0691000\n9pnet 102400 2 9pnet_virtio,9p, Live 0xffffffffc0674000\nnetfs 512000 1 9p, Live 0xffffffffc05f3000\n"
+  },
+  {
+    "label": "cancel",
+    "argv": [
+      "/bin/python3",
+      "/workspace/harness/l2/fifo_selftest.py",
+      "--kind",
+      "netem-fifo",
+      "--mode",
+      "cancel",
+      "--output",
+      "/tmp/vmout/drv/out/cancel.json"
+    ],
+    "returncode": 1,
+    "started_unix_ns": 1792157214622086240,
+    "finished_unix_ns": 1792157268407090220,
+    "proc_modules": "cls_matchall 16384 0 - Live 0xffffffffc0a22000\nact_mirred 20480 0 - Live 0xffffffffc0a1a000\nsch_ingress 20480 0 - Live 0xffffffffc0a12000\nsch_netem 24576 0 - Live 0xffffffffc0a09000\ndummy 12288 0 - Live 0xffffffffc0a03000\nveth 45056 0 - Live 0xffffffffc09f4000\nkvm_amd 212992 0 - Live 0xffffffffc09bc000\nccp 147456 1 kvm_amd, Live 0xffffffffc0994000\nkvm 1404928 1 kvm_amd, Live 0xffffffffc0839000\nirqbypass 12288 1 kvm, Live 0xffffffffc0833000\ncrct10dif_pclmul 12288 1 - Live 0xffffffffc082d000\ncrc32_pclmul 12288 0 - Live 0xffffffffc0827000\npolyval_clmulni 12288 0 - Live 0xffffffffc0821000\npolyval_generic 12288 1 polyval_clmulni, Live 0xffffffffc081b000\nghash_clmulni_intel 16384 0 - Live 0xffffffffc0814000\nsha256_ssse3 32768 0 - Live 0xffffffffc080b000\nsha1_ssse3 32768 0 - Live 0xffffffffc079c000\naesni_intel 356352 0 - Live 0xffffffffc07b9000\ncrypto_simd 16384 1 aesni_intel, Live 0xffffffffc0734000\ncryptd 24576 2 ghash_clmulni_intel,crypto_simd, Live 0xffffffffc07b0000\ninput_leds 12288 0 - Live 0xffffffffc07a6000\npsmouse 217088 0 - Live 0xffffffffc075c000\nserio_raw 20480 0 - Live 0xffffffffc0736000\nahci 49152 0 - Live 0xffffffffc071a000\ni2c_i801 36864 0 - Live 0xffffffffc0700000\ni2c_smbus 16384 1 i2c_i801, Live 0xffffffffc0738000\nlibahci 53248 1 ahci, Live 0xffffffffc0721000\nlpc_ich 32768 0 - Live 0xffffffffc070f000\nmac_hid 12288 0 - Live 0xffffffffc0705000\nqemu_fw_cfg 24576 0 - Live 0xffffffffc06be000\noverlay 212992 8 - Live 0xffffffffc06c3000\n9pnet_virtio 20480 2 - Live 0xffffffffc06a8000\nvirtiofs 36864 0 - Live 0xffffffffc06b1000\n9p 77824 2 - Live 0xffffffffc0691000\n9pnet 102400 2 9pnet_virtio,9p, Live 0xffffffffc0674000\nnetfs 512000 1 9p, Live 0xffffffffc05f3000\n"
+  },
+  {
+    "label": "overflow",
+    "argv": [
+      "/bin/python3",
+      "/workspace/harness/l2/fifo_selftest.py",
+      "--kind",
+      "netem-fifo",
+      "--mode",
+      "overflow",
+      "--output",
+      "/tmp/vmout/drv/out/overflow.json"
+    ],
+    "returncode": 0,
+    "started_unix_ns": 1792157268425447300,
+    "finished_unix_ns": 1792157321121280690,
+    "proc_modules": "cls_matchall 16384 0 - Live 0xffffffffc0a22000\nact_mirred 20480 0 - Live 0xffffffffc0a1a000\nsch_ingress 20480 0 - Live 0xffffffffc0a12000\nsch_netem 24576 0 - Live 0xffffffffc0a09000\ndummy 12288 0 - Live 0xffffffffc0a03000\nveth 45056 0 - Live 0xffffffffc09f4000\nkvm_amd 212992 0 - Live 0xffffffffc09bc000\nccp 147456 1 kvm_amd, Live 0xffffffffc0994000\nkvm 1404928 1 kvm_amd, Live 0xffffffffc0839000\nirqbypass 12288 1 kvm, Live 0xffffffffc0833000\ncrct10dif_pclmul 12288 1 - Live 0xffffffffc082d000\ncrc32_pclmul 12288 0 - Live 0xffffffffc0827000\npolyval_clmulni 12288 0 - Live 0xffffffffc0821000\npolyval_generic 12288 1 polyval_clmulni, Live 0xffffffffc081b000\nghash_clmulni_intel 16384 0 - Live 0xffffffffc0814000\nsha256_ssse3 32768 0 - Live 0xffffffffc080b000\nsha1_ssse3 32768 0 - Live 0xffffffffc079c000\naesni_intel 356352 0 - Live 0xffffffffc07b9000\ncrypto_simd 16384 1 aesni_intel, Live 0xffffffffc0734000\ncryptd 24576 2 ghash_clmulni_intel,crypto_simd, Live 0xffffffffc07b0000\ninput_leds 12288 0 - Live 0xffffffffc07a6000\npsmouse 217088 0 - Live 0xffffffffc075c000\nserio_raw 20480 0 - Live 0xffffffffc0736000\nahci 49152 0 - Live 0xffffffffc071a000\ni2c_i801 36864 0 - Live 0xffffffffc0700000\ni2c_smbus 16384 1 i2c_i801, Live 0xffffffffc0738000\nlibahci 53248 1 ahci, Live 0xffffffffc0721000\nlpc_ich 32768 0 - Live 0xffffffffc070f000\nmac_hid 12288 0 - Live 0xffffffffc0705000\nqemu_fw_cfg 24576 0 - Live 0xffffffffc06be000\noverlay 212992 8 - Live 0xffffffffc06c3000\n9pnet_virtio 20480 2 - Live 0xffffffffc06a8000\nvirtiofs 36864 0 - Live 0xffffffffc06b1000\n9p 77824 2 - Live 0xffffffffc0691000\n9pnet 102400 2 9pnet_virtio,9p, Live 0xffffffffc0674000\nnetfs 512000 1 9p, Live 0xffffffffc05f3000\n"
+  }
+]

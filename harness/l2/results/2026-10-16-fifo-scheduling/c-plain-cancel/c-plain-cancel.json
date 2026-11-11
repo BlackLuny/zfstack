@@ -1,0 +1,118 @@
+{
+  "mode": "cancel",
+  "kernel": "7.0.12-linuxkit",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "cancel_recorded": true,
+    "oracle_rejects_cancel": true,
+    "udp_no_duplicates": true,
+    "redirect_kept_until_clients_reaped_and_measurement_ended": true
+  },
+  "ok": true,
+  "oracle_errors": [
+    "FIFO frame 22493 was released early or exceeded the lateness bound",
+    "FIFO injector execution was cancelled or incomplete"
+  ],
+  "sender": {
+    "sent": 18472,
+    "blocked": 0,
+    "tcp_bytes": 73885929
+  },
+  "frames": 44579,
+  "gso_frames": 9682,
+  "link_drop_deltas": {
+    "rig-3abc3b-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-3abc3b-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18472,
+  "udp_mib_delta": {
+    "InDatagrams": 18472,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73885929,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.068208,
+      "max": 553.93575
+    },
+    "recovery": {
+      "n": 3972,
+      "min": 0.041084,
+      "max": 11.446166
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.036583,
+      "max": 32.306333
+    }
+  },
+  "resources": {
+    "max_frames": 329,
+    "max_bytes": 2446968
+  },
+  "summary": {
+    "pre": {
+      "frames": 22098,
+      "max_residence_ns": 11617708,
+      "p99_residence_ns": 286083
+    },
+    "active": {
+      "frames": 8203,
+      "max_residence_ns": 548099750,
+      "p99_residence_ns": 515717333
+    },
+    "drain": {
+      "frames": 452,
+      "max_residence_ns": 498072084,
+      "p99_residence_ns": 490065708
+    },
+    "transparent": {
+      "frames": 13826,
+      "max_residence_ns": 10074625,
+      "p99_residence_ns": 272541
+    }
+  },
+  "actual": {
+    "installed_ns": 180937344164,
+    "cancel_requested_ns": 206855939260,
+    "transparent_ns": 214632214180,
+    "owner_released_ns": 222824806059,
+    "removed_ns": 222882885434,
+    "closed_ns": 222957921975
+  },
+  "planned": {
+    "measurement_start_ns": 190855629206,
+    "start_ns": 198855629206,
+    "end_ns": 214105629206,
+    "recovery_start_ns": 214855629206,
+    "measurement_end_ns": 222855629206
+  },
+  "report_errors": [
+    "FIFO injector cancelled before the measurement completed"
+  ],
+  "udp_inversions": 0,
+  "udp_missing_after_removal": []
+}

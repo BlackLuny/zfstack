@@ -1,0 +1,32 @@
+{
+  "command": [
+    "env",
+    "QA_DIAGNOSTIC=1",
+    "QA_INJECTOR_CPU=2",
+    "QA_INJECTOR_FIFO=10",
+    "bash",
+    "/work/fixed/qa/isolate-linux.sh",
+    "taskset",
+    "-c",
+    "3-7",
+    "python3",
+    "/work/diagnostic/fifo_selftest.py",
+    "--mode",
+    "full",
+    "--output",
+    "/evidence/b-full-2.json"
+  ],
+  "started_unix_ns": 1792145259263745000,
+  "finished_unix_ns": 1792145304680276000,
+  "returncode": 1,
+  "vm_pid": 61157,
+  "diagnostic": true,
+  "args": {
+    "name": "b-full-2",
+    "injector_cpu": 2,
+    "load_cpus": "3-7",
+    "fifo": 10,
+    "plain": false,
+    "mode": "full"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "lateness_witness": {
+    "operation": "epoll",
+    "guest_begin_ns": 476562738132,
+    "guest_end_ns": 476605274007,
+    "wall_ns": 42535875,
+    "guest_thread_cpu_ns": 47500,
+    "guest_switches": [
+      1,
+      0
+    ],
+    "vcpu": 0,
+    "host_cpu_upper_bound_ns": 871000,
+    "host_all_vcpu_cpu_upper_bound_ns": 1870000,
+    "host_sample_window_ns": [
+      798255444062208,
+      798255488282958
+    ],
+    "host_sample_edge_slack_ns": 1367270,
+    "extra": {
+      "timeout": 0.001742624
+    }
+  },
+  "guest_sched_trace_window": [
+    "     qa75-inject-2015    [000] d..2.   476.562745: sched_switch: prev_comm=qa75-inject prev_pid=2015 prev_prio=120 prev_state=S ==> next_comm=swapper/0 next_pid=0 next_prio=120",
+    "          <idle>-0       [000] dNh4.   476.565013: sched_wakeup: comm=qa75-inject pid=2015 prio=120 target_cpu=000",
+    "         python3-1997    [000] d..2.   476.605237: sched_switch: prev_comm=python3 prev_pid=1997 prev_prio=120 prev_state=S ==> next_comm=qa75-inject next_pid=2015 next_prio=120"
+  ],
+  "wakeup_to_run_ns_rounded_from_trace": 40224000,
+  "graft_probe": {
+    "noop_enqueue": 51,
+    "between_deactivate_and_activate_function_entries": 50,
+    "outside_entry_intervals": [
+      {
+        "timestamp_seconds": 644.950204,
+        "since_nearest_activate_entry_us": 1
+      }
+    ],
+    "qdisc_drop": 51,
+    "graft_intervals": 120,
+    "boundary_caveat": "function tracer records entry, not function return: one noop drop is 1 us after dev_activate entry. No claim that activation completed at that entry timestamp."
+  },
+  "historical_packet_caveat": "Original missing UDP seq10541 has no per-packet kernel trace; neighboring timestamps bracket it after redirect withdrawal and across clsact teardown. The causal probe proves this kernel mechanism, not retrospective identity of an unrecorded skb."
+}

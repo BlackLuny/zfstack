@@ -1,0 +1,69 @@
+{
+  "observed_unix_ns": 1792149092298405231,
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "ps",
+        "--format",
+        "{{.Names}} {{.Status}}"
+      ],
+      "returncode": 0,
+      "stdout": "zfc-web Up 4 weeks (healthy)\nzfc-controler Up 4 weeks (healthy)\nzfc-rrd-service Up 4 weeks (healthy)\nzfc-caddy Up 4 weeks (healthy)\nzfc-redis Up 4 months (healthy)\nzfc-postgres Up 4 months (healthy)\nzfc-tdengine Up 4 months (healthy)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show"
+      ],
+      "returncode": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":2,\"ifname\":\"eth0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"fq\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"00:57:e0:9c:81:05\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp3s0\"]},{\"ifindex\":3,\"ifname\":\"docker0\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"02:42:d5:72:17:6d\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":66858,\"ifname\":\"br-2033cc1cd25e\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"02:42:83:fc:1c:32\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":66874,\"link_index\":66873,\"ifname\":\"veth7839163\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"26:d6:79:78:ee:d5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0},{\"ifindex\":66876,\"link_index\":66875,\"ifname\":\"veth0011c26\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"06:23:26:30:1f:6b\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1},{\"ifindex\":66878,\"link_index\":66877,\"ifname\":\"vethacc6660\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"ba:e7:9a:40:87:1f\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2},{\"ifindex\":67065,\"link_index\":67064,\"ifname\":\"veth764e4ca\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"ae:11:44:d2:cf:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":3},{\"ifindex\":67067,\"link_index\":67066,\"ifname\":\"vethcce3f56\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"6a:b6:d5:56:a0:93\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":4},{\"ifindex\":67069,\"link_index\":67068,\"ifname\":\"veth9ee35ae\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"5e:ad:ee:e1:31:70\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":6},{\"ifindex\":67071,\"link_index\":67070,\"ifname\":\"veth3866151\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"76:86:30:81:3c:ab\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":7}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "list"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "df",
+        "-h",
+        "/"
+      ],
+      "returncode": 0,
+      "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/vda3       247G   37G  200G  16% /\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "free",
+        "-h"
+      ],
+      "returncode": 0,
+      "stdout": "               total        used        free      shared  buff/cache   available\nMem:           7.8Gi       2.5Gi       1.3Gi        69Mi       4.3Gi       5.3Gi\nSwap:          1.5Gi       838Mi       697Mi\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "dpkg-query",
+        "-W",
+        "python3.11",
+        "cmake",
+        "libclang-dev"
+      ],
+      "returncode": 0,
+      "stdout": "cmake\t3.25.1-1\nlibclang-dev\t1:14.0-55.7~deb12u1\npython3.11\t3.11.2-6+deb12u9\n",
+      "stderr": ""
+    }
+  ],
+  "public_lease_directory_entries": []
+}

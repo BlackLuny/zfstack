@@ -1,0 +1,147 @@
+{
+ "rate_hz": 20000.0,
+ "frames_in": 80005,
+ "frames_out": 80004,
+ "missing": 1,
+ "extra": 0,
+ "dup_in": 0,
+ "inversions": 355,
+ "capture_stats": {
+  "in": [
+   80005,
+   0,
+   0
+  ],
+  "out": [
+   80004,
+   0,
+   0
+  ]
+ },
+ "qdisc": [
+  {
+   "kind": "netem",
+   "handle": "44:",
+   "root": true,
+   "refcnt": 5,
+   "options": {
+    "limit": 100000,
+    "rate": {
+     "rate": 1250000000000,
+     "packetoverhead": 0,
+     "cellsize": 0,
+     "celloverhead": 0
+    },
+    "ecn": false,
+    "gap": 0
+   },
+   "bytes": 57599612,
+   "packets": 80008,
+   "drops": 0,
+   "overlimits": 0,
+   "requeues": 0,
+   "backlog": 0,
+   "qlen": 0
+  },
+  {
+   "kind": "clsact",
+   "handle": "ffff:",
+   "parent": "ffff:fff1",
+   "options": {},
+   "bytes": 57599522,
+   "packets": 80007,
+   "drops": 0,
+   "overlimits": 0,
+   "requeues": 0,
+   "backlog": 0,
+   "qlen": 0
+  }
+ ],
+ "changes": [
+  {
+   "at": 1.0,
+   "args": [
+    "delay",
+    "500ms",
+    "rate",
+    "10Tbit"
+   ],
+   "t0": 16272456727,
+   "t1": 16273277737,
+   "shown": {
+    "limit": 100000,
+    "delay": {
+     "delay": 0.5,
+     "jitter": 0,
+     "correlation": 0
+    },
+    "rate": {
+     "rate": 1250000000000,
+     "packetoverhead": 0,
+     "cellsize": 0,
+     "celloverhead": 0
+    },
+    "ecn": false,
+    "gap": 0
+   },
+   "window_us": 821
+  },
+  {
+   "at": 2.5,
+   "args": [
+    "delay",
+    "0",
+    "rate",
+    "2Gbit"
+   ],
+   "t0": 17764732587,
+   "t1": 17765202607,
+   "shown": {
+    "limit": 100000,
+    "rate": {
+     "rate": 250000000,
+     "packetoverhead": 0,
+     "cellsize": 0,
+     "celloverhead": 0
+    },
+    "ecn": false,
+    "gap": 0
+   },
+   "window_us": 470
+  },
+  {
+   "at": 3.2,
+   "args": [
+    "delay",
+    "0",
+    "rate",
+    "10Tbit"
+   ],
+   "t0": 18469360027,
+   "t1": 18469728117,
+   "shown": {
+    "limit": 100000,
+    "rate": {
+     "rate": 1250000000000,
+     "packetoverhead": 0,
+     "cellsize": 0,
+     "celloverhead": 0
+    },
+    "ecn": false,
+    "gap": 0
+   },
+   "window_us": 368
+  }
+ ],
+ "ambiguous_frames": 29,
+ "early_over_50us": 166,
+ "lateness_us": {
+  "0": -1491,
+  "0.5": 11,
+  "0.99": 18806,
+  "0.999": 21513,
+  "max": 500288
+ },
+ "clock_offset_drift_ns": -95140,
+ "in_ts_vs_wall_ns": null
+}

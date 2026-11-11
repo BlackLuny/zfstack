@@ -8,7 +8,7 @@ from pathlib import Path
 
 from netem import evidence_errors as qdisc_errors
 from path_contract import inspect_path
-from queue_control import DRAIN_GUARD_SEC, validate_evidence as queue_errors
+from queue_control import DRAIN_GUARD_SEC, FIFO_LEDGERS, ledger_blob as queue_ledger, validate_evidence as queue_errors
 from endpoints import validate_evidence as endpoint_errors
 from open_loop import validate_supply
 from load_contract import BOUNDARY_TOLERANCE_NS, arrivals, counters, worker_resources, worker_schedule
@@ -329,14 +329,23 @@ def inspect_case(path):
                 after_ns=round((result["start_at"] + sum(phase_times.values())) * 1e9)))
         except (TypeError, ValueError, KeyError, OverflowError):
             functional_evidence.append("queue link samples lack the full actual load interval")
-        control_errors = queue_errors(control_report, config["queue_control"])
+        fifo = isinstance(config["queue_control"], dict) and config["queue_control"].get("kind") in FIFO_LEDGERS
+        try:
+            ledger = queue_ledger(path) if fifo else None
+        except (OSError, ValueError) as error:
+            functional_evidence.append(str(error))
+            ledger = None
+        control_errors = queue_errors(control_report, config["queue_control"], ledger)
         functional_evidence.extend(control_errors)
         start = result.get("start_at")
         phases = config.get("phases_sec", {})
-        if not control_errors and number(start) and isinstance(phases, dict) and all(number(phases.get(key), positive=True) for key in ("baseline", "loaded")):
+        if not control_errors and number(start) and isinstance(phases, dict) and all(number(phases.get(key), positive=True) for key in ("baseline", "loaded", "recovery")):
             expected = {"start_ns": round((start + phases["baseline"]) * 1e9),
                         "end_ns": round((start + phases["baseline"] + phases["loaded"] - config["queue_control"]["delay_ms"] / 1000 - DRAIN_GUARD_SEC) * 1e9),
                         "recovery_start_ns": round((start + phases["baseline"] + phases["loaded"]) * 1e9)}
+            if fifo:
+                expected.update(measurement_start_ns=round(start * 1e9),
+                                measurement_end_ns=round((start + phases["baseline"] + phases["loaded"] + phases["recovery"]) * 1e9))
             if result.get("queue_control", {}).get("planned") != expected:
                 functional_evidence.append("queue control interval differs from the actual loaded phase")
         else:

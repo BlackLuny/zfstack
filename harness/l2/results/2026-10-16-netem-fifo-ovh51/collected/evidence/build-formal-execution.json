@@ -1,0 +1,171 @@
+[
+  {
+    "label": "extract-frozen-inputs",
+    "argv": [
+      "tar",
+      "-xzf",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/head-head-sources.tar.gz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/frozen-matrix"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792161484011157001,
+    "finished_unix_ns": 1792161484626470322,
+    "returncode": 0
+  },
+  {
+    "label": "checkout-tested-commit",
+    "argv": [
+      "git",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/checkout",
+      "checkout",
+      "--detach",
+      "604a61834db76a1b94583932585fb24a0265964b"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792161484629830884,
+    "finished_unix_ns": 1792161485495855349,
+    "returncode": 0
+  },
+  {
+    "label": "native-build",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python",
+      "-m",
+      "qa.crossrepo",
+      "build",
+      "--archive",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/frozen-matrix",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/build",
+      "--node",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/node.json",
+      "--lease-dir",
+      "/var/lock/zfstack-qa",
+      "--cell",
+      "head-head",
+      "--toolchain",
+      "1.98.1",
+      "--profile",
+      "fast-release",
+      "--jobs",
+      "2",
+      "--cache-dir",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/build-cache"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01/checkout",
+    "started_unix_ns": 1792161485496456414,
+    "finished_unix_ns": 1792162253757165726,
+    "returncode": 0
+  },
+  {
+    "label": "make-frozen-qa-plan",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python",
+      "-m",
+      "qa",
+      "make-plan",
+      "--suite",
+      "nightly",
+      "--platform",
+      "linux-x86_64",
+      "--tested-sha",
+      "604a61834db76a1b94583932585fb24a0265964b",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/evidence/plan.json"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01/checkout",
+    "started_unix_ns": 1792162253789998187,
+    "finished_unix_ns": 1792162254004413570,
+    "returncode": 0
+  },
+  {
+    "label": "host-before-formal",
+    "argv": [
+      "python3",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/snapshot.py",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/evidence/host-before-formal.json"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792162254025227290,
+    "finished_unix_ns": 1792162254089187126,
+    "returncode": 0
+  },
+  {
+    "label": "formal-c16",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python",
+      "-m",
+      "qa",
+      "run-plan",
+      "--plan",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/evidence/plan.json",
+      "--case",
+      "C16-l2-queue-control",
+      "--node",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/node.json",
+      "--lease-dir",
+      "/var/lock/zfstack-qa",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/formal"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01/checkout",
+    "started_unix_ns": 1792162259090348331,
+    "finished_unix_ns": 1792162301536861305,
+    "returncode": 1
+  },
+  {
+    "label": "independent-evaluation-and-archive",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-ovh51-01/qa-venv/bin/python",
+      "-c",
+      "import json,sys\nfrom pathlib import Path\nfrom qa.evaluate import evaluate\nfrom qa.archive import archive\nfrom qa.common import read_json,write_json\nfrom qa.integration import verify_integration,queue_negative_evidence\nfrom qa.common import EvidenceError\nfrom qa.render_report import render\nroot=Path(sys.argv[1]); checkout=root/'checkout'; e=root/'evidence'\nplan=read_json(e/'plan.json')\nenvelopes=[]\nfor path in (root/'formal').rglob('result.json'):\n value=read_json(path)\n if value.get('schema_version')==2 and 'case_instance_id' in value: envelopes.append(path)\nassert len(envelopes)==1,envelopes\nresult=read_json(envelopes[0]); case=next(c for c in plan['cases'] if c['case_id']=='C16-l2-queue-control')\ndirectory=envelopes[0].parent\nworker=read_json(directory/'worker-manifest.json')\nstatus,details,observations=queue_negative_evidence(case,directory/'baseline',directory/'fault',worker)\nverification_error=None\ntry: verify_integration(result,case,directory)\nexcept EvidenceError as error: verification_error=str(error)\nwrite_json(e/'independent-c16-verification.json',{'functional':status,'details':details,'observations':observations,'verification_error':verification_error,'result_file':str(envelopes[0])},exclusive=True)\nreport=evaluate(plan,envelopes,checkout/'qa/policy',expected_sha=plan['tested_sha'])\nwrite_json(e/'evaluation.json',report,exclusive=True)\n(e/'evaluation.md').write_text(render(report))\narchive(root/'formal',e/'formal-artifacts.tar.gz')\nprint(json.dumps({'case_functional':status,'aggregate':report['status'],'case_details':details}))\n",
+      "/root/zfstack-qa-pr75-20261016-ovh51-01"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01/checkout",
+    "started_unix_ns": 1792162301537250375,
+    "finished_unix_ns": 1792162302402823958,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-services",
+    "argv": [
+      "docker",
+      "ps",
+      "--format",
+      "{{.Names}} {{.Status}}"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792162302403077504,
+    "finished_unix_ns": 1792162302419020372,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-links",
+    "argv": [
+      "ip",
+      "-j",
+      "link",
+      "show"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792162302419299298,
+    "finished_unix_ns": 1792162302423130343,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-namespaces",
+    "argv": [
+      "ip",
+      "netns",
+      "list"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-ovh51-01",
+    "started_unix_ns": 1792162302423427428,
+    "finished_unix_ns": 1792162302427286615,
+    "returncode": 0
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "created_unix_ns": 1792145530377837000,
+  "purpose": "check native CPU counter response under guest spin and settle counters after vCPU waits; not a FIFO or qualification attempt",
+  "order": [
+    "guest sleep 0.5s",
+    "guest CPU-bound fixed 5000000 loop iterations on CPU1",
+    "guest sleep 0.5s",
+    "guest CPU-bound same fixed loop",
+    "guest sleep 0.5s"
+  ],
+  "observations": "same native vCPU sampler and before/after persistent clock mapping; save all phases and compare counters at end plus first settled waiting samples",
+  "run_count": 1
+}

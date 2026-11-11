@@ -1,0 +1,79 @@
+{
+  "gate": "PASS",
+  "lease": {
+    "domain": "zfstack-qa-baremetal-51.75.146.55-2280",
+    "run_id": "netem-fifo-ovh51-stage1-20261016",
+    "generation": "10e1418e-d0f1-4dbe-af62-c1a556642d56",
+    "owner": "2dcd8ef1-cc68-4627-9727-66da0f87a25c",
+    "pid": 3750326,
+    "created_ns": 1792160536215671119,
+    "owned_until_release": true
+  },
+  "recomputed": {
+    "full": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [],
+      "oracle_matches_selftest": true,
+      "receiver_order": {
+        "ok": true,
+        "received": 18475,
+        "overtaken": 0,
+        "duplicates": 0,
+        "complete_sequence": true
+      },
+      "order": {
+        "source": "/root/zfstack-qa-pr75-20261016-ovh51-01/stage1/full",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    },
+    "cancel": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [
+        "netem FIFO execution was cancelled or incomplete",
+        "netem FIFO phase changes are missing, reordered or malformed"
+      ],
+      "oracle_matches_selftest": true,
+      "receiver_order": {
+        "ok": true,
+        "received": 18475,
+        "overtaken": 0,
+        "duplicates": 0,
+        "complete_sequence": true
+      },
+      "order": {
+        "source": "/root/zfstack-qa-pr75-20261016-ovh51-01/stage1/cancel",
+        "udp_frames": 18475,
+        "egress_in_send_order": true,
+        "socket_overtaken": 0,
+        "socket_overtaken_after_egress_ns": null,
+        "egress_gap_to_overtaker_ns": null,
+        "socket_overtaken_by_send_phase": {}
+      }
+    },
+    "overflow": {
+      "selftest_ok": true,
+      "failed_checks": [],
+      "oracle_errors": [
+        "netem FIFO captures cannot be paired",
+        "netem FIFO dropped or overlimited frames",
+        "netem FIFO lost or never released 4964 mirrored frames"
+      ],
+      "oracle_matches_selftest": true,
+      "receiver_order": {
+        "ok": true,
+        "received": 13561,
+        "overtaken": 0,
+        "duplicates": 0,
+        "complete_sequence": false
+      },
+      "order": "timing analysis skipped: receiver sequence is incomplete or duplicated"
+    }
+  }
+}

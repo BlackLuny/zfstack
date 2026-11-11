@@ -1,0 +1,150 @@
+{
+  "schema_version": 4,
+  "strategy": {
+    "kind": "tc-mirred-tap-userspace-fifo",
+    "path": "persistent from before baseline until after recovery",
+    "active": "release = arrival + delay_ms",
+    "drain": "FIFO behind backlog at drain_rate_bps",
+    "drain_rate_bps": 2000000000,
+    "transparent": "release = arrival once the FIFO is empty",
+    "lateness_limit_ns": 20000000,
+    "memory_limit_bytes": 268435456,
+    "max_frames": 4000000
+  },
+  "scope": "test-side shared worker egress queue; persistent userspace FIFO, not historical root-cause reproduction",
+  "config": {
+    "kind": "fifo-delay-line",
+    "node": "worker",
+    "interface": "eth0",
+    "phase": "loaded",
+    "delay_ms": 500.0,
+    "limit_packets": 100
+  },
+  "clock": "CLOCK_MONOTONIC",
+  "planned": {
+    "measurement_start_ns": 207795781171,
+    "start_ns": 215795781171,
+    "end_ns": 231045781171,
+    "recovery_start_ns": 231795781171,
+    "measurement_end_ns": 239795781171
+  },
+  "actual": {
+    "installed_ns": 197912150880,
+    "transparent_ns": 231545680770,
+    "removed_ns": 239815076149,
+    "closed_ns": 239895795274
+  },
+  "kernel": {
+    "qdisc_before": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ],
+    "tap_qdisc": [
+      {
+        "kind": "noqueue",
+        "handle": "8003:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ],
+    "tap_before": {
+      "rx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      },
+      "tx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      }
+    },
+    "qdisc_installed": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      },
+      {
+        "kind": "clsact",
+        "handle": "ffff:",
+        "parent": "ffff:fff1",
+        "options": {}
+      }
+    ],
+    "action": {
+      "packets": 82292,
+      "bytes": 98129528,
+      "drops": 0,
+      "overlimits": 0
+    },
+    "tap_after": {
+      "rx": {
+        "packets": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "errors": 0
+      },
+      "tx": {
+        "packets": 47067,
+        "bytes": 95804678,
+        "dropped": 0,
+        "errors": 0
+      }
+    },
+    "qdisc_restored": [
+      {
+        "kind": "noqueue",
+        "handle": "0:",
+        "root": true,
+        "refcnt": 2,
+        "options": {}
+      }
+    ]
+  },
+  "resources": {
+    "max_frames": 100,
+    "max_bytes": 282912
+  },
+  "ledger": {
+    "path": "queue-ledger.bin.gz",
+    "sha256": "42ca75ef4b4223aa52b1c5855956824662f2f81d0cfc449684ada5b9ff0afc59",
+    "frames": 47067,
+    "record_format": "<IBBBxHIQIIQH gzip"
+  },
+  "errors": [],
+  "cancelled": false,
+  "cleanup": "PASS",
+  "summary": {
+    "pre": {
+      "frames": 22159,
+      "max_residence_ns": 13341750,
+      "p99_residence_ns": 368083
+    },
+    "active": {
+      "frames": 3073,
+      "max_residence_ns": 520736959,
+      "p99_residence_ns": 505836251
+    },
+    "drain": {
+      "frames": 101,
+      "max_residence_ns": 498066667,
+      "p99_residence_ns": 492929959
+    },
+    "transparent": {
+      "frames": 16780,
+      "max_residence_ns": 2206208,
+      "p99_residence_ns": 161625
+    }
+  }
+}

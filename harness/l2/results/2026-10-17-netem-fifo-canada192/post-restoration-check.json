@@ -1,0 +1,39 @@
+{
+  "observed_unix_ns": 1792179383342697183,
+  "commands": [
+    {
+      "argv": [
+        "systemctl",
+        "show",
+        "rc-worker.service",
+        "zfc-rig-watch.service",
+        "zfstack-pr75-canada-gate-20261017.service",
+        "zfstack-pr75-canada-build-20261017.service",
+        "zfstack-pr75-canada-restore-20261017.timer",
+        "-p",
+        "Id",
+        "-p",
+        "ActiveState",
+        "-p",
+        "SubState",
+        "-p",
+        "UnitFileState"
+      ],
+      "returncode": 0,
+      "stdout": "Id=rc-worker.service\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=zfc-rig-watch.service\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=zfstack-pr75-canada-gate-20261017.service\nActiveState=inactive\nSubState=dead\nUnitFileState=\n\nId=zfstack-pr75-canada-build-20261017.service\nActiveState=inactive\nSubState=dead\nUnitFileState=\n\nId=zfstack-pr75-canada-restore-20261017.timer\nActiveState=inactive\nSubState=dead\nUnitFileState=\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "list"
+      ],
+      "returncode": 0,
+      "stdout": "rig-4a1575-ctl\nrig-4a1575-sw (id: 8)\n",
+      "stderr": ""
+    }
+  ],
+  "lease_entries": [],
+  "formal_directory_exists": false
+}

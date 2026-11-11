@@ -1,0 +1,267 @@
+{
+  "trace-2": {
+    "valid": true,
+    "late_samples_match_full_trace_analysis": true,
+    "late_samples": [
+      {
+        "flow": 1,
+        "seq": 366,
+        "phase": "baseline",
+        "status": "missed",
+        "lag_ms": 20.699,
+        "miss": true,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 18.636,
+          "runnable, CPU idle": 0.005,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 2.058
+        },
+        "covered_ms": 20.699,
+        "uncovered_ns": 0,
+        "cpus": [
+          4
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "0": 0.129
+        },
+        "timer_late_ms": 21.779,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 0.267,
+        "generator_on_core0": true
+      },
+      {
+        "flow": 1,
+        "seq": 367,
+        "phase": "baseline",
+        "status": "completed",
+        "lag_ms": 10.699,
+        "miss": false,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 8.636,
+          "runnable, CPU idle": 0.005,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 2.058
+        },
+        "covered_ms": 10.699,
+        "uncovered_ns": 0,
+        "cpus": [
+          4
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "0": 0.081
+        },
+        "timer_late_ms": 21.779,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 0.143,
+        "generator_on_core0": true
+      },
+      {
+        "flow": 3,
+        "seq": 366,
+        "phase": "baseline",
+        "status": "completed",
+        "lag_ms": 19.477,
+        "miss": false,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 18.214,
+          "runnable, CPU idle": 0.004,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 1.259
+        },
+        "covered_ms": 19.477,
+        "uncovered_ns": 0,
+        "cpus": [
+          7
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "3": 0.169
+        },
+        "timer_late_ms": 21.067,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 0.267,
+        "generator_on_core0": false
+      },
+      {
+        "flow": 3,
+        "seq": 367,
+        "phase": "baseline",
+        "status": "completed",
+        "lag_ms": 9.477,
+        "miss": false,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 8.214,
+          "runnable, CPU idle": 0.004,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 1.259
+        },
+        "covered_ms": 9.477,
+        "uncovered_ns": 0,
+        "cpus": [
+          7
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "3": 0.082
+        },
+        "timer_late_ms": 21.067,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 0.143,
+        "generator_on_core0": false
+      },
+      {
+        "flow": 3,
+        "seq": 368,
+        "phase": "baseline",
+        "status": "completed",
+        "lag_ms": 6.606,
+        "miss": false,
+        "class": "generator on CPU",
+        "components_ms": {
+          "sleeping (late wakeup)": 2.006,
+          "runnable, CPU idle": 0.0,
+          "runnable behind other tasks": 0.883,
+          "IRQ/softirq on generator CPU": 0.278,
+          "generator on CPU": 3.439
+        },
+        "covered_ms": 6.606,
+        "uncovered_ns": 0,
+        "cpus": [
+          3,
+          7
+        ],
+        "top_irq_softirq_ms": {
+          "softirq SCHED": 0.19,
+          "softirq NET_RX": 0.062,
+          "irq 129 eno1-TxRx-0": 0.026
+        },
+        "top_other_tasks_ms": {
+          "sshd-session": 0.876,
+          "python": 0.007
+        },
+        "sibling_irq_softirq_ms": {
+          "7": 0.305,
+          "3": 0.796
+        },
+        "timer_late_ms": 0.049,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 1.004,
+        "generator_on_core0": false
+      }
+    ],
+    "scope": "local reparse of raw event excerpts; whole-trace drop counters checked separately",
+    "excerpt": {
+      "source": "trace.txt.gz",
+      "source_sha256": "85c875fc3e274e382f99d33290ec534ae64d8cbd1d9bfbf0b4be88d94ee0f0f2",
+      "source_size_bytes": 255326982,
+      "windows_ns": [
+        [
+          27053324040898060,
+          27053324167504168
+        ]
+      ],
+      "context_ns": 50000000,
+      "lines": 10522,
+      "excerpt_sha256": "7348023063c40fff9ad20796a942cecf43d2b023f6d27b50911dc93026b56c23",
+      "excerpt_bytes": 136708,
+      "new_measurements": false
+    }
+  },
+  "trace-3": {
+    "valid": true,
+    "late_samples_match_full_trace_analysis": true,
+    "late_samples": [
+      {
+        "flow": 2,
+        "seq": 770,
+        "phase": "baseline",
+        "status": "missed",
+        "lag_ms": 22.02,
+        "miss": true,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 21.524,
+          "runnable, CPU idle": 0.003,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 0.494
+        },
+        "covered_ms": 22.02,
+        "uncovered_ns": 0,
+        "cpus": [
+          1
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "5": 0.001
+        },
+        "timer_late_ms": 22.051,
+        "core0_irq130_ms": 0.003,
+        "core0_net_rx_ms": 0.306,
+        "generator_on_core0": false
+      },
+      {
+        "flow": 2,
+        "seq": 771,
+        "phase": "baseline",
+        "status": "completed",
+        "lag_ms": 12.02,
+        "miss": false,
+        "class": "sleeping (late wakeup)",
+        "components_ms": {
+          "sleeping (late wakeup)": 11.524,
+          "runnable, CPU idle": 0.003,
+          "runnable behind other tasks": 0.0,
+          "IRQ/softirq on generator CPU": 0.0,
+          "generator on CPU": 0.494
+        },
+        "covered_ms": 12.02,
+        "uncovered_ns": 0,
+        "cpus": [
+          1
+        ],
+        "top_irq_softirq_ms": {},
+        "top_other_tasks_ms": {},
+        "sibling_irq_softirq_ms": {
+          "5": 0.001
+        },
+        "timer_late_ms": 22.051,
+        "core0_irq130_ms": 0.0,
+        "core0_net_rx_ms": 0.146,
+        "generator_on_core0": false
+      }
+    ],
+    "scope": "local reparse of raw event excerpts; whole-trace drop counters checked separately",
+    "excerpt": {
+      "source": "trace.txt.gz",
+      "source_sha256": "490f2d2ca881f526c81c0c15a45aeaaf9454b93a15d051a17f7825d5234fd96c",
+      "source_size_bytes": 251071503,
+      "windows_ns": [
+        [
+          27053549223856228,
+          27053549345876612
+        ]
+      ],
+      "context_ns": 50000000,
+      "lines": 9545,
+      "excerpt_sha256": "330d2735f4be44562f4026c990e9a01f233687ad52ebeda7d125ead9fad38c2e",
+      "excerpt_bytes": 121941,
+      "new_measurements": false
+    }
+  }
+}

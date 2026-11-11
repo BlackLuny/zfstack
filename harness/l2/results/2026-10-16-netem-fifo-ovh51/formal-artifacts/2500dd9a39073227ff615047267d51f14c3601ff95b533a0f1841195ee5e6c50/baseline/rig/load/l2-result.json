@@ -1,0 +1,422 @@
+{
+  "layer": "L2",
+  "ok": false,
+  "errors": [
+    "test rig: client 7 exited 1; inspect retained request outcomes",
+    "missed datagram arrival seq=186"
+  ],
+  "clock": "wall-monotonic",
+  "start_at": 27050098.40225297,
+  "effective_config": {
+    "schema_version": 1,
+    "heavy_conns": 4,
+    "request_bytes": 256,
+    "request_rate_hz": 100.0,
+    "light_mode": "closed-loop",
+    "max_generator_lag_sec": 0.02,
+    "light_conns": 1,
+    "churn_requests": 0,
+    "udp_enabled": true,
+    "udp_rate_hz": 100.0,
+    "udp_payload_bytes": 1032,
+    "request_timeout_sec": 3.0,
+    "phases_sec": {
+      "baseline": 8.0,
+      "loaded": 16.0,
+      "recovery": 8.0
+    },
+    "direction": "heavy-download/light-echo",
+    "application_port": 19001,
+    "memory_mb": 64,
+    "uplink_delay_ms": 0.0,
+    "netem_limit_packets": 100000,
+    "mtu": 1420,
+    "runtime": "tokio-multi-thread",
+    "profile": "fast-release",
+    "capture": false,
+    "boundary_tolerance_ns": 5000000,
+    "topology": {
+      "wg_ports": 2,
+      "peers": 4,
+      "heavy_peer": 0,
+      "light_peers": [
+        1,
+        2,
+        3
+      ]
+    },
+    "mode": "load"
+  },
+  "load_counters": {
+    "client-1": {
+      "scheduled": 3198,
+      "started": 3198,
+      "completed": 3198,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-2": {
+      "scheduled": 3196,
+      "started": 3196,
+      "completed": 3196,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-3": {
+      "scheduled": 3198,
+      "started": 3198,
+      "completed": 3198,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    }
+  },
+  "startup_anomalies": [],
+  "phases_sec": {
+    "baseline": 8.0,
+    "loaded": 16.0,
+    "recovery": 8.0
+  },
+  "request_timeout_sec": 3.0,
+  "uplink_delay_ms": 0.0,
+  "light_conns": 1,
+  "churn_requests": 0,
+  "udp": [
+    {
+      "peer": 0,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.8587203919887543,
+          "p95_ms": 1.6810968518257141,
+          "p99_ms": 4.020307213068008,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 1.5031136572360992,
+          "p95_ms": 3.158915787935257,
+          "p99_ms": 4.243273288011551,
+          "p999_ms": 20.749494433403015
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.8132606744766235,
+          "p95_ms": 1.2053810060024261,
+          "p99_ms": 3.117848187685013,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 1,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.893961638212204,
+          "p95_ms": 1.6676746308803558,
+          "p99_ms": 3.150530159473419,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 1.5575215220451355,
+          "p95_ms": 3.1297467648983,
+          "p99_ms": 4.809830337762833,
+          "p999_ms": 19.331514835357666
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.797618180513382,
+          "p95_ms": 1.1930018663406372,
+          "p99_ms": 2.4754293262958527,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 2,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.870872288942337,
+          "p95_ms": 1.7833001911640167,
+          "p99_ms": 4.327654838562012,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.4323050379753113,
+          "p95_ms": 2.360306680202484,
+          "p99_ms": 4.051726311445236,
+          "p999_ms": 12.164570391178131
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.808466225862503,
+          "p95_ms": 1.210581511259079,
+          "p99_ms": 1.6340650618076324,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 3,
+      "sent": 3199,
+      "received": 3199,
+      "bytes": 3301368,
+      "errors": [
+        "missed datagram arrival seq=186"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 799,
+          "p50_ms": 0.9018257260322571,
+          "p95_ms": 1.7267465591430664,
+          "p99_ms": 4.434186965227127,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.47516077756881714,
+          "p95_ms": 2.5691986083984375,
+          "p99_ms": 3.9134882390499115,
+          "p999_ms": 13.885244727134705
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.8044242858886719,
+          "p95_ms": 1.156594604253769,
+          "p99_ms": 3.12071293592453,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3199,
+        "completed": 3199,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 1
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 1
+    }
+  ],
+  "performance_contaminated": false,
+  "endpoint_observer_error": null,
+  "heavy_bytes": 5098777904,
+  "heavy_mbps": 2549.388952,
+  "light_users": [
+    {
+      "peer": 1,
+      "placement": "same-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.8481889963150024,
+          "p95_ms": 1.6122199594974518,
+          "p99_ms": 2.9546432197093964,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1598,
+          "p50_ms": 2.2691749036312103,
+          "p95_ms": 3.98438423871994,
+          "p99_ms": 5.1092952489852905,
+          "p999_ms": 9.670872241258621
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7558092474937439,
+          "p95_ms": 1.0420754551887512,
+          "p99_ms": 2.0971372723579407,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 2,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 798,
+          "p50_ms": 0.8138827979564667,
+          "p95_ms": 1.7851218581199646,
+          "p99_ms": 4.228387027978897,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1598,
+          "p50_ms": 0.436343252658844,
+          "p95_ms": 2.5974176824092865,
+          "p99_ms": 3.805633634328842,
+          "p999_ms": 6.5622031688690186
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7504485547542572,
+          "p95_ms": 1.1353455483913422,
+          "p99_ms": 1.6673021018505096,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 3,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 799,
+          "p50_ms": 0.8492730557918549,
+          "p95_ms": 1.6507767140865326,
+          "p99_ms": 4.065033048391342,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1599,
+          "p50_ms": 0.44658035039901733,
+          "p95_ms": 2.42040678858757,
+          "p99_ms": 3.8932859897613525,
+          "p999_ms": 6.859384477138519
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7411837577819824,
+          "p95_ms": 1.0398514568805695,
+          "p99_ms": 2.3384951055049896,
+          "p999_ms": null
+        }
+      }
+    }
+  ],
+  "worker": {
+    "baseline": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.7,
+      "sample_window_sec": 8.000633004,
+      "rss_peak_kib": 88872,
+      "rss_end_kib": 88872,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050098402723064,
+        "end_ns": 27050106403356068,
+        "cpu_sec": 1.7,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 967621,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050098402252968,
+        "planned_end_ns": 27050106402252968,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "loaded": {
+      "sample_count": 33,
+      "worker_cpu_sec": 28.55,
+      "sample_window_sec": 15.999434371,
+      "rss_peak_kib": 100652,
+      "rss_end_kib": 96676,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050106403356068,
+        "end_ns": 27050122402790439,
+        "cpu_sec": 28.55,
+        "verified_bytes": 5098777904,
+        "sample_count": 33,
+        "max_boundary_skew_ns": 967621,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050106402252968,
+        "planned_end_ns": 27050122402252968,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "recovery": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.6700000000000017,
+      "sample_window_sec": 8.013702772,
+      "rss_peak_kib": 96676,
+      "rss_end_kib": 95804,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050122402790439,
+        "end_ns": 27050130416493211,
+        "cpu_sec": 1.6700000000000017,
+        "verified_bytes": null,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 14116921,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050122402252968,
+        "planned_end_ns": 27050130402252968,
+        "errors": [
+          "phase-boundary scheduling precision insufficient",
+          "missing verified-byte boundary sample",
+          "measurement boundary precision insufficient"
+        ],
+        "cpu_resolution_ns": 10000000
+      }
+    }
+  },
+  "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold."
+}

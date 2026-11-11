@@ -1,0 +1,34 @@
+{
+  "container_id": "d71b7fa67b5ac9a2cd975836ee510efacf90b546a8472436af443c14e2c31357",
+  "image": "sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+  "created": "2026-10-16T08:54:21.902571875Z",
+  "limits": {
+    "Memory": 6442450944,
+    "NanoCpus": 6000000000,
+    "PidsLimit": 1024,
+    "Privileged": true,
+    "NetworkMode": "bridge"
+  },
+  "mounts": [
+    {
+      "Type": "bind",
+      "Source": "/Users/lulin/.codex/worktrees/queue-control-pr75/zfstack",
+      "Destination": "/src",
+      "RW": false
+    },
+    {
+      "Type": "bind",
+      "Source": "/tmp/zfstack-pr75-validation",
+      "Destination": "/evidence",
+      "RW": true
+    }
+  ],
+  "compressed_logs": {
+    "container-setup.log.gz": {
+      "uncompressed_name": "container-setup.log",
+      "uncompressed_size": 22180,
+      "uncompressed_sha256": "2be325a914bd528fb7e876d632efc516c086cf732e72cc5f60ba6e2f4dddaabb",
+      "reason": "Preserve original CR/progress bytes without treating raw terminal logs as source whitespace."
+    }
+  }
+}

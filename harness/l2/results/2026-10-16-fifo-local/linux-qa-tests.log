@@ -1,0 +1,29 @@
+fatal: not a git repository: /Users/lulin/code/github/zfstack/.git/worktrees/zfstack9
+.............................................................................QA BLOCKED: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+.........................s......................................................E.............................
+======================================================================
+ERROR: test_release (unittest.loader._FailedTest.test_release)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_release
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/unittest/loader.py", line 396, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/unittest/loader.py", line 339, in _get_module_from_name
+    __import__(name)
+  File "/src/qa/tests/test_release.py", line 28, in <module>
+    ANCHOR = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['git', 'rev-parse', 'HEAD']' returned non-zero exit status 128.
+
+
+----------------------------------------------------------------------
+Ran 187 tests in 13.809s
+
+FAILED (errors=1, skipped=1)
+QA PASS: hosted nightly passed; L2 not certified

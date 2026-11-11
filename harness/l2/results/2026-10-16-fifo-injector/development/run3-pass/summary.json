@@ -1,0 +1,108 @@
+{
+  "mode": "full",
+  "kernel": "6.8.0-147-generic",
+  "checks": {
+    "udp_exactly_once_in_order": true,
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "tcp_stream_intact": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "oracle_pass": true,
+    "active_delay_applied": true,
+    "recovery_transparent": true
+  },
+  "ok": true,
+  "oracle_errors": [],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899963
+  },
+  "frames": 38344,
+  "gso_frames": 15014,
+  "link_drop_deltas": {
+    "rig-e18a40-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-e18a40-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18475,
+  "udp_mib_delta": {
+    "InDatagrams": 18475,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899963,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.43516,
+      "max": 517.54782
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.38698,
+      "max": 16.52612
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.31938,
+      "max": 6.69043
+    }
+  },
+  "resources": {
+    "max_frames": 324,
+    "max_bytes": 2403560
+  },
+  "summary": {
+    "pre": {
+      "frames": 19281,
+      "max_residence_ns": 8658190,
+      "p99_residence_ns": 722210
+    },
+    "active": {
+      "frames": 8243,
+      "max_residence_ns": 510364450,
+      "p99_residence_ns": 503051210
+    },
+    "drain": {
+      "frames": 317,
+      "max_residence_ns": 498328540,
+      "p99_residence_ns": 492784260
+    },
+    "transparent": {
+      "frames": 10503,
+      "max_residence_ns": 8851060,
+      "p99_residence_ns": 1269330
+    }
+  },
+  "actual": {
+    "installed_ns": 18326327456,
+    "transparent_ns": 48631293606,
+    "removed_ns": 56970421206,
+    "closed_ns": 57341731466
+  },
+  "planned": {
+    "measurement_start_ns": 24853448686,
+    "start_ns": 32853448686,
+    "end_ns": 48103448686,
+    "recovery_start_ns": 48853448686,
+    "measurement_end_ns": 56853448686
+  },
+  "report_errors": []
+}

@@ -1,0 +1,31 @@
+[
+  {
+    "observed_unix_ns": 1792147408130445000,
+    "attempt": 1,
+    "stage": "source input inventory before first compiler command",
+    "cause": "macOS BSD tar injected 8288 AppleDouble ._ entries, not part of frozen allowlist",
+    "result": "worker manifest UNBUILDABLE; zero compiler commands; public lease released",
+    "repair": "transport same allowed source bytes with Python tarfile (no xattrs) to a fresh archive/build directory",
+    "formal_measurements": 0,
+    "extra_selftests": 0
+  },
+  {
+    "observed_unix_ns": 1792147644281141000,
+    "attempt": 2,
+    "stage": "Cargo metadata JSON ingestion before worker compilation",
+    "cause": "cold-cache cargo metadata exits 0 but writes Downloading crates to stderr; the existing runner merges stderr and JSON stdout, so strict JSON loading rejects command-3.log",
+    "result": "four commands completed successfully, worker not compiled; manifest UNBUILDABLE, no formal measurement",
+    "repair": "new build directory with documented CARGO_TERM_QUIET=true, which changes Cargo informational output only; frozen compiler/profile/features/source unchanged; original mixed log preserved",
+    "reference": "https://doc.rust-lang.org/cargo/reference/config.html#termquiet",
+    "extra_selftests": 0
+  },
+  {
+    "observed_unix_ns": 1792148097219067000,
+    "attempt": 3,
+    "stage": "first actual native worker compilation, bindgen build script",
+    "cause": "libclang shared library absent; bindgen-0.72.1 panics with Unable to find libclang",
+    "result": "worker build command failed; cleanup PASS expected from retained manifest; no formal measurement",
+    "repair": "install missing libclang-dev with apt --no-upgrade under public preparation lease, preserve frozen inputs, resume in fresh build directory with existing owned target cache",
+    "extra_selftests": 0
+  }
+]

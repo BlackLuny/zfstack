@@ -1,0 +1,156 @@
+{
+  "observed_unix_ns": 1792146686101903685,
+  "rows": [
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "eth0",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "peer0"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "eth0",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "peer0",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "set",
+        "qa75probe",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tc",
+        "qdisc",
+        "add",
+        "dev",
+        "eth0",
+        "clsact"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tc",
+        "filter",
+        "add",
+        "dev",
+        "eth0",
+        "egress",
+        "pref",
+        "44",
+        "protocol",
+        "all",
+        "matchall",
+        "action",
+        "mirred",
+        "egress",
+        "redirect",
+        "dev",
+        "qa75probe"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tc",
+        "-s",
+        "-j",
+        "filter",
+        "show",
+        "dev",
+        "eth0",
+        "egress"
+      ],
+      "rc": 0,
+      "stdout": "[{\"protocol\":\"all\",\"pref\":44,\"kind\":\"matchall\",\"chain\":0},{\"protocol\":\"all\",\"pref\":44,\"kind\":\"matchall\",\"chain\":0,\"options\":{\"handle\":1,\"not_in_hw\":true,\"rule_hit\":0,\"actions\":[{\"order\":1,\"kind\":\"mirred\",\"mirred_action\":\"redirect\",\"direction\":\"egress\",\"to_dev\":\"qa75probe\",\"control_action\":{\"type\":\"stolen\"},\"index\":1,\"ref\":1,\"bind\":1,\"stats\":{\"bytes\":0,\"packets\":0,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":0,\"qlen\":0}}]}}]\n",
+      "stderr": ""
+    },
+    {
+      "AF_PACKET_VNET_HDR": true,
+      "PACKET_QDISC_BYPASS": true
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "qa75wg",
+        "type",
+        "wireguard"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "link",
+        "add",
+        "qa75br",
+        "type",
+        "bridge"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nft",
+        "-j",
+        "list",
+        "ruleset"
+      ],
+      "rc": 0,
+      "stdout": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.0.6\", \"release_name\": \"Lester Gooch #5\", \"json_schema_version\": 1}}]}\n",
+      "stderr": ""
+    }
+  ],
+  "namespace_ids": {
+    "net": "net:[4026533089]",
+    "mnt": "mnt:[4026533087]",
+    "pid": "pid:[4026533088]"
+  },
+  "isolation_errors": []
+}

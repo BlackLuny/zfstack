@@ -1,0 +1,230 @@
+{
+  "ok": true,
+  "kernel": "6.12.57+deb13-amd64",
+  "observed_unix_ns": 1792160536592720482,
+  "modules": [
+    "act_mirred",
+    "cls_matchall",
+    "dummy",
+    "sch_ingress",
+    "sch_netem",
+    "veth"
+  ],
+  "steps": [
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "add",
+        "qa44cap"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "ip",
+        "link",
+        "add",
+        "eth0",
+        "type",
+        "veth",
+        "peer",
+        "name",
+        "peer0"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "ip",
+        "link",
+        "set",
+        "eth0",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "ip",
+        "link",
+        "set",
+        "peer0",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "ip",
+        "link",
+        "add",
+        "qa44in",
+        "type",
+        "dummy"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "ip",
+        "link",
+        "set",
+        "dev",
+        "qa44in",
+        "arp",
+        "off",
+        "up"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "tc",
+        "qdisc",
+        "add",
+        "dev",
+        "eth0",
+        "root",
+        "handle",
+        "44:",
+        "netem",
+        "limit",
+        "100000",
+        "delay",
+        "0",
+        "rate",
+        "10000000000000bit"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "tc",
+        "qdisc",
+        "add",
+        "dev",
+        "eth0",
+        "clsact"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "tc",
+        "actions",
+        "add",
+        "action",
+        "mirred",
+        "egress",
+        "mirror",
+        "dev",
+        "qa44in",
+        "index",
+        "44"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "tc",
+        "filter",
+        "add",
+        "dev",
+        "eth0",
+        "egress",
+        "pref",
+        "44",
+        "protocol",
+        "all",
+        "matchall",
+        "action",
+        "mirred",
+        "index",
+        "44"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "exec",
+        "qa44cap",
+        "/usr/bin/python3",
+        "/root/zfstack-qa-pr75-20261016-ovh51-01/source/harness/l2/results/2026-10-16-netem-fifo/netem_capabilities.py",
+        "--inner"
+      ],
+      "rc": 0,
+      "stdout": "[{\"step\": \"change-active\", \"window_ns\": 33687, \"shown\": {\"limit\": 100000, \"delay\": {\"delay\": 0.5, \"jitter\": 0, \"correlation\": 0}, \"rate\": {\"rate\": 1250000000000, \"packetoverhead\": 0, \"cellsize\": 0, \"celloverhead\": 0}, \"seed\": 14384103921845158239, \"ecn\": false, \"gap\": 0}, \"ok\": true}, {\"step\": \"change-drain\", \"window_ns\": 16391, \"shown\": {\"limit\": 100000, \"rate\": {\"rate\": 250000000, \"packetoverhead\": 0, \"cellsize\": 0, \"celloverhead\": 0}, \"seed\": 7476948536101704450, \"ecn\": false, \"gap\": 0}, \"ok\": true}, {\"step\": \"qlen\", \"value\": 0, \"ok\": true}, {\"step\": \"rings\", \"value\": [{\"packets\": 0, \"drops\": 0, \"freezes\": 0}, {\"packets\": 0, \"drops\": 0, \"freezes\": 0}], \"ok\": true}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "del",
+        "qa44cap"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}

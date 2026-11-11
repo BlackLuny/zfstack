@@ -1,0 +1,643 @@
+{
+  "ok": true,
+  "registered": 7,
+  "tests": [
+    {
+      "name": "sim::tests::bbr_trace",
+      "source": "src/sim/tests.rs",
+      "category": "diagnostic",
+      "schedule": "manual",
+      "reason": "Packet trace for investigation, not a correctness oracle."
+    },
+    {
+      "name": "sim::tests::bbr_probe_steady_state",
+      "source": "src/sim/tests.rs",
+      "category": "benchmark",
+      "schedule": "manual",
+      "reason": "Virtual protocol work report; not physical performance."
+    },
+    {
+      "name": "sim::tests::soak_paused_reader_lossy_multiflow",
+      "source": "src/sim/tests.rs",
+      "category": "soak",
+      "schedule": "nightly",
+      "reason": "Fixed historical failure seeds."
+    },
+    {
+      "name": "tokio_adapter::tests::issue37_splice_256_streams_keep_progressing_with_delayed_acks",
+      "source": "src/tokio_adapter.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Full 256-stream complement to normal 64-stream test."
+    },
+    {
+      "name": "tokio_adapter::tests::issue43_repeated_splice_cpu_evidence",
+      "source": "src/tokio_adapter.rs",
+      "category": "benchmark",
+      "schedule": "manual-exclusive-node",
+      "reason": "CPU diagnostics run alone, never part of functional CI timing."
+    },
+    {
+      "name": "shard::share_waiter_observation::issue43_waiter_burst_then_one_long_connection",
+      "source": "src/shard.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Burst to one long-lived connection capacity evidence; full scale runs nightly."
+    },
+    {
+      "name": "issue37_full_256_streams_at_50ms_rtt",
+      "source": "tests/issue37_throughput.rs",
+      "category": "heavy_correctness",
+      "schedule": "nightly",
+      "reason": "Full 256-stream simulated protocol throughput complement; virtual work, never physical performance evidence."
+    }
+  ],
+  "test_inventory_hash": "3099de06e33f26b1003d91dae9960f8e2751d1a93cbed0a8c7143d3e8b61c2e8",
+  "counts": {
+    "rust": 345,
+    "python": 332,
+    "rust_configuration_files": 33
+  },
+  "additions": {
+    "rust_tests": [
+      {
+        "source": "src/shard.rs",
+        "name": "idle_rate_change_reprices_debt_when_the_segment_arrives",
+        "occurrence": 1,
+        "attributes": [
+          "test"
+        ],
+        "ignored": false
+      }
+    ],
+    "python_tests": [
+      {
+        "source": "harness/l2/test_fifo_cancel.py",
+        "class": "CancellationOwnershipTests",
+        "name": "test_healthy_finish_still_waits_for_full_measurement_window",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_cancel.py",
+        "class": "CancellationOwnershipTests",
+        "name": "test_owner_death_cancels_and_releases_without_waiting_for_window_end",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_cancel.py",
+        "class": "CancellationOwnershipTests",
+        "name": "test_repeated_signals_do_not_extend_deadline_or_duplicate_error",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_cancel.py",
+        "class": "CancellationOwnershipTests",
+        "name": "test_signal_has_bounded_cleanup_if_live_owner_never_releases",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_cancel.py",
+        "class": "CancellationOwnershipTests",
+        "name": "test_signal_keeps_path_until_parent_reaps_clients_and_window_ends",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_case_evidence_binds_fifo_schedule_and_archived_ledger",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_every_phase_must_be_covered_by_real_traffic",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_flush_after_the_switch_stamp_is_rejected",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_header_length_parses_tcp_udp_vlan_and_ipv6_frames",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_kernel_counters_close_per_frame_and_per_gso_segment",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_ledger_container_is_bounded_and_self_describing",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_missing_duplicate_reordered_and_dropped_frames_fail",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_path_lifetime_and_queue_resources_are_bound",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_policy_replay_passes_and_covers_every_phase",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_queue_control_dispatch_requires_links_and_ledger",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_release_times_are_recomputed_from_the_frozen_policy",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_report_ledger_and_cleanup_claims_cannot_substitute_raw_evidence",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_segment_model_matches_the_observed_kernel_accounting",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoLedgerTests",
+        "name": "test_transparent_switch_must_follow_an_empty_fifo_and_precede_recovery",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoParentHandleTests",
+        "name": "test_late_missing_failed_or_hung_children_are_explicit_errors",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoParentHandleTests",
+        "name": "test_parent_refuses_unowned_namespaces_wrong_kind_and_short_phases",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_ledger.py",
+        "class": "FifoParentHandleTests",
+        "name": "test_spec_carries_the_frozen_schedule_and_finish_waits_for_the_child",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_send.py",
+        "class": "SendDiagnosticsTests",
+        "name": "test_diagnostics_cannot_override_raw_failure_or_lateness",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_send.py",
+        "class": "SendDiagnosticsTests",
+        "name": "test_errno_and_short_write_are_distinct_and_never_retried",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_send.py",
+        "class": "SendDiagnosticsTests",
+        "name": "test_failure_detail_is_bounded_but_all_failures_stay_in_ledger",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_fifo_send.py",
+        "class": "SendDiagnosticsTests",
+        "name": "test_success_keeps_bytes_order_and_completion_time_without_early_release",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemInjectorUnitTests",
+        "name": "test_capture_blocks_parse_kernel_layout",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemInjectorUnitTests",
+        "name": "test_change_errors_and_qlen_parsing",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemInjectorUnitTests",
+        "name": "test_change_sends_one_in_place_netem_change",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_capture_and_kernel_counters_must_close",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_chained_replay_passes_with_pre_mirror_frames_and_ambiguous_changes",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_clock_mapping_must_be_stable_and_cover_the_capture",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_cross_cpu_capture_skew_is_bounded_not_waived",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_decode_rejects_malformed_ledgers",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_gso_coverage_and_occupancy_bounds",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_header_flow_and_options_parsers",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_lifetime_execution_and_report_identity",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_lost_duplicate_and_bypassing_frames_fail",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_phase_changes_are_bounded_and_read_back",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_recovery_frames_cannot_wait_behind_a_drain_backlog",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_release_bounds_follow_the_netem_chain",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemLedgerTests",
+        "name": "test_reordering_fails_globally_and_per_flow",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_netem_fifo_ledger.py",
+        "class": "NetemQueueControlTests",
+        "name": "test_configuration_dispatch_and_parent_handle",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_absent_empty_or_invalid_receiver_fails_closed",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_duplicates_fail_in_every_mode_without_overtakes",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_missing_results_or_oracle_disagreement_prevents_pass",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_overflow_gaps_are_allowed",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_overflow_only_reordering_fails_despite_passing_summary",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "harness/l2/test_remote_selftests.py",
+        "class": "RemoteGateTests",
+        "name": "test_probe_or_missing_duplicate_failed_execution_prevents_pass",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_coverage.py",
+        "class": "CoverageInventoryTests",
+        "name": "test_added_python_skips_or_conditional_definitions_require_review",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_cli_matches_library_and_rejects_bad_json",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_enabled_l2_rejects_blocked_or_failed_job",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_enabled_l2_requires_full_pass",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_functional_failure_stays_fail",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_hosted_failure_is_not_hidden",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_invalid_inputs_are_blocked",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_l2_cases_come_from_plan_runners",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_l2_enabled_flag_is_exact",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_l2_job_failure_is_not_a_skip",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_skip_blocks_are_tied_to_plan_l2_cases",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_unprovisioned_l2_skip_is_green_for_github",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_hosted_nightly_gate.py",
+        "class": "HostedNightlyGateTests",
+        "name": "test_unprovisioned_pass_status_is_also_green",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      },
+      {
+        "source": "qa/tests/test_identity_process.py",
+        "class": "ProcessTests",
+        "name": "test_portable_process_group_leftover_records_failure_reason",
+        "occurrence": 1,
+        "async": false,
+        "decorators": [],
+        "guards": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "artifact_hashes_verified": 256,
+  "traces": {
+    "trace-1": {
+      "max_ms": 4.258602857589722,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS",
+      "irq130_supporting_misses": 0,
+      "miss_class_counts": {}
+    },
+    "trace-2": {
+      "max_ms": 20.698808133602142,
+      "misses": 1,
+      "statuses": {
+        "completed": 12799,
+        "missed": 1
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS",
+      "irq130_supporting_misses": 0,
+      "miss_class_counts": {
+        "sleeping (late wakeup)": 1
+      }
+    },
+    "trace-3": {
+      "max_ms": 22.020384669303894,
+      "misses": 1,
+      "statuses": {
+        "completed": 12797,
+        "missed": 1,
+        "timed_out": 2
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS",
+      "irq130_supporting_misses": 0,
+      "miss_class_counts": {
+        "sleeping (late wakeup)": 1
+      }
+    }
+  },
+  "controls": {
+    "r1-A": {
+      "max_ms": 4.985891282558441,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r1-B": {
+      "max_ms": 5.159072577953339,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r1-C": {
+      "max_ms": 5.172375589609146,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r2-B": {
+      "max_ms": 4.639267921447754,
+      "misses": 0,
+      "statuses": {
+        "completed": 12797,
+        "timed_out": 3
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    },
+    "r2-C": {
+      "max_ms": 5.646117031574249,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r2-A": {
+      "max_ms": 17.01929420232773,
+      "misses": 0,
+      "statuses": {
+        "completed": 12799,
+        "timed_out": 1
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    },
+    "r3-C": {
+      "max_ms": 4.18439507484436,
+      "misses": 0,
+      "statuses": {
+        "completed": 12797,
+        "timed_out": 3
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    },
+    "r3-A": {
+      "max_ms": 7.885675877332687,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r3-B": {
+      "max_ms": 21.277431398630142,
+      "misses": 1,
+      "statuses": {
+        "completed": 12799,
+        "missed": 1
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    },
+    "r4-A": {
+      "max_ms": 5.0829388201236725,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r4-B": {
+      "max_ms": 19.15619522333145,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r4-C": {
+      "max_ms": 4.730187356472015,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r5-B": {
+      "max_ms": 21.290764212608337,
+      "misses": 2,
+      "statuses": {
+        "completed": 12796,
+        "missed": 2,
+        "timed_out": 2
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    },
+    "r5-C": {
+      "max_ms": 4.78779524564743,
+      "misses": 0,
+      "statuses": {
+        "completed": 12800
+      },
+      "baseline_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "r5-A": {
+      "max_ms": 18.43644678592682,
+      "misses": 0,
+      "statuses": {
+        "completed": 12799,
+        "timed_out": 1
+      },
+      "baseline_exit_code": 1,
+      "cleanup": "PASS"
+    }
+  },
+  "isolation_decision": {
+    "per_run_max_ms": {
+      "A": [
+        4.986,
+        17.019,
+        7.886,
+        5.083,
+        18.436
+      ],
+      "B": [
+        5.159,
+        4.639,
+        21.277,
+        19.156,
+        21.291
+      ],
+      "C": [
+        5.172,
+        5.646,
+        4.184,
+        4.73,
+        4.788
+      ]
+    },
+    "runs_with_miss": {
+      "A": 0,
+      "B": 2,
+      "C": 0
+    },
+    "A>B": {
+      "p": 0.8452,
+      "verdict": "NOT SHOWN"
+    },
+    "B>C": {
+      "p": 0.1111,
+      "verdict": "NOT SHOWN"
+    }
+  },
+  "irq_restoration_verified": true,
+  "formal": "unchanged NOT_RUN / UNKNOWN; no new formal invocation",
+  "known_blocked": true
+}

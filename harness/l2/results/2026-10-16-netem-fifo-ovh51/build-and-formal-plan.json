@@ -1,0 +1,45 @@
+{
+  "created_unix_ns": 1792161282874769000,
+  "prerequisite": "OVH stage1 at 9ba31a7 and stage3 at 604a618 PASS; raw evidence independently recomputed locally",
+  "source_refs": {
+    "zfc": "975c677d2920c86a14dcd1e08ae743abf7b7be1c",
+    "private_tun": "ca922c518992426bfaea4a2d60abf653c5c694de",
+    "shadow_tls": "787b8e261a919689f90d9d89ee9362b344da56df",
+    "rig": "8c9e737ed505306b97c9f2971635c75808fbc04d",
+    "zfstack": "604a61834db76a1b94583932585fb24a0265964b"
+  },
+  "build": {
+    "toolchain": "1.98.1",
+    "profile": "fast-release",
+    "features": [
+      "mmsg",
+      "jemalloc"
+    ],
+    "cells": [
+      "head-head"
+    ],
+    "jobs": 2,
+    "timeout_per_command_sec": 3600,
+    "minimum_free_bytes": 3221225472,
+    "fakectl": true,
+    "forwarder": false,
+    "cache": "new task-owned target cache; no previously built worker reused"
+  },
+  "formal": {
+    "case": "C16-l2-queue-control",
+    "case_version": 3,
+    "instances": 1,
+    "arms": [
+      "baseline",
+      "fault"
+    ],
+    "lease_directory": "/var/lock/zfstack-qa",
+    "physical_domain": "zfstack-qa-baremetal-51.75.146.55-2280",
+    "isolation": "private net/mount/PID wrapper on physical host; user confirms test-only services and no competing tasks",
+    "scheduler": "unchanged",
+    "no_retries_or_best_selection": true,
+    "policy_fields": "only case version 3 and kind netem-fifo changed; 20 ms and all existing workload/delay/limit/guard/deadline/service contracts frozen"
+  },
+  "factorial": "only head-head; base=head identities, other cells UNEXECUTED, no full 2x2 inference",
+  "preparation": "Frozen allowlisted source export started after stage3 PASS. This plan is written before native compilation or formal run. Task-local Rust 1.98.1 from previously cached distribution archives verified against channel manifest; task-local Python venv and pinned QA wheels; no system package install."
+}

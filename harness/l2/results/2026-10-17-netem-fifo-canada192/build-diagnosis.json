@@ -1,0 +1,25 @@
+{
+  "build_verdict_unchanged": "UNBUILDABLE",
+  "build_errors": [
+    "invalid JSON: command-3.log: Expecting value: line 1 column 2 (char 1)"
+  ],
+  "cargo_metadata_exit_code": 0,
+  "cargo_metadata_execution_status": "PASS",
+  "cargo_metadata_cleanup": "PASS",
+  "combined_log_parse_error": "Expecting value: line 1 column 2 (char 1)",
+  "diagnostic_json_line": 1353,
+  "diagnostic_json_packages": 1373,
+  "non_json_prefix_lines": 1352,
+  "prefix_excerpt": [
+    " Downloading crates ...",
+    "warning: spurious network error (3 tries remaining): [16] Error in the HTTP2 framing layer",
+    "warning: spurious network error (3 tries remaining): [16] Error in the HTTP2 framing layer",
+    "warning: spurious network error (3 tries remaining): [16] Error in the HTTP2 framing layer",
+    "warning: spurious network error (3 tries remaining): [16] Error in the HTTP2 framing layer"
+  ],
+  "frozen_local_zfstack_resolves": true,
+  "worker_compile_invoked": false,
+  "formal_invocations": 0,
+  "cause": "qa.process merges stderr into stdout; qa.crossrepo parses the entire cargo metadata log as JSON. Cold Cargo cache emitted download progress on stderr although metadata succeeded.",
+  "fix_direction": "Capture structured-command stdout and stderr separately; retain both and enforce combined output budgets/containment. Parse stdout only; add cold-cache progress and warning regression coverage. Do not strip lines or suppress diagnostics to regrade this failure."
+}

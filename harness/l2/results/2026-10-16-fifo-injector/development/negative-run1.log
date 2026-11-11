@@ -1,0 +1,39 @@
+{
+  "ok": false,
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": false,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "cancel_recorded": true,
+    "oracle_rejects_cancel": true
+  },
+  "oracle_errors": [
+    "FIFO injector execution was cancelled or incomplete",
+    "missing FIFO install/transparent/removal timestamps"
+  ]
+}
+{
+  "ok": true,
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "overflow_recorded": true,
+    "oracle_rejects_overflow": true,
+    "udp_loss_equals_ledger_overflow": true
+  },
+  "oracle_errors": [
+    "FIFO frame was dropped, failed or left unsent: seq 20599"
+  ]
+}
+done

@@ -1,0 +1,13 @@
+{
+  "written_before_execution": true,
+  "after": "maintainer instruction to proceed with route 1 (order obligation ends at eth0 egress), conditional on this control",
+  "question": "is the receiver UDP reorder seen behind netem-fifo a property of netem on veth with multi-CPU dequeue, which the historical v3 netem-delay injection shared, or something the new injector adds?",
+  "run": "netem_order_control.py: same veth pair, sender, receiver and default light load as fifo_selftest.py full; worker eth0 root netem delay 500ms at loaded start, in-place change to delay 0 rate 2Gbit at the drain boundary, deletion once qlen reads 0",
+  "environment": "virtme-ng TCG, 4 vCPU, kernel 6.8.0-147-generic, inside qa/isolate-linux.sh",
+  "count": 3,
+  "policy": "exactly 3 runs in sequence, all retained, none repeated",
+  "decision": {
+    "adopt_route_1_if": "at least one run shows receiver UDP overtakes among datagrams sent in the drain-or-guard interval",
+    "do_not_adopt_if": "no run shows any drain-or-guard overtake; then the reorder is not shown to be shared by plain netem and C16 stays on case v2 without a criterion change"
+  }
+}

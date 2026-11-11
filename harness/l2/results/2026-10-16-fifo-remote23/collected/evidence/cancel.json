@@ -1,0 +1,117 @@
+{
+  "mode": "cancel",
+  "kernel": "6.1.0-29-amd64",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "cancel_recorded": true,
+    "oracle_rejects_cancel": true,
+    "udp_no_duplicates": true,
+    "redirect_kept_until_clients_reaped_and_measurement_ended": true
+  },
+  "ok": true,
+  "oracle_errors": [
+    "FIFO injector execution was cancelled or incomplete"
+  ],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899750
+  },
+  "frames": 60258,
+  "gso_frames": 1080,
+  "link_drop_deltas": {
+    "rig-b5d5f1-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-b5d5f1-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18475,
+  "udp_mib_delta": {
+    "InDatagrams": 18475,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899750,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.052823,
+      "max": 509.279939
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.040474,
+      "max": 5.994284
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.034836,
+      "max": 7.692099
+    }
+  },
+  "resources": {
+    "max_frames": 358,
+    "max_bytes": 467792
+  },
+  "summary": {
+    "pre": {
+      "frames": 32110,
+      "max_residence_ns": 1500405,
+      "p99_residence_ns": 61894
+    },
+    "active": {
+      "frames": 7850,
+      "max_residence_ns": 509304065,
+      "p99_residence_ns": 501109004
+    },
+    "drain": {
+      "frames": 251,
+      "max_residence_ns": 498030580,
+      "p99_residence_ns": 494020250
+    },
+    "transparent": {
+      "frames": 20047,
+      "max_residence_ns": 7361675,
+      "p99_residence_ns": 149823
+    }
+  },
+  "actual": {
+    "installed_ns": 37313454798044836,
+    "cancel_requested_ns": 37313480678772555,
+    "transparent_ns": 37313488429060576,
+    "owner_released_ns": 37313496676423689,
+    "removed_ns": 37313496730522481,
+    "closed_ns": 37313496848217813
+  },
+  "planned": {
+    "measurement_start_ns": 37313464678521032,
+    "start_ns": 37313472678521032,
+    "end_ns": 37313487928521032,
+    "recovery_start_ns": 37313488678521032,
+    "measurement_end_ns": 37313496678521032
+  },
+  "report_errors": [
+    "FIFO injector cancelled before the measurement completed"
+  ],
+  "udp_inversions": 0,
+  "udp_missing_after_removal": []
+}

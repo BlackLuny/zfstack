@@ -1,0 +1,138 @@
+warning: method `admit_leg` is never used
+   --> /root/zfstack-qa-pr75-20261016-ovh51-01/build/head-head/repos/private_tun/crates/hammer-tot/src/stream_lifecycle.rs:161:8
+    |
+100 | impl Lifecycle {
+    | -------------- method in this implementation
+...
+161 |     fn admit_leg(&self, counts: bool, reserved: bool) -> bool {
+    |        ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `PortKickedIps`
+  --> zf-worker/crates/zfw-policy/src/kick/store.rs:13:5
+   |
+13 |     PortKickedIps, PortKey, KickedIpSyncV2, KickedIpSyncModeV2, KickedIpSyncAckResultV2, KICK_PROTOCOL_ACCOUNT_CAP,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `port` is never read
+  --> zf-worker/crates/zfw-policy/src/kick/index.rs:41:5
+   |
+38 | struct Entry {
+   |        ----- field in this struct
+...
+41 |     port: u16,
+   |     ^^^^
+   |
+   = note: `Entry` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `relay_failure_probe_first_hop` is never used
+    --> zf-worker/crates/zfw-selection/src/hammer_chain/p2p_latency.rs:2802:10
+     |
+2802 | async fn relay_failure_probe_first_hop(ctx: &MeasureCtx, first_hop: &Arc<str>, origin: HopProbeOrigin) -> bool {
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `relay_failure_probe_direct_pairs` is never used
+    --> zf-worker/crates/zfw-selection/src/hammer_chain/p2p_latency.rs:2838:10
+     |
+2838 | async fn relay_failure_probe_direct_pairs(
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `wire_len` is never used
+   --> /root/zfstack-qa-pr75-20261016-ovh51-01/build/head-head/repos/zfstack/src/conn.rs:115:12
+    |
+111 | impl Plan {
+    | --------- method in this implementation
+...
+115 |     pub fn wire_len(&self) -> usize {
+    |            ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated items `new_active`, `cwnd`, `in_recovery`, `srtt`, `is_closed`, and `rx_available` are never used
+   --> /root/zfstack-qa-pr75-20261016-ovh51-01/build/head-head/repos/zfstack/src/conn.rs:705:19
+    |
+457 | impl Conn {
+    | --------- associated items in this implementation
+...
+705 |     pub(crate) fn new_active(
+    |                   ^^^^^^^^^^
+...
+749 |     pub fn cwnd(&self) -> u64 {
+    |            ^^^^
+...
+753 |     pub fn in_recovery(&self) -> bool {
+    |            ^^^^^^^^^^^
+...
+757 |     pub fn srtt(&self) -> Duration {
+    |            ^^^^
+...
+761 |     pub fn is_closed(&self) -> bool {
+    |            ^^^^^^^^^
+...
+770 |     pub fn rx_available(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: method `capacity` is never used
+  --> /root/zfstack-qa-pr75-20261016-ovh51-01/build/head-head/repos/zfstack/src/heap.rs:19:12
+   |
+15 | impl IndexedHeap {
+   | ---------------- method in this implementation
+...
+19 |     pub fn capacity(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: type `ResponseOrder` is more private than the item `vless_mux::session::SessionManager::responses`
+   --> zf-worker/crates/zfw-inbound/src/vless_mux/session.rs:102:5
+    |
+102 |     pub responses: super::response_order::ResponseOrder,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `vless_mux::session::SessionManager::responses` is reachable at visibility `pub(crate)`
+    |
+note: but type `ResponseOrder` is only usable at visibility `pub(in crate::vless_mux)`
+   --> zf-worker/crates/zfw-inbound/src/vless_mux/response_order.rs:41:1
+    |
+ 41 | pub(super) struct ResponseOrder {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: unused variable: `port`
+   --> zf-worker/crates/zfw-server/src/latency/port_report.rs:355:5
+    |
+355 |     port: u16,
+    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_port`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `peer` is never read
+   --> zf-worker/crates/zfw-server/src/quic_inbound/tuic_udp.rs:126:5
+    |
+123 | struct ConnUdp {
+    |        ------- field in this struct
+...
+126 |     peer: SocketAddr,
+    |     ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `process_port_map` is never used
+    --> zf-worker/crates/zfw-control/src/controller/port_manager.rs:2374:14
+     |
+2374 | pub async fn process_port_map(ctx: Arc<WorkerAppContext>, remote_map: HashMap<u16, Arc<PortConfig>>) {
+     |              ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `record_removed` is never used
+   --> zf-worker/crates/zfw-control/src/controller/port_rebuild_ledger.rs:427:12
+    |
+248 | impl PortRebuildLedger {
+    | ---------------------- associated function in this implementation
+...
+427 |     pub fn record_removed(ctx_instance_id: u64, port: u16) {
+    |            ^^^^^^^^^^^^^^
+

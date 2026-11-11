@@ -473,7 +473,7 @@ def run_case(plan, case, root, output, node=None, lease_dir=None, policy_dir=Non
                  for p in sorted(output.iterdir()) if p.is_file() and p.name not in ("build-manifest.json", "environment.json")]
     for rig_root in rig_roots:
         for name in ("l2-result.json", "raw.json.gz", "analysis.json", "worker.sha256", "build-info.json", "qdisc.json",
-                     "queue-control.json", "forwarder.sha256", "forwarder-build-info.json"):
+                     "queue-control.json", "queue-ledger.bin.gz", "forwarder.sha256", "forwarder-build-info.json"):
             path = rig_root / name
             if path.is_file():
                 artifacts.append({"path": path.relative_to(output).as_posix(), "sha256": file_hash(path), "size_bytes": path.stat().st_size})

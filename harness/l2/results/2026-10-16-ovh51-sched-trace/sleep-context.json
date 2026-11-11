@@ -1,0 +1,100 @@
+{
+  "scope": "Post-hoc read-only context; registered labels and decisions unchanged",
+  "limitation": "NET_RX elapsed spans do not identify the device/callback or exclusive CPU time; no new measurement",
+  "runs": {
+    "trace-2": [
+      {
+        "flow": 1,
+        "seq": 366,
+        "host_pid": 3825199,
+        "registered_class": "sleeping (late wakeup)",
+        "registered_cpus_after_wakeup": [
+          4
+        ],
+        "sleep_context": [
+          {
+            "sleep_cpu": 2,
+            "sleep_window_ms": 18.63594,
+            "irq_softirq_overlap_ms": 18.63594,
+            "full_overlapping_intervals": [
+              {
+                "start_ns": 27053324086706000,
+                "end_ns": 27053324121870000,
+                "duration_ms": 35.164,
+                "label": "softirq NET_RX"
+              }
+            ],
+            "preceding_irq_events": [
+              "          <idle>-0       [002] d.h1. 27053324.086705: irq_handler_entry: irq=132 name=eno1-TxRx-3",
+              "          <idle>-0       [002] d.h1. 27053324.086706: irq_handler_exit: irq=132 ret=handled"
+            ]
+          }
+        ],
+        "associated_timer_expiries": [
+          {
+            "cpu": 2,
+            "timer": "0000000041578065",
+            "armed_ns": 27053324085257000,
+            "expires_ns": 27053324087303755,
+            "expire_event_ns": 27053324109084000,
+            "expire_now_ns": 27053324109083020,
+            "waking_ns": 27053324109084000,
+            "timer_late_ms": 21.779265
+          }
+        ],
+        "other_flow_starts_in_miss_window": {
+          "0": 2,
+          "2": 2,
+          "3": 2
+        }
+      }
+    ],
+    "trace-3": [
+      {
+        "flow": 2,
+        "seq": 770,
+        "host_pid": 3827728,
+        "registered_class": "sleeping (late wakeup)",
+        "registered_cpus_after_wakeup": [
+          1
+        ],
+        "sleep_context": [
+          {
+            "sleep_cpu": 2,
+            "sleep_window_ms": 21.523772,
+            "irq_softirq_overlap_ms": 21.523772,
+            "full_overlapping_intervals": [
+              {
+                "start_ns": 27053549272649000,
+                "end_ns": 27053549307829000,
+                "duration_ms": 35.18,
+                "label": "softirq NET_RX"
+              }
+            ],
+            "preceding_irq_events": [
+              "          <idle>-0       [002] d.h1. 27053549.272646: irq_handler_entry: irq=132 name=eno1-TxRx-3",
+              "          <idle>-0       [002] d.h1. 27053549.272648: irq_handler_exit: irq=132 ret=handled"
+            ]
+          }
+        ],
+        "associated_timer_expiries": [
+          {
+            "cpu": 2,
+            "timer": "000000000dc406d7",
+            "armed_ns": 27053549270840000,
+            "expires_ns": 27053549272887374,
+            "expire_event_ns": 27053549294939000,
+            "expire_now_ns": 27053549294938590,
+            "waking_ns": 27053549294940000,
+            "timer_late_ms": 22.051216
+          }
+        ],
+        "other_flow_starts_in_miss_window": {
+          "0": 2,
+          "1": 2,
+          "3": 2
+        }
+      }
+    ]
+  }
+}

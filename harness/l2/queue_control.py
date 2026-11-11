@@ -3,19 +3,34 @@
 The control delays worker eth0 only inside QA's private namespaces. It proves
 that an absolute latency contract detects a deep shared egress queue; it does
 not claim to recreate the implementation or historical cause of issue #44.
+
+`netem-delay` is the retained v3 root-qdisc injector. Its show/delete restore
+is not atomic under load, so it can only re-judge archived reports.
+`fifo-delay-line` (schema 4, `fifo_injector.py`) failed its formal run and is
+kept to re-judge retained evidence. New runs use `netem-fifo` (schema 5,
+`netem_fifo.py`).
 """
+import gzip
 import json
 import math
 import os
 import re
+import select
 import subprocess
+import sys
 import threading
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+import fifo_ledger
+import netem_fifo_ledger
 from queue_links import validate as link_errors
 
-DRAIN_GUARD_SEC = .25
+FIFO_LEDGERS = {fifo_ledger.KIND: fifo_ledger, netem_fifo_ledger.KIND: netem_fifo_ledger}
+FIFO_INJECTORS = {fifo_ledger.KIND: "fifo_injector.py", netem_fifo_ledger.KIND: "netem_fifo.py"}
+KINDS = ("netem-delay", *FIFO_LEDGERS)
+LEDGER_NAME = "queue-ledger.bin.gz"
+DRAIN_GUARD_SEC = fifo_ledger.DRAIN_GUARD_SEC
 DRAIN_RATE_BPS = 2_000_000_000
 DRAIN_STRATEGY = {"kind": "netem-zero-delay-bounded-fifo-rate", "delay_ms": 0, "rate_bps": DRAIN_RATE_BPS}
 
@@ -81,7 +96,7 @@ def configuration(environment=None):
     env = os.environ if environment is None else environment
     if not env.get("L2_QUEUE_DELAY_MS"):
         return None
-    value = {"kind": "netem-delay", "node": "worker", "interface": "eth0", "phase": "loaded",
+    value = {"kind": env.get("L2_QUEUE_KIND") or "netem-delay", "node": "worker", "interface": "eth0", "phase": "loaded",
              "delay_ms": float(env["L2_QUEUE_DELAY_MS"]),
              "limit_packets": int(env.get("L2_QUEUE_LIMIT_PACKETS", "100000"))}
     validate_config(value)
@@ -90,7 +105,8 @@ def configuration(environment=None):
 
 def validate_config(value):
     if (not isinstance(value, dict) or set(value) != {"kind", "node", "interface", "phase", "delay_ms", "limit_packets"}
-            or any(value.get(k) != v for k, v in {"kind": "netem-delay", "node": "worker", "interface": "eth0", "phase": "loaded"}.items())
+            or value.get("kind") not in KINDS
+            or any(value.get(k) != v for k, v in {"node": "worker", "interface": "eth0", "phase": "loaded"}.items())
             or type(value.get("delay_ms")) not in (int, float) or not math.isfinite(value["delay_ms"])
             or not 1 <= value["delay_ms"] <= 2000 or type(value.get("limit_packets")) is not int
             or not 100 <= value["limit_packets"] <= 1_000_000):
@@ -105,11 +121,26 @@ def _root(row):
     return roots[0]
 
 
-def validate_evidence(report, config):
-    """Recompute injection preconditions from raw tc snapshots, never `ok`."""
+def ledger_blob(directory):
+    """Bounded raw FIFO ledger bytes from a rig output, or None if absent."""
+    path = Path(directory) / LEDGER_NAME
+    if not path.is_file():
+        return None
+    if path.stat().st_size > 64 * 1024 * 1024:
+        raise ValueError("FIFO ledger exceeds its archive bound")
+    return path.read_bytes()
+
+
+def validate_evidence(report, config, ledger=None):
+    """Recompute injection preconditions from raw snapshots/ledger, never `ok`."""
     errors = []
     try:
         validate_config(config)
+        if config["kind"] in FIFO_LEDGERS:
+            if not isinstance(report, dict):
+                raise ValueError("missing typed FIFO queue control report")
+            oracle = FIFO_LEDGERS[config["kind"]].validate(report, config, ledger)
+            return sorted(set(link_errors(report.get("link_samples")) + oracle))
         if (not isinstance(report, dict) or type(report.get("schema_version")) is not int
                 or report["schema_version"] != 3 or report.get("config") != config):
             raise ValueError("queue control configuration differs from frozen case")
@@ -280,3 +311,93 @@ class QueueControl:
         if self.thread.is_alive():
             raise ValueError("queue control cleanup thread did not converge")
         return self.report
+
+
+class FifoQueueControl:
+    """Parent handle of the persistent FIFO injector in the worker namespace."""
+
+    def __init__(self, config, namespace, measurement_start, start, end, measurement_end, output):
+        validate_config(config)
+        from isolation import verify
+        if (config["kind"] not in FIFO_LEDGERS or verify() or not isinstance(namespace, str)
+                or not re.fullmatch(r"rig-[a-f0-9]{6}-worker", namespace)):
+            raise ValueError("FIFO queue control requires verified QA isolation and the owned worker namespace")
+        inject_end = end - config["delay_ms"] / 1000 - DRAIN_GUARD_SEC
+        if not measurement_start < start < inject_end < end < measurement_end:
+            raise ValueError("loaded phase is too short for the frozen FIFO drain guard")
+        self.config, self.namespace, self.output = config, namespace, Path(output)
+        self.ledger = FIFO_LEDGERS[config["kind"]]
+        self.ready_by = measurement_start - self.ledger.INSTALL_LEAD_NS / 1e9
+        self.spec = {"config": config, "report": str(self.output / "queue-control.json"),
+                     "ledger": str(self.output / LEDGER_NAME),
+                     "planned": {"measurement_start_ns": round(measurement_start * 1e9), "start_ns": round(start * 1e9),
+                                 "end_ns": round(inject_end * 1e9), "recovery_start_ns": round(end * 1e9),
+                                 "measurement_end_ns": round(measurement_end * 1e9)}}
+        self.process, self.log, self.errors = None, None, []
+
+    def begin(self):
+        spec = self.output / "queue-fifo-spec.json"
+        spec.write_text(json.dumps(self.spec, indent=2) + "\n")
+        self.log = (self.output / "queue-fifo.log").open("wb")
+        try:
+            self.process = subprocess.Popen(
+                ["ip", "netns", "exec", self.namespace, sys.executable,
+                 str(Path(__file__).with_name(FIFO_INJECTORS[self.config["kind"]])),
+                 "--spec", str(spec)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log)
+        except OSError as error:
+            self.errors.append("FIFO injector could not start: " + str(error))
+            self.log.close()
+            return
+        line = b""
+        while not line.endswith(b"\n") and len(line) < 128:
+            remaining = self.ready_by - time.monotonic()
+            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self.errors.append("FIFO injector was not installed before the measured baseline")
+                return
+            chunk = os.read(self.process.stdout.fileno(), 128)
+            if not chunk:
+                self.errors.append("FIFO injector exited before installation")
+                return
+            line += chunk
+        if not line.startswith(b"ready "):
+            self.errors.append("FIFO injector reported an invalid readiness line")
+
+    def finish(self, cancelled=False):
+        """Release the FIFO path only after the caller reaped its load clients.
+
+        A signal to the injector requests cancellation but cannot establish
+        client quiescence. This final control message provides that ownership
+        handoff; the injector still preserves the full measurement lifetime.
+        """
+        if self.process is not None:
+            try:
+                self.process.stdin.write(b"cancel\n" if cancelled or self.errors else b"finish\n")
+                self.process.stdin.close()
+            except OSError:
+                pass
+            try:
+                self.process.wait(timeout=self.config["delay_ms"] / 1000 + 60)
+            except subprocess.TimeoutExpired:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait()
+                self.errors.append("FIFO injector did not exit after its teardown request")
+            self.process.stdout.close()
+            self.log.close()
+        path = Path(self.spec["report"])
+        try:
+            report = json.loads(path.read_text())
+        except (OSError, ValueError):
+            report = {"schema_version": self.ledger.SCHEMA_VERSION, "config": self.config, "errors": [],
+                      "cancelled": cancelled, "cleanup": "UNKNOWN"}
+            self.errors.append("FIFO injector report is missing")
+        if not isinstance(report, dict) or not isinstance(report.get("errors"), list):
+            report = {"schema_version": self.ledger.SCHEMA_VERSION, "errors": ["malformed FIFO injector report"]}
+        if self.process is not None and self.process.returncode and not report["errors"]:
+            self.errors.append(f"FIFO injector exited {self.process.returncode}")
+        report["errors"].extend(self.errors)
+        path.write_text(json.dumps(report, indent=2) + "\n")
+        return report

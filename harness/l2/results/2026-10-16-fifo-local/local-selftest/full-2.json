@@ -1,0 +1,110 @@
+{
+  "mode": "full",
+  "kernel": "7.0.12-linuxkit",
+  "checks": {
+    "udp_payload_intact": true,
+    "receiver_socket_no_loss": true,
+    "no_sender_backpressure": true,
+    "link_zero_drops": true,
+    "qdisc_restored": true,
+    "cleanup_pass": true,
+    "udp_exactly_once_in_order": true,
+    "tcp_stream_intact": true,
+    "all_frames_delivered": true,
+    "gso_frames_preserved": true,
+    "oracle_pass": false,
+    "active_delay_applied": true,
+    "recovery_transparent": true
+  },
+  "ok": false,
+  "oracle_errors": [
+    "FIFO frame 21147 was released early or exceeded the lateness bound"
+  ],
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899666
+  },
+  "frames": 43966,
+  "gso_frames": 15309,
+  "link_drop_deltas": {
+    "rig-96fc33-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-96fc33-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "udp_received": 18475,
+  "udp_mib_delta": {
+    "InDatagrams": 18475,
+    "NoPorts": 0,
+    "InErrors": 0,
+    "OutDatagrams": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0,
+    "IgnoredMulti": 0,
+    "MemErrors": 0
+  },
+  "tcp_bytes": 73899666,
+  "latency_ms": {
+    "active": {
+      "n": 7600,
+      "min": 500.068125,
+      "max": 542.903792
+    },
+    "recovery": {
+      "n": 3975,
+      "min": 0.043833,
+      "max": 16.241375
+    },
+    "baseline": {
+      "n": 6500,
+      "min": 0.026792,
+      "max": 21.563417
+    }
+  },
+  "resources": {
+    "max_frames": 297,
+    "max_bytes": 2480292
+  },
+  "summary": {
+    "pre": {
+      "frames": 21066,
+      "max_residence_ns": 16465125,
+      "p99_residence_ns": 448042
+    },
+    "active": {
+      "frames": 8181,
+      "max_residence_ns": 540402208,
+      "p99_residence_ns": 514115250
+    },
+    "drain": {
+      "frames": 376,
+      "max_residence_ns": 498789458,
+      "p99_residence_ns": 493872875
+    },
+    "transparent": {
+      "frames": 14343,
+      "max_residence_ns": 13183208,
+      "p99_residence_ns": 377083
+    }
+  },
+  "actual": {
+    "installed_ns": 330690356398,
+    "transparent_ns": 364397090288,
+    "removed_ns": 372638878208,
+    "closed_ns": 372722997625
+  },
+  "planned": {
+    "measurement_start_ns": 340624903814,
+    "start_ns": 348624903814,
+    "end_ns": 363874903814,
+    "recovery_start_ns": 364624903814,
+    "measurement_end_ns": 372624903814
+  },
+  "report_errors": []
+}

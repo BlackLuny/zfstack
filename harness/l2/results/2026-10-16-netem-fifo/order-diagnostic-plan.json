@@ -1,0 +1,12 @@
+{
+  "written_before_execution": true,
+  "after": "selftest-plan.json run 'full' failed udp_exactly_once_in_order while the oracle passed and the eth0 egress capture was in send order",
+  "source_sha": "db4dbeb2d3f1370c053e7d06b900c31fa278cc13",
+  "harness_code_sha": "96a3fcc",
+  "purpose": "diagnostic only: locate where UDP order is lost after eth0 egress; not a qualification and not a rerun of the failed full",
+  "run": "veth_order_trace.sh order-trace --mode full (default light load, same as the failed full)",
+  "hypothesis": "netem dequeues on whichever CPU runs the qdisc; veth hands each frame to that CPU's receive backlog, so consecutive frames handed to different CPUs can be processed out of order",
+  "supports_if": "every frame overtaken at the receiver socket is overtaken by a frame handed to a different CPU, and processing order equals socket order",
+  "refutes_if": "an overtaken frame and its overtaker were handed to the same CPU, or the traced processing order is in egress order while the socket order is not",
+  "policy": "executed once; outcome retained whether or not reordering recurs; tracing perturbs timing and its absence would not refute the failed full"
+}

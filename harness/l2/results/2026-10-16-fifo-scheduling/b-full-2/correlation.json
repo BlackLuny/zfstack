@@ -1,0 +1,6996 @@
+{
+  "oracle_errors": [
+    "FIFO frame 23365 was released early or exceeded the lateness bound"
+  ],
+  "frames": 45234,
+  "delivered": 45234,
+  "overflows": 0,
+  "late_frames": 61,
+  "max_lateness_by_phase_ns": {
+    "0": 19418541,
+    "1": 47844583,
+    "2": 2677927,
+    "3": 154757459
+  },
+  "worst": {
+    "row": [
+      42402,
+      3,
+      1,
+      0,
+      0,
+      1074,
+      387040330633,
+      0,
+      154757459,
+      918261366259610293,
+      42
+    ],
+    "seq": 42402,
+    "phase": 3,
+    "due_ns": 387040330633,
+    "emitted_ns": 387195088092,
+    "lateness_ns": 154757459,
+    "host_bound": {
+      "host_sample_window_ns": [
+        800359140308708,
+        800359298758500
+      ],
+      "edge_slack_ns": 3405125,
+      "unsettled_all_vcpu_cpu_delta_ns": 3728000,
+      "unsettled_per_vcpu_cpu_delta_ns": {
+        "0": 128000,
+        "1": 160000,
+        "2": 797000,
+        "3": 364000,
+        "4": 249000,
+        "5": 0,
+        "6": 980000,
+        "7": 100000,
+        "8": 794000,
+        "9": 156000
+      },
+      "settled_endpoints": {
+        "0": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 209000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "1": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 184000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "2": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 1087000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "3": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 373000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "4": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 285000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "5": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 111000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "6": {
+          "sample_index": 27946,
+          "sample_window_ns": [
+            800359301274500,
+            800359301298416
+          ],
+          "cpu_delta_ns": 1028000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "7": {
+          "sample_index": 27945,
+          "sample_window_ns": [
+            800359299986541,
+            800359300015833
+          ],
+          "cpu_delta_ns": 101000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "8": {
+          "sample_index": 27945,
+          "sample_window_ns": [
+            800359299986541,
+            800359300015833
+          ],
+          "cpu_delta_ns": 795000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        },
+        "9": {
+          "sample_index": 27945,
+          "sample_window_ns": [
+            800359299986541,
+            800359300015833
+          ],
+          "cpu_delta_ns": 157000,
+          "state": 3,
+          "stable_waiting_reads": 2
+        }
+      },
+      "all_vcpu_cpu_upper_bound_ns": 4330000,
+      "wall_ns": 154757459,
+      "minimum_wall_not_executing_any_vcpu_ns": 150427459
+    },
+    "overlapping_operations": [
+      {
+        "op": "admit",
+        "begin": [
+          387040331050,
+          5999913391,
+          32008,
+          1,
+          2
+        ],
+        "end": [
+          387195030550,
+          6154614932,
+          32008,
+          1,
+          2
+        ],
+        "extra": {
+          "seq_before": 42402,
+          "queued": 0,
+          "head_due": null,
+          "seq_after": 42403
+        },
+        "wall_ns": 154699500,
+        "guest_cpu_ns": 154701541,
+        "host_bound": {
+          "host_sample_window_ns": [
+            800359140308708,
+            800359298758500
+          ],
+          "edge_slack_ns": 3463084,
+          "unsettled_all_vcpu_cpu_delta_ns": 3728000,
+          "unsettled_per_vcpu_cpu_delta_ns": {
+            "0": 128000,
+            "1": 160000,
+            "2": 797000,
+            "3": 364000,
+            "4": 249000,
+            "5": 0,
+            "6": 980000,
+            "7": 100000,
+            "8": 794000,
+            "9": 156000
+          },
+          "settled_endpoints": {
+            "0": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 209000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "1": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 184000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "2": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 1087000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "3": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 373000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "4": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 285000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "5": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 111000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "6": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 1028000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "7": {
+              "sample_index": 27945,
+              "sample_window_ns": [
+                800359299986541,
+                800359300015833
+              ],
+              "cpu_delta_ns": 101000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "8": {
+              "sample_index": 27945,
+              "sample_window_ns": [
+                800359299986541,
+                800359300015833
+              ],
+              "cpu_delta_ns": 795000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "9": {
+              "sample_index": 27945,
+              "sample_window_ns": [
+                800359299986541,
+                800359300015833
+              ],
+              "cpu_delta_ns": 157000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            }
+          },
+          "all_vcpu_cpu_upper_bound_ns": 4330000,
+          "wall_ns": 154699500,
+          "minimum_wall_not_executing_any_vcpu_ns": 150369500
+        }
+      },
+      {
+        "op": "read_batch",
+        "begin": [
+          386857670508,
+          5817252933,
+          32008,
+          1,
+          2
+        ],
+        "end": [
+          387195633050,
+          6155215432,
+          32008,
+          1,
+          2
+        ],
+        "extra": {
+          "seq_before": 42329,
+          "queued": 0,
+          "head_due": null,
+          "seq_after": 42438
+        },
+        "wall_ns": 337962542,
+        "guest_cpu_ns": 337962499,
+        "host_bound": {
+          "host_sample_window_ns": [
+            800358917081208,
+            800359300015833
+          ],
+          "edge_slack_ns": 44684875,
+          "unsettled_all_vcpu_cpu_delta_ns": 8374000,
+          "unsettled_per_vcpu_cpu_delta_ns": {
+            "0": 254000,
+            "1": 246000,
+            "2": 3321000,
+            "3": 1744000,
+            "4": 298000,
+            "5": 110000,
+            "6": 1336000,
+            "7": 100000,
+            "8": 796000,
+            "9": 169000
+          },
+          "settled_endpoints": {
+            "0": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 255000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "1": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 247000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "2": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 3322000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "3": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 1745000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "4": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 299000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "5": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 111000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "6": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 1337000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "7": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 101000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "8": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 797000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            },
+            "9": {
+              "sample_index": 27946,
+              "sample_window_ns": [
+                800359301274500,
+                800359301298416
+              ],
+              "cpu_delta_ns": 170000,
+              "state": 3,
+              "stable_waiting_reads": 2
+            }
+          },
+          "all_vcpu_cpu_upper_bound_ns": 8384000,
+          "wall_ns": 337962542,
+          "minimum_wall_not_executing_any_vcpu_ns": 329578542
+        }
+      }
+    ],
+    "overlapping_runnable_waits": []
+  },
+  "sender": {
+    "sent": 18475,
+    "blocked": 0,
+    "tcp_bytes": 73899056
+  },
+  "udp_received": 18475,
+  "udp_in_order_complete": true,
+  "tcp_matches": true,
+  "receiver_recovery_max_ns": 377264917,
+  "receiver_recovery_lt_125ms": false,
+  "raw_link_drop_delta": {
+    "rig-0a8dfd-worker": {
+      "rx": 0,
+      "tx": 0
+    },
+    "rig-0a8dfd-target": {
+      "rx": 0,
+      "tx": 0
+    }
+  },
+  "cpu_policy": {
+    "diagnostic": true,
+    "pid": 18,
+    "affinity_before": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "scheduler_before": 0,
+    "affinity_after": [
+      2
+    ],
+    "scheduler_after": 1,
+    "priority_after": 10
+  },
+  "clock_offset_interval_ns": [
+    799972102203593,
+    799972102490801
+  ],
+  "clock_offset_width_ns": 287208,
+  "host_vcpu_count": 10,
+  "long_operations": [
+    {
+      "op": "read_batch",
+      "begin": [
+        386857670508,
+        5817252933,
+        32008,
+        1,
+        2
+      ],
+      "end": [
+        387195633050,
+        6155215432,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42329,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 42438
+      },
+      "wall_ns": 337962542,
+      "guest_cpu_ns": 337962499,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800358917081208,
+          800359300015833
+        ],
+        "edge_slack_ns": 44684875,
+        "unsettled_all_vcpu_cpu_delta_ns": 8374000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 254000,
+          "1": 246000,
+          "2": 3321000,
+          "3": 1744000,
+          "4": 298000,
+          "5": 110000,
+          "6": 1336000,
+          "7": 100000,
+          "8": 796000,
+          "9": 169000
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 255000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 247000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 3322000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1745000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 299000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 111000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1337000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 101000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 797000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 170000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 8384000,
+        "wall_ns": 337962542,
+        "minimum_wall_not_executing_any_vcpu_ns": 329578542
+      }
+    },
+    {
+      "op": "admit",
+      "begin": [
+        387040331050,
+        5999913391,
+        32008,
+        1,
+        2
+      ],
+      "end": [
+        387195030550,
+        6154614932,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42402,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 42403
+      },
+      "wall_ns": 154699500,
+      "guest_cpu_ns": 154701541,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359140308708,
+          800359298758500
+        ],
+        "edge_slack_ns": 3463084,
+        "unsettled_all_vcpu_cpu_delta_ns": 3728000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 128000,
+          "1": 160000,
+          "2": 797000,
+          "3": 364000,
+          "4": 249000,
+          "5": 0,
+          "6": 980000,
+          "7": 100000,
+          "8": 794000,
+          "9": 156000
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 209000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 184000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1087000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 373000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 285000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 111000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1028000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 101000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 795000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 157000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 4330000,
+        "wall_ns": 154699500,
+        "minimum_wall_not_executing_any_vcpu_ns": 150369500
+      }
+    },
+    {
+      "op": "emit",
+      "begin": [
+        386909677508,
+        5869259850,
+        32008,
+        1,
+        2
+      ],
+      "end": [
+        387040110883,
+        5999695391,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42392,
+        "queued": 1,
+        "head_due": 386909672342,
+        "seq_after": 42392
+      },
+      "wall_ns": 130433375,
+      "guest_cpu_ns": 130435541,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359010886916,
+          800359143308166
+        ],
+        "edge_slack_ns": 1700667,
+        "unsettled_all_vcpu_cpu_delta_ns": 1888000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 75000,
+          "1": 48000,
+          "2": 1157000,
+          "3": 387000,
+          "4": 89000,
+          "5": 0,
+          "6": 42000,
+          "7": 0,
+          "8": 29000,
+          "9": 61000
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 224000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 208000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1973000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 594000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 299000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27914,
+            "sample_window_ns": [
+              800359160284750,
+              800359160341000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1030000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27914,
+            "sample_window_ns": [
+              800359160284750,
+              800359160341000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 797000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 170000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 5297000,
+        "wall_ns": 130433375,
+        "minimum_wall_not_executing_any_vcpu_ns": 125136375
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        386737040883,
+        5817115517,
+        32006,
+        1,
+        2
+      ],
+      "end": [
+        386817381425,
+        5817166350,
+        32007,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 80340542,
+      "guest_cpu_ns": 50833,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800358838415166,
+          800358964474916
+        ],
+        "edge_slack_ns": 45432000,
+        "unsettled_all_vcpu_cpu_delta_ns": 1818000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 17000,
+          "1": 39000,
+          "2": 681000,
+          "3": 788000,
+          "4": 0,
+          "5": 0,
+          "6": 293000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27870,
+            "sample_window_ns": [
+              800359001339833,
+              800359001421500
+            ],
+            "cpu_delta_ns": 49000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 40000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 3571000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1955000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 433000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27868,
+            "sample_window_ns": [
+              800358969756583,
+              800358994924708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 6053000,
+        "wall_ns": 80340542,
+        "minimum_wall_not_executing_any_vcpu_ns": 74287542
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        387215214175,
+        6159784432,
+        32016,
+        1,
+        2
+      ],
+      "end": [
+        387286264675,
+        6159889516,
+        32017,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 71050500,
+      "guest_cpu_ns": 105084,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359316440000,
+          800359484321583
+        ],
+        "edge_slack_ns": 96543875,
+        "unsettled_all_vcpu_cpu_delta_ns": 2409000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 56000,
+          "1": 0,
+          "2": 892000,
+          "3": 586000,
+          "4": 32000,
+          "5": 0,
+          "6": 843000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28003,
+            "sample_window_ns": [
+              800359605418500,
+              800359605505291
+            ],
+            "cpu_delta_ns": 439000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27962,
+            "sample_window_ns": [
+              800359485602666,
+              800359485700541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28055,
+            "sample_window_ns": [
+              800359753726041,
+              800359753766916
+            ],
+            "cpu_delta_ns": 17329000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28005,
+            "sample_window_ns": [
+              800359607737208,
+              800359607895416
+            ],
+            "cpu_delta_ns": 3232000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27981,
+            "sample_window_ns": [
+              800359534139416,
+              800359534184875
+            ],
+            "cpu_delta_ns": 181000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27962,
+            "sample_window_ns": [
+              800359485602666,
+              800359485700541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27981,
+            "sample_window_ns": [
+              800359534139416,
+              800359534184875
+            ],
+            "cpu_delta_ns": 1027000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27962,
+            "sample_window_ns": [
+              800359485602666,
+              800359485700541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27962,
+            "sample_window_ns": [
+              800359485602666,
+              800359485700541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27962,
+            "sample_window_ns": [
+              800359485602666,
+              800359485700541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 22213000,
+        "wall_ns": 71050500,
+        "minimum_wall_not_executing_any_vcpu_ns": 48837500
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        382755571506,
+        5130562028,
+        27385,
+        1,
+        2
+      ],
+      "end": [
+        382825712590,
+        5130604111,
+        27386,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 70141084,
+      "guest_cpu_ns": 42083,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800354856448791,
+          800354929425375
+        ],
+        "edge_slack_ns": 2548292,
+        "unsettled_all_vcpu_cpu_delta_ns": 4389000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 64000,
+          "1": 0,
+          "2": 1703000,
+          "3": 127000,
+          "4": 1378000,
+          "5": 0,
+          "6": 1117000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 65000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 24920,
+            "sample_window_ns": [
+              800354931995625,
+              800354932029083
+            ],
+            "cpu_delta_ns": 26000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25024,
+            "sample_window_ns": [
+              800355064670750,
+              800355064707833
+            ],
+            "cpu_delta_ns": 23543000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 128000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25244,
+            "sample_window_ns": [
+              800355364485291,
+              800355364529625
+            ],
+            "cpu_delta_ns": 56864000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 25004,
+            "sample_window_ns": [
+              800355038927958,
+              800355038975416
+            ],
+            "cpu_delta_ns": 16570000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 24919,
+            "sample_window_ns": [
+              800354930692791,
+              800354930734291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 97200000,
+        "wall_ns": 70141084,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "read_batch",
+      "begin": [
+        387556183009,
+        6350476515,
+        32057,
+        1,
+        2
+      ],
+      "end": [
+        387615525509,
+        6409819015,
+        32057,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42799,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 42842
+      },
+      "wall_ns": 59342500,
+      "guest_cpu_ns": 59342500,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359653837041,
+          800359718733791
+        ],
+        "edge_slack_ns": 5267042,
+        "unsettled_all_vcpu_cpu_delta_ns": 3133000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 41000,
+          "1": 60000,
+          "2": 1502000,
+          "3": 210000,
+          "4": 0,
+          "5": 0,
+          "6": 476000,
+          "7": 844000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 42000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 28042,
+            "sample_window_ns": [
+              800359726019000,
+              800359726053041
+            ],
+            "cpu_delta_ns": 74000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28055,
+            "sample_window_ns": [
+              800359753726041,
+              800359753766916
+            ],
+            "cpu_delta_ns": 3658000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28042,
+            "sample_window_ns": [
+              800359726019000,
+              800359726053041
+            ],
+            "cpu_delta_ns": 239000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 28752,
+            "sample_window_ns": [
+              800360750572541,
+              800360750633208
+            ],
+            "cpu_delta_ns": 158343000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 28950,
+            "sample_window_ns": [
+              800361030195291,
+              800361030273333
+            ],
+            "cpu_delta_ns": 196237000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 358597000,
+        "wall_ns": 59342500,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        388966143468,
+        6649872280,
+        33785,
+        1,
+        2
+      ],
+      "end": [
+        389021262176,
+        6649982739,
+        33786,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 55118708,
+      "guest_cpu_ns": 110459,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800361067855375,
+          800361124302416
+        ],
+        "edge_slack_ns": 1041125,
+        "unsettled_all_vcpu_cpu_delta_ns": 4068000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 441000,
+          "1": 293000,
+          "2": 952000,
+          "3": 1260000,
+          "4": 564000,
+          "5": 0,
+          "6": 173000,
+          "7": 133000,
+          "8": 252000,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 641000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 294000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 29038,
+            "sample_window_ns": [
+              800361186754833,
+              800361186792791
+            ],
+            "cpu_delta_ns": 8334000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 1261000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 565000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 174000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 134000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 253000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 29009,
+            "sample_window_ns": [
+              800361125557875,
+              800361125600166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 11658000,
+        "wall_ns": 55118708,
+        "minimum_wall_not_executing_any_vcpu_ns": 43460708
+      }
+    },
+    {
+      "op": "admit",
+      "begin": [
+        387556196384,
+        6350489848,
+        32057,
+        1,
+        2
+      ],
+      "end": [
+        387610915759,
+        6405213765,
+        32057,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42799,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 42800
+      },
+      "wall_ns": 54719375,
+      "guest_cpu_ns": 54723917,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359653837041,
+          800359714528583
+        ],
+        "edge_slack_ns": 5684959,
+        "unsettled_all_vcpu_cpu_delta_ns": 1999000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 21000,
+          "1": 27000,
+          "2": 934000,
+          "3": 119000,
+          "4": 0,
+          "5": 0,
+          "6": 315000,
+          "7": 583000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28039,
+            "sample_window_ns": [
+              800359720426166,
+              800359720465041
+            ],
+            "cpu_delta_ns": 42000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 28042,
+            "sample_window_ns": [
+              800359726019000,
+              800359726053041
+            ],
+            "cpu_delta_ns": 74000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28055,
+            "sample_window_ns": [
+              800359753726041,
+              800359753766916
+            ],
+            "cpu_delta_ns": 3658000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28042,
+            "sample_window_ns": [
+              800359726019000,
+              800359726053041
+            ],
+            "cpu_delta_ns": 239000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 28036,
+            "sample_window_ns": [
+              800359715793333,
+              800359715831541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 28036,
+            "sample_window_ns": [
+              800359715793333,
+              800359715831541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 28752,
+            "sample_window_ns": [
+              800360750572541,
+              800360750633208
+            ],
+            "cpu_delta_ns": 158343000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 28950,
+            "sample_window_ns": [
+              800361030195291,
+              800361030273333
+            ],
+            "cpu_delta_ns": 196237000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 28036,
+            "sample_window_ns": [
+              800359715793333,
+              800359715831541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 28036,
+            "sample_window_ns": [
+              800359715793333,
+              800359715831541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 358597000,
+        "wall_ns": 54719375,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "send",
+      "begin": [
+        386909678717,
+        5869261100,
+        32008,
+        1,
+        2
+      ],
+      "end": [
+        386958577633,
+        5918309100,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "bytes": 452
+      },
+      "wall_ns": 48898916,
+      "guest_cpu_ns": 49048000,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359010886916,
+          800359062490250
+        ],
+        "edge_slack_ns": 2417210,
+        "unsettled_all_vcpu_cpu_delta_ns": 1016000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 881000,
+          "3": 135000,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 224000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 208000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1973000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 594000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 299000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27905,
+            "sample_window_ns": [
+              800359103873375,
+              800359103932208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1030000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27905,
+            "sample_window_ns": [
+              800359103873375,
+              800359103932208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27945,
+            "sample_window_ns": [
+              800359299986541,
+              800359300015833
+            ],
+            "cpu_delta_ns": 797000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27905,
+            "sample_window_ns": [
+              800359103873375,
+              800359103932208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 5128000,
+        "wall_ns": 48898916,
+        "minimum_wall_not_executing_any_vcpu_ns": 43770916
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        377061830420,
+        4205841567,
+        22807,
+        1,
+        2
+      ],
+      "end": [
+        377109908212,
+        4205884942,
+        22808,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.000348917
+      },
+      "wall_ns": 48077792,
+      "guest_cpu_ns": 43375,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800349162789208,
+          800349213450291
+        ],
+        "edge_slack_ns": 2296083,
+        "unsettled_all_vcpu_cpu_delta_ns": 2492000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 114000,
+          "1": 98000,
+          "2": 968000,
+          "3": 90000,
+          "4": 862000,
+          "5": 0,
+          "6": 360000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 115000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 99000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 20745,
+            "sample_window_ns": [
+              800349227111041,
+              800349227265500
+            ],
+            "cpu_delta_ns": 3192000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 91000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 23732,
+            "sample_window_ns": [
+              800353358009375,
+              800353358030583
+            ],
+            "cpu_delta_ns": 497437000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 20745,
+            "sample_window_ns": [
+              800349227111041,
+              800349227265500
+            ],
+            "cpu_delta_ns": 2067000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 20737,
+            "sample_window_ns": [
+              800349214765250,
+              800349214799125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 503005000,
+        "wall_ns": 48077792,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        383393162548,
+        5225488176,
+        28053,
+        1,
+        2
+      ],
+      "end": [
+        383438729882,
+        5225535634,
+        28054,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 45567334,
+      "guest_cpu_ns": 47458,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800355494695083,
+          800355542527125
+        ],
+        "edge_slack_ns": 1977500,
+        "unsettled_all_vcpu_cpu_delta_ns": 3357000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 42000,
+          "1": 0,
+          "2": 1704000,
+          "3": 0,
+          "4": 282000,
+          "5": 0,
+          "6": 1329000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 25387,
+            "sample_window_ns": [
+              800355554157583,
+              800355554202791
+            ],
+            "cpu_delta_ns": 309000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 25382,
+            "sample_window_ns": [
+              800355545148250,
+              800355545231791
+            ],
+            "cpu_delta_ns": 61000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25429,
+            "sample_window_ns": [
+              800355626895416,
+              800355626956750
+            ],
+            "cpu_delta_ns": 13752000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 25382,
+            "sample_window_ns": [
+              800355545148250,
+              800355545231791
+            ],
+            "cpu_delta_ns": 107000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25429,
+            "sample_window_ns": [
+              800355626895416,
+              800355626956750
+            ],
+            "cpu_delta_ns": 11005000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 25381,
+            "sample_window_ns": [
+              800355543578750,
+              800355543616625
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 25409,
+            "sample_window_ns": [
+              800355585496833,
+              800355585631958
+            ],
+            "cpu_delta_ns": 7026000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 25381,
+            "sample_window_ns": [
+              800355543578750,
+              800355543616625
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 25381,
+            "sample_window_ns": [
+              800355543578750,
+              800355543616625
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 25381,
+            "sample_window_ns": [
+              800355543578750,
+              800355543616625
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 32264000,
+        "wall_ns": 45567334,
+        "minimum_wall_not_executing_any_vcpu_ns": 13303334
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        383532030590,
+        5240975884,
+        28169,
+        1,
+        2
+      ],
+      "end": [
+        383574214507,
+        5241020925,
+        28170,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 42183917,
+      "guest_cpu_ns": 45041,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800355633464750,
+          800355677326875
+        ],
+        "edge_slack_ns": 1391000,
+        "unsettled_all_vcpu_cpu_delta_ns": 3101000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 166000,
+          "1": 69000,
+          "2": 901000,
+          "3": 1095000,
+          "4": 756000,
+          "5": 94000,
+          "6": 0,
+          "7": 20000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 25470,
+            "sample_window_ns": [
+              800355679974666,
+              800355680017708
+            ],
+            "cpu_delta_ns": 183000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 25470,
+            "sample_window_ns": [
+              800355679974666,
+              800355680017708
+            ],
+            "cpu_delta_ns": 83000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25848,
+            "sample_window_ns": [
+              800356189179541,
+              800356189209208
+            ],
+            "cpu_delta_ns": 77419000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 25579,
+            "sample_window_ns": [
+              800355819326416,
+              800355819354541
+            ],
+            "cpu_delta_ns": 19637000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25523,
+            "sample_window_ns": [
+              800355747279791,
+              800355747363625
+            ],
+            "cpu_delta_ns": 10227000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 25470,
+            "sample_window_ns": [
+              800355679974666,
+              800355680017708
+            ],
+            "cpu_delta_ns": 106000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 25469,
+            "sample_window_ns": [
+              800355678594666,
+              800355678678541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 25470,
+            "sample_window_ns": [
+              800355679974666,
+              800355680017708
+            ],
+            "cpu_delta_ns": 55000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 25469,
+            "sample_window_ns": [
+              800355678594666,
+              800355678678541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 25469,
+            "sample_window_ns": [
+              800355678594666,
+              800355678678541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 107713000,
+        "wall_ns": 42183917,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        388924875593,
+        6649697988,
+        33784,
+        1,
+        2
+      ],
+      "end": [
+        388966048176,
+        6649779697,
+        33785,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 41172583,
+      "guest_cpu_ns": 81709,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800361025954875,
+          800361069359583
+        ],
+        "edge_slack_ns": 1944917,
+        "unsettled_all_vcpu_cpu_delta_ns": 10095000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 678000,
+          "1": 359000,
+          "2": 683000,
+          "3": 5993000,
+          "4": 988000,
+          "5": 287000,
+          "6": 413000,
+          "7": 654000,
+          "8": 40000,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 679000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 360000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28978,
+            "sample_window_ns": [
+              800361072091291,
+              800361072174083
+            ],
+            "cpu_delta_ns": 764000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28978,
+            "sample_window_ns": [
+              800361072091291,
+              800361072174083
+            ],
+            "cpu_delta_ns": 6114000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 989000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 288000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 414000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 655000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 41000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 28977,
+            "sample_window_ns": [
+              800361070631416,
+              800361070706875
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 10305000,
+        "wall_ns": 41172583,
+        "minimum_wall_not_executing_any_vcpu_ns": 30867583
+      }
+    },
+    {
+      "op": "emit",
+      "begin": [
+        386857732050,
+        5817314433,
+        32008,
+        1,
+        2
+      ],
+      "end": [
+        386898414550,
+        5858000267,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42330,
+        "queued": 1,
+        "head_due": 386857689175,
+        "seq_after": 42330
+      },
+      "wall_ns": 40682500,
+      "guest_cpu_ns": 40685834,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800358917081208,
+          800359001421500
+        ],
+        "edge_slack_ns": 43370584,
+        "unsettled_all_vcpu_cpu_delta_ns": 1906000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 31000,
+          "1": 39000,
+          "2": 576000,
+          "3": 953000,
+          "4": 0,
+          "5": 0,
+          "6": 307000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 32000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 40000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 3322000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1745000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 308000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 5452000,
+        "wall_ns": 40682500,
+        "minimum_wall_not_executing_any_vcpu_ns": 35230500
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        386817410800,
+        5817192434,
+        32007,
+        1,
+        2
+      ],
+      "end": [
+        386857651717,
+        5817236808,
+        32008,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 40240917,
+      "guest_cpu_ns": 44374,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800358839744541,
+          800358994924708
+        ],
+        "edge_slack_ns": 114652042,
+        "unsettled_all_vcpu_cpu_delta_ns": 1476000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 39000,
+          "2": 452000,
+          "3": 701000,
+          "4": 0,
+          "5": 0,
+          "6": 284000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 27870,
+            "sample_window_ns": [
+              800359001339833,
+              800359001421500
+            ],
+            "cpu_delta_ns": 32000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 40000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 3322000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 27946,
+            "sample_window_ns": [
+              800359301274500,
+              800359301298416
+            ],
+            "cpu_delta_ns": 1761000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 316000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27869,
+            "sample_window_ns": [
+              800358996336000,
+              800358996383083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 5476000,
+        "wall_ns": 40240917,
+        "minimum_wall_not_executing_any_vcpu_ns": 34764917
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        384886345299,
+        5493205525,
+        29730,
+        1,
+        2
+      ],
+      "end": [
+        384924862466,
+        5493250651,
+        29731,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 38517167,
+      "guest_cpu_ns": 45126,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800356987254791,
+          800357028107291
+        ],
+        "edge_slack_ns": 2048125,
+        "unsettled_all_vcpu_cpu_delta_ns": 1894000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 19000,
+          "1": 0,
+          "2": 667000,
+          "3": 0,
+          "4": 402000,
+          "5": 0,
+          "6": 806000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 26499,
+            "sample_window_ns": [
+              800357031632208,
+              800357031705458
+            ],
+            "cpu_delta_ns": 75000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 26497,
+            "sample_window_ns": [
+              800357029148958,
+              800357029199708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 26675,
+            "sample_window_ns": [
+              800357261213750,
+              800357261250041
+            ],
+            "cpu_delta_ns": 40252000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 26499,
+            "sample_window_ns": [
+              800357031632208,
+              800357031705458
+            ],
+            "cpu_delta_ns": 123000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 26548,
+            "sample_window_ns": [
+              800357093001125,
+              800357093045083
+            ],
+            "cpu_delta_ns": 8949000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 26497,
+            "sample_window_ns": [
+              800357029148958,
+              800357029199708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 260090000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 26497,
+            "sample_window_ns": [
+              800357029148958,
+              800357029199708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 26497,
+            "sample_window_ns": [
+              800357029148958,
+              800357029199708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 26497,
+            "sample_window_ns": [
+              800357029148958,
+              800357029199708
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 309494000,
+        "wall_ns": 38517167,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        383165491340,
+        5186110052,
+        27803,
+        1,
+        2
+      ],
+      "end": [
+        383202148923,
+        5186166552,
+        27804,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 36657583,
+      "guest_cpu_ns": 56500,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800355267411666,
+          800355305355916
+        ],
+        "edge_slack_ns": 999459,
+        "unsettled_all_vcpu_cpu_delta_ns": 1979000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 29000,
+          "1": 0,
+          "2": 726000,
+          "3": 100000,
+          "4": 418000,
+          "5": 0,
+          "6": 706000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 30000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25244,
+            "sample_window_ns": [
+              800355364485291,
+              800355364529625
+            ],
+            "cpu_delta_ns": 10707000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 25202,
+            "sample_window_ns": [
+              800355310035666,
+              800355310064583
+            ],
+            "cpu_delta_ns": 148000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25244,
+            "sample_window_ns": [
+              800355364485291,
+              800355364529625
+            ],
+            "cpu_delta_ns": 9189000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 25409,
+            "sample_window_ns": [
+              800355585496833,
+              800355585631958
+            ],
+            "cpu_delta_ns": 36745000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 25199,
+            "sample_window_ns": [
+              800355306382375,
+              800355306432208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 56824000,
+        "wall_ns": 36657583,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        383851411049,
+        5308273924,
+        28483,
+        1,
+        2
+      ],
+      "end": [
+        383887320424,
+        5308646133,
+        28484,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 35909375,
+      "guest_cpu_ns": 372209,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800355953422041,
+          800355990045791
+        ],
+        "edge_slack_ns": 427167,
+        "unsettled_all_vcpu_cpu_delta_ns": 1183000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 88000,
+          "1": 0,
+          "2": 272000,
+          "3": 0,
+          "4": 192000,
+          "5": 0,
+          "6": 631000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 89000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25848,
+            "sample_window_ns": [
+              800356189179541,
+              800356189209208
+            ],
+            "cpu_delta_ns": 37630000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25700,
+            "sample_window_ns": [
+              800355997813125,
+              800355997851416
+            ],
+            "cpu_delta_ns": 1892000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 409056000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 25695,
+            "sample_window_ns": [
+              800355991365708,
+              800355991411208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 448673000,
+        "wall_ns": 35909375,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        357615548662,
+        1077566930,
+        7026,
+        1,
+        2
+      ],
+      "end": [
+        357646779495,
+        1077613471,
+        7027,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 31230833,
+      "guest_cpu_ns": 46541,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800329716601791,
+          800329749766750
+        ],
+        "edge_slack_ns": 1646918,
+        "unsettled_all_vcpu_cpu_delta_ns": 2048000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 25000,
+          "1": 41000,
+          "2": 697000,
+          "3": 0,
+          "4": 532000,
+          "5": 0,
+          "6": 753000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 7329,
+            "sample_window_ns": [
+              800329752354500,
+              800329752412500
+            ],
+            "cpu_delta_ns": 57000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 42000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 7387,
+            "sample_window_ns": [
+              800329835430958,
+              800329835463333
+            ],
+            "cpu_delta_ns": 14695000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 7387,
+            "sample_window_ns": [
+              800329835430958,
+              800329835463333
+            ],
+            "cpu_delta_ns": 11801000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 8155,
+            "sample_window_ns": [
+              800330924183625,
+              800330924217333
+            ],
+            "cpu_delta_ns": 183601000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 7328,
+            "sample_window_ns": [
+              800329751054708,
+              800329751089500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 210201000,
+        "wall_ns": 31230833,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        366847386957,
+        2727167816,
+        17488,
+        1,
+        2
+      ],
+      "end": [
+        366877176540,
+        2727503400,
+        17489,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.002721917
+      },
+      "wall_ns": 29789583,
+      "guest_cpu_ns": 335584,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800338949068458,
+          800338983201666
+        ],
+        "edge_slack_ns": 4056417,
+        "unsettled_all_vcpu_cpu_delta_ns": 1298000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 44000,
+          "1": 94000,
+          "2": 558000,
+          "3": 73000,
+          "4": 230000,
+          "5": 222000,
+          "6": 0,
+          "7": 77000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 13690,
+            "sample_window_ns": [
+              800338986258708,
+              800338986303375
+            ],
+            "cpu_delta_ns": 109000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 13694,
+            "sample_window_ns": [
+              800338998448375,
+              800338998493791
+            ],
+            "cpu_delta_ns": 175000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 13716,
+            "sample_window_ns": [
+              800339034898875,
+              800339034935083
+            ],
+            "cpu_delta_ns": 4948000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 13694,
+            "sample_window_ns": [
+              800338998448375,
+              800338998493791
+            ],
+            "cpu_delta_ns": 223000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 13697,
+            "sample_window_ns": [
+              800339003054625,
+              800339003106208
+            ],
+            "cpu_delta_ns": 705000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 15086,
+            "sample_window_ns": [
+              800340967261750,
+              800340967352625
+            ],
+            "cpu_delta_ns": 195342000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 13689,
+            "sample_window_ns": [
+              800338984597250,
+              800338984638791
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 13696,
+            "sample_window_ns": [
+              800339001582791,
+              800339001668916
+            ],
+            "cpu_delta_ns": 250000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 13689,
+            "sample_window_ns": [
+              800338984597250,
+              800338984638791
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 13694,
+            "sample_window_ns": [
+              800338998448375,
+              800338998493791
+            ],
+            "cpu_delta_ns": 123000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 201877000,
+        "wall_ns": 29789583,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        383733503132,
+        5266942425,
+        28371,
+        1,
+        2
+      ],
+      "end": [
+        383762748840,
+        5295427175,
+        28372,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 29245708,
+      "guest_cpu_ns": 28484750,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800355834953166,
+          800355865947458
+        ],
+        "edge_slack_ns": 1461376,
+        "unsettled_all_vcpu_cpu_delta_ns": 2175000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 71000,
+          "1": 10000,
+          "2": 780000,
+          "3": 0,
+          "4": 363000,
+          "5": 0,
+          "6": 934000,
+          "7": 17000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 72000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 11000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 25848,
+            "sample_window_ns": [
+              800356189179541,
+              800356189209208
+            ],
+            "cpu_delta_ns": 52475000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25694,
+            "sample_window_ns": [
+              800355989883333,
+              800355990045791
+            ],
+            "cpu_delta_ns": 12049000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 27871,
+            "sample_window_ns": [
+              800359002689458,
+              800359002729958
+            ],
+            "cpu_delta_ns": 421315000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 18000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 25615,
+            "sample_window_ns": [
+              800355867205500,
+              800355867230291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 485944000,
+        "wall_ns": 29245708,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        367028219749,
+        2769043193,
+        17564,
+        1,
+        2
+      ],
+      "end": [
+        367055084041,
+        2769091443,
+        17565,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.000482833
+      },
+      "wall_ns": 26864292,
+      "guest_cpu_ns": 48250,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800339129108708,
+          800339158103416
+        ],
+        "edge_slack_ns": 1843208,
+        "unsettled_all_vcpu_cpu_delta_ns": 1751000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 50000,
+          "1": 41000,
+          "2": 767000,
+          "3": 91000,
+          "4": 192000,
+          "5": 610000,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 13813,
+            "sample_window_ns": [
+              800339160498500,
+              800339160560333
+            ],
+            "cpu_delta_ns": 88000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 13812,
+            "sample_window_ns": [
+              800339159201708,
+              800339159236375
+            ],
+            "cpu_delta_ns": 42000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 13818,
+            "sample_window_ns": [
+              800339167049833,
+              800339167099958
+            ],
+            "cpu_delta_ns": 2140000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 13813,
+            "sample_window_ns": [
+              800339160498500,
+              800339160560333
+            ],
+            "cpu_delta_ns": 113000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 13814,
+            "sample_window_ns": [
+              800339161828750,
+              800339161933541
+            ],
+            "cpu_delta_ns": 772000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 15086,
+            "sample_window_ns": [
+              800340967261750,
+              800340967352625
+            ],
+            "cpu_delta_ns": 179030000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 13812,
+            "sample_window_ns": [
+              800339159201708,
+              800339159236375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 13812,
+            "sample_window_ns": [
+              800339159201708,
+              800339159236375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 13812,
+            "sample_window_ns": [
+              800339159201708,
+              800339159236375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 13812,
+            "sample_window_ns": [
+              800339159201708,
+              800339159236375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 182189000,
+        "wall_ns": 26864292,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "read_batch",
+      "begin": [
+        382359973298,
+        5032254431,
+        26914,
+        1,
+        2
+      ],
+      "end": [
+        382385660548,
+        5057941555,
+        26914,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 34937,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 34958
+      },
+      "wall_ns": 25687250,
+      "guest_cpu_ns": 25687124,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800354460320416,
+          800354488524458
+        ],
+        "edge_slack_ns": 2229584,
+        "unsettled_all_vcpu_cpu_delta_ns": 4387000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 189000,
+          "1": 196000,
+          "2": 1737000,
+          "3": 0,
+          "4": 1286000,
+          "5": 0,
+          "6": 979000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 24581,
+            "sample_window_ns": [
+              800354491155333,
+              800354491198375
+            ],
+            "cpu_delta_ns": 263000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 24581,
+            "sample_window_ns": [
+              800354491155333,
+              800354491198375
+            ],
+            "cpu_delta_ns": 228000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 24775,
+            "sample_window_ns": [
+              800354743859625,
+              800354743932708
+            ],
+            "cpu_delta_ns": 51888000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 24581,
+            "sample_window_ns": [
+              800354491155333,
+              800354491198375
+            ],
+            "cpu_delta_ns": 116000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 25244,
+            "sample_window_ns": [
+              800355364485291,
+              800355364529625
+            ],
+            "cpu_delta_ns": 114084000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 24580,
+            "sample_window_ns": [
+              800354489807666,
+              800354489883666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 24650,
+            "sample_window_ns": [
+              800354581747750,
+              800354581769625
+            ],
+            "cpu_delta_ns": 16004000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 24580,
+            "sample_window_ns": [
+              800354489807666,
+              800354489883666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 24580,
+            "sample_window_ns": [
+              800354489807666,
+              800354489883666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 24580,
+            "sample_window_ns": [
+              800354489807666,
+              800354489883666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 182587000,
+        "wall_ns": 25687250,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        387437710759,
+        6311332140,
+        32017,
+        1,
+        2
+      ],
+      "end": [
+        387463033759,
+        6311391348,
+        32018,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.05
+      },
+      "wall_ns": 25323000,
+      "guest_cpu_ns": 59208,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359538488166,
+          800359566485458
+        ],
+        "edge_slack_ns": 2387084,
+        "unsettled_all_vcpu_cpu_delta_ns": 3599000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 140000,
+          "1": 66000,
+          "2": 1731000,
+          "3": 1155000,
+          "4": 60000,
+          "5": 0,
+          "6": 447000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28003,
+            "sample_window_ns": [
+              800359605418500,
+              800359605505291
+            ],
+            "cpu_delta_ns": 316000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 28005,
+            "sample_window_ns": [
+              800359607737208,
+              800359607895416
+            ],
+            "cpu_delta_ns": 287000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28055,
+            "sample_window_ns": [
+              800359753726041,
+              800359753766916
+            ],
+            "cpu_delta_ns": 16379000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28005,
+            "sample_window_ns": [
+              800359607737208,
+              800359607895416
+            ],
+            "cpu_delta_ns": 2461000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 28002,
+            "sample_window_ns": [
+              800359603818083,
+              800359603857625
+            ],
+            "cpu_delta_ns": 162000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 27996,
+            "sample_window_ns": [
+              800359567944583,
+              800359567985208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 28752,
+            "sample_window_ns": [
+              800360750572541,
+              800360750633208
+            ],
+            "cpu_delta_ns": 166899000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 27996,
+            "sample_window_ns": [
+              800359567944583,
+              800359567985208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 27999,
+            "sample_window_ns": [
+              800359589875791,
+              800359589922166
+            ],
+            "cpu_delta_ns": 63000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 27996,
+            "sample_window_ns": [
+              800359567944583,
+              800359567985208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 186570000,
+        "wall_ns": 25323000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        369902741209,
+        3161266849,
+        19045,
+        1,
+        2
+      ],
+      "end": [
+        369927357000,
+        3161629974,
+        19046,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.001881958
+      },
+      "wall_ns": 24615791,
+      "guest_cpu_ns": 363125,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800342004140166,
+          800342030933000
+        ],
+        "edge_slack_ns": 1889835,
+        "unsettled_all_vcpu_cpu_delta_ns": 1455000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 53000,
+          "1": 22000,
+          "2": 437000,
+          "3": 825000,
+          "4": 118000,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 15830,
+            "sample_window_ns": [
+              800342044990541,
+              800342045019208
+            ],
+            "cpu_delta_ns": 158000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 23000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 15851,
+            "sample_window_ns": [
+              800342081009083,
+              800342081050791
+            ],
+            "cpu_delta_ns": 4697000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 15883,
+            "sample_window_ns": [
+              800342131794416,
+              800342131837333
+            ],
+            "cpu_delta_ns": 9438000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 15827,
+            "sample_window_ns": [
+              800342041249041,
+              800342041324208
+            ],
+            "cpu_delta_ns": 347000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 15826,
+            "sample_window_ns": [
+              800342033178666,
+              800342037623375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 14668000,
+        "wall_ns": 24615791,
+        "minimum_wall_not_executing_any_vcpu_ns": 9947791
+      }
+    },
+    {
+      "op": "read_batch",
+      "begin": [
+        387463050800,
+        6311406515,
+        32018,
+        1,
+        2
+      ],
+      "end": [
+        387486959384,
+        6335315015,
+        32018,
+        1,
+        2
+      ],
+      "extra": {
+        "seq_before": 42586,
+        "queued": 0,
+        "head_due": null,
+        "seq_after": 42713
+      },
+      "wall_ns": 23908584,
+      "guest_cpu_ns": 23908500,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800359565153041,
+          800359589922166
+        ],
+        "edge_slack_ns": 573333,
+        "unsettled_all_vcpu_cpu_delta_ns": 4193000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 65000,
+          "1": 85000,
+          "2": 2805000,
+          "3": 450000,
+          "4": 52000,
+          "5": 0,
+          "6": 674000,
+          "7": 0,
+          "8": 62000,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 28003,
+            "sample_window_ns": [
+              800359605418500,
+              800359605505291
+            ],
+            "cpu_delta_ns": 215000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 28005,
+            "sample_window_ns": [
+              800359607737208,
+              800359607895416
+            ],
+            "cpu_delta_ns": 254000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 28055,
+            "sample_window_ns": [
+              800359753726041,
+              800359753766916
+            ],
+            "cpu_delta_ns": 15699000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 28005,
+            "sample_window_ns": [
+              800359607737208,
+              800359607895416
+            ],
+            "cpu_delta_ns": 1306000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 28002,
+            "sample_window_ns": [
+              800359603818083,
+              800359603857625
+            ],
+            "cpu_delta_ns": 102000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 28000,
+            "sample_window_ns": [
+              800359591024208,
+              800359591066416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 28752,
+            "sample_window_ns": [
+              800360750572541,
+              800360750633208
+            ],
+            "cpu_delta_ns": 166452000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 28000,
+            "sample_window_ns": [
+              800359591024208,
+              800359591066416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 28000,
+            "sample_window_ns": [
+              800359591024208,
+              800359591066416
+            ],
+            "cpu_delta_ns": 63000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 28000,
+            "sample_window_ns": [
+              800359591024208,
+              800359591066416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 184094000,
+        "wall_ns": 23908584,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        378062835129,
+        4358397730,
+        23321,
+        1,
+        2
+      ],
+      "end": [
+        378086644254,
+        4358466980,
+        23322,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.002043959
+      },
+      "wall_ns": 23809125,
+      "guest_cpu_ns": 69250,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800350163950333,
+          800350197585500
+        ],
+        "edge_slack_ns": 9538834,
+        "unsettled_all_vcpu_cpu_delta_ns": 4213000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 174000,
+          "1": 134000,
+          "2": 1830000,
+          "3": 103000,
+          "4": 1313000,
+          "5": 0,
+          "6": 659000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 21376,
+            "sample_window_ns": [
+              800350216559416,
+              800350216662250
+            ],
+            "cpu_delta_ns": 302000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 21374,
+            "sample_window_ns": [
+              800350213291000,
+              800350213500958
+            ],
+            "cpu_delta_ns": 189000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 21393,
+            "sample_window_ns": [
+              800350242992000,
+              800350243030125
+            ],
+            "cpu_delta_ns": 7162000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 21372,
+            "sample_window_ns": [
+              800350206518916,
+              800350206632500
+            ],
+            "cpu_delta_ns": 104000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 23732,
+            "sample_window_ns": [
+              800353358009375,
+              800353358030583
+            ],
+            "cpu_delta_ns": 377753000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 21372,
+            "sample_window_ns": [
+              800350206518916,
+              800350206632500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 21376,
+            "sample_window_ns": [
+              800350216559416,
+              800350216662250
+            ],
+            "cpu_delta_ns": 1071000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 21372,
+            "sample_window_ns": [
+              800350206518916,
+              800350206632500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 21372,
+            "sample_window_ns": [
+              800350206518916,
+              800350206632500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 21372,
+            "sample_window_ns": [
+              800350206518916,
+              800350206632500
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 386585000,
+        "wall_ns": 23809125,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        370206825584,
+        3209157344,
+        19192,
+        1,
+        2
+      ],
+      "end": [
+        370229691375,
+        3214443553,
+        19193,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 6.9916e-05
+      },
+      "wall_ns": 22865791,
+      "guest_cpu_ns": 5286209,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800342307925750,
+          800342333246000
+        ],
+        "edge_slack_ns": 2167251,
+        "unsettled_all_vcpu_cpu_delta_ns": 3082000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 126000,
+          "1": 0,
+          "2": 1523000,
+          "3": 1031000,
+          "4": 402000,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 127000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 16006,
+            "sample_window_ns": [
+              800342337114791,
+              800342337136291
+            ],
+            "cpu_delta_ns": 43000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 16009,
+            "sample_window_ns": [
+              800342341003375,
+              800342341027291
+            ],
+            "cpu_delta_ns": 2018000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 16039,
+            "sample_window_ns": [
+              800342384841958,
+              800342384880125
+            ],
+            "cpu_delta_ns": 5864000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 16009,
+            "sample_window_ns": [
+              800342341003375,
+              800342341027291
+            ],
+            "cpu_delta_ns": 718000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 8775000,
+        "wall_ns": 22865791,
+        "minimum_wall_not_executing_any_vcpu_ns": 14090791
+      }
+    },
+    {
+      "op": "epoll",
+      "begin": [
+        367936851249,
+        2890026848,
+        18015,
+        1,
+        2
+      ],
+      "end": [
+        367959644499,
+        2890094473,
+        18016,
+        1,
+        2
+      ],
+      "extra": {
+        "timeout": 0.000315417
+      },
+      "wall_ns": 22793250,
+      "guest_cpu_ns": 67625,
+      "host_bound": {
+        "host_sample_window_ns": [
+          800340038024208,
+          800340062966375
+        ],
+        "edge_slack_ns": 1861709,
+        "unsettled_all_vcpu_cpu_delta_ns": 501000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 17000,
+          "1": 0,
+          "2": 353000,
+          "3": 0,
+          "4": 0,
+          "5": 131000,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 14500,
+            "sample_window_ns": [
+              800340065435875,
+              800340065548875
+            ],
+            "cpu_delta_ns": 36000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 14501,
+            "sample_window_ns": [
+              800340066696333,
+              800340066729000
+            ],
+            "cpu_delta_ns": 1258000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 14512,
+            "sample_window_ns": [
+              800340080782458,
+              800340080833708
+            ],
+            "cpu_delta_ns": 906000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 15086,
+            "sample_window_ns": [
+              800340967261750,
+              800340967352625
+            ],
+            "cpu_delta_ns": 78811000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 14499,
+            "sample_window_ns": [
+              800340064237333,
+              800340064334291
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 81017000,
+        "wall_ns": 22793250,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    }
+  ],
+  "long_runnable_waits": [
+    {
+      "begin_ns": 370213551000,
+      "end_ns": 370229640000,
+      "wait_ns": 16089000,
+      "begin_event": {
+        "ns": 370213551000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   370.213551: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 370229640000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   370.229640: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800342315103875,
+          800342333246000
+        ],
+        "edge_slack_ns": 1765917,
+        "unsettled_all_vcpu_cpu_delta_ns": 1827000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 76000,
+          "1": 0,
+          "2": 998000,
+          "3": 499000,
+          "4": 254000,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 77000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 16006,
+            "sample_window_ns": [
+              800342337114791,
+              800342337136291
+            ],
+            "cpu_delta_ns": 43000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 16009,
+            "sample_window_ns": [
+              800342341003375,
+              800342341027291
+            ],
+            "cpu_delta_ns": 1493000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 16039,
+            "sample_window_ns": [
+              800342384841958,
+              800342384880125
+            ],
+            "cpu_delta_ns": 5332000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 16009,
+            "sample_window_ns": [
+              800342341003375,
+              800342341027291
+            ],
+            "cpu_delta_ns": 570000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 16004,
+            "sample_window_ns": [
+              800342334505791,
+              800342334543416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 7520000,
+        "wall_ns": 16089000,
+        "minimum_wall_not_executing_any_vcpu_ns": 8569000
+      }
+    },
+    {
+      "begin_ns": 355624239000,
+      "end_ns": 355628353000,
+      "wait_ns": 4114000,
+      "begin_event": {
+        "ns": 355624239000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   355.624239: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 355628353000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   355.628353: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800327725667416,
+          800327732129000
+        ],
+        "edge_slack_ns": 2060376,
+        "unsettled_all_vcpu_cpu_delta_ns": 1917000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 57000,
+          "1": 0,
+          "2": 556000,
+          "3": 62000,
+          "4": 401000,
+          "5": 0,
+          "6": 841000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 5967,
+            "sample_window_ns": [
+              800327735320875,
+              800327736104250
+            ],
+            "cpu_delta_ns": 68000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 5993,
+            "sample_window_ns": [
+              800327776817166,
+              800327776846625
+            ],
+            "cpu_delta_ns": 8030000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 63000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 5993,
+            "sample_window_ns": [
+              800327776817166,
+              800327776846625
+            ],
+            "cpu_delta_ns": 5366000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 8155,
+            "sample_window_ns": [
+              800330924183625,
+              800330924217333
+            ],
+            "cpu_delta_ns": 464571000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 5966,
+            "sample_window_ns": [
+              800327733388875,
+              800327733430083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 478103000,
+        "wall_ns": 4114000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 377212111000,
+      "end_ns": 377216165000,
+      "wait_ns": 4054000,
+      "begin_event": {
+        "ns": 377212111000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh4.   377.212111: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 377216165000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   377.216165: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800349313556333,
+          800349319294375
+        ],
+        "edge_slack_ns": 1396834,
+        "unsettled_all_vcpu_cpu_delta_ns": 313000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 224000,
+          "3": 0,
+          "4": 89000,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 20808,
+            "sample_window_ns": [
+              800349333628750,
+              800349333670208
+            ],
+            "cpu_delta_ns": 143000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 20801,
+            "sample_window_ns": [
+              800349320923916,
+              800349321196541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 20816,
+            "sample_window_ns": [
+              800349348836208,
+              800349348913333
+            ],
+            "cpu_delta_ns": 4040000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 20804,
+            "sample_window_ns": [
+              800349327324583,
+              800349327391083
+            ],
+            "cpu_delta_ns": 157000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 23732,
+            "sample_window_ns": [
+              800353358009375,
+              800353358030583
+            ],
+            "cpu_delta_ns": 486544000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 20801,
+            "sample_window_ns": [
+              800349320923916,
+              800349321196541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 20805,
+            "sample_window_ns": [
+              800349328685416,
+              800349328741875
+            ],
+            "cpu_delta_ns": 413000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 20801,
+            "sample_window_ns": [
+              800349320923916,
+              800349321196541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 20801,
+            "sample_window_ns": [
+              800349320923916,
+              800349321196541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 20801,
+            "sample_window_ns": [
+              800349320923916,
+              800349321196541
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 491302000,
+        "wall_ns": 4054000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 378765687000,
+      "end_ns": 378769426000,
+      "wait_ns": 3739000,
+      "begin_event": {
+        "ns": 378765687000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNH2.   378.765687: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 378769426000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   378.769426: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800350866225583,
+          800350873532250
+        ],
+        "edge_slack_ns": 3280459,
+        "unsettled_all_vcpu_cpu_delta_ns": 581000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 102000,
+          "3": 0,
+          "4": 368000,
+          "5": 0,
+          "6": 111000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 21859,
+            "sample_window_ns": [
+              800350874831625,
+              800350874889416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 21859,
+            "sample_window_ns": [
+              800350874831625,
+              800350874889416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 21871,
+            "sample_window_ns": [
+              800350894702000,
+              800350894819958
+            ],
+            "cpu_delta_ns": 1771000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 21859,
+            "sample_window_ns": [
+              800350874831625,
+              800350874889416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 23732,
+            "sample_window_ns": [
+              800353358009375,
+              800353358030583
+            ],
+            "cpu_delta_ns": 301922000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 21859,
+            "sample_window_ns": [
+              800350874831625,
+              800350874889416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 21868,
+            "sample_window_ns": [
+              800350889322333,
+              800350889413291
+            ],
+            "cpu_delta_ns": 751000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 21865,
+            "sample_window_ns": [
+              800350885383333,
+              800350885427333
+            ],
+            "cpu_delta_ns": 177000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 21866,
+            "sample_window_ns": [
+              800350886698916,
+              800350886742250
+            ],
+            "cpu_delta_ns": 282000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 21859,
+            "sample_window_ns": [
+              800350874831625,
+              800350874889416
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 304908000,
+        "wall_ns": 3739000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 370014568000,
+      "end_ns": 370018263000,
+      "wait_ns": 3695000,
+      "begin_event": {
+        "ns": 370014568000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   370.014568: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 370018263000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   370.018263: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800342115732583,
+          800342121687375
+        ],
+        "edge_slack_ns": 1972584,
+        "unsettled_all_vcpu_cpu_delta_ns": 2471000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 37000,
+          "1": 0,
+          "2": 1255000,
+          "3": 499000,
+          "4": 680000,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 15878,
+            "sample_window_ns": [
+              800342125590166,
+              800342125618166
+            ],
+            "cpu_delta_ns": 72000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 15914,
+            "sample_window_ns": [
+              800342180960916,
+              800342181040000
+            ],
+            "cpu_delta_ns": 9406000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 15883,
+            "sample_window_ns": [
+              800342131794416,
+              800342131837333
+            ],
+            "cpu_delta_ns": 1579000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 15893,
+            "sample_window_ns": [
+              800342144998208,
+              800342145029750
+            ],
+            "cpu_delta_ns": 3409000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 15876,
+            "sample_window_ns": [
+              800342122970791,
+              800342123008666
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 14472000,
+        "wall_ns": 3695000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 347931774000,
+      "end_ns": 347935153000,
+      "wait_ns": 3379000,
+      "begin_event": {
+        "ns": 347931774000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh4.   347.931774: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 347935153000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   347.935153: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800320033658166,
+          800320038872416
+        ],
+        "edge_slack_ns": 1548042,
+        "unsettled_all_vcpu_cpu_delta_ns": 746000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 55000,
+          "2": 339000,
+          "3": 219000,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 133000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 56000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 750,
+            "sample_window_ns": [
+              800320041414750,
+              800320041459000
+            ],
+            "cpu_delta_ns": 367000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 220000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 1475,
+            "sample_window_ns": [
+              800321065993166,
+              800321066030375
+            ],
+            "cpu_delta_ns": 62844000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 749,
+            "sample_window_ns": [
+              800320040128375,
+              800320040150083
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 63493000,
+        "wall_ns": 3379000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 352981407000,
+      "end_ns": 352984239000,
+      "wait_ns": 2832000,
+      "begin_event": {
+        "ns": 352981407000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   352.981407: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 352984239000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   352.984239: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800325082364125,
+          800325087573083
+        ],
+        "edge_slack_ns": 2089750,
+        "unsettled_all_vcpu_cpu_delta_ns": 1466000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 12000,
+          "1": 0,
+          "2": 775000,
+          "3": 0,
+          "4": 232000,
+          "5": 0,
+          "6": 0,
+          "7": 447000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 4164,
+            "sample_window_ns": [
+              800325090134250,
+              800325090159458
+            ],
+            "cpu_delta_ns": 38000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 4163,
+            "sample_window_ns": [
+              800325088845333,
+              800325088875375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 4231,
+            "sample_window_ns": [
+              800325195568375,
+              800325195587333
+            ],
+            "cpu_delta_ns": 19300000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 4163,
+            "sample_window_ns": [
+              800325088845333,
+              800325088875375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 4231,
+            "sample_window_ns": [
+              800325195568375,
+              800325195587333
+            ],
+            "cpu_delta_ns": 14705000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 4163,
+            "sample_window_ns": [
+              800325088845333,
+              800325088875375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 4164,
+            "sample_window_ns": [
+              800325090134250,
+              800325090159458
+            ],
+            "cpu_delta_ns": 57000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 5309,
+            "sample_window_ns": [
+              800326827873708,
+              800326827918583
+            ],
+            "cpu_delta_ns": 236899000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 4163,
+            "sample_window_ns": [
+              800325088845333,
+              800325088875375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 4163,
+            "sample_window_ns": [
+              800325088845333,
+              800325088875375
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 271004000,
+        "wall_ns": 2832000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 358813208000,
+      "end_ns": 358816016000,
+      "wait_ns": 2808000,
+      "begin_event": {
+        "ns": 358813208000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   358.813208: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 358816016000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   358.816016: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800330911907958,
+          800330920071250
+        ],
+        "edge_slack_ns": 5068084,
+        "unsettled_all_vcpu_cpu_delta_ns": 302000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 159000,
+          "3": 0,
+          "4": 51000,
+          "5": 0,
+          "6": 92000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 8155,
+            "sample_window_ns": [
+              800330924183625,
+              800330924217333
+            ],
+            "cpu_delta_ns": 69000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 8543,
+            "sample_window_ns": [
+              800331454686416,
+              800331454719958
+            ],
+            "cpu_delta_ns": 110159000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 8200,
+            "sample_window_ns": [
+              800330986084958,
+              800330986123583
+            ],
+            "cpu_delta_ns": 11273000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 52000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 8155,
+            "sample_window_ns": [
+              800330924183625,
+              800330924217333
+            ],
+            "cpu_delta_ns": 200000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 8153,
+            "sample_window_ns": [
+              800330921653250,
+              800330921717208
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 121758000,
+        "wall_ns": 2808000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 347873219000,
+      "end_ns": 347875800000,
+      "wait_ns": 2581000,
+      "begin_event": {
+        "ns": 347873219000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh4.   347.873219: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 347875800000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   347.875800: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800319975267750,
+          800319979280333
+        ],
+        "edge_slack_ns": 1144375,
+        "unsettled_all_vcpu_cpu_delta_ns": 233000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 233000,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 709,
+            "sample_window_ns": [
+              800319981846291,
+              800319981875583
+            ],
+            "cpu_delta_ns": 31000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 709,
+            "sample_window_ns": [
+              800319981846291,
+              800319981875583
+            ],
+            "cpu_delta_ns": 450000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 1475,
+            "sample_window_ns": [
+              800321065993166,
+              800321066030375
+            ],
+            "cpu_delta_ns": 66298000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 708,
+            "sample_window_ns": [
+              800319980548166,
+              800319980580166
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 66786000,
+        "wall_ns": 2581000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 375990029000,
+      "end_ns": 375992239000,
+      "wait_ns": 2210000,
+      "begin_event": {
+        "ns": 375990029000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh4.   375.990029: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 375992239000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   375.992239: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800348090718833,
+          800348095574791
+        ],
+        "edge_slack_ns": 2358750,
+        "unsettled_all_vcpu_cpu_delta_ns": 1709000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 27000,
+          "1": 0,
+          "2": 847000,
+          "3": 0,
+          "4": 621000,
+          "5": 0,
+          "6": 188000,
+          "7": 26000,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 19874,
+            "sample_window_ns": [
+              800348098152625,
+              800348098189458
+            ],
+            "cpu_delta_ns": 57000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 19876,
+            "sample_window_ns": [
+              800348100577958,
+              800348100606833
+            ],
+            "cpu_delta_ns": 1568000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 23732,
+            "sample_window_ns": [
+              800353358009375,
+              800353358030583
+            ],
+            "cpu_delta_ns": 617112000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 19876,
+            "sample_window_ns": [
+              800348100577958,
+              800348100606833
+            ],
+            "cpu_delta_ns": 490000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 27000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 19873,
+            "sample_window_ns": [
+              800348096834125,
+              800348096868833
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 619259000,
+        "wall_ns": 2210000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 389099272000,
+      "end_ns": 389101114000,
+      "wait_ns": 1842000,
+      "begin_event": {
+        "ns": 389099272000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "              tc-1909    [002] d..5.   389.099272: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 389101114000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=tc prev_pid=1909 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "              tc-1909    [002] d..2.   389.101114: sched_switch: prev_comm=tc prev_pid=1909 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800361199924916,
+          800361204632416
+        ],
+        "edge_slack_ns": 2578292,
+        "unsettled_all_vcpu_cpu_delta_ns": 3115000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 213000,
+          "1": 0,
+          "2": 2645000,
+          "3": 0,
+          "4": 109000,
+          "5": 0,
+          "6": 148000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 29059,
+            "sample_window_ns": [
+              800361218290625,
+              800361218549333
+            ],
+            "cpu_delta_ns": 545000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 29052,
+            "sample_window_ns": [
+              800361206307541,
+              800361206398125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 29440,
+            "sample_window_ns": [
+              800361831657875,
+              800361831746625
+            ],
+            "cpu_delta_ns": 608305000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 29057,
+            "sample_window_ns": [
+              800361215478333,
+              800361215657791
+            ],
+            "cpu_delta_ns": 149000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 29057,
+            "sample_window_ns": [
+              800361215478333,
+              800361215657791
+            ],
+            "cpu_delta_ns": 258000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 29052,
+            "sample_window_ns": [
+              800361206307541,
+              800361206398125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 29052,
+            "sample_window_ns": [
+              800361206307541,
+              800361206398125
+            ],
+            "cpu_delta_ns": 149000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 29052,
+            "sample_window_ns": [
+              800361206307541,
+              800361206398125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 29052,
+            "sample_window_ns": [
+              800361206307541,
+              800361206398125
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 29057,
+            "sample_window_ns": [
+              800361215478333,
+              800361215657791
+            ],
+            "cpu_delta_ns": 135000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 609545000,
+        "wall_ns": 1842000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 347040674000,
+      "end_ns": 347041966000,
+      "wait_ns": 1292000,
+      "begin_event": {
+        "ns": 347040674000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "              tc-1895    [002] d..5.   347.040674: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 347041966000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=tc prev_pid=1895 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "              tc-1895    [002] d..2.   347.041966: sched_switch: prev_comm=tc prev_pid=1895 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800319142219875,
+          800319144968458
+        ],
+        "edge_slack_ns": 1169375,
+        "unsettled_all_vcpu_cpu_delta_ns": 2525000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 254000,
+          "1": 72000,
+          "2": 2031000,
+          "3": 103000,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 25000,
+          "8": 0,
+          "9": 40000
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 127,
+            "sample_window_ns": [
+              800319149913750,
+              800319149961583
+            ],
+            "cpu_delta_ns": 450000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 73000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 142,
+            "sample_window_ns": [
+              800319169118541,
+              800319169163041
+            ],
+            "cpu_delta_ns": 13365000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 104000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 26000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 124,
+            "sample_window_ns": [
+              800319146230250,
+              800319146274000
+            ],
+            "cpu_delta_ns": 41000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 14063000,
+        "wall_ns": 1292000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 356598047000,
+      "end_ns": 356599119000,
+      "wait_ns": 1072000,
+      "begin_event": {
+        "ns": 356598047000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "          <idle>-0       [002] dNh2.   356.598047: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 356599119000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "          <idle>-0       [002] d..2.   356.599119: sched_switch: prev_comm=swapper/2 prev_pid=0 prev_prio=120 prev_state=R ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800328697986625,
+          800328701992500
+        ],
+        "edge_slack_ns": 2646667,
+        "unsettled_all_vcpu_cpu_delta_ns": 985000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 0,
+          "1": 0,
+          "2": 543000,
+          "3": 24000,
+          "4": 29000,
+          "5": 0,
+          "6": 389000,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 6610,
+            "sample_window_ns": [
+              800328707047250,
+              800328707082041
+            ],
+            "cpu_delta_ns": 53000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 6677,
+            "sample_window_ns": [
+              800328793072375,
+              800328793102625
+            ],
+            "cpu_delta_ns": 16707000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 25000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 6677,
+            "sample_window_ns": [
+              800328793072375,
+              800328793102625
+            ],
+            "cpu_delta_ns": 13924000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 8155,
+            "sample_window_ns": [
+              800330924183625,
+              800330924217333
+            ],
+            "cpu_delta_ns": 332335000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 6608,
+            "sample_window_ns": [
+              800328703270833,
+              800328703385916
+            ],
+            "cpu_delta_ns": 1000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 363049000,
+        "wall_ns": 1072000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    },
+    {
+      "begin_ns": 389024179000,
+      "end_ns": 389025214000,
+      "wait_ns": 1035000,
+      "begin_event": {
+        "ns": 389024179000,
+        "cpu": 2,
+        "event": "sched_wakeup",
+        "text": "comm=qa75-inject pid=1894 prio=89 target_cpu=002",
+        "line": "              tc-1906    [002] d..5.   389.024179: sched_wakeup: comm=qa75-inject pid=1894 prio=89 target_cpu=002"
+      },
+      "end_event": {
+        "ns": 389025214000,
+        "cpu": 2,
+        "event": "sched_switch",
+        "text": "prev_comm=tc prev_pid=1906 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89",
+        "line": "              tc-1906    [002] d..2.   389.025214: sched_switch: prev_comm=tc prev_pid=1906 prev_prio=89 prev_state=R+ ==> next_comm=qa75-inject next_pid=1894 next_prio=89"
+      },
+      "host_bound": {
+        "host_sample_window_ns": [
+          800361125557875,
+          800361128217875
+        ],
+        "edge_slack_ns": 1337792,
+        "unsettled_all_vcpu_cpu_delta_ns": 1731000,
+        "unsettled_per_vcpu_cpu_delta_ns": {
+          "0": 115000,
+          "1": 47000,
+          "2": 1351000,
+          "3": 40000,
+          "4": 48000,
+          "5": 23000,
+          "6": 19000,
+          "7": 16000,
+          "8": 21000,
+          "9": 51000
+        },
+        "settled_endpoints": {
+          "0": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 116000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "1": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 48000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "2": {
+            "sample_index": 29038,
+            "sample_window_ns": [
+              800361186754833,
+              800361186792791
+            ],
+            "cpu_delta_ns": 7333000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "3": {
+            "sample_index": 29013,
+            "sample_window_ns": [
+              800361136195958,
+              800361136290291
+            ],
+            "cpu_delta_ns": 55000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "4": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 49000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "5": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 24000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "6": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 20000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "7": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 17000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "8": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 22000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          },
+          "9": {
+            "sample_index": 29012,
+            "sample_window_ns": [
+              800361129702291,
+              800361129790416
+            ],
+            "cpu_delta_ns": 52000,
+            "state": 3,
+            "stable_waiting_reads": 2
+          }
+        },
+        "all_vcpu_cpu_upper_bound_ns": 7736000,
+        "wall_ns": 1035000,
+        "minimum_wall_not_executing_any_vcpu_ns": 0
+      }
+    }
+  ],
+  "trace_overruns": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "trace_commit_overruns": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "trace_dropped_events": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ]
+}

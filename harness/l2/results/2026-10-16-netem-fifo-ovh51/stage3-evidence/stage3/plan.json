@@ -1,0 +1,21 @@
+{
+  "written_before_execution_unix_ns": 1792161022179788675,
+  "tested_sha": "604a61834db76a1b94583932585fb24a0265964b",
+  "kernel": "6.12.57+deb13-amd64",
+  "boot_id": "10e1418e-d0f1-4dbe-af62-c1a556642d56",
+  "domain": "zfstack-qa-baremetal-51.75.146.55-2280",
+  "run_id": "netem-fifo-ovh51-stage3-20261016",
+  "order": [
+    "capabilities",
+    "full",
+    "cancel",
+    "overflow"
+  ],
+  "runs_each": 1,
+  "kind": "netem-fifo",
+  "lateness_limit_ns": 20000000,
+  "conditional": "only if any mode's receiver shows an overtaken UDP datagram: exactly 3 plain-netem controls; order analysis is always recomputed",
+  "per_step_evidence": "/proc/stat (per-CPU steal) and /proc/softirqs before and after every step",
+  "gate": "PASS only if capabilities and all three modes pass, recomputed oracle verdicts match, and every receiver is strictly increasing without duplicates (overflow gaps allowed)",
+  "policy": "no run is repeated; every outcome is retained; no threshold, case or workload change"
+}

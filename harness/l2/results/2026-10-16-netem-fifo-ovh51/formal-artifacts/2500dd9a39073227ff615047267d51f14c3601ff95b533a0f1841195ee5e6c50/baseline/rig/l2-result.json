@@ -1,0 +1,1637 @@
+{
+  "layer": "L2",
+  "ok": false,
+  "errors": [
+    "test rig: client 7 exited 1; inspect retained request outcomes",
+    "missed datagram arrival seq=186",
+    "test rig: load generator exited unsuccessfully; inspect retained client failures"
+  ],
+  "clock": "wall-monotonic",
+  "start_at": 27050098.40225297,
+  "effective_config": {
+    "schema_version": 1,
+    "heavy_conns": 4,
+    "request_bytes": 256,
+    "request_rate_hz": 100.0,
+    "light_mode": "closed-loop",
+    "max_generator_lag_sec": 0.02,
+    "light_conns": 1,
+    "churn_requests": 0,
+    "udp_enabled": true,
+    "udp_rate_hz": 100.0,
+    "udp_payload_bytes": 1032,
+    "request_timeout_sec": 3.0,
+    "phases_sec": {
+      "baseline": 8.0,
+      "loaded": 16.0,
+      "recovery": 8.0
+    },
+    "direction": "heavy-download/light-echo",
+    "application_port": 19001,
+    "memory_mb": 64,
+    "uplink_delay_ms": 0.0,
+    "netem_limit_packets": 100000,
+    "mtu": 1420,
+    "runtime": "tokio-multi-thread",
+    "profile": "fast-release",
+    "capture": false,
+    "boundary_tolerance_ns": 5000000,
+    "topology": {
+      "wg_ports": 2,
+      "peers": 4,
+      "heavy_peer": 0,
+      "light_peers": [
+        1,
+        2,
+        3
+      ]
+    },
+    "mode": "load",
+    "worker_tuning_fingerprints": [
+      "d3f507a826d13c72",
+      "d3f507a826d13c72"
+    ]
+  },
+  "load_counters": {
+    "client-1": {
+      "scheduled": 3198,
+      "started": 3198,
+      "completed": 3198,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-2": {
+      "scheduled": 3196,
+      "started": 3196,
+      "completed": 3196,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    "client-3": {
+      "scheduled": 3198,
+      "started": 3198,
+      "completed": 3198,
+      "failed": 0,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    }
+  },
+  "startup_anomalies": [],
+  "phases_sec": {
+    "baseline": 8.0,
+    "loaded": 16.0,
+    "recovery": 8.0
+  },
+  "request_timeout_sec": 3.0,
+  "uplink_delay_ms": 0.0,
+  "light_conns": 1,
+  "churn_requests": 0,
+  "udp": [
+    {
+      "peer": 0,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.8587203919887543,
+          "p95_ms": 1.6810968518257141,
+          "p99_ms": 4.020307213068008,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 1.5031136572360992,
+          "p95_ms": 3.158915787935257,
+          "p99_ms": 4.243273288011551,
+          "p999_ms": 20.749494433403015
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.8132606744766235,
+          "p95_ms": 1.2053810060024261,
+          "p99_ms": 3.117848187685013,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 1,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.893961638212204,
+          "p95_ms": 1.6676746308803558,
+          "p99_ms": 3.150530159473419,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 1.5575215220451355,
+          "p95_ms": 3.1297467648983,
+          "p99_ms": 4.809830337762833,
+          "p999_ms": 19.331514835357666
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.797618180513382,
+          "p95_ms": 1.1930018663406372,
+          "p99_ms": 2.4754293262958527,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 2,
+      "sent": 3200,
+      "received": 3200,
+      "bytes": 3302400,
+      "errors": [],
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.870872288942337,
+          "p95_ms": 1.7833001911640167,
+          "p99_ms": 4.327654838562012,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.4323050379753113,
+          "p95_ms": 2.360306680202484,
+          "p99_ms": 4.051726311445236,
+          "p999_ms": 12.164570391178131
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.808466225862503,
+          "p95_ms": 1.210581511259079,
+          "p99_ms": 1.6340650618076324,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3200,
+        "completed": 3200,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 0
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 0
+    },
+    {
+      "peer": 3,
+      "sent": 3199,
+      "received": 3199,
+      "bytes": 3301368,
+      "errors": [
+        "missed datagram arrival seq=186"
+      ],
+      "phases": {
+        "baseline": {
+          "n": 799,
+          "p50_ms": 0.9018257260322571,
+          "p95_ms": 1.7267465591430664,
+          "p99_ms": 4.434186965227127,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1600,
+          "p50_ms": 0.47516077756881714,
+          "p95_ms": 2.5691986083984375,
+          "p99_ms": 3.9134882390499115,
+          "p999_ms": 13.885244727134705
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.8044242858886719,
+          "p95_ms": 1.156594604253769,
+          "p99_ms": 3.12071293592453,
+          "p999_ms": null
+        }
+      },
+      "counters": {
+        "scheduled": 3200,
+        "started": 3199,
+        "completed": 3199,
+        "failed": 0,
+        "timed_out": 0,
+        "unfinished": 0,
+        "missed": 1
+      },
+      "scheduled": 3200,
+      "timed_out": 0,
+      "unfinished": 0,
+      "missed": 1
+    }
+  ],
+  "performance_contaminated": false,
+  "endpoint_observer_error": null,
+  "heavy_bytes": 5098777904,
+  "heavy_mbps": 2549.388952,
+  "light_users": [
+    {
+      "peer": 1,
+      "placement": "same-port",
+      "phases": {
+        "baseline": {
+          "n": 800,
+          "p50_ms": 0.8481889963150024,
+          "p95_ms": 1.6122199594974518,
+          "p99_ms": 2.9546432197093964,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1598,
+          "p50_ms": 2.2691749036312103,
+          "p95_ms": 3.98438423871994,
+          "p99_ms": 5.1092952489852905,
+          "p999_ms": 9.670872241258621
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7558092474937439,
+          "p95_ms": 1.0420754551887512,
+          "p99_ms": 2.0971372723579407,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 2,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 798,
+          "p50_ms": 0.8138827979564667,
+          "p95_ms": 1.7851218581199646,
+          "p99_ms": 4.228387027978897,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1598,
+          "p50_ms": 0.436343252658844,
+          "p95_ms": 2.5974176824092865,
+          "p99_ms": 3.805633634328842,
+          "p999_ms": 6.5622031688690186
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7504485547542572,
+          "p95_ms": 1.1353455483913422,
+          "p99_ms": 1.6673021018505096,
+          "p999_ms": null
+        }
+      }
+    },
+    {
+      "peer": 3,
+      "placement": "cross-port",
+      "phases": {
+        "baseline": {
+          "n": 799,
+          "p50_ms": 0.8492730557918549,
+          "p95_ms": 1.6507767140865326,
+          "p99_ms": 4.065033048391342,
+          "p999_ms": null
+        },
+        "loaded": {
+          "n": 1599,
+          "p50_ms": 0.44658035039901733,
+          "p95_ms": 2.42040678858757,
+          "p99_ms": 3.8932859897613525,
+          "p999_ms": 6.859384477138519
+        },
+        "recovery": {
+          "n": 800,
+          "p50_ms": 0.7411837577819824,
+          "p95_ms": 1.0398514568805695,
+          "p99_ms": 2.3384951055049896,
+          "p999_ms": null
+        }
+      }
+    }
+  ],
+  "worker": {
+    "baseline": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.7,
+      "sample_window_sec": 8.000633004,
+      "rss_peak_kib": 88872,
+      "rss_end_kib": 88872,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050098402723064,
+        "end_ns": 27050106403356068,
+        "cpu_sec": 1.7,
+        "verified_bytes": 0,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 967621,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050098402252968,
+        "planned_end_ns": 27050106402252968,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "loaded": {
+      "sample_count": 33,
+      "worker_cpu_sec": 28.55,
+      "sample_window_sec": 15.999434371,
+      "rss_peak_kib": 100652,
+      "rss_end_kib": 96676,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050106403356068,
+        "end_ns": 27050122402790439,
+        "cpu_sec": 28.55,
+        "verified_bytes": 5098777904,
+        "sample_count": 33,
+        "max_boundary_skew_ns": 967621,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050106402252968,
+        "planned_end_ns": 27050122402252968,
+        "errors": [],
+        "cpu_resolution_ns": 10000000
+      }
+    },
+    "recovery": {
+      "sample_count": 17,
+      "worker_cpu_sec": 1.6700000000000017,
+      "sample_window_sec": 8.013702772,
+      "rss_peak_kib": 96676,
+      "rss_end_kib": 95804,
+      "measurement_window": {
+        "clock": "CLOCK_MONOTONIC",
+        "start_ns": 27050122402790439,
+        "end_ns": 27050130416493211,
+        "cpu_sec": 1.6700000000000017,
+        "verified_bytes": null,
+        "sample_count": 17,
+        "max_boundary_skew_ns": 14116921,
+        "boundary_tolerance_ns": 5000000,
+        "planned_start_ns": 27050122402252968,
+        "planned_end_ns": 27050130402252968,
+        "errors": [
+          "phase-boundary scheduling precision insufficient",
+          "missing verified-byte boundary sample",
+          "measurement boundary precision insufficient"
+        ],
+        "cpu_resolution_ns": 10000000
+      }
+    }
+  },
+  "comparability": "ZFC + real WG + production Tokio adapter. Whole worker CPU includes crypto/UDP/management. Python kernel-TCP endpoints and a shared host constrain throughput; no core speed comparison or numerical regression threshold.",
+  "load_functional_ok": false,
+  "qdisc": {
+    "uplink_delay_ms": 0.0,
+    "limit_packets": null,
+    "clients": {
+      "0": {
+        "before": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "after": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "delta": {
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0
+        }
+      },
+      "1": {
+        "before": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "after": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "delta": {
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0
+        }
+      },
+      "2": {
+        "before": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "after": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "delta": {
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0
+        }
+      },
+      "3": {
+        "before": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "after": {
+          "kind": "noqueue",
+          "handle": "0:",
+          "root": true,
+          "refcnt": 2,
+          "options": {},
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "requeues": 0,
+          "backlog": 0,
+          "qlen": 0
+        },
+        "delta": {
+          "bytes": 0,
+          "packets": 0,
+          "drops": 0
+        }
+      }
+    },
+    "errors": [],
+    "ok": true
+  },
+  "path_evidence": {
+    "before": {
+      "ctl": {
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 15,
+          "bytes": 3875
+        },
+        "to_worker": {
+          "packets": 12,
+          "bytes": 4451
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "client": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "to_worker": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "worker": {
+        "from_ctl": {
+          "packets": 12,
+          "bytes": 4451
+        },
+        "to_ctl": {
+          "packets": 15,
+          "bytes": 3875
+        },
+        "from_client": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "to_client": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "from_fwd1": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "to_fwd1": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "from_fwd2": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "to_fwd2": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "from_fwd3": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "to_fwd3": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "fwd1": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "to_worker": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "fwd2": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "to_worker": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "fwd3": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 1,
+          "bytes": 120
+        },
+        "to_worker": {
+          "packets": 2,
+          "bytes": 236
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "fwd4": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "target": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        }
+      }
+    },
+    "after": {
+      "ctl": {
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 32,
+          "bytes": 7960
+        },
+        "to_worker": {
+          "packets": 28,
+          "bytes": 6047
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "client": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 131113,
+          "bytes": 5440067648
+        },
+        "to_worker": {
+          "packets": 184787,
+          "bytes": 26138728
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 226993,
+          "bytes": 5114384196
+        },
+        "to_target": {
+          "packets": 184785,
+          "bytes": 12843292
+        }
+      },
+      "worker": {
+        "from_ctl": {
+          "packets": 28,
+          "bytes": 6047
+        },
+        "to_ctl": {
+          "packets": 32,
+          "bytes": 7960
+        },
+        "from_client": {
+          "packets": 184787,
+          "bytes": 26138728
+        },
+        "to_client": {
+          "packets": 131113,
+          "bytes": 5440067648
+        },
+        "from_fwd1": {
+          "packets": 6408,
+          "bytes": 4838868
+        },
+        "to_fwd1": {
+          "packets": 6404,
+          "bytes": 4761808
+        },
+        "from_fwd2": {
+          "packets": 6408,
+          "bytes": 4838356
+        },
+        "to_fwd2": {
+          "packets": 6403,
+          "bytes": 4761440
+        },
+        "from_fwd3": {
+          "packets": 6405,
+          "bytes": 4837488
+        },
+        "to_fwd3": {
+          "packets": 6402,
+          "bytes": 4760320
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 115707,
+          "bytes": 5128494468
+        },
+        "to_target": {
+          "packets": 85848,
+          "bytes": 19821143
+        }
+      },
+      "fwd1": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 6404,
+          "bytes": 4761808
+        },
+        "to_worker": {
+          "packets": 6408,
+          "bytes": 4838868
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 6403,
+          "bytes": 4377508
+        },
+        "to_target": {
+          "packets": 6406,
+          "bytes": 4377425
+        }
+      },
+      "fwd2": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 6403,
+          "bytes": 4761440
+        },
+        "to_worker": {
+          "packets": 6408,
+          "bytes": 4838356
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 6402,
+          "bytes": 4377200
+        },
+        "to_target": {
+          "packets": 6406,
+          "bytes": 4376925
+        }
+      },
+      "fwd3": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 6402,
+          "bytes": 4760320
+        },
+        "to_worker": {
+          "packets": 6405,
+          "bytes": 4837488
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 6401,
+          "bytes": 4376140
+        },
+        "to_target": {
+          "packets": 6403,
+          "bytes": 4376249
+        }
+      },
+      "fwd4": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_worker": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_target": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_target": {
+          "packets": 0,
+          "bytes": 0
+        }
+      },
+      "target": {
+        "from_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_ctl": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_client": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_worker": {
+          "packets": 85848,
+          "bytes": 19821143
+        },
+        "to_worker": {
+          "packets": 115707,
+          "bytes": 5128494468
+        },
+        "from_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd1": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd2": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd3": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "from_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        },
+        "to_fwd4": {
+          "packets": 0,
+          "bytes": 0
+        }
+      }
+    },
+    "startup_ports": 2,
+    "errors": []
+  },
+  "path_bytes": {
+    "ctl/from_client": 0,
+    "ctl/to_client": 0,
+    "ctl/from_worker": 4085,
+    "ctl/to_worker": 1596,
+    "ctl/from_fwd1": 0,
+    "ctl/to_fwd1": 0,
+    "ctl/from_fwd2": 0,
+    "ctl/to_fwd2": 0,
+    "ctl/from_fwd3": 0,
+    "ctl/to_fwd3": 0,
+    "ctl/from_fwd4": 0,
+    "ctl/to_fwd4": 0,
+    "ctl/from_target": 0,
+    "ctl/to_target": 0,
+    "client/from_ctl": 0,
+    "client/to_ctl": 0,
+    "client/from_worker": 5440067528,
+    "client/to_worker": 26138492,
+    "client/from_fwd1": 0,
+    "client/to_fwd1": 0,
+    "client/from_fwd2": 0,
+    "client/to_fwd2": 0,
+    "client/from_fwd3": 0,
+    "client/to_fwd3": 0,
+    "client/from_fwd4": 0,
+    "client/to_fwd4": 0,
+    "client/from_target": 5114384196,
+    "client/to_target": 12843292,
+    "worker/from_ctl": 1596,
+    "worker/to_ctl": 4085,
+    "worker/from_client": 26138492,
+    "worker/to_client": 5440067528,
+    "worker/from_fwd1": 4838632,
+    "worker/to_fwd1": 4761688,
+    "worker/from_fwd2": 4838120,
+    "worker/to_fwd2": 4761320,
+    "worker/from_fwd3": 4837252,
+    "worker/to_fwd3": 4760200,
+    "worker/from_fwd4": 0,
+    "worker/to_fwd4": 0,
+    "worker/from_target": 5128494468,
+    "worker/to_target": 19821143,
+    "fwd1/from_ctl": 0,
+    "fwd1/to_ctl": 0,
+    "fwd1/from_client": 0,
+    "fwd1/to_client": 0,
+    "fwd1/from_worker": 4761688,
+    "fwd1/to_worker": 4838632,
+    "fwd1/from_fwd2": 0,
+    "fwd1/to_fwd2": 0,
+    "fwd1/from_fwd3": 0,
+    "fwd1/to_fwd3": 0,
+    "fwd1/from_fwd4": 0,
+    "fwd1/to_fwd4": 0,
+    "fwd1/from_target": 4377508,
+    "fwd1/to_target": 4377425,
+    "fwd2/from_ctl": 0,
+    "fwd2/to_ctl": 0,
+    "fwd2/from_client": 0,
+    "fwd2/to_client": 0,
+    "fwd2/from_worker": 4761320,
+    "fwd2/to_worker": 4838120,
+    "fwd2/from_fwd1": 0,
+    "fwd2/to_fwd1": 0,
+    "fwd2/from_fwd3": 0,
+    "fwd2/to_fwd3": 0,
+    "fwd2/from_fwd4": 0,
+    "fwd2/to_fwd4": 0,
+    "fwd2/from_target": 4377200,
+    "fwd2/to_target": 4376925,
+    "fwd3/from_ctl": 0,
+    "fwd3/to_ctl": 0,
+    "fwd3/from_client": 0,
+    "fwd3/to_client": 0,
+    "fwd3/from_worker": 4760200,
+    "fwd3/to_worker": 4837252,
+    "fwd3/from_fwd1": 0,
+    "fwd3/to_fwd1": 0,
+    "fwd3/from_fwd2": 0,
+    "fwd3/to_fwd2": 0,
+    "fwd3/from_fwd4": 0,
+    "fwd3/to_fwd4": 0,
+    "fwd3/from_target": 4376140,
+    "fwd3/to_target": 4376249,
+    "fwd4/from_ctl": 0,
+    "fwd4/to_ctl": 0,
+    "fwd4/from_client": 0,
+    "fwd4/to_client": 0,
+    "fwd4/from_worker": 0,
+    "fwd4/to_worker": 0,
+    "fwd4/from_fwd1": 0,
+    "fwd4/to_fwd1": 0,
+    "fwd4/from_fwd2": 0,
+    "fwd4/to_fwd2": 0,
+    "fwd4/from_fwd3": 0,
+    "fwd4/to_fwd3": 0,
+    "fwd4/from_target": 0,
+    "fwd4/to_target": 0,
+    "target/from_ctl": 0,
+    "target/to_ctl": 0,
+    "target/from_client": 0,
+    "target/to_client": 0,
+    "target/from_worker": 19821143,
+    "target/to_worker": 5128494468,
+    "target/from_fwd1": 0,
+    "target/to_fwd1": 0,
+    "target/from_fwd2": 0,
+    "target/to_fwd2": 0,
+    "target/from_fwd3": 0,
+    "target/to_fwd3": 0,
+    "target/from_fwd4": 0,
+    "target/to_fwd4": 0
+  },
+  "topology": {
+    "wg_ports": 2,
+    "peers": 4,
+    "heavy_peer": 0,
+    "light_peers": [
+      1,
+      2,
+      3
+    ]
+  },
+  "memory_mb": 64
+}

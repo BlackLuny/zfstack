@@ -1,0 +1,178 @@
+{
+  "observed_unix_ns": 1792146685933649123,
+  "commands": [
+    {
+      "argv": [
+        "uname",
+        "-a"
+      ],
+      "rc": 0,
+      "stdout": "Linux pa.blestic.com 6.1.0-29-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.123-1 (2025-01-02) x86_64 GNU/Linux\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "lscpu"
+      ],
+      "rc": 0,
+      "stdout": "Architecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        46 bits physical, 48 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               4\nOn-line CPU(s) list:                  0-3\nVendor ID:                            GenuineIntel\nBIOS Vendor ID:                       QEMU\nModel name:                           Intel(R) Xeon(R) Platinum 8260 CPU @ 2.40GHz\nBIOS Model name:                      pc-q35-7.2  CPU @ 2.0GHz\nBIOS CPU family:                      1\nCPU family:                           6\nModel:                                85\nThread(s) per core:                   2\nCore(s) per socket:                   2\nSocket(s):                            1\nStepping:                             7\nBogoMIPS:                             4800.00\nFlags:                                fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon rep_good nopl xtopology cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault invpcid_single ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm mpx avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves arat umip pku ospke avx512_vnni md_clear arch_capabilities\nVirtualization:                       VT-x\nHypervisor vendor:                    KVM\nVirtualization type:                  full\nL1d cache:                            64 KiB (2 instances)\nL1i cache:                            64 KiB (2 instances)\nL2 cache:                             2 MiB (2 instances)\nL3 cache:                             35.8 MiB (1 instance)\nNUMA node(s):                         1\nNUMA node0 CPU(s):                    0-3\nVulnerability Gather data sampling:   Unknown: Dependent on hypervisor status\nVulnerability Itlb multihit:          Not affected\nVulnerability L1tf:                   Not affected\nVulnerability Mds:                    Not affected\nVulnerability Meltdown:               Not affected\nVulnerability Mmio stale data:        Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Reg file data sampling: Not affected\nVulnerability Retbleed:               Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:   Not affected\nVulnerability Spec store bypass:      Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:             Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:             Mitigation; Enhanced / Automatic IBRS; IBPB conditional; RSB filling; PBRSB-eIBRS SW sequence; BHI SW loop, KVM SW loop\nVulnerability Srbds:                  Not affected\nVulnerability Tsx async abort:        Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemd-detect-virt"
+      ],
+      "rc": 0,
+      "stdout": "kvm\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "df",
+        "-h",
+        "/"
+      ],
+      "rc": 0,
+      "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/vda3       247G   27G  210G  12% /\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "free",
+        "-h"
+      ],
+      "rc": 0,
+      "stdout": "               total        used        free      shared  buff/cache   available\nMem:           7.8Gi       2.9Gi       725Mi        69Mi       4.5Gi       4.9Gi\nSwap:          1.5Gi       458Mi       1.1Gi\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "uptime"
+      ],
+      "rc": 0,
+      "stdout": " 18:31:25 up 431 days, 20:50,  0 user,  load average: 0.01, 0.06, 0.08\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "python3",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "Python 3.11.2\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "rustup",
+        "toolchain",
+        "list"
+      ],
+      "rc": 0,
+      "stdout": "stable-x86_64-unknown-linux-gnu (active, default)\n1.92.0-x86_64-unknown-linux-gnu\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-Version"
+      ],
+      "rc": 0,
+      "stdout": "ip utility, iproute2-6.1.0, libbpf 1.1.0\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "tc",
+        "-Version"
+      ],
+      "rc": 0,
+      "stdout": "tc utility, iproute2-6.1.0, libbpf 1.1.0\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "docker",
+        "ps",
+        "--format",
+        "{{.Names}} {{.Status}}"
+      ],
+      "rc": 0,
+      "stdout": "zfc-web Up 4 weeks (healthy)\nzfc-controler Up 4 weeks (healthy)\nzfc-rrd-service Up 4 weeks (healthy)\nzfc-caddy Up 4 weeks (healthy)\nzfc-redis Up 4 months (healthy)\nzfc-postgres Up 4 months (healthy)\nzfc-tdengine Up 4 months (healthy)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ps",
+        "-eo",
+        "pid,ppid,pcpu,pmem,comm",
+        "--sort=-pcpu"
+      ],
+      "rc": 0,
+      "stdout": "    PID    PPID %CPU %MEM COMMAND\n3157627 3157604  100  0.0 ps\n3157604 3157449 16.6  0.1 python3\n3157449 3157438  5.1  0.0 bash\n2390985 2390965  1.4  1.6 zf-web\n 822520  822470  0.8  0.1 redis-server\n3157438 3191127  0.8  0.1 sshd\n2390672 2390651  0.7  1.1 zf-controler\n 822868  822663  0.6  1.9 taosd\n2180287       1  0.5  1.3 server\n 822792  822663  0.5  1.0 taosadapter\n2184148       1  0.4  1.3 zf-worker.new\n1626410       1  0.4  0.6 dockerd\n2391351 2391331  0.3  0.7 caddy\n  64751       1  0.3  0.3 containerd\n2947990       1  0.2  0.2 agent\n2458673       1  0.2  0.9 zf-worker.new\n2180552       1  0.2  1.2 server\n2180727       1  0.1  1.0 server\n1053873       1  0.1  0.3 nezha-agent\n2614264 2452150  0.1 12.2 openclaw-gatewa\n1033413       1  0.1  0.9 server\n3155533       1  0.1  0.1 server\n2390413 2390392  0.0  0.0 rrd-service\n3155717  822539  0.0  0.2 postgres\n3176734       1  0.0  3.8 systemd-journal\n3155078  822539  0.0  0.2 postgres\n 822878  822868  0.0  0.0 udfd\n1160981       1  0.0  0.1 server\n3155079  822539  0.0  0.2 postgres\n1161236       1  0.0  0.1 server\n     15       2  0.0  0.0 rcu_preempt\n2391331       1  0.0  0.2 containerd-shim\n 822421       1  0.0  0.1 containerd-shim\n      1       0  0.0  0.0 systemd\n1960328       1  0.0  0.3 flux_agent\n3010949       2  0.0  0.0 kworker/3:0-events\n3136856  822539  0.0  0.3 postgres\n3140537  822539  0.0  0.3 postgres\n2452150       1  0.0  0.0 systemd\n2390651       1  0.0  0.2 containerd-shim\n2390965       1  0.0  0.2 containerd-shim\n 822470       1  0.0  0.1 containerd-shim\n3113008  822539  0.0  0.3 postgres\n2390392       1  0.0  0.2 containerd-shim\n 822497       1  0.0  0.1 containerd-shim\n     44       2  0.0  0.0 kcompactd0\n3120485  822539  0.0  0.3 postgres\n3134951       2  0.0  0.0 kworker/u8:4-flush-254:0\n3118689  822539  0.0  0.3 postgres\n3153062       2  0.0  0.0 kworker/u8:1-writeback\n3151149       2  0.0  0.0 kworker/u8:0-flush-254:0\n     21       2  0.0  0.0 ksoftirqd/1\n3154627       2  0.0  0.0 kworker/1:0-events\n3144553       2  0.0  0.0 kworker/u8:3-flush-254:0\n 822539  822497  0.0  0.1 postgres\n3453125       1  0.0  0.1 snell-server\n3070207       2  0.0  0.0 kworker/0:0-events\n3117470       2  0.0  0.0 kworker/2:3-events\n    230       2  0.0  0.0 jbd2/vda3-8\n1023609       1  0.0  0.0 zelay\n 822795  822539  0.0  0.0 postgres\n3152280       2  0.0  0.0 kworker/1:1-events\n3133683  822539  0.0  0.3 postgres\n3888081       1  0.0  0.0 npt-ci\n3103706  822539  0.0  0.3 postgres\n3107392  822539  0.0  0.3 postgres\n     46       2  0.0  0.0 khugepaged\n     14       2  0.0  0.0 ksoftirqd/0\n    853       1  0.0  0.0 dbus-daemon\n     26       2  0.0  0.0 ksoftirqd/2\n     31       2  0.0  0.0 ksoftirqd/3\n 822499  822421  0.0  0.0 tini\n 822782  822539  0.0  0.8 postgres\n3111131  822539  0.0  0.3 postgres\n    857       1  0.0  0.0 systemd-logind\n 822796  822539  0.0  0.0 postgres\n3176875       1  0.0  0.0 systemd-udevd\n 822783  822539  0.0  0.0 postgres\n    140       2  0.0  0.0 kworker/1:1H-kblockd\n    142       2  0.0  0.0 kworker/0:1H-kblockd\n     55       2  0.0  0.0 kworker/2:1H-kblockd\n    208       2  0.0  0.0 kworker/3:2H-kblockd\n3176825       1  0.0  0.0 systemd-timesyn\n     56       2  0.0  0.0 kswapd0\n3059958       2  0.0  0.0 kworker/1:3-events\n     41       2  0.0  0.0 khungtaskd\n     20       2  0.0  0.0 migration/1\n     16       2  0.0  0.0 migration/0\n    357       2  0.0  0.0 watchdogd\n     30       2  0.0  0.0 migration/3\n     25       2  0.0  0.0 migration/2\n  65278       1  0.0  0.0 cron\n 822448 1626410  0.0  0.0 docker-proxy\n 822462 1626410  0.0  0.0 docker-proxy\n2391308 1626410  0.0  0.0 docker-proxy\n2391315 1626410  0.0  0.1 docker-proxy\n 822416 1626410  0.0  0.0 docker-proxy\n2391287 1626410  0.0  0.0 docker-proxy\n2390946 1626410  0.0  0.0 docker-proxy\n2390952 1626410  0.0  0.1 docker-proxy\n 822427 1626410  0.0  0.0 docker-proxy\n2391294 1626410  0.0  0.1 docker-proxy\n2390637 1626410  0.0  0.0 docker-proxy\n 822797  822539  0.0  0.0 postgres\n3191127       1  0.0  0.0 sshd\n1997746  822539  0.0  0.3 postgres\n3191124       1  0.0  0.0 qemu-ga\n      2       0  0.0  0.0 kthreadd\n1616606  822539  0.0  0.3 postgres\n 197462  822539  0.0  0.3 postgres\n 551690  822539  0.0  0.3 postgres\n 553561  822539  0.0  0.3 postgres\n 570407  822539  0.0  0.1 postgres\n2390762  822539  0.0  0.1 postgres\n2390736  822539  0.0  0.1 postgres\n 570412  822539  0.0  0.1 postgres\n 570406  822539  0.0  0.1 postgres\n 570341  822539  0.0  0.2 postgres\n 570343  822539  0.0  0.1 postgres\n2390770  822539  0.0  0.1 postgres\n2390765  822539  0.0  0.1 postgres\n2390763  822539  0.0  0.1 postgres\n2390764  822539  0.0  0.1 postgres\n2390760  822539  0.0  0.1 postgres\n    177       2  0.0  0.0 scsi_eh_2\n     40       2  0.0  0.0 kauditd\n      3       2  0.0  0.0 rcu_gp\n      4       2  0.0  0.0 rcu_par_gp\n      5       2  0.0  0.0 slub_flushwq\n      6       2  0.0  0.0 netns\n      8       2  0.0  0.0 kworker/0:0H-events_highpri\n     10       2  0.0  0.0 mm_percpu_wq\n     11       2  0.0  0.0 rcu_tasks_kthread\n     12       2  0.0  0.0 rcu_tasks_rude_kthread\n     13       2  0.0  0.0 rcu_tasks_trace_kthread\n     18       2  0.0  0.0 cpuhp/0\n     19       2  0.0  0.0 cpuhp/1\n     23       2  0.0  0.0 kworker/1:0H-events_highpri\n     24       2  0.0  0.0 cpuhp/2\n     28       2  0.0  0.0 kworker/2:0H-events_highpri\n     29       2  0.0  0.0 cpuhp/3\n     38       2  0.0  0.0 kdevtmpfs\n     39       2  0.0  0.0 inet_frag_wq\n     42       2  0.0  0.0 oom_reaper\n     43       2  0.0  0.0 writeback\n     45       2  0.0  0.0 ksmd\n     47       2  0.0  0.0 kintegrityd\n     48       2  0.0  0.0 kblockd\n     49       2  0.0  0.0 blkcg_punt_bio\n     50       2  0.0  0.0 tpm_dev_wq\n     51       2  0.0  0.0 edac-poller\n     52       2  0.0  0.0 devfreq_wq\n     63       2  0.0  0.0 kthrotld\n     65       2  0.0  0.0 irq/24-aerdrv\n     66       2  0.0  0.0 irq/25-aerdrv\n     67       2  0.0  0.0 irq/26-aerdrv\n     68       2  0.0  0.0 irq/27-aerdrv\n     69       2  0.0  0.0 irq/28-aerdrv\n     70       2  0.0  0.0 irq/29-aerdrv\n     71       2  0.0  0.0 irq/30-aerdrv\n     72       2  0.0  0.0 irq/31-aerdrv\n     73       2  0.0  0.0 irq/32-aerdrv\n     74       2  0.0  0.0 irq/33-aerdrv\n     75       2  0.0  0.0 irq/34-aerdrv\n     76       2  0.0  0.0 irq/35-aerdrv\n     77       2  0.0  0.0 irq/36-aerdrv\n     78       2  0.0  0.0 irq/37-aerdrv\n     79       2  0.0  0.0 irq/38-aerdrv\n     80       2  0.0  0.0 irq/39-aerdrv\n     81       2  0.0  0.0 acpi_thermal_pm\n     83       2  0.0  0.0 mld\n     84       2  0.0  0.0 kworker/3:1H-kblockd\n     85       2  0.0  0.0 ipv6_addrconf\n     90       2  0.0  0.0 kstrp\n     95       2  0.0  0.0 zswap-shrink\n     96       2  0.0  0.0 kworker/u9:0\n    172       2  0.0  0.0 ata_sff\n    173       2  0.0  0.0 scsi_eh_0\n    174       2  0.0  0.0 scsi_tmf_0\n    175       2  0.0  0.0 scsi_eh_1\n    176       2  0.0  0.0 scsi_tmf_1\n    178       2  0.0  0.0 scsi_tmf_2\n    179       2  0.0  0.0 scsi_eh_3\n    180       2  0.0  0.0 scsi_tmf_3\n    181       2  0.0  0.0 scsi_eh_4\n    182       2  0.0  0.0 scsi_tmf_4\n    183       2  0.0  0.0 scsi_eh_5\n    184       2  0.0  0.0 scsi_tmf_5\n    185       2  0.0  0.0 scsi_eh_6\n    186       2  0.0  0.0 scsi_tmf_6\n    188       2  0.0  0.0 scsi_eh_7\n    189       2  0.0  0.0 scsi_tmf_7\n    190       2  0.0  0.0 scsi_eh_8\n    191       2  0.0  0.0 scsi_tmf_8\n    192       2  0.0  0.0 scsi_eh_9\n    193       2  0.0  0.0 scsi_tmf_9\n    231       2  0.0  0.0 ext4-rsv-conver\n    388       2  0.0  0.0 cryptd\n    506       2  0.0  0.0 nfit\n    861       1  0.0  0.0 agetty\n    862       1  0.0  0.0 agetty\n 570414  822539  0.0  0.1 postgres\n 822663  822499  0.0  0.0 entrypoint.sh\n2390767  822539  0.0  0.1 postgres\n2452151 2452150  0.0  0.0 (sd-pam)\n2507008       2  0.0  0.0 tls-strp\n3113007  822539  0.0  0.1 postgres\n3113009  822539  0.0  0.1 postgres\n3113012  822539  0.0  0.1 postgres\n3122784       2  0.0  0.0 kworker/3:1-cgroup_destroy\n3130829       2  0.0  0.0 kworker/2:0-cgroup_destroy\n3136854  822539  0.0  0.1 postgres\n3152001       2  0.0  0.0 kworker/0:1-cgroup_destroy\n3154104       2  0.0  0.0 kworker/3:2-events\n3154441       2  0.0  0.0 kworker/0:2\n3155181       2  0.0  0.0 kworker/2:1-cgroup_destroy\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "-j",
+        "link",
+        "show"
+      ],
+      "rc": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\"},{\"ifindex\":2,\"ifname\":\"eth0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"fq\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"00:57:e0:9c:81:05\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp3s0\"]},{\"ifindex\":3,\"ifname\":\"docker0\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"DOWN\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"02:42:d5:72:17:6d\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":66858,\"ifname\":\"br-2033cc1cd25e\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"02:42:83:fc:1c:32\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\"},{\"ifindex\":66874,\"link_index\":66873,\"ifname\":\"veth7839163\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"26:d6:79:78:ee:d5\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":0},{\"ifindex\":66876,\"link_index\":66875,\"ifname\":\"veth0011c26\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"06:23:26:30:1f:6b\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":1},{\"ifindex\":66878,\"link_index\":66877,\"ifname\":\"vethacc6660\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"ba:e7:9a:40:87:1f\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":2},{\"ifindex\":67065,\"link_index\":67064,\"ifname\":\"veth764e4ca\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"ae:11:44:d2:cf:89\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":3},{\"ifindex\":67067,\"link_index\":67066,\"ifname\":\"vethcce3f56\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"6a:b6:d5:56:a0:93\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":4},{\"ifindex\":67069,\"link_index\":67068,\"ifname\":\"veth9ee35ae\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"5e:ad:ee:e1:31:70\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":6},{\"ifindex\":67071,\"link_index\":67070,\"ifname\":\"veth3866151\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"master\":\"br-2033cc1cd25e\",\"operstate\":\"UP\",\"linkmode\":\"DEFAULT\",\"group\":\"default\",\"link_type\":\"ether\",\"address\":\"76:86:30:81:3c:ab\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"link_netnsid\":7}]\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ip",
+        "netns",
+        "list"
+      ],
+      "rc": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "files": {
+    "/proc/self/cgroup": "0::/user.slice/user-0.slice/session-13108.scope\n",
+    "/proc/stat": "cpu  219212641 863 142207374 14431644570 10145128 0 19728011 785328 0 0\ncpu0 55297005 191 36210062 3609815585 2634119 0 6184402 160849 0 0\ncpu1 53914806 207 34688624 3599414197 2498943 0 8862374 291380 0 0\ncpu2 56333780 241 35834505 3607986934 2642852 0 2953621 183358 0 0\ncpu3 53667048 222 35474181 3614427853 2369212 0 1727612 149740 0 0\nintr 25702572211 15 9 0 0 1606 0 0 0 1 0 0 0 15 0 0 0 0 0 0 0 0 0 7462636 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 32 0 0 0 0 0 1596658084 3095438425 0 0 0 10 28 162 56 0 71724730 61905865 71635738 65045441 19320218 0 0 0 20 4 171 61 0 0 0 0 0 95 161 0 0 0 29 288 38 33 0 90150 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nctxt 127480115447\nbtime 1754833278\nprocesses 246386546\nprocs_running 2\nprocs_blocked 0\nsoftirq 28000098959 13 3841211887 59007801 3102495490 18508664 0 72248436 430253792 617409853 2679093839\n",
+    "/proc/pressure/cpu": "some avg10=0.11 avg60=0.17 avg300=0.14 total=173432732012\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "/proc/pressure/memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=414043459\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=398516256\n",
+    "/proc/pressure/io": "some avg10=0.00 avg60=0.00 avg300=0.00 total=57981577831\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=52634590639\n",
+    "/proc/sys/kernel/random/boot_id": "7cc58440-68a8-4a79-9cbf-2f504b63e3a7\n",
+    "/sys/fs/cgroup/cgroup.controllers": "cpuset cpu io memory hugetlb pids rdma misc\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/session-13108.scope/cpu.max": "max 100000\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/session-13108.scope/cpu.stat": "usage_usec 449641\nuser_usec 173235\nsystem_usec 276405\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/session-13108.scope/cpuset.cpus.effective": null,
+    "/sys/fs/cgroup/user.slice/user-0.slice/session-13108.scope/memory.max": "max\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/session-13108.scope/memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/cpu.max": "max 100000\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/cpu.stat": "usage_usec 181576692440\nuser_usec 155556097401\nsystem_usec 26020595039\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/cpuset.cpus.effective": null,
+    "/sys/fs/cgroup/user.slice/user-0.slice/memory.max": "max\n",
+    "/sys/fs/cgroup/user.slice/user-0.slice/memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+    "/sys/fs/cgroup/user.slice/cpu.max": "max 100000\n",
+    "/sys/fs/cgroup/user.slice/cpu.stat": "usage_usec 252823196793\nuser_usec 218094967467\nsystem_usec 34728229326\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "/sys/fs/cgroup/user.slice/cpuset.cpus.effective": "0-3\n",
+    "/sys/fs/cgroup/user.slice/memory.max": "max\n",
+    "/sys/fs/cgroup/user.slice/memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+    "/sys/fs/cgroup/cpu.max": null,
+    "/sys/fs/cgroup/cpu.stat": "usage_usec 3819342186068\nuser_usec 2192135046126\nsystem_usec 1619353856236\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "/sys/fs/cgroup/cpuset.cpus.effective": "0-3\n",
+    "/sys/fs/cgroup/memory.max": null,
+    "/sys/fs/cgroup/memory.events": null
+  },
+  "affinity": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "namespaces": {
+    "net": "net:[4026531840]",
+    "mnt": "mnt:[4026531841]",
+    "pid": "pid:[4026531836]"
+  },
+  "physical_cpu_exclusivity": "UNPROVEN: KVM VPS with other services"
+}

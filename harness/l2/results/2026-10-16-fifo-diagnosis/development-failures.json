@@ -1,0 +1,29 @@
+[
+  {
+    "kind": "unit-test-portability",
+    "tests": 5,
+    "errors": 4,
+    "cause": "Initial mock attempted to patch select.epoll, absent on Darwin. Replaced the select module with an explicit fake poller.",
+    "preserved_output": "tool transcript; no full standalone stderr file",
+    "behavioral_threshold_change": false
+  },
+  {
+    "kind": "diagnostic-trace-overrun",
+    "runs": [
+      "before-full-1",
+      "before-full-2",
+      "before-full-3"
+    ],
+    "cause": "High-volume kfree_skb/CPU0 trace entries exceeded a per-CPU ring buffer. Raw trace and per-CPU overrun counts retained.",
+    "limitation": "Do not infer exhaustive event coverage or guest CPU assignment from missing trace spans. The reported worst-frame window is present; host ALL-vCPU CPU upper bounds do not rely on a single vCPU mapping."
+  },
+  {
+    "kind": "macOS-task-port-unavailable",
+    "mach_task_for_pid_return": 5,
+    "fallback": "Read-only proc_pidinfo thread counters; no permissions changed."
+  },
+  {
+    "kind": "analysis-boundary-assumption",
+    "cause": "An initial derived-analysis assertion expected all 51 noop entries before the dev_activate entry timestamp; 50 were inside, one was 1 us after entry. Entry is not return. Corrected the analysis to retain both counts and this limitation; no raw trace or acceptance threshold changed."
+  }
+]

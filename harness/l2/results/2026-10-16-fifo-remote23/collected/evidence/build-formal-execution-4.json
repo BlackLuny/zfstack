@@ -1,0 +1,174 @@
+[
+  {
+    "label": "extract-frozen-inputs",
+    "argv": [
+      "tar",
+      "-xzf",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/head-head-sources-clean.tar.gz",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/frozen-matrix-4"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792148110402080795,
+    "finished_unix_ns": 1792148111168385835,
+    "returncode": 0
+  },
+  {
+    "label": "fetch-tested-commit",
+    "argv": [
+      "git",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+      "fetch",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/tested.bundle",
+      "HEAD"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792148111168761094,
+    "finished_unix_ns": 1792148111184934936,
+    "returncode": 0
+  },
+  {
+    "label": "checkout-tested-commit",
+    "argv": [
+      "git",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-C",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+      "checkout",
+      "--detach",
+      "16b0d13a0fba59dc4748b530bd854a9cccd5ea70"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792148111185225311,
+    "finished_unix_ns": 1792148111201209099,
+    "returncode": 0
+  },
+  {
+    "label": "native-build",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv/bin/python",
+      "-m",
+      "qa.crossrepo",
+      "build",
+      "--archive",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/frozen-matrix-4",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/build-4",
+      "--node",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/node-4.json",
+      "--lease-dir",
+      "/var/lock/zfstack-qa",
+      "--cell",
+      "head-head",
+      "--toolchain",
+      "1.98.1",
+      "--profile",
+      "fast-release",
+      "--jobs",
+      "2",
+      "--cache-dir",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/build-cache"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+    "started_unix_ns": 1792148111202053793,
+    "finished_unix_ns": 1792148903996506509,
+    "returncode": 0
+  },
+  {
+    "label": "make-frozen-qa-plan",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv/bin/python",
+      "-m",
+      "qa",
+      "make-plan",
+      "--suite",
+      "nightly",
+      "--platform",
+      "linux-x86_64",
+      "--tested-sha",
+      "16b0d13a0fba59dc4748b530bd854a9cccd5ea70",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/evidence/plan.json"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+    "started_unix_ns": 1792148904141177940,
+    "finished_unix_ns": 1792148904514465724,
+    "returncode": 0
+  },
+  {
+    "label": "formal-c16",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv/bin/python",
+      "-m",
+      "qa",
+      "run-plan",
+      "--plan",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/evidence/plan.json",
+      "--case",
+      "C16-l2-queue-control",
+      "--node",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/node-4.json",
+      "--lease-dir",
+      "/var/lock/zfstack-qa",
+      "--output",
+      "/root/zfstack-qa-pr75-20261016-remote23-01/formal"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+    "started_unix_ns": 1792148909525602567,
+    "finished_unix_ns": 1792148999191182010,
+    "returncode": 1
+  },
+  {
+    "label": "independent-evaluation-and-archive",
+    "argv": [
+      "/root/zfstack-qa-pr75-20261016-remote23-01/qa-venv/bin/python",
+      "-c",
+      "import json,sys\nfrom pathlib import Path\nfrom qa.evaluate import evaluate\nfrom qa.archive import archive\nfrom qa.common import read_json,write_json\nfrom qa.integration import verify_integration,queue_negative_evidence\nfrom qa.common import EvidenceError\nfrom qa.render_report import render\nroot=Path(sys.argv[1]); checkout=root/'checkout'; e=root/'evidence'\nplan=read_json(e/'plan.json')\nenvelopes=[]\nfor path in (root/'formal').rglob('result.json'):\n value=read_json(path)\n if value.get('schema_version')==2 and 'case_instance_id' in value: envelopes.append(path)\nassert len(envelopes)==1,envelopes\nresult=read_json(envelopes[0]); case=next(c for c in plan['cases'] if c['case_id']=='C16-l2-queue-control')\ndirectory=envelopes[0].parent\nworker=read_json(directory/'worker-manifest.json')\nstatus,details,observations=queue_negative_evidence(case,directory/'baseline',directory/'fault',worker)\nverification_error=None\ntry: verify_integration(result,case,directory)\nexcept EvidenceError as error: verification_error=str(error)\nwrite_json(e/'independent-c16-verification.json',{'functional':status,'details':details,'observations':observations,'verification_error':verification_error,'result_file':str(envelopes[0])},exclusive=True)\nreport=evaluate(plan,envelopes,checkout/'qa/policy',expected_sha=plan['tested_sha'])\nwrite_json(e/'evaluation.json',report,exclusive=True)\n(e/'evaluation.md').write_text(render(report))\narchive(root/'formal',e/'formal-artifacts.tar.gz')\nprint(json.dumps({'case_functional':status,'aggregate':report['status'],'case_details':details}))\n",
+      "/root/zfstack-qa-pr75-20261016-remote23-01"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01/checkout",
+    "started_unix_ns": 1792148999192817207,
+    "finished_unix_ns": 1792149006532040270,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-services",
+    "argv": [
+      "docker",
+      "ps",
+      "--format",
+      "{{.Names}} {{.Status}}"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792149006532844369,
+    "finished_unix_ns": 1792149006651149379,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-links",
+    "argv": [
+      "ip",
+      "-j",
+      "link",
+      "show"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792149006651622057,
+    "finished_unix_ns": 1792149006655622468,
+    "returncode": 0
+  },
+  {
+    "label": "host-after-namespaces",
+    "argv": [
+      "ip",
+      "netns",
+      "list"
+    ],
+    "cwd": "/root/zfstack-qa-pr75-20261016-remote23-01",
+    "started_unix_ns": 1792149006655950128,
+    "finished_unix_ns": 1792149006659849469,
+    "returncode": 0
+  }
+]
