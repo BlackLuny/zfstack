@@ -255,23 +255,85 @@ impl BlockPool {
             }
             block
         } else {
-            let lease = budget.try_allocate_kind(peer, size as u64, crate::budget::AllocationKind::TxBlock)?;
+            let lease = self.memory.as_mut().unwrap().try_allocate_tx_block(budget, peer, size as u64)?;
             Block::new(size, lease)
         };
         self.note_activity(size == SMALL_TX_BLOCK);
         Some(block)
     }
+
+    #[inline]
+    fn get_with_index(&mut self, budget: &mut Budget, peer: PeerId, size: usize, index: &mut MemoryLease) -> Option<Block> {
+        if self.memory.as_ref().is_some_and(|memory| !memory.matches(budget)) {
+            return None;
+        }
+        if self.memory.is_none() {
+            self.memory = Some(budget.port_memory_handle());
+        }
+        let free = if size == SMALL_TX_BLOCK { &mut self.small } else { &mut self.free };
+        let block = if let Some(mut block) = free.pop() {
+            if !block.lease.assign_with_index(budget, peer, index) {
+                free.push(block);
+                return None;
+            }
+            block
+        } else {
+            let assignment = index.prepare_index_peer(budget, peer, true).ok()?;
+            let lease = self.memory.as_mut().unwrap().try_allocate_tx_block(budget, peer, size as u64)?;
+            if let Some(assignment) = assignment {
+                index.commit_index_peer(budget, assignment);
+            }
+            index.activate_index();
+            Block::new(size, lease)
+        };
+        self.note_activity(size == SMALL_TX_BLOCK);
+        Some(block)
+    }
+
+    #[inline]
+    fn drop_block(&mut self, b: Block) {
+        let Block { data, lease, .. } = b;
+        drop(data);
+        if let Some(memory) = &mut self.memory {
+            memory.recycle_lease(lease);
+        }
+    }
+
+    #[inline]
+    fn put_with_index(&mut self, mut b: Block, index: &mut MemoryLease) -> bool {
+        let small = b.len() == SMALL_TX_BLOCK;
+        let has_slot = if small { self.small.len() < self.small.capacity() } else { self.free.len() < self.free.capacity() };
+        if self.cached() < self.max_cached
+            && has_slot
+            && self.memory.as_ref().is_some_and(|memory| memory.owns(&b.lease))
+            && b.lease.park_cached_with_index(index)
+        {
+            if small {
+                self.small.push(b);
+            } else {
+                self.free.push(b);
+            }
+            self.note_activity(small);
+            return true;
+        }
+        self.put(b);
+        false
+    }
+
     fn put(&mut self, mut b: Block) {
         if self.memory.as_ref().is_none_or(|memory| !memory.owns(&b.lease)) {
+            return;
+        }
+        if self.max_cached == 0 {
+            self.drop_block(b);
             return;
         }
         // A previous short-flow phase must not pin every cache slot and force
         // subsequent bulk transfers to allocate a full block on every write.
         if self.cached() == self.max_cached {
-            if b.len() == SMALL_TX_BLOCK {
-                self.free.pop();
-            } else {
-                self.small.pop();
+            let evicted = if b.len() == SMALL_TX_BLOCK { self.free.pop() } else { self.small.pop() };
+            if let Some(evicted) = evicted {
+                self.drop_block(evicted);
             }
             // Eviction removes a tail entry, unlike trimming the old prefix.
             let counts = self.cached_by_class();
@@ -288,8 +350,10 @@ impl BlockPool {
             if Self::reserve_cached_slot(free, lease, memory) {
                 free.push(b);
                 self.note_activity(small);
+                return;
             }
         }
+        self.drop_block(b);
     }
 
     fn reserve_cached_slot(free: &mut Vec<Block>, backing: &mut Option<MemoryLease>, memory: &PortMemoryHandle) -> bool {
@@ -417,6 +481,9 @@ impl BlockPool {
     /// the number of blocks and bytes released.
     pub fn reclaim(&mut self) -> (usize, u64) {
         let reclaimed = self.trim_cached_to(0, 0);
+        if let Some(memory) = &mut self.memory {
+            memory.clear_recycled();
+        }
         self.take_activity();
         reclaimed
     }
@@ -474,6 +541,22 @@ impl TxBuf {
     }
 
     pub fn push(&mut self, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, mut src: &[u8]) -> bool {
+        if self.blocks.is_empty() && self.blocks.capacity() != 0 && !src.is_empty() && src.len() <= TX_BLOCK {
+            if let Some(index_lease) = self.index_lease.as_mut() {
+                if !index_lease.belongs_to(budget) {
+                    return false;
+                }
+                let first_size = if src.len() <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK };
+                let Some(block) = pool.get_with_index(budget, peer, first_size, index_lease) else {
+                    self.trim_empty_index();
+                    return false;
+                };
+                self.blocks.push_back(block);
+                self.blocks[0].write(0, src);
+                self.len = src.len();
+                return true;
+            }
+        }
         if self.index_lease.as_ref().is_some_and(|lease| !lease.can_reuse_index(budget, peer, self.blocks.is_empty())) {
             return false;
         }
@@ -518,7 +601,7 @@ impl TxBuf {
             staged += 1;
         }
         if let Some(assignment) = assignment {
-            self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
+            self.index_lease.as_mut().unwrap().commit_index_peer(budget, assignment);
         }
         self.commit_index(index);
         if !self.blocks.is_empty() {
@@ -575,6 +658,13 @@ impl TxBuf {
             let size = if self.blocks.is_empty() && max <= SMALL_TX_BLOCK { SMALL_TX_BLOCK } else { TX_BLOCK };
             let index = self.blocks.len().checked_add(1).and_then(|slots| self.prepare_index(slots, budget, peer).ok());
             let block = index.and_then(|mut index| {
+                if before == 0 && index.is_none() {
+                    if let Some(index_lease) = self.index_lease.as_mut() {
+                        let block = pool.get_with_index(budget, peer, size, index_lease)?;
+                        self.blocks.push_back(block);
+                        return Some(());
+                    }
+                }
                 let assignment = if index.is_none() {
                     self.index_lease.as_ref().map_or(Ok(None), |lease| lease.prepare_index_peer(budget, peer, before == 0)).ok()?
                 } else {
@@ -582,7 +672,7 @@ impl TxBuf {
                 };
                 let block = pool.get(budget, peer, size)?;
                 if let Some(assignment) = assignment {
-                    self.index_lease.as_mut().unwrap().commit_index_peer(assignment);
+                    self.index_lease.as_mut().unwrap().commit_index_peer(budget, assignment);
                 }
                 if let Some(next) = &mut index {
                     next.blocks.push_back(block);
@@ -816,17 +906,42 @@ impl TxBuf {
         while self.blocks.front().is_some_and(|b| self.head >= b.len()) {
             let b = self.blocks.pop_front().unwrap();
             self.head -= b.len();
+            if self.len == 0 && self.blocks.is_empty() {
+                self.head = 0;
+                self.put_last_block(pool, b);
+                return;
+            }
             pool.put(b);
         }
         if self.len == 0 {
             // An idle connection, including TIME_WAIT, must not pin a 64 KiB
             // block. The shard pool retains only its bounded cache.
             while let Some(block) = self.blocks.pop_back() {
+                if self.blocks.is_empty() {
+                    self.head = 0;
+                    self.put_last_block(pool, block);
+                    return;
+                }
                 pool.put(block);
             }
             self.head = 0;
             self.trim_empty_index();
         }
+    }
+
+    #[inline]
+    fn put_last_block(&mut self, pool: &mut BlockPool, b: Block) {
+        if self.blocks.capacity() <= 8 {
+            if let Some(index) = self.index_lease.as_mut() {
+                if pool.put_with_index(b, index) {
+                    return;
+                }
+                self.trim_empty_index();
+                return;
+            }
+        }
+        pool.put(b);
+        self.trim_empty_index();
     }
 
     pub fn release_all(&mut self, pool: &mut BlockPool) {
@@ -3231,6 +3346,122 @@ mod rx_descriptor_tests {
         assert_eq!((rx.len(), ooo.bytes()), before);
         assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rx.push(Bytes::from_static(b"x")))).is_err());
         assert_eq!(rx.len(), before.0);
+    }
+
+    #[test]
+    fn issue65_fused_index_and_block_migration_distinguishes_index_vs_payload_refusal() {
+        use crate::budget::{AllocationKind, Level, Tier};
+        for use_write_with in [false, true] {
+            let global = crate::budget::GlobalBudget::new(8 << 20);
+            let mut budget = Budget::new(global.clone());
+            let peer_limit = 4 * TX_BLOCK_CHARGE;
+            budget.set_limits(global.high(), peer_limit, 8);
+            let ceiling = peer_limit - global.headroom(peer_limit, Tier::Block);
+            let mut pool = BlockPool::new(16);
+            let mut tx = TxBuf::default();
+            assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[1; 64]));
+            tx.consume(&mut pool, 64);
+            let index_bytes = tx.descriptor_bytes();
+            let pool_index_bytes = pool.descriptor_bytes();
+            assert_eq!(pool.cached(), 1);
+            assert_eq!(global.cached_bytes(), SMALL_TX_BLOCK as u64 + index_bytes + pool_index_bytes);
+
+            let try_write = |tx: &mut TxBuf, pool: &mut BlockPool, budget: &mut Budget, peer: PeerId, byte: u8| -> bool {
+                if use_write_with {
+                    tx.write_with(pool, budget, peer, 64, |parts| -> Result<usize, ()> {
+                        parts[0][..64].fill(byte);
+                        Ok(64)
+                    }) == Ok(Some(64))
+                } else {
+                    tx.push(pool, budget, peer, &[byte; 64])
+                }
+            };
+
+            // Case 1: PeerId(2) cannot even fit `index_bytes`.
+            let blocker_index = budget.try_allocate_kind(PeerId(2), ceiling - index_bytes + 1, AllocationKind::TxIndex).unwrap();
+            let epoch_before = global.release_epoch();
+            assert!(!try_write(&mut tx, &mut pool, &mut budget, PeerId(2), 2));
+            assert_eq!(global.release_epoch(), epoch_before, "refusing index migration before reserving must not emit a spurious release wakeup");
+            assert_eq!(budget.stats().failures().tx_block, 1);
+            assert_eq!(budget.stats().failures_by_level()[Level::Peer as usize], 1);
+            assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(1), false));
+            drop(blocker_index);
+
+            // Case 2: PeerId(2) fits `index_bytes`, but misses `index_bytes + SMALL_TX_BLOCK` by 1 byte.
+            let blocker_payload = budget.try_allocate_kind(PeerId(2), ceiling - index_bytes - SMALL_TX_BLOCK as u64 + 1, AllocationKind::TxIndex).unwrap();
+            let epoch_before_payload = global.release_epoch();
+            assert!(!try_write(&mut tx, &mut pool, &mut budget, PeerId(2), 2));
+            assert_eq!(
+                global.release_epoch(),
+                epoch_before_payload + 1,
+                "rolling back transient index reservation after payload refusal wakes eligible waiters"
+            );
+            assert_eq!(budget.stats().failures().tx_block, 2);
+            assert_eq!(budget.stats().failures_by_level()[Level::Peer as usize], 2);
+            assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, PeerId(1), false));
+            assert_eq!(pool.cached(), 1);
+            drop(blocker_payload);
+
+            // Case 3: Migration succeeds once room is restored, including across colliding PeerIds.
+            for &peer in &[PeerId(2), PeerId(10), PeerId(0), PeerId(u64::MAX)] {
+                assert!(try_write(&mut tx, &mut pool, &mut budget, peer, 3));
+                assert!(tx.index_lease.as_ref().unwrap().can_reuse_index(&budget, peer, false));
+                assert_eq!(global.cached_bytes(), pool_index_bytes);
+                tx.consume(&mut pool, 64);
+                assert_eq!(global.cached_bytes(), SMALL_TX_BLOCK as u64 + index_bytes + pool_index_bytes);
+            }
+            drop((tx, pool));
+            assert_eq!((budget.physical_used(), global.reserved(), global.cached_bytes()), (0, 0, 0));
+        }
+    }
+
+    #[test]
+    fn issue65_fused_park_falls_back_when_cache_cap_fits_block_but_not_index() {
+        // cache_limit for high = 1 MiB is 128 KiB.
+        let global = crate::budget::GlobalBudget::new(1 << 20);
+        let mut budget = Budget::new(global.clone());
+        budget.set_limits(global.high(), global.high(), 8);
+        let mut pool = BlockPool::new(64);
+        let mut filler = BlockPool::new(64);
+        // Occupy 124 KiB + descriptor in `filler` so less than 4 KiB of cache_limit remains.
+        let b1 = filler.get(&mut budget, PeerId(1), TX_BLOCK).unwrap();
+        let b2 = filler.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap();
+        filler.put(b1);
+        filler.put(b2);
+
+        let mut tx = TxBuf::default();
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[7; 64]));
+        let index_bytes = tx.descriptor_bytes();
+        // Prime `pool.small` descriptor capacity so `put_with_index` takes the fast path check.
+        tx.consume(&mut pool, 64);
+        assert!(tx.push(&mut pool, &mut budget, PeerId(1), &[8; 64]));
+        assert_eq!(pool.cached(), 0);
+
+        // Reserve exact remaining cache_limit slack in `filler` by caching small blocks, then
+        // top up with a cached index on a helper TxBuf if needed.
+        let count = (((128 << 10) - global.cached_bytes() - SMALL_TX_BLOCK as u64) / SMALL_TX_BLOCK as u64) as usize;
+        let extra: Vec<_> = (0..count).map(|_| filler.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap()).collect();
+        for blk in extra {
+            filler.put(blk);
+        }
+        let mut helpers = Vec::new();
+        while (128 << 10) - global.cached_bytes() >= SMALL_TX_BLOCK as u64 + index_bytes {
+            let mut h = TxBuf::default();
+            assert!(h.push(&mut filler, &mut budget, PeerId(1), &[1; 64]));
+            h.consume(&mut filler, 64);
+            // Take the cached block back out so only `h`'s index_lease remains cached.
+            let blk = filler.get(&mut budget, PeerId(1), SMALL_TX_BLOCK).unwrap();
+            drop(blk);
+            helpers.push(h);
+        }
+        let remaining = (128 << 10) - global.cached_bytes();
+        assert!(remaining >= SMALL_TX_BLOCK as u64 && remaining < SMALL_TX_BLOCK as u64 + index_bytes);
+
+        tx.consume(&mut pool, 64);
+        assert_eq!(pool.cached(), 1, "block alone still fits cache_limit via fallback put");
+        assert!(tx.index_lease.is_none(), "index lease exceeding remaining cache_limit must be reclaimed");
+        drop((tx, helpers, pool, filler));
+        assert_eq!((budget.physical_used(), global.reserved(), global.cached_bytes()), (0, 0, 0));
     }
 }
 
