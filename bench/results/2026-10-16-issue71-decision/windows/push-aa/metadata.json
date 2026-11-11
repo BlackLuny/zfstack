@@ -1,0 +1,131 @@
+{
+  "tag": "push-aa",
+  "argv": {
+    "baseline": "/tmp/zf71-eval/bin/U-push",
+    "candidate": "/tmp/zf71-eval/bin/U2-push",
+    "cases": "/tmp/zf71-eval/manifest/cases.json",
+    "outdir": "/tmp/zf71-eval/results/push-aa",
+    "cpu": 3,
+    "pairs": 12,
+    "timeout": 180,
+    "tag": "push-aa"
+  },
+  "binary_sha256": {
+    "baseline": "4b3abadd79973598277685b7a1504690db0df82d5d9458b922f3cd9d440fe739",
+    "candidate": "c1c006f8a33dd4536a78ba8e1e6448bb2f342fe82f4a0df7cdc918c9326b29e5"
+  },
+  "cases": [
+    {
+      "name": "tx-alloc_1",
+      "args": [
+        "tx-alloc",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "1"
+      ]
+    },
+    {
+      "name": "tx-alloc_64",
+      "args": [
+        "tx-alloc",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "64"
+      ]
+    },
+    {
+      "name": "tx-alloc_1400",
+      "args": [
+        "tx-alloc",
+        "--iterations",
+        "400000",
+        "--flows",
+        "1",
+        "--payload",
+        "1400"
+      ]
+    },
+    {
+      "name": "tx-alloc-pooled_1",
+      "args": [
+        "tx-alloc-pooled",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "1"
+      ]
+    },
+    {
+      "name": "tx-alloc-pooled_64",
+      "args": [
+        "tx-alloc-pooled",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "64"
+      ]
+    },
+    {
+      "name": "tx-alloc-pooled_1400",
+      "args": [
+        "tx-alloc-pooled",
+        "--iterations",
+        "400000",
+        "--flows",
+        "1",
+        "--payload",
+        "1400"
+      ]
+    },
+    {
+      "name": "tx-alloc-migrate_1",
+      "args": [
+        "tx-alloc-migrate",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "1"
+      ]
+    },
+    {
+      "name": "tx-alloc-migrate_64",
+      "args": [
+        "tx-alloc-migrate",
+        "--iterations",
+        "2000000",
+        "--flows",
+        "1",
+        "--payload",
+        "64"
+      ]
+    },
+    {
+      "name": "tx-alloc-migrate_1400",
+      "args": [
+        "tx-alloc-migrate",
+        "--iterations",
+        "400000",
+        "--flows",
+        "1",
+        "--payload",
+        "1400"
+      ]
+    }
+  ],
+  "started_at": "2026-10-16T22:33:09Z",
+  "order": "AB, BA, AB, BA ...",
+  "finished_at": "2026-10-16T22:34:14Z",
+  "runs": 234
+}
