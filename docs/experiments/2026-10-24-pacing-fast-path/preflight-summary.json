@@ -1,0 +1,119 @@
+{
+  "comparisons": [
+    {
+      "case": "client_down1_pin",
+      "changes": {
+        "mbps": {
+          "median_pct": 12.14840532351904,
+          "paired_pct": [
+            12.14840532351904
+          ]
+        },
+        "rss_hwm_kib": {
+          "median_pct": 1.8235584031542684,
+          "paired_pct": [
+            1.8235584031542684
+          ]
+        },
+        "service_cpu_s_per_gb": {
+          "median_pct": -2.309740815839023,
+          "paired_pct": [
+            -2.309740815839023
+          ]
+        },
+        "service_cpu_s_per_s": {
+          "median_pct": 9.554840420139342,
+          "paired_pct": [
+            9.554840420139342
+          ]
+        }
+      },
+      "left": "A",
+      "pairs": 1,
+      "right": "B",
+      "valid": false
+    }
+  ],
+  "completed": 2,
+  "identity_audit": {
+    "errors": [],
+    "identity_valid": true
+  },
+  "phase": "preflight",
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "A",
+      "binary": "old",
+      "block": "block00",
+      "case": "client_down1_pin",
+      "egress_rate": 0,
+      "errors": [
+        "process or binary identity check failed",
+        "controlled affinity invalid: required driver/TUN reader not observed"
+      ],
+      "flows": 1,
+      "index": 0,
+      "mbps": 18794.270577333333,
+      "name": "000-client_down1_pin-block00-0-A",
+      "nr_throttled": 0,
+      "observer_cpu_sec": 0.069387493,
+      "pinned": true,
+      "placement_audit": {
+        "errors": [
+          "required driver/TUN reader not observed",
+          "required proxy roles absent"
+        ],
+        "valid": false
+      },
+      "position": 0,
+      "returncode": 1,
+      "rss_hwm_kib": 8116,
+      "service_cpu_s_per_gb": 0.34514064485640933,
+      "service_cpu_s_per_s": 0.8108284314024823,
+      "test": "down",
+      "throttled_usec": 0,
+      "valid": false,
+      "zero_progress_seconds": [
+        0
+      ]
+    },
+    {
+      "arm": "B",
+      "binary": "v5",
+      "block": "block00",
+      "case": "client_down1_pin",
+      "egress_rate": 12375000,
+      "errors": [
+        "process or binary identity check failed",
+        "controlled affinity invalid: required driver/TUN reader not observed"
+      ],
+      "flows": 1,
+      "index": 1,
+      "mbps": 21077.474744666666,
+      "name": "001-client_down1_pin-block00-1-B",
+      "nr_throttled": 0,
+      "observer_cpu_sec": 0.066267825,
+      "pinned": true,
+      "placement_audit": {
+        "errors": [
+          "required driver/TUN reader not observed",
+          "required proxy roles absent"
+        ],
+        "valid": false
+      },
+      "position": 1,
+      "returncode": 1,
+      "rss_hwm_kib": 8264,
+      "service_cpu_s_per_gb": 0.33716879051011084,
+      "service_cpu_s_per_s": 0.8883017941041085,
+      "test": "down",
+      "throttled_usec": 0,
+      "valid": false,
+      "zero_progress_seconds": [
+        0
+      ]
+    }
+  ],
+  "valid": 0
+}

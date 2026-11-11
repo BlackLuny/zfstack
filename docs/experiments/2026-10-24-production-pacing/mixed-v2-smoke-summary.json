@@ -1,0 +1,279 @@
+{
+  "comparisons": [
+    {
+      "arm": "p99",
+      "cc": "cubic",
+      "changes": {
+        "heavy_jain": {
+          "median_pct": -8.128507918324225,
+          "paired_pct": [
+            -8.128507918324225
+          ]
+        },
+        "mbps": {
+          "median_pct": 3.628177400503474,
+          "paired_pct": [
+            3.628177400503474
+          ]
+        },
+        "process_cpu_s_per_s": {
+          "median_pct": -8.324930394815489,
+          "paired_pct": [
+            -8.324930394815489
+          ]
+        },
+        "rss_hwm_kib": {
+          "median_pct": 11.692155895411949,
+          "paired_pct": [
+            11.692155895411949
+          ]
+        },
+        "stack_cpu_s_per_s": {
+          "median_pct": -2.6980340307384387,
+          "paired_pct": [
+            -2.6980340307384387
+          ]
+        },
+        "stack_link_cpu_s_per_s": {
+          "median_pct": -9.787396573205264,
+          "paired_pct": [
+            -9.787396573205264
+          ]
+        },
+        "user_equal_mean_ms": {
+          "median_pct": -25.52349110583191,
+          "paired_pct": [
+            -25.52349110583191
+          ]
+        },
+        "worst_user_p99_ms": {
+          "median_pct": -62.607923052061395,
+          "paired_pct": [
+            -62.607923052061395
+          ]
+        }
+      },
+      "heavy": 4,
+      "pairs": 1,
+      "rtt": 20,
+      "valid": true
+    }
+  ],
+  "completed": 2,
+  "cpu_note": "External upload is absent from the main effective-byte denominator; CPU/GB is intentionally omitted.",
+  "phase": "mixed-smoke",
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "p99",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 0,
+        "up": 4270
+      },
+      "cc": "cubic",
+      "egress_paced_bytes": 348133412,
+      "egress_pacing_pauses": 13204,
+      "egress_rate": 12375000,
+      "errors": [],
+      "generator_max_lag_ms": 14.457227,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        79991064,
+        56053800,
+        32101488,
+        69468408
+      ],
+      "heavy_jain": 0.9167517369644417,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.610337353333335,
+      "index": 0,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 25.47330284098664,
+        "up": 15.731119267328491
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 95.04493950044088,
+      "measure": 20,
+      "missing_requests": 0,
+      "name": "000-cubic-r20-h4-p99",
+      "nr_throttled": 0,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 1650,
+      "position": 0,
+      "process_cpu_s_per_s": 0.927707470512404,
+      "retry_budget": 1,
+      "rss_hwm_kib": 18112,
+      "rtt": 20,
+      "splice": true,
+      "stack_cpu_s_per_s": 0.11967566107851278,
+      "stack_link_cpu_s_per_s": 0.7632377549216186,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "upload_acked_total": 307651857,
+      "upload_max_observed_no_ack_sec": 0,
+      "upload_peer": 5,
+      "upload_received_total": 307770856,
+      "upload_recent_acked_bytes": 201863448,
+      "uploader_cpu_total_sec": 0.203713151,
+      "user_equal_mean_ms": 35.873294884,
+      "users": [
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 124.547511,
+          "mean_ms": 35.949995708,
+          "missing": 0,
+          "observed_mean_ms": 35.949995708,
+          "p50_ms": 36.769198,
+          "p95_ms": 45.347861,
+          "p99_ms": 51.303128,
+          "peer": 3,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 117.67937,
+          "mean_ms": 36.021021788,
+          "missing": 0,
+          "observed_mean_ms": 36.021021788,
+          "p50_ms": 36.755659,
+          "p95_ms": 45.361219,
+          "p99_ms": 53.394459,
+          "peer": 4,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 54.688235,
+          "mean_ms": 35.648867156,
+          "missing": 0,
+          "observed_mean_ms": 35.648867156,
+          "p50_ms": 36.665444,
+          "p95_ms": 45.144142,
+          "p99_ms": 49.25307,
+          "peer": 2,
+          "planned": 500
+        }
+      ],
+      "valid": true,
+      "wall_sec": 20.000087841,
+      "warmup": 8,
+      "worst_user_p99_ms": 53.394459
+    },
+    {
+      "arm": "off",
+      "block": "cubic-r20-n4-pair0",
+      "bottleneck_drops": {
+        "down": 706,
+        "up": 13768
+      },
+      "cc": "cubic",
+      "egress_paced_bytes": 0,
+      "egress_pacing_pauses": 0,
+      "egress_rate": 0,
+      "errors": [],
+      "generator_max_lag_ms": 2.601175,
+      "heavy": 4,
+      "heavy_flow_window_bytes": [
+        54842268,
+        58409305,
+        54960594,
+        61231266
+      ],
+      "heavy_jain": 0.9978631196600456,
+      "heavy_zero_window_flows": 0,
+      "idle_user_mean_ms": 20.55451914,
+      "index": 1,
+      "lights": 3,
+      "link_late_mean_us": {
+        "down": 25.303735923098994,
+        "up": 17.93951091995755
+      },
+      "max_observed_no_read_sec": 0.0,
+      "mbps": 91.71727408956544,
+      "measure": 20,
+      "missing_requests": 0,
+      "name": "001-cubic-r20-h4-off",
+      "nr_throttled": 0,
+      "per_flow_max_observed_no_read_sec": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "planned_requests": 1650,
+      "position": 1,
+      "process_cpu_s_per_s": 1.0119517492680903,
+      "retry_budget": 1,
+      "rss_hwm_kib": 16216,
+      "rtt": 20,
+      "splice": true,
+      "stack_cpu_s_per_s": 0.12299408330178986,
+      "stack_link_cpu_s_per_s": 0.8460433752374378,
+      "throttled_usec": 0,
+      "tokio_stack": true,
+      "upload_acked_total": 324445841,
+      "upload_max_observed_no_ack_sec": 0,
+      "upload_peer": 5,
+      "upload_received_total": 324971136,
+      "upload_recent_acked_bytes": 214810200,
+      "uploader_cpu_total_sec": 0.20851366999999998,
+      "user_equal_mean_ms": 48.16726161933333,
+      "users": [
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 176.788032,
+          "mean_ms": 51.339937622,
+          "missing": 0,
+          "observed_mean_ms": 51.339937622,
+          "p50_ms": 46.280963,
+          "p95_ms": 98.687776,
+          "p99_ms": 142.796184,
+          "peer": 2,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 55.777445,
+          "mean_ms": 45.992029942,
+          "missing": 0,
+          "observed_mean_ms": 45.992029942,
+          "p50_ms": 45.961878,
+          "p95_ms": 53.667994,
+          "p99_ms": 54.875425,
+          "peer": 3,
+          "planned": 500
+        },
+        {
+          "completed": 500,
+          "late_completed": 0,
+          "max_observed_ms": 147.909813,
+          "mean_ms": 47.169817294,
+          "missing": 0,
+          "observed_mean_ms": 47.169817294,
+          "p50_ms": 46.002691,
+          "p95_ms": 54.012275,
+          "p99_ms": 106.622005,
+          "peer": 4,
+          "planned": 500
+        }
+      ],
+      "valid": true,
+      "wall_sec": 20.013105248,
+      "warmup": 8,
+      "worst_user_p99_ms": 142.796184
+    }
+  ],
+  "valid": 2
+}

@@ -1,0 +1,107 @@
+{
+  "comparisons": [
+    {
+      "case": "client_down1_pin",
+      "changes": {
+        "mbps": {
+          "median_pct": 7.86620337762971,
+          "paired_pct": [
+            7.86620337762971
+          ]
+        },
+        "rss_hwm_kib": {
+          "median_pct": 3.919546157813314,
+          "paired_pct": [
+            3.919546157813314
+          ]
+        },
+        "service_cpu_s_per_gb": {
+          "median_pct": -8.880530246271533,
+          "paired_pct": [
+            -8.880530246271533
+          ]
+        },
+        "service_cpu_s_per_s": {
+          "median_pct": -1.7126523690424444,
+          "paired_pct": [
+            -1.7126523690424444
+          ]
+        }
+      },
+      "left": "A",
+      "pairs": 1,
+      "right": "B",
+      "valid": true
+    }
+  ],
+  "completed": 2,
+  "identity_audit": {
+    "errors": [],
+    "identity_valid": true
+  },
+  "phase": "preflight",
+  "planned": 2,
+  "rows": [
+    {
+      "arm": "A",
+      "binary": "old",
+      "block": "block00",
+      "case": "client_down1_pin",
+      "egress_rate": 0,
+      "errors": [],
+      "flows": 1,
+      "index": 0,
+      "mbps": 16804.779932666668,
+      "name": "000-client_down1_pin-block00-0-A",
+      "nr_throttled": 0,
+      "observer_cpu_sec": 0.17433907599999998,
+      "pinned": true,
+      "placement_audit": {
+        "errors": [],
+        "valid": true
+      },
+      "position": 0,
+      "returncode": 0,
+      "rss_hwm_kib": 7756,
+      "service_cpu_s_per_gb": 0.4863695547387242,
+      "service_cpu_s_per_s": 1.0216632328565411,
+      "test": "down",
+      "throttled_usec": 0,
+      "valid": true,
+      "zero_progress_seconds": [
+        0
+      ]
+    },
+    {
+      "arm": "B",
+      "binary": "v5",
+      "block": "block00",
+      "case": "client_down1_pin",
+      "egress_rate": 12375000,
+      "errors": [],
+      "flows": 1,
+      "index": 1,
+      "mbps": 18126.678099333334,
+      "name": "001-client_down1_pin-block00-1-B",
+      "nr_throttled": 0,
+      "observer_cpu_sec": 0.177517358,
+      "pinned": true,
+      "placement_audit": {
+        "errors": [],
+        "valid": true
+      },
+      "position": 1,
+      "returncode": 0,
+      "rss_hwm_kib": 8060,
+      "service_cpu_s_per_gb": 0.4431773593214956,
+      "service_cpu_s_per_s": 1.004165693295388,
+      "test": "down",
+      "throttled_usec": 0,
+      "valid": true,
+      "zero_progress_seconds": [
+        0
+      ]
+    }
+  ],
+  "valid": 2
+}

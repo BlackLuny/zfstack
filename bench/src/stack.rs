@@ -12,6 +12,11 @@ use crate::util;
 pub type Batch = Vec<Vec<u8>>;
 
 pub trait UserStack: Send {
+    /// Native async adapters own their event loop; synchronous adapters retain
+    /// the existing packet/deadline loop.
+    fn drive(self: Box<Self>, rx: Receiver<Batch>, tx: Sender<Batch>, stop: Arc<AtomicBool>, live: Arc<StackLive>) -> StackResult {
+        run_stack_thread(self, rx, tx, stop, live)
+    }
     /// Feed one IP packet (from client towards server). `now` is monotonic.
     fn ingress(&mut self, now: Instant, pkt: &[u8]);
     /// Run protocol + the embedded app server; push every outgoing IP packet via `out`.
@@ -49,7 +54,7 @@ const MAX_IDLE: Duration = Duration::from_millis(50);
 /// Stack thread body. Blocks on the ingress channel until the stack's next
 /// deadline, drains every queued batch, feeds them, polls once and forwards
 /// all produced packets to the link as one batch.
-pub fn run_stack_thread(mut stack: Box<dyn UserStack>, rx: Receiver<Batch>, tx: Sender<Batch>, stop: Arc<AtomicBool>, live: Arc<StackLive>) -> StackResult {
+pub fn run_stack_thread<S: UserStack + ?Sized>(mut stack: Box<S>, rx: Receiver<Batch>, tx: Sender<Batch>, stop: Arc<AtomicBool>, live: Arc<StackLive>) -> StackResult {
     util::set_timerslack_ns(1);
     let cpu0 = util::thread_cpu_now();
     let mut out_batch: Batch = Vec::with_capacity(256);

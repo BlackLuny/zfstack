@@ -1,0 +1,139 @@
+{
+  "aa": [
+    {
+      "case": "bbr-r500-n1-fixed",
+      "cpu_pct": 4.015738876385888,
+      "round": 0,
+      "throughput_pct": 2.836157734218192,
+      "valid": true
+    },
+    {
+      "case": "bbr-r500-n1-fixed",
+      "cpu_pct": -4.237980596866786,
+      "round": 1,
+      "throughput_pct": -3.3247210540976235,
+      "valid": true
+    },
+    {
+      "case": "bbr-r500-n1-original",
+      "cpu_pct": 3.7410216712630895,
+      "round": 0,
+      "throughput_pct": -9.794728551937947,
+      "valid": true
+    },
+    {
+      "case": "bbr-r500-n1-original",
+      "cpu_pct": 4.155168033207923,
+      "round": 1,
+      "throughput_pct": -1.0716371623208043,
+      "valid": true
+    },
+    {
+      "case": "cubic-r50-n1-fixed",
+      "cpu_pct": 1.828115451700496,
+      "round": 0,
+      "throughput_pct": 0.003172895496805772,
+      "valid": true
+    },
+    {
+      "case": "cubic-r50-n1-fixed",
+      "cpu_pct": -8.449372760470908,
+      "round": 1,
+      "throughput_pct": -0.4097102394359897,
+      "valid": true
+    },
+    {
+      "case": "cubic-r50-n1-original",
+      "cpu_pct": 2.620156679798935,
+      "round": 0,
+      "throughput_pct": -7.886785935440344e-06,
+      "valid": true
+    },
+    {
+      "case": "cubic-r50-n1-original",
+      "cpu_pct": 4.746251252403022,
+      "round": 1,
+      "throughput_pct": -0.012368886128566459,
+      "valid": true
+    }
+  ],
+  "aa_valid": true,
+  "aggregate_protection": {
+    "all": true,
+    "bbr": true,
+    "contended": true,
+    "cubic": true,
+    "single": true
+  },
+  "broad_cpu_protection": {
+    "contended": true,
+    "single": true
+  },
+  "checks": {
+    "all_primary_aggregates": true,
+    "all_single_throughput": false,
+    "broad_cpu_aggregates": true,
+    "candidate_bulk_progress": true,
+    "candidates_strict": false,
+    "contended_latency_aggregate": false,
+    "contended_latency_coverage": false,
+    "majority_pointwise": false,
+    "majority_simultaneous": false,
+    "no_clear_primary_regression": true,
+    "observations_complete": false
+  },
+  "clear_latency_regressions": [],
+  "clear_primary_regressions": [],
+  "extreme_valid": true,
+  "extreme_verdict": {
+    "peak-down1": {
+      "clear_worse_than_10pct": false,
+      "original_3pct": false,
+      "relaxed_10pct": true
+    },
+    "peak-down2": {
+      "clear_worse_than_10pct": false,
+      "original_3pct": true,
+      "relaxed_10pct": true
+    }
+  },
+  "meaning": "Enumerated same-host 100-Mbps grid only; +3% practical protection differs from strict zero CPU overhead.",
+  "no_literal_zero_overhead_claim": true,
+  "old_peak_3pct_verdicts_unchanged": true,
+  "other_bandwidths_proven": false,
+  "pointwise_protected_cells": [
+    "bbr-r1-n8-fixed",
+    "bbr-r10-n8-fixed",
+    "bbr-r100-n1-fixed",
+    "bbr-r100-n8-fixed",
+    "bbr-r250-n1-fixed",
+    "bbr-r50-n1-fixed",
+    "bbr-r500-n8-fixed",
+    "cubic-r10-n8-fixed",
+    "cubic-r500-n8-fixed"
+  ],
+  "pointwise_protected_count": 9,
+  "preflight_valid": true,
+  "representative_scope_qualified": false,
+  "scoped_recommendation_supported": false,
+  "simultaneous_protected_cells": [
+    "bbr-r1-n8-fixed",
+    "bbr-r10-n8-fixed",
+    "bbr-r100-n8-fixed",
+    "bbr-r500-n8-fixed",
+    "cubic-r10-n8-fixed",
+    "cubic-r500-n8-fixed"
+  ],
+  "simultaneous_protected_count": 6,
+  "strictly_nonincreasing_cpu_cells": [
+    "bbr-r1-n8-fixed",
+    "bbr-r10-n8-fixed",
+    "bbr-r100-n8-fixed",
+    "bbr-r250-n1-fixed",
+    "bbr-r500-n8-fixed",
+    "cubic-r10-n8-fixed",
+    "cubic-r500-n8-fixed"
+  ],
+  "strictly_nonincreasing_cpu_count": 7,
+  "unknown_capacity_default_supported": false
+}

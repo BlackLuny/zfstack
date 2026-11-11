@@ -1,5 +1,7 @@
 //! The real-machine benchmark requires Linux TUN devices and network namespaces.
 
+#![recursion_limit = "256"]
+
 #[cfg(target_os = "linux")]
 include!("linux.rs");
 

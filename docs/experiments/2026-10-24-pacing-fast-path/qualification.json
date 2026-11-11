@@ -1,0 +1,549 @@
+{
+  "caveat": "Two original placement preflight attempts are invalid and retained. PPID-based preflight-v2 passes; no failed preflight sample enters a CI. Controlled placement cannot replace an unqualified primary bound.",
+  "checks": [
+    {
+      "blocking": true,
+      "name": "all retained identities",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "all retained plans complete",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "V5 native preflight",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "corrected placement preflight",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "A/A observed",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "primary three-arm observations",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "lower",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -9.678774869028583,
+          5.422981769697122
+        ],
+        "median_pct": -0.8672392127980377,
+        "paired_pct": [
+          -7.682189873435474,
+          8.292081919044758,
+          2.553881620349485,
+          17.126548967959152,
+          0.22037110154617956,
+          -5.4286054875325345,
+          -1.954849527142255,
+          -14.313331217638536,
+          -11.675359864621694,
+          11.645212872302423,
+          0.5742385216765511,
+          -11.920534094245994
+        ]
+      },
+      "limit_pct": -3,
+      "name": "client_down1_shared useful throughput",
+      "passed": false
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -5.144440283396895,
+          9.41114459181177
+        ],
+        "median_pct": 0.37525713687867057,
+        "paired_pct": [
+          7.195817577626906,
+          -8.833487268731599,
+          -2.964782587626924,
+          -17.13937302529547,
+          -0.9365832799258289,
+          3.5478384067078705,
+          0.44227843138804346,
+          13.798379078444167,
+          11.764837874705126,
+          -7.324097979166866,
+          0.3082358423692977,
+          11.626471605996635
+        ]
+      },
+      "limit_pct": 3,
+      "name": "client_down1_shared service CPU/GB",
+      "passed": false
+    },
+    {
+      "blocking": true,
+      "endpoint": "lower",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -7.408444862141744,
+          2.6805843517226813
+        ],
+        "median_pct": 1.1596854511955357,
+        "paired_pct": [
+          6.5627035477014095,
+          2.5866687517147158,
+          2.249113723373064,
+          6.950221793967604,
+          -1.2541492723071923,
+          -8.028845195959388,
+          1.7842629864901038,
+          -12.435898430441405,
+          2.774499951730647,
+          -6.7880445283241,
+          -10.264224611149618,
+          0.5351079159009675
+        ]
+      },
+      "limit_pct": -3,
+      "name": "client_down2_shared useful throughput",
+      "passed": false
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -2.571711159208878,
+          7.922434992068306
+        ],
+        "median_pct": -0.5428504824470493,
+        "paired_pct": [
+          -5.930766478977711,
+          -2.9138729989199863,
+          -1.805920038422737,
+          -5.584862748957963,
+          1.6804105142812276,
+          9.080766914975769,
+          -1.198811790499843,
+          12.714076470603054,
+          -2.22954931949777,
+          6.764103069160843,
+          12.068378162529147,
+          0.11311082560574448
+        ]
+      },
+      "limit_pct": 3,
+      "name": "client_down2_shared service CPU/GB",
+      "passed": false
+    },
+    {
+      "blocking": true,
+      "name": "V5 loaded observations",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "bbr complete loaded pairs",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "lower",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -0.1952044696094668,
+          -0.016592377379937018
+        ],
+        "median_pct": -0.12365751533852665,
+        "paired_pct": [
+          0.06872067665546489,
+          -0.03359851843041106,
+          -0.0146919278542601,
+          -0.2612371305997341,
+          -0.015620796599180586,
+          -0.19323254629705078,
+          -0.4086344809343334,
+          -0.1796405980681759,
+          -0.01756395816069345,
+          -0.16743825701933668,
+          -0.19717639292188283,
+          -0.07987677365771662
+        ]
+      },
+      "limit_pct": -3,
+      "name": "bbr loaded mbps",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -70.54446919094457,
+          -66.56397416648224
+        ],
+        "median_pct": -69.49335988044862,
+        "paired_pct": [
+          -70.60310558349312,
+          -73.15724790250552,
+          -70.485832798396,
+          -70.47610891412621,
+          -66.9846651064057,
+          -66.02059300260103,
+          -66.14328322655878,
+          -65.07333849074939,
+          -69.35409949158088,
+          -69.63262026931635,
+          -73.77126065597017,
+          -68.24580693232807
+        ]
+      },
+      "limit_pct": -20,
+      "name": "bbr loaded user_equal_mean_ms",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -88.93387917929087,
+          -85.3870385982712
+        ],
+        "median_pct": -87.43858523071995,
+        "paired_pct": [
+          -86.81881957112957,
+          -88.26354076781334,
+          -87.01458209266895,
+          -91.51387386332262,
+          -84.66680939434316,
+          -85.0109811073218,
+          -89.8852125580583,
+          -84.94407786316988,
+          -89.59880737046258,
+          -88.26895098811914,
+          -87.86258836877097,
+          -85.76309608922061
+        ]
+      },
+      "limit_pct": -20,
+      "name": "bbr loaded worst_user_p99_ms",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -43.71285925782281,
+          -36.987976659438225
+        ],
+        "median_pct": -40.361107900177565,
+        "paired_pct": [
+          -39.6103514898864,
+          -43.68127675438562,
+          -43.89873889620857,
+          -36.180377394784756,
+          -31.828772511580226,
+          -39.77857255400733,
+          -45.67657930313956,
+          -43.61167091034485,
+          -37.79557592409169,
+          -43.74444176125999,
+          -33.0883487178234,
+          -40.9436432463478
+        ]
+      },
+      "limit_pct": 3,
+      "name": "bbr loaded stack_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -26.32170360235824,
+          -23.157788741711244
+        ],
+        "median_pct": -25.205028211064818,
+        "paired_pct": [
+          -24.969201329998526,
+          -26.322941626635043,
+          -25.471717634239877,
+          -20.935727779284264,
+          -21.587300081683768,
+          -25.239289544804855,
+          -26.320465578081443,
+          -26.330014920367528,
+          -24.72827740173872,
+          -26.469517109323604,
+          -20.568640645460135,
+          -25.17076687732478
+        ]
+      },
+      "limit_pct": 3,
+      "name": "bbr loaded stack_link_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -23.849187925500523,
+          -20.383373163549216
+        ],
+        "median_pct": -22.165379118654645,
+        "paired_pct": [
+          -22.233168315026887,
+          -24.793996803028428,
+          -22.097589922282403,
+          -18.937183845006235,
+          -19.14000216199173,
+          -22.069285951320616,
+          -24.847528421858723,
+          -23.65222890882499,
+          -23.86808423267619,
+          -23.83029161832486,
+          -18.93636550942358,
+          -21.626744165106704
+        ]
+      },
+      "limit_pct": 3,
+      "name": "bbr loaded process_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "cubic complete loaded pairs",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "lower",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -0.8578011767137683,
+          -0.8048048717764489
+        ],
+        "median_pct": -0.8461460618330363,
+        "paired_pct": [
+          -1.0140064290245943,
+          -0.7886101865138384,
+          -0.7948988956487768,
+          -0.8520440744704372,
+          -0.8562539271765535,
+          -0.8467006238761954,
+          -0.893739630916146,
+          -0.8156269089023671,
+          -0.8593484262509832,
+          -0.6994770511461246,
+          -0.814710847904121,
+          -0.8455914997898772
+        ]
+      },
+      "limit_pct": -3,
+      "name": "cubic loaded mbps",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -57.15812984995139,
+          -54.390784084210836
+        ],
+        "median_pct": -56.007230104377385,
+        "paired_pct": [
+          -51.99112294438677,
+          -59.92549777451737,
+          -57.45382591405366,
+          -56.86243378584912,
+          -58.35782670627763,
+          -55.17297816492315,
+          -56.50517776735142,
+          -54.77203803229933,
+          -53.784214363093106,
+          -55.50928244140334,
+          -56.51054430231554,
+          -54.00953013612235
+        ]
+      },
+      "limit_pct": -20,
+      "name": "cubic loaded user_equal_mean_ms",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -82.96609585809043,
+          -80.12341522673151
+        ],
+        "median_pct": -81.17513737499941,
+        "paired_pct": [
+          -79.84050479657145,
+          -84.5518013781206,
+          -80.82258864438032,
+          -81.38039033806025,
+          -85.6381138457532,
+          -79.12112806607556,
+          -81.37632044641073,
+          -81.02518281274371,
+          -84.7513465073954,
+          -81.32509193725511,
+          -80.40632565689157,
+          -77.29752472134277
+        ]
+      },
+      "limit_pct": -20,
+      "name": "cubic loaded worst_user_p99_ms",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -22.421474835503325,
+          -17.4717776289956
+        ],
+        "median_pct": -19.152080879578264,
+        "paired_pct": [
+          -24.32970655953618,
+          -18.962678701312207,
+          -17.035156250218854,
+          -13.455580410317115,
+          -20.005616458732632,
+          -18.496878470483402,
+          -15.146714336603061,
+          -25.344254499218287,
+          -23.247969696318428,
+          -21.594979974688222,
+          -19.34148305784432,
+          -17.908399007772346
+        ]
+      },
+      "limit_pct": 3,
+      "name": "cubic loaded stack_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -6.456758158174447,
+          -4.86749265445977
+        ],
+        "median_pct": -5.439418550750569,
+        "paired_pct": [
+          -9.916918336049463,
+          -5.594030065777156,
+          -2.031755717431738,
+          -4.3737271351205305,
+          -5.164018990297114,
+          -4.666872089183249,
+          -6.34134911538915,
+          -9.086990677275464,
+          -6.572167200959744,
+          -5.807032498047294,
+          -5.284807035723982,
+          -5.068113219736292
+        ]
+      },
+      "limit_pct": 3,
+      "name": "cubic loaded stack_link_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "endpoint": "upper",
+      "estimate": {
+        "bootstrap_95_pct": [
+          -3.9925256616617224,
+          -1.578657894445984
+        ],
+        "median_pct": -2.710498053251209,
+        "paired_pct": [
+          -6.379512513683272,
+          -4.128075314540736,
+          -0.7374047836324116,
+          -0.5486375705592739,
+          -2.384712841587011,
+          -0.9016185589978853,
+          -3.8569760087827087,
+          -6.542295904432671,
+          -2.6772926549843867,
+          -3.2697996139240404,
+          -2.7437034515180314,
+          -2.2556972298940825
+        ]
+      },
+      "limit_pct": 3,
+      "name": "cubic loaded process_cpu_s_per_gb",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "all loaded arrivals completed",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "loaded candidate SLOs",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "loaded candidate finite flow progress",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "V5 WAN observations",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "WAN candidate finite flow progress",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "WAN planned arrivals completed",
+      "passed": true
+    },
+    {
+      "blocking": true,
+      "name": "WAN single-peer bypass",
+      "passed": true
+    }
+  ],
+  "decisions": {
+    "aa_median_abs_paired_pct": {
+      "client_down1_pin": 0.10935234113413905,
+      "client_down1_shared": 9.571948848546397,
+      "client_down2_pin": 10.040554387046296,
+      "client_down2_shared": 2.719373845200357
+    },
+    "clear_peak_regression": false,
+    "controlled_aa_quieter_both_flows": false,
+    "loaded_passed": true,
+    "primary_ambiguous": true,
+    "run_pin": false,
+    "run_wan": true
+  },
+  "passed": false,
+  "scope": "V5 primary unrestricted local peak guards and independent loaded confirmation; WAN has two pairs/cell, not all-RTT non-inferiority. Old V4 results are retained and never pooled. Pointwise CIs are not familywise."
+}

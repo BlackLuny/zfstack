@@ -10,6 +10,7 @@ pub mod cc;
 pub mod config;
 mod conn;
 mod heap;
+mod iface_pacing;
 pub mod offload;
 pub mod pktpool;
 pub mod rtt;
